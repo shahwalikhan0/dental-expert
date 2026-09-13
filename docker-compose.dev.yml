@@ -2,7 +2,7 @@
 #
 #   docker compose -f docker-compose.dev.yml up -d
 #
-# This brings up MySQL, Redis, MinIO and Mailpit. It does NOT run the app —
+# This brings up PostgreSQL, Redis, MinIO and Mailpit. It does NOT run the app —
 # start that on the host with `npm run dev`. Bind-mounting node_modules into a
 # container is slow enough on Windows and macOS to ruin the edit-reload loop,
 # and native hot reload is meaningfully better. A containerised app service can
@@ -18,7 +18,7 @@
 # ---------------------------------------------------------------------------
 
 # Distinct from the production stack's project name on purpose. Both files
-# declare volumes called mysql-data and redis-data, and a shared project name
+# declare volumes called postgres-data and redis-data, and a shared project name
 # would make them the same volumes — so bringing up the production stack on a
 # machine that has been running this one would silently point production at a
 # development database seeded with fake patients.
@@ -28,21 +28,22 @@
 name: dental-erp-dev
 
 services:
-  mysql:
-    image: mysql:8.4
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: dental
-      MYSQL_DATABASE: dental_erp
+      POSTGRES_USER: dental
+      POSTGRES_PASSWORD: dental
+      POSTGRES_DB: dental_erp
     ports:
-      # If you already run MySQL locally this will fail to bind. Either stop the
-      # local server, or change the host side to e.g. '3307:3306' and update
+      # If you already run PostgreSQL locally this will fail to bind. Either stop
+      # the local server, or change the host side to e.g. '5433:5432' and update
       # DATABASE_URL to match.
-      - '3306:3306'
+      - '5432:5432'
     volumes:
-      - mysql-data:/var/lib/mysql
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent']
+      test: ['CMD-SHELL', 'pg_isready -U dental -d dental_erp']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -117,6 +118,6 @@ services:
       retries: 10
 
 volumes:
-  mysql-data:
+  postgres-data:
   redis-data:
   minio-data:

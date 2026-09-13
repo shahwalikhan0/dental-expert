@@ -46,9 +46,9 @@ describe('9.1 Build Testing', () => {
   })
 
   describe('Prisma configuration', () => {
-    it('schema uses MySQL as database provider', () => {
-      const datasource = { provider: 'mysql', url: 'env("DATABASE_URL")' }
-      expect(datasource.provider).toBe('mysql')
+    it('schema uses PostgreSQL as database provider', () => {
+      const datasource = { provider: 'postgresql', url: 'env("DATABASE_URL")' }
+      expect(datasource.provider).toBe('postgresql')
     })
 
     it('generator targets native and debian binary', () => {
@@ -176,9 +176,10 @@ describe('9.1 Build Testing', () => {
 describe('9.3 Configuration Testing', () => {
   describe('Required environment variables', () => {
     it('DATABASE_URL is required and has correct format', () => {
-      const dbUrl = process.env.DATABASE_URL || 'mysql://root:password@localhost:3306/dental_erp'
+      const dbUrl =
+        process.env.DATABASE_URL || 'postgresql://dental:password@localhost:5432/dental_erp'
       expect(dbUrl).toBeDefined()
-      expect(dbUrl).toContain('mysql://')
+      expect(dbUrl).toContain('postgresql://')
     })
 
     it('NEXTAUTH_SECRET is required for session security', () => {
@@ -225,29 +226,29 @@ describe('9.3 Configuration Testing', () => {
         'not-a-url',
         'postgres://localhost/db', // wrong provider
         '',
-        'mysql://', // incomplete
+        'postgresql://', // incomplete
       ]
 
       invalidUrls.forEach((url) => {
-        const isValid = url.startsWith('mysql://') && url.length > 'mysql://'.length + 5
+        const isValid = url.startsWith('postgresql://') && url.length > 'postgresql://'.length + 5
         expect(isValid).toBe(false)
       })
     })
 
     it('valid DATABASE_URL is accepted', () => {
       const validUrls = [
-        'mysql://root:password@localhost:3306/dental_erp',
-        'mysql://user:pass@db.example.com:3306/dental_erp',
+        'postgresql://dental:password@localhost:5432/dental_erp',
+        'postgresql://user:pass@db.example.com:5432/dental_erp',
       ]
 
       validUrls.forEach((url) => {
-        const isValid = url.startsWith('mysql://') && url.length > 'mysql://'.length + 5
+        const isValid = url.startsWith('postgresql://') && url.length > 'postgresql://'.length + 5
         expect(isValid).toBe(true)
       })
     })
   })
 
-  describe('MySQL connection pool configuration', () => {
+  describe('PostgreSQL connection pool configuration', () => {
     it('DB_HOST defaults to localhost', () => {
       const host = process.env.DB_HOST || 'localhost'
       expect(host).toBe('localhost')

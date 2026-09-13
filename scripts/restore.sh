@@ -34,8 +34,9 @@ set -a
 . ./.env
 set +a
 
-: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is not set in .env}"
-MYSQL_DATABASE="${MYSQL_DATABASE:-dental_erp}"
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env}"
+POSTGRES_DB="${POSTGRES_DB:-dental_erp}"
+POSTGRES_USER="${POSTGRES_USER:-dental}"
 
 echo "Backup:   $SRC"
 [ -f "$SRC/manifest.txt" ] && sed 's/^/  /' "$SRC/manifest.txt"
@@ -58,7 +59,7 @@ if [ "$CONFIRM" != "--yes" ]; then
 
 This would:
   - stop the app (the database must not change under it mid-restore)
-  - DROP and recreate the database "$MYSQL_DATABASE", discarding everything in it
+  - DROP and recreate the database "$POSTGRES_DB", discarding everything in it
   - replace the contents of the ${PROJECT}_uploads volume
   - start the app again
 
@@ -75,13 +76,21 @@ echo "Restoring the database..."
 # Recreate rather than restore over the top: leftover rows from the current
 # database would otherwise survive alongside the restored ones, which looks
 # like a successful restore and is not.
-docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-  mysql --user=root -e \
-  "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`; CREATE DATABASE \`$MYSQL_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+#
+# Issued against the `postgres` maintenance database because a session cannot
+# drop the database it is connected to. WITH (FORCE) terminates any connection
+# still holding the old one open — without it a single stray psql or a migrate
+# container that has not exited yet makes the DROP fail.
+docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+  psql --username="$POSTGRES_USER" --dbname=postgres -v ON_ERROR_STOP=1 \
+  -c "DROP DATABASE IF EXISTS \"$POSTGRES_DB\" WITH (FORCE);" \
+  -c "CREATE DATABASE \"$POSTGRES_DB\" OWNER \"$POSTGRES_USER\" ENCODING 'UTF8';"
 
+# ON_ERROR_STOP is what makes this a restore rather than a best effort: without
+# it psql reports success after skipping every statement that failed.
 gzip -dc "$SRC/database.sql.gz" |
-  docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-    mysql --user=root --default-character-set=utf8mb4 "$MYSQL_DATABASE"
+  docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+    psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" -v ON_ERROR_STOP=1 --quiet
 
 if [ -f "$SRC/uploads.tar.gz" ]; then
   echo "Restoring uploads..."

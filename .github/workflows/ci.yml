@@ -80,7 +80,7 @@ jobs:
         working-directory: .
         run: npx vitest run --reporter=verbose --coverage
         env:
-          DATABASE_URL: 'mysql://test:test@localhost:3306/dental_test'
+          DATABASE_URL: 'postgresql://test:test@localhost:5432/dental_test'
           NEXTAUTH_SECRET: 'ci-test-secret-at-least-32-chars-long'
           NEXTAUTH_URL: 'http://localhost:3000'
           CRON_SECRET: 'ci-cron-secret'
@@ -120,6 +120,6 @@ jobs:
         working-directory: .
         run: npm run build
         env:
-          DATABASE_URL: 'mysql://test:test@localhost:3306/dental_test'
+          DATABASE_URL: 'postgresql://test:test@localhost:5432/dental_test'
           NEXTAUTH_SECRET: 'ci-test-secret-at-least-32-chars-long'
           NEXTAUTH_URL: 'http://localhost:3000'

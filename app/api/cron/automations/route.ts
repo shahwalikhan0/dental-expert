@@ -61,12 +61,13 @@ export async function POST(req: Request) {
           const targetMonth = targetDate.getMonth() + 1
           const targetDay = targetDate.getDate()
           // Find patients with birthdays matching the target date
-          const patients = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-            `SELECT id FROM Patient WHERE hospitalId = ? AND isActive = 1 AND MONTH(dateOfBirth) = ? AND DAY(dateOfBirth) = ?`,
-            auto.hospitalId,
-            targetMonth,
-            targetDay
-          )
+          const patients = await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Patient"
+            WHERE "hospitalId" = ${auto.hospitalId}
+            AND "isActive" = true
+            AND EXTRACT(MONTH FROM "dateOfBirth") = ${targetMonth}
+            AND EXTRACT(DAY FROM "dateOfBirth") = ${targetDay}
+          `
           matchedPatientIds = patients.map((p) => p.id)
           break
         }

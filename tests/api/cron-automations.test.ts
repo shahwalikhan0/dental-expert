@@ -104,7 +104,7 @@ describe('POST /api/cron/automations', () => {
       },
     ] as any)
 
-    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([{ id: 'p1' }] as any)
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'p1' }] as any)
     vi.mocked(prisma.notification.create).mockResolvedValue({} as any)
     vi.mocked(prisma.marketingAutomation.update).mockResolvedValue({} as any)
 

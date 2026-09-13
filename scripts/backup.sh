@@ -27,11 +27,12 @@ set -a
 . ./.env
 set +a
 
-: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is not set in .env}"
-MYSQL_DATABASE="${MYSQL_DATABASE:-dental_erp}"
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env}"
+POSTGRES_DB="${POSTGRES_DB:-dental_erp}"
+POSTGRES_USER="${POSTGRES_USER:-dental}"
 
-if ! docker compose ps --status running --services 2>/dev/null | grep -qx mysql; then
-  echo "The mysql service is not running — start the stack first." >&2
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
+  echo "The postgres service is not running — start the stack first." >&2
   exit 1
 fi
 
@@ -39,22 +40,25 @@ mkdir -p "$DEST"
 echo "Backing up to $DEST"
 
 # --- database -----------------------------------------------------------------
-# --single-transaction takes a consistent snapshot of InnoDB without locking the
-# tables, so the clinic keeps working while this runs. MYSQL_PWD rather than
-# --password= so the credential is not visible in `ps` on a shared host.
+# pg_dump runs inside a repeatable-read transaction, so it is a consistent
+# snapshot without locking anything and the clinic keeps working while it runs.
+# PGPASSWORD rather than a password on the command line so the credential is
+# not visible in `ps` on a shared host.
+#
+# --no-owner/--no-acl so the dump restores cleanly under whatever role the
+# target cluster uses, rather than demanding the exact role names this one has.
 echo "  database..."
-docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-  mysqldump \
-  --user=root \
-  --single-transaction \
-  --routines \
-  --triggers \
-  --default-character-set=utf8mb4 \
-  "$MYSQL_DATABASE" | gzip >"$DEST/database.sql.gz"
+docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+  pg_dump \
+  --username="$POSTGRES_USER" \
+  --format=plain \
+  --no-owner \
+  --no-acl \
+  "$POSTGRES_DB" | gzip >"$DEST/database.sql.gz"
 
-# gzip in a pipeline reports success even when mysqldump upstream of it failed,
+# gzip in a pipeline reports success even when pg_dump upstream of it failed,
 # so check the dump actually contains a dump.
-if ! gzip -dc "$DEST/database.sql.gz" | head -40 | grep -q "MySQL dump"; then
+if ! gzip -dc "$DEST/database.sql.gz" | head -40 | grep -q "PostgreSQL database dump"; then
   echo "Database dump looks empty or truncated — refusing to call this a backup." >&2
   exit 1
 fi
@@ -94,7 +98,7 @@ fi
 {
   echo "created:        $STAMP"
   echo "version:        ${DENTAL_ERP_VERSION:-latest}"
-  echo "database:       $MYSQL_DATABASE"
+  echo "database:       $POSTGRES_DB"
   echo "storage_driver: ${STORAGE_DRIVER:-local}"
 } >"$DEST/manifest.txt"
 
