@@ -173,6 +173,25 @@ export async function POST(request: NextRequest) {
     }
     const parsedCnic = cnicResult.value
 
+    // FR-002. Checked before writing rather than left to the unique index, so
+    // the desk gets the existing patient's name and ID and can open that record
+    // instead of being told only that something went wrong.
+    if (parsedCnic) {
+      const holder = await prisma.patient.findFirst({
+        where: { hospitalId, cnic: parsedCnic },
+        select: { id: true, patientId: true, firstName: true, lastName: true },
+      })
+      if (holder) {
+        return NextResponse.json(
+          {
+            error: `That CNIC is already registered to ${holder.firstName} ${holder.lastName} (${holder.patientId})`,
+            existingPatient: holder,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     // Generate patient ID for this hospital
     const patientId = await generatePatientId(hospitalId)
 

@@ -194,6 +194,22 @@ export async function POST(request: NextRequest) {
     }
     const parsedCnic = cnicResult.value
 
+    if (parsedCnic) {
+      const holder = await prisma.staff.findFirst({
+        where: { hospitalId, cnic: parsedCnic },
+        select: { id: true, employeeId: true, firstName: true, lastName: true },
+      })
+      if (holder) {
+        return NextResponse.json(
+          {
+            error: `That CNIC is already on file for ${holder.firstName} ${holder.lastName} (${holder.employeeId})`,
+            existingStaff: holder,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     // Generate employee ID
     const employeeId = await generateEmployeeId(hospitalId)
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings/security - Update security settings
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -84,7 +85,31 @@ export async function POST(req: NextRequest) {
       })
     })
 
+    const existing = await prisma.setting.findMany({
+      where: { hospitalId, key: { in: Object.keys(data) } },
+      select: { key: true, value: true },
+    })
+
     await Promise.all(updatePromises)
+
+    // Values are JSON-encoded in this table, so the comparison has to use the
+    // same encoding or every save would look like a change.
+    const changes = diffValues(
+      Object.fromEntries(existing.map((s) => [s.key, s.value])),
+      Object.fromEntries(Object.entries(data).map(([k, v]) => [k, JSON.stringify(v)]))
+    )
+    if (changes.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id,
+        action: AUDIT_ACTIONS.SECURITY_UPDATED,
+        entityType: 'Setting',
+        entityId: changes.changed.join(','),
+        oldValues: changes.before,
+        newValues: changes.after,
+        ...requestContext(req.headers),
+      })
+    }
 
     return NextResponse.json({
       success: true,

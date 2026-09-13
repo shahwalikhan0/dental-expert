@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // GET - Retrieve SMS and email settings
 export async function GET(request: NextRequest) {
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Save SMS or email settings
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -161,6 +162,18 @@ export async function POST(request: NextRequest) {
         },
       })
     }
+
+    // The gateway credentials live here, so this entry records which channel
+    // was reconfigured rather than the settings themselves.
+    await recordAudit({
+      hospitalId,
+      userId: user?.id,
+      action: AUDIT_ACTIONS.COMMUNICATIONS_UPDATED,
+      entityType: 'Setting',
+      entityId: String(type),
+      newValues: { channel: type },
+      ...requestContext(request.headers),
+    })
 
     return NextResponse.json({
       success: true,

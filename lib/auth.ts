@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { authConfig } from './auth.config'
 import { prisma } from './prisma'
 import { z } from 'zod'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from './audit'
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -14,12 +15,13 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const validated = loginSchema.safeParse(credentials)
 
         if (!validated.success) return null
 
         const { email, password } = validated.data
+        const context = requestContext(request?.headers as Headers | undefined)
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -29,13 +31,66 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           },
         })
 
-        if (!user || !user.isActive) return null
+        /**
+         * Spec §10 wants login recorded. Failures are recorded too — a
+         * deactivated account being tried, or a run of wrong passwords, is
+         * exactly what an audit trail is for.
+         *
+         * An unknown email is deliberately *not* recorded: `AuditLog` hangs off
+         * a clinic, and an address that matches no user belongs to no clinic.
+         * Writing those somewhere would also mean an unauthenticated caller
+         * could fill the table at will.
+         */
+        if (!user) return null
 
-        // Check if the user's hospital is active
-        if (!user.hospital || !user.hospital.isActive) return null
+        if (!user.isActive) {
+          await recordAudit({
+            hospitalId: user.hospitalId,
+            userId: user.id,
+            action: AUDIT_ACTIONS.LOGIN_FAILED_USER_INACTIVE,
+            entityType: 'User',
+            entityId: user.id,
+            ...context,
+          })
+          return null
+        }
+
+        if (!user.hospital || !user.hospital.isActive) {
+          await recordAudit({
+            hospitalId: user.hospitalId,
+            userId: user.id,
+            action: AUDIT_ACTIONS.LOGIN_FAILED_CLINIC_INACTIVE,
+            entityType: 'User',
+            entityId: user.id,
+            ...context,
+          })
+          return null
+        }
 
         const passwordMatch = await bcrypt.compare(password, user.password)
-        if (!passwordMatch) return null
+        if (!passwordMatch) {
+          await recordAudit({
+            hospitalId: user.hospitalId,
+            userId: user.id,
+            action: AUDIT_ACTIONS.LOGIN_FAILED_PASSWORD,
+            entityType: 'User',
+            entityId: user.id,
+            ...context,
+          })
+          return null
+        }
+
+        await recordAudit({
+          hospitalId: user.hospitalId,
+          userId: user.id,
+          action: AUDIT_ACTIONS.LOGIN_SUCCESS,
+          entityType: 'User',
+          entityId: user.id,
+          // The role is worth having on the entry: reading the trail later,
+          // "who could do what at the time" is the question being asked.
+          newValues: { role: user.role, clinicalRole: user.clinicalRole },
+          ...context,
+        })
 
         return {
           id: user.id,

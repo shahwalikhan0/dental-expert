@@ -505,21 +505,28 @@ describe('Staff API - Comprehensive Tests', () => {
     })
 
     it('should accept optional financial information', async () => {
+      // `staff.findFirst` now answers two lookups in this route — the CNIC
+      // duplicate guard and the employee-ID generator — so a blanket mock from
+      // an earlier test would make the guard see a duplicate.
+      mockPrisma.staff.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.cnic ? null : { employeeId: 'EMP250001' }
+      )
+
       const request = new NextRequest('http://localhost/api/staff', {
         method: 'POST',
         body: JSON.stringify({
           firstName: 'Jane',
           lastName: 'Smith',
           email: 'jane@example.com',
-          phone: '9876543210',
+          phone: '3001234567',
           role: 'RECEPTIONIST',
           password: 'SecurePass123!',
           // Financial info
           salary: '50000',
           bankAccountNo: '1234567890',
-          bankIban: 'HDFC0001234',
+          bankIban: 'PK36SCBL0000001123456702',
           cnic: '35202-1234567-1',
-          panNumber: 'ABCDE1234F',
+          nationalTaxNo: '1234567',
         }),
       })
       const response = await POST(request)

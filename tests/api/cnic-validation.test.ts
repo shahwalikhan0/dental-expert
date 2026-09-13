@@ -136,3 +136,75 @@ describe('POST /api/patients — CNIC', () => {
     expect(vi.mocked(prisma.patient.create).mock.calls[0][0].data.state).toBeFalsy()
   })
 })
+
+/**
+ * FR-002 Duplicate Prevention. A CNIC identifies exactly one citizen, so two
+ * patient records carrying the same one are the same patient entered twice.
+ *
+ * The check runs before the write rather than being left to the unique index,
+ * so the desk is told who already holds it and can open that record instead of
+ * being told only that something went wrong.
+ */
+describe('POST /api/patients — one CNIC, one patient', () => {
+  const EXISTING = {
+    id: 'p-existing',
+    patientId: 'PAT20240001',
+    firstName: 'Ahmed',
+    lastName: 'Raza',
+  }
+
+  /**
+   * The route checks the phone number for duplicates before the CNIC, through
+   * the same `findFirst`. A blanket mock answers both, so the CNIC assertions
+   * would pass on the phone check instead — this answers only the CNIC lookup.
+   */
+  function cnicAlreadyHeldBy(existing: unknown) {
+    vi.mocked(prisma.patient.findFirst).mockImplementation((async (args: any) =>
+      args?.where?.cnic ? existing : null) as never)
+  }
+
+  it('refuses a second patient on the same CNIC', async () => {
+    cnicAlreadyHeldBy(EXISTING)
+
+    const res = await CREATE_PATIENT(newPatient({ cnic: '35202-1234567-1' }))
+
+    expect(res.status).toBe(409)
+    expect(prisma.patient.create).not.toHaveBeenCalled()
+  })
+
+  // Being told "duplicate" without being told *which* record leaves the
+  // receptionist searching by hand.
+  it('names the patient who already holds it', async () => {
+    cnicAlreadyHeldBy(EXISTING)
+
+    const body = await (await CREATE_PATIENT(newPatient({ cnic: '35202-1234567-1' }))).json()
+
+    expect(body.error).toContain('Ahmed Raza')
+    expect(body.error).toContain('PAT20240001')
+    expect(body.existingPatient).toMatchObject({ id: 'p-existing' })
+  })
+
+  it('matches on the stored digits, not on how it was typed', async () => {
+    cnicAlreadyHeldBy(EXISTING)
+
+    await CREATE_PATIENT(newPatient({ cnic: '35202 1234567 1' }))
+
+    // The lookup must use the normalised form, or a hyphenated duplicate of a
+    // bare-typed original would slip past.
+    const lookup = vi
+      .mocked(prisma.patient.findFirst)
+      .mock.calls.map((c) => c[0]!.where as any)
+      .find((w) => w.cnic)
+    expect(lookup.cnic).toBe('3520212345671')
+    expect(lookup.hospitalId).toBe('h1')
+  })
+
+  // Children hold a B-Form, so most patients will have no CNIC at all. If
+  // blank collided, the second child registered would be refused.
+  it('does not treat two patients without a CNIC as duplicates', async () => {
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue(null as never)
+
+    expect((await CREATE_PATIENT(newPatient())).status).toBe(201)
+    expect((await CREATE_PATIENT(newPatient({ cnic: '' }))).status).toBe(201)
+  })
+})

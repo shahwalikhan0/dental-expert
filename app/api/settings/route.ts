@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 
 const updateSettingSchema = z.object({
   key: z.string(),
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
 
 // PUT /api/settings - Bulk update settings
 export async function PUT(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -107,6 +108,17 @@ export async function PUT(req: NextRequest) {
     if (!Array.isArray(settings)) {
       return NextResponse.json({ error: 'Settings must be an array' }, { status: 400 })
     }
+
+    // Spec §10 wants configuration changes recorded. Read the current values
+    // first so the entry can say what moved rather than just that something
+    // did — one query for the keys being written, not the whole table.
+    const keys = settings.map((s: any) => s.key).filter(Boolean)
+    const existing = await prisma.setting.findMany({
+      where: { hospitalId, key: { in: keys } },
+      select: { key: true, value: true },
+    })
+    const before = Object.fromEntries(existing.map((s) => [s.key, s.value]))
+    const after = Object.fromEntries(settings.map((s: any) => [s.key, s.value]))
 
     // Bulk upsert
     const results = await Promise.all(
@@ -128,6 +140,20 @@ export async function PUT(req: NextRequest) {
         })
       )
     )
+
+    const changes = diffValues(before, after)
+    if (changes.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id,
+        action: AUDIT_ACTIONS.SETTINGS_UPDATED,
+        entityType: 'Setting',
+        entityId: changes.changed.join(','),
+        oldValues: changes.before,
+        newValues: changes.after,
+        ...requestContext(req.headers),
+      })
+    }
 
     return NextResponse.json({
       success: true,

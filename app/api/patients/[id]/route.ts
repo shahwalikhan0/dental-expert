@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
+import { parseOptionalCNIC } from '@/lib/cnic'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 
@@ -120,11 +121,36 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       city,
       state,
       postalCode,
+      cnic,
       occupation,
       emergencyContactName,
       emergencyContactPhone,
       emergencyContactRelation,
     } = body
+
+    // The CNIC was accepted by the edit form but silently dropped here, so a
+    // corrected number never reached the database.
+    const cnicResult = parseOptionalCNIC(cnic)
+    if (!cnicResult.ok) {
+      return NextResponse.json({ error: cnicResult.error }, { status: 400 })
+    }
+    const parsedCnic = cnicResult.value
+
+    if (parsedCnic) {
+      const holder = await prisma.patient.findFirst({
+        where: { hospitalId, cnic: parsedCnic, id: { not: id } },
+        select: { id: true, patientId: true, firstName: true, lastName: true },
+      })
+      if (holder) {
+        return NextResponse.json(
+          {
+            error: `That CNIC is already registered to ${holder.firstName} ${holder.lastName} (${holder.patientId})`,
+            existingPatient: holder,
+          },
+          { status: 409 }
+        )
+      }
+    }
 
     const patient = await prisma.patient.update({
       where: { id },
@@ -141,6 +167,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         city,
         state,
         postalCode,
+        ...(cnic !== undefined && { cnic: parsedCnic }),
         occupation,
         emergencyContactName,
         emergencyContactPhone,

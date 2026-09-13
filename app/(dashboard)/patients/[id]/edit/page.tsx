@@ -136,6 +136,9 @@ export default function EditPatientPage() {
       if (form.city) payload.city = form.city
       if (form.state) payload.state = form.state
       if (form.postalCode) payload.postalCode = form.postalCode
+      // Sent even when blank, so clearing a wrongly-entered CNIC actually
+      // clears it rather than silently keeping the old value.
+      payload.cnic = form.cnic
       if (form.occupation) payload.occupation = form.occupation
       if (form.emergencyContactName) payload.emergencyContactName = form.emergencyContactName
       if (form.emergencyContactPhone) payload.emergencyContactPhone = form.emergencyContactPhone

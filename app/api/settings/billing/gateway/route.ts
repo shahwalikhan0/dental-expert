@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { encrypt, decrypt } from '@/lib/encryption'
 
 /**
@@ -46,7 +47,7 @@ export async function GET() {
  * PUT: Create or update payment gateway configuration.
  */
 export async function PUT(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('billing:config')
+  const { error, hospitalId, user } = await requirePermission('billing:config')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -140,6 +141,26 @@ export async function PUT(req: NextRequest) {
     where: { hospitalId },
     create: { hospitalId, ...data } as never,
     update: data as never,
+  })
+
+  // Which provider and mode, and which secrets were touched — never their
+  // values. `redactValues` masks anything named like a secret, and the
+  // encrypted columns are named *Secret/*Key/*SaltKey, so they are covered.
+  await recordAudit({
+    hospitalId,
+    userId: user?.id,
+    action: AUDIT_ACTIONS.PAYMENT_GATEWAY_UPDATED,
+    entityType: 'PaymentGatewayConfig',
+    entityId: hospitalId,
+    oldValues: existing
+      ? {
+          provider: existing.provider,
+          isEnabled: existing.isEnabled,
+          isLiveMode: existing.isLiveMode,
+        }
+      : null,
+    newValues: data as Record<string, unknown>,
+    ...requestContext(req.headers),
   })
 
   return NextResponse.json({

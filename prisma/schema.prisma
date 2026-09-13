@@ -407,6 +407,9 @@ model Staff {
   videoConsultations VideoConsultation[] @relation("DoctorVideoConsultations")
 
   @@unique([hospitalId, employeeId])
+  // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
+  // index, so the many staff without one recorded do not collide.
+  @@unique([hospitalId, cnic])
   @@index([hospitalId])
   @@index([phone])
 }
@@ -554,6 +557,10 @@ model Patient {
   videoConsultations VideoConsultation[]
 
   @@unique([hospitalId, patientId])
+  // FR-002 duplicate prevention. A CNIC identifies one person, so two patient
+  // records carrying the same one are the same patient twice. NULLs stay
+  // distinct, which matters: children hold a B-Form, not a CNIC.
+  @@unique([hospitalId, cnic])
   @@index([hospitalId])
   @@index([phone])
   @@index([firstName, lastName])

@@ -825,14 +825,10 @@ would reasonably think it had been stored.
 - The staff form's NTN field still carried `ABCDE1234F` as its placeholder —
   the format of an Indian PAN, on a field renamed to NTN two commits earlier.
 
-### 9.5 Not done: a uniqueness constraint
+### 9.5 Uniqueness
 
-A CNIC identifies one person, so `@@unique([hospitalId, cnic])` would be a real
-duplicate guard for FR-002. It is **not** added here, because it turns a
-mistyped digit into a hard failure at the registration desk, and because the
-right response to a suspected duplicate is a warning that a human resolves, not
-a refusal. Worth deciding on deliberately rather than as a side effect of this
-rename.
+`@@unique([hospitalId, cnic])` is now enforced on both Patient and Staff — see
+§12.4 for how a duplicate is reported and why NULLs stay distinct.
 
 ---
 
@@ -999,16 +995,6 @@ at the desk. Renaming an enum value is a clean migration once you say which.
 Note it currently appears as a countable method in the daily closing, so
 whatever it becomes will show up in the reconciliation.
 
-#### A uniqueness constraint on CNIC
-
-`@@unique([hospitalId, cnic])` would be a real FR-002 duplicate guard — a CNIC
-identifies one person. It is not added because it turns a mistyped digit into a
-hard failure at the registration desk, and because a suspected duplicate
-usually wants a warning a human resolves rather than a refusal. Three patients
-can currently be registered on one CNIC.
-
-Three options: hard constraint, soft warning at registration, or leave as is.
-
 #### Per-user data scoping
 
 Access is correct _by module_, but every query is scoped to `hospitalId` alone,
@@ -1027,11 +1013,10 @@ appointment, treatment and chart query.
   capability (§3.6), which means IoT devices cannot post to it. They need their
   own credential — a per-device key checked like the cron secret — before that
   feature works again.
-- **`AuditLog` is almost unused.** The model exists and spec §10 asks for audit
-  history on clinical and financial changes. FR-007 amendments and FR-013/014
-  approvals each keep their own purpose-built trail, which is better than a
-  generic log for those cases — but logins, patient-record access and
-  configuration changes are still unrecorded.
+- **`AuditLog` covers logins and configuration (§12), not patient-record
+  access.** Spec §10 asks for that too, "where supported". It means a write on
+  every patient a clinician opens, so it is worth deciding whether the volume
+  is wanted before switching it on.
 
 ### 11.3 Localisation: what is now clean
 
@@ -1050,7 +1035,91 @@ For the record, since this took several passes to get right:
 
 ---
 
-## 12. Pulling from upstream
+## 12. Audit trail, and one CNIC per person
+
+### 12.1 What is recorded
+
+Spec §10: "Record audit history for login, patient record access where
+supported, changes to clinical/financial data, refunds, stock adjustments, and
+configuration changes." `AuditLog` existed and almost nothing wrote to it.
+
+Now recorded, in `lib/audit.ts`:
+
+| Event                       | Entry                                                 |
+| --------------------------- | ----------------------------------------------------- |
+| Successful login            | user, role, IP, user agent                            |
+| Wrong password              | user, IP — a run of these is what the trail is for    |
+| Deactivated account tried   | user, IP. §10 wants deactivation to be a real control |
+| Deactivated clinic tried    | user, IP                                              |
+| `PUT /api/settings`         | which keys changed, and from what to what             |
+| `POST /api/settings/clinic` | only the fields that request touched                  |
+| Security settings           | before and after                                      |
+| Communications settings     | which channel was reconfigured                        |
+| Payment gateway             | provider, enabled, live/test                          |
+
+Clinical amendments (FR-007) and discount/refund approvals (FR-013/014) keep
+their own purpose-built trails instead, which record more than a generic log
+could and sit alongside the record they belong to.
+
+### 12.2 Two rules
+
+**A failed audit write never breaks the thing being audited.** `recordAudit`
+swallows its errors to the server console. Refusing a login because the audit
+table was unreachable would turn a logging problem into an outage.
+
+**Secrets never reach the log.** Settings hold SMS API keys, SMTP passwords and
+payment-gateway secrets, and an audit entry is a plaintext column readable by
+anyone with `audit:read` — ADMIN and CLINIC_MANAGER. The log records _that_ a
+secret changed, never what it changed to.
+
+The secret-name rule matches anything ending in "key" rather than listing
+prefixes. An earlier version enumerated `apiKey` and `authKey` and let
+`paytmMerchantKey` through — the gateway columns are named for their provider,
+so the prefix is the unpredictable part. A test caught it.
+
+Verified live: writing `sms.apiKey` stored the real key in `Setting` and put
+`[redacted]` on both sides of the audit entry. Re-saving an unchanged setting
+wrote no entry at all.
+
+### 12.3 An unknown email is deliberately not recorded
+
+`AuditLog` hangs off a clinic, and an address matching no user belongs to no
+clinic. Recording those anywhere would also let an unauthenticated caller fill
+the table at will. Failures against **known** accounts are recorded, which is
+the signal worth having.
+
+### 12.4 One CNIC, one person
+
+`@@unique([hospitalId, cnic])` on Patient and Staff. PostgreSQL treats NULLs as
+distinct, which is what makes it workable — children hold a B-Form, and plenty
+of adults arrive without theirs, so most rows have no value and none collide.
+
+The routes check before writing rather than leaving it to the index, so the
+desk is told _who_ already holds it:
+
+> That CNIC is already registered to Aisha Probe (PAT202600001)
+
+Being told only "duplicate" leaves a receptionist searching by hand. Verified
+live that the same number typed hyphenated, bare and spaced all match the one
+existing record, that a second patient with no CNIC is fine, and that the
+database constraint holds independently of the application check.
+
+**Also fixed here:** the patient edit form collected a CNIC and `PUT
+/api/patients/[id]` silently dropped it — the field never reached the database.
+It is now accepted, validated and duplicate-checked, and sent even when blank so
+that clearing a wrongly-entered number actually clears it.
+
+### 12.5 If this migration fails
+
+It will, if the database already holds duplicates. They are not cleaned up
+automatically: deciding which of two records is the real patient, and what
+happens to the appointments and invoices hanging off the other, is a judgement
+about someone's medical history. The migration file carries the query to find
+them.
+
+---
+
+## 13. Pulling from upstream
 
 Upstream remains configured as the `upstream` remote. Before merging anything:
 

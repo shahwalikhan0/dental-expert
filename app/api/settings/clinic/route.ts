@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 
 const optionalString = z.preprocess(
   (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings/clinic - Create or update clinic information
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -124,10 +125,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
+    // Read before writing, so the audit entry can say what changed. Only the
+    // fields this request touches are compared — a partial save of the tax
+    // settings should not record the whole clinic record as "changed".
+    const previous = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
+    })
+
     const clinicInfo = await prisma.hospital.update({
       where: { id: hospitalId },
       data,
     })
+
+    const changes = diffValues(
+      Object.fromEntries(Object.keys(data).map((k) => [k, (previous as any)?.[k]])),
+      data as Record<string, unknown>
+    )
+    if (changes.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id,
+        action: AUDIT_ACTIONS.CLINIC_UPDATED,
+        entityType: 'Hospital',
+        entityId: hospitalId,
+        oldValues: changes.before,
+        newValues: changes.after,
+        ...requestContext(req.headers),
+      })
+    }
 
     return NextResponse.json({
       success: true,
