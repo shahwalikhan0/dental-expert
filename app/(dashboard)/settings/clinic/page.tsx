@@ -84,7 +84,7 @@ export default function ClinicSettingsPage() {
     website: '',
     address: '',
     city: '',
-    state: 'Tamil Nadu',
+    state: '',
     postalCode: '',
     registrationNo: '',
     taxRegistrationNo: '',
@@ -120,7 +120,7 @@ export default function ClinicSettingsPage() {
           website: result.data.website || '',
           address: result.data.address || '',
           city: result.data.city || '',
-          state: result.data.state || 'Tamil Nadu',
+          state: result.data.state || '',
           postalCode: result.data.postalCode || '',
           registrationNo: result.data.registrationNo || '',
           taxRegistrationNo: result.data.taxRegistrationNo || '',
@@ -434,7 +434,7 @@ export default function ClinicSettingsPage() {
                   id="city"
                   value={formData.city}
                   onChange={(e) => handleChange('city', e.target.value)}
-                  placeholder="Chennai"
+                  placeholder="Lahore"
                   required
                 />
               </div>

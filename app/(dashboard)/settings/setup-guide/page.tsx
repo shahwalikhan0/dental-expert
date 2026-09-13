@@ -305,14 +305,30 @@ const setupSections: SetupSection[] = [
   {
     id: 'payment-gateway',
     title: 'Online Payment Gateway',
-    description: 'Accept online payments from patients via Razorpay, PhonePe, or Paytm',
+    description:
+      'India-only as shipped. Razorpay, PhonePe and Paytm do not onboard Pakistani merchants — a local processor has to be chosen and built before online payment works here.',
     icon: CreditCard,
     color: 'text-emerald-600 bg-emerald-50',
     priority: 'recommended',
     estimatedTime: '15-30 min',
     guides: [
       {
-        title: 'Set Up Razorpay',
+        title: 'Online payments are not available in Pakistan yet',
+        description:
+          'The three gateways below are inherited from the upstream project and serve Indian merchants only. Until a Pakistani processor is integrated, record payments as cash, card-on-terminal or bank transfer — all of which the billing and daily closing screens already handle.',
+        steps: [
+          'Take payment at the desk as you do today',
+          'Record it against the invoice under the method actually used',
+          'Reconcile at the end of the day under Settings → Appointments → the cashier session',
+        ],
+        tips: [
+          'The invoice, payment, refund and daily closing flows do not depend on a gateway',
+          'Payment links and the online-payment buttons will not work until a processor is connected',
+        ],
+        link: { label: 'Go to Billing Settings', href: '/settings/billing' },
+      },
+      {
+        title: 'Set Up Razorpay (India only)',
         description:
           'Accept credit cards, debit cards, UPI, and net banking payments through Razorpay.',
         steps: [
@@ -345,7 +361,7 @@ const setupSections: SetupSection[] = [
         ],
       },
       {
-        title: 'Set Up PhonePe Business',
+        title: 'Set Up PhonePe Business (India only)',
         description: 'Accept UPI, cards, and wallet payments through PhonePe for Business.',
         steps: [
           'Create a PhonePe Business account at business.phonepe.com',
@@ -367,7 +383,7 @@ const setupSections: SetupSection[] = [
         externalLinks: [{ label: 'PhonePe Business Signup', url: 'https://business.phonepe.com' }],
       },
       {
-        title: 'Set Up Paytm Business',
+        title: 'Set Up Paytm Business (India only)',
         description: 'Accept payments via Paytm wallet, UPI, cards, and net banking.',
         steps: [
           'Create a Paytm for Business account at business.paytm.com',
@@ -399,8 +415,34 @@ const setupSections: SetupSection[] = [
     estimatedTime: '15 min',
     guides: [
       {
+        title: 'Set Up SMS Gateway (Twilio)',
+        description:
+          'Twilio sends to Pakistani numbers. The other gateways below are India-only and will not deliver here.',
+        steps: [
+          'Create an account at twilio.com and verify your email and phone number',
+          'From the Twilio Console, copy your Account SID and Auth Token',
+          'Buy a number with SMS capability, or register an Alphanumeric Sender ID',
+          'In DentalERP, go to Settings → Communication Settings',
+          'Toggle "Enable SMS" ON',
+          'Select "Twilio" as the Gateway',
+          'Paste your Account SID, Auth Token and sending number',
+          'Click "Save Settings"',
+          'Test by entering a phone number and clicking "Send Test SMS"',
+        ],
+        tips: [
+          'Enter patient numbers as 03xx-xxxxxxx; the system sends them in +92 form',
+          'Per-message pricing depends on your country and route — check the current rate card rather than budgeting from a figure quoted here',
+          'Sender ID registration and any local content rules are set by the PTA and by the operators, so allow time before go-live',
+        ],
+        link: { label: 'Go to Communication Settings', href: '/settings/communications' },
+        externalLinks: [
+          { label: 'Create Twilio Account', url: 'https://www.twilio.com/try-twilio' },
+        ],
+      },
+      {
         title: 'Set Up SMS Gateway (MSG91)',
-        description: "MSG91 is the most popular SMS gateway in India. Here's how to connect it.",
+        description:
+          'India-only: MSG91 does not deliver to Pakistani numbers. Kept for clinics running this elsewhere.',
         steps: [
           'Create an account at msg91.com',
           'Verify your email and phone number',
@@ -416,17 +458,19 @@ const setupSections: SetupSection[] = [
           'Test by entering a phone number and clicking "Send Test SMS"',
         ],
         tips: [
+          'TRAI rules below are India-only — Pakistan is regulated by the PTA',
           'SMS can only be sent between 9 AM - 9 PM IST (TRAI regulation)',
           'Route 4 = Transactional (appointment reminders), Route 1 = Promotional (offers)',
           'DND-registered numbers will receive Transactional SMS but not Promotional',
-          'SMS costs approximately Rs 0.15 - Rs 0.25 per message depending on volume',
+          'Indian per-message rates; Pakistani pricing is set by your own provider',
         ],
         link: { label: 'Go to Communication Settings', href: '/settings/communications' },
         externalLinks: [{ label: 'Create MSG91 Account', url: 'https://msg91.com/signup' }],
       },
       {
         title: 'Set Up SMS Gateway (Fast2SMS)',
-        description: 'Fast2SMS is a budget-friendly option for SMS notifications.',
+        description:
+          'India-only: Fast2SMS does not deliver to Pakistani numbers. Kept for clinics running this elsewhere.',
         steps: [
           'Create an account at fast2sms.com',
           'Go to Dashboard → Dev API — copy your API Key',
@@ -793,7 +837,7 @@ const setupSections: SetupSection[] = [
           'Always back up your data before importing',
           'Start with a small file (10-20 rows) to test the process before importing everything',
           'The system supports: Patients, Staff, Appointments, Treatments, Invoices, Payments, and Inventory',
-          'Phone numbers should be 10-digit Indian mobile numbers',
+          'Phone numbers should be Pakistani mobile numbers — 03xx-xxxxxxx, or 3xxxxxxxxx without the leading zero',
           'Date formats accepted: DD/MM/YYYY (preferred) and MM/DD/YYYY',
           'If importing staff, temporary passwords will be created — share them with each staff member',
         ],

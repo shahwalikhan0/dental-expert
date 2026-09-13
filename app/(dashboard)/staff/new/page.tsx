@@ -43,7 +43,7 @@ export default function NewStaffPage() {
     gender: '',
     address: '',
     city: '',
-    state: 'Tamil Nadu',
+    state: '',
     postalCode: '',
 
     // Documents
@@ -313,7 +313,7 @@ export default function NewStaffPage() {
                     id="city"
                     value={formData.city}
                     onChange={(e) => handleChange('city', e.target.value)}
-                    placeholder="Chennai"
+                    placeholder="Lahore"
                   />
                 </div>
                 <div className="space-y-2">
@@ -322,7 +322,7 @@ export default function NewStaffPage() {
                     id="state"
                     value={formData.state}
                     onChange={(e) => handleChange('state', e.target.value)}
-                    placeholder="Tamil Nadu"
+                    placeholder="Punjab"
                   />
                 </div>
                 <div className="space-y-2">

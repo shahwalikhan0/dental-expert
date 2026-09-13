@@ -48,7 +48,7 @@ export default function NewPatientPage() {
     email: '',
     address: '',
     city: '',
-    state: 'Tamil Nadu',
+    state: '',
     postalCode: '',
     cnic: '',
     occupation: '',
