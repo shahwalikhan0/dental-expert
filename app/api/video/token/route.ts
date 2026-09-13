@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { getRoomToken, getVideoProvider } from '@/lib/services/video.service'
 
 /**
@@ -9,7 +9,7 @@ import { getRoomToken, getVideoProvider } from '@/lib/services/video.service'
  * Doctors get owner tokens; others get participant tokens.
  */
 export async function GET(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('appointments:read')
   if (error) return error
 
   const { searchParams } = new URL(req.url)

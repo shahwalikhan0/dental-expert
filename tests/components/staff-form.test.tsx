@@ -140,7 +140,9 @@ describe('NewStaffPage', () => {
     it('renders role options', () => {
       render(<NewStaffPage />)
       expect(screen.getByTestId('select-item-ADMIN')).toBeInTheDocument()
-      expect(screen.getByTestId('select-item-DOCTOR')).toBeInTheDocument()
+      // DOCTOR appears twice now: once in the primary role picker and once in
+      // the optional "also works as" picker. Both are expected.
+      expect(screen.getAllByTestId('select-item-DOCTOR')).toHaveLength(2)
       expect(screen.getByTestId('select-item-RECEPTIONIST')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-LAB_TECH')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-ACCOUNTANT')).toBeInTheDocument()
@@ -174,7 +176,7 @@ describe('NewStaffPage', () => {
       expect(screen.getByPlaceholderText('staff@yourclinic.com')).toBeInTheDocument()
       expect(screen.getByLabelText('Password *')).toBeInTheDocument()
       // Phone placeholder appears 3 times (phone, alternatePhone, emergencyPhone)
-      expect(screen.getAllByPlaceholderText('+91 98765 43210').length).toBe(3)
+      expect(screen.getAllByPlaceholderText('+92 300 1234567').length).toBe(3)
     })
 
     it('renders optional professional fields', () => {
@@ -290,10 +292,10 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: '123' } })
       // Select role
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       // Fill phone
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -338,9 +340,9 @@ describe('NewStaffPage', () => {
         target: { value: 'john@test.com' },
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -386,8 +388,8 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getByTestId('select-item-ADMIN'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       // Optional fields
       fireEvent.change(screen.getByPlaceholderText('BDS, MDS'), { target: { value: 'BDS' } })
@@ -424,9 +426,9 @@ describe('NewStaffPage', () => {
         target: { value: 'john@test.com' },
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -454,9 +456,9 @@ describe('NewStaffPage', () => {
         target: { value: 'john@test.com' },
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -486,9 +488,9 @@ describe('NewStaffPage', () => {
         target: { value: 'john@test.com' },
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -514,9 +516,9 @@ describe('NewStaffPage', () => {
         target: { value: 'john@test.com' },
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
-      fireEvent.click(screen.getByTestId('select-item-DOCTOR'))
-      const phoneInputs = screen.getAllByPlaceholderText('+91 98765 43210')
-      fireEvent.change(phoneInputs[0], { target: { value: '9876543210' } })
+      fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
+      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
 

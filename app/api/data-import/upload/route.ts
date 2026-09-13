@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildStorageKey, getStorage } from '@/lib/storage'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
@@ -10,7 +10,7 @@ const ALLOWED_EXTENSIONS = ['csv', 'xlsx', 'xls', 'pdf']
 const PREVIEW_ROWS = 100
 
 export async function POST(req: NextRequest) {
-  const { error, session, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

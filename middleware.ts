@@ -1,17 +1,13 @@
 import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
+import { holderCan, landingPageFor, permissionForRoute } from '@/lib/rbac'
 
-// Routes that require specific roles
-const roleRoutes: Record<string, string[]> = {
-  '/settings': ['ADMIN'],
-  '/staff': ['ADMIN'],
-  '/inventory': ['ADMIN'],
-  '/billing': ['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
-  '/lab': ['ADMIN', 'DOCTOR', 'LAB_TECH'],
-  '/treatments': ['ADMIN', 'DOCTOR'],
-  '/reports': ['ADMIN', 'ACCOUNTANT', 'DOCTOR'],
-  '/communications': ['ADMIN', 'RECEPTIONIST'],
-}
+// Which capability each dashboard section needs now lives in lib/rbac.ts,
+// alongside the API-side check, so the menu a user can see and the endpoints
+// they can call cannot drift apart.
+//
+// This is navigation gating and nothing more. It never runs for /api/*, so it
+// is not a security boundary — see the comment on the API short-circuit below.
 
 // Public routes that don't require authentication.
 //
@@ -42,8 +38,13 @@ export default auth((req) => {
   const isApiAuth = pathname.startsWith('/api/auth')
   const isPublicApi = pathname.startsWith('/api/public')
 
-  // Let all API routes through - they handle their own auth via getAuthenticatedHospital()
-  // This is required for mobile app Bearer token auth which bypasses NextAuth cookies
+  // API routes are let through so they can authenticate themselves — mobile
+  // clients send a Bearer token, which NextAuth's cookie session knows nothing
+  // about.
+  //
+  // The consequence is worth stating plainly: **middleware enforces nothing on
+  // the API**. Every route under /api must call requirePermission() itself. A
+  // role map here protects menus, not data.
   if (isApiRoute) {
     return NextResponse.next()
   }
@@ -69,15 +70,18 @@ export default auth((req) => {
     return NextResponse.next()
   }
 
-  // Check role-based access
-  const userRole = session.user.role
-  for (const [path, roles] of Object.entries(roleRoutes)) {
-    if (pathname.startsWith(path)) {
-      if (!roles.includes(userRole)) {
-        // User doesn't have required role - redirect to dashboard
-        return NextResponse.redirect(new URL('/dashboard', nextUrl))
-      }
-    }
+  // Check capability-based access. A user may hold a second clinical role, so
+  // the check is against the union — see RoleHolder in lib/rbac.
+  const holder = { role: session.user.role, clinicalRole: session.user.clinicalRole }
+  const required = permissionForRoute(pathname)
+
+  if (required && !holderCan(holder, required)) {
+    // Send them somewhere they can actually use. Redirecting everyone to
+    // /dashboard would trap INVENTORY_STAFF in a loop, since they have no
+    // dashboard permission either.
+    const fallback = landingPageFor(holder)
+    if (pathname === fallback) return NextResponse.next()
+    return NextResponse.redirect(new URL(fallback, nextUrl))
   }
 
   return NextResponse.next()

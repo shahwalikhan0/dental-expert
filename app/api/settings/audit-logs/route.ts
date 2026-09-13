@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 // GET /api/settings/audit-logs - Get audit logs
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('audit:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

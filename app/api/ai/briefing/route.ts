@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { complete } from '@/lib/ai/openrouter'
 import { getModelByTier } from '@/lib/ai/models'
@@ -9,7 +9,7 @@ import { getModelByTier } from '@/lib/ai/models'
  * Generates an AI-powered morning briefing for the authenticated ADMIN user.
  */
 export async function GET() {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

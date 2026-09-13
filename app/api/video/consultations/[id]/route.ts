@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { deleteRoom } from '@/lib/services/video.service'
 
 /**
@@ -8,7 +8,7 @@ import { deleteRoom } from '@/lib/services/video.service'
  * Get a single video consultation with full details.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:read')
   if (error) return error
 
   const { id } = await params
@@ -71,7 +71,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
  * Update consultation: start, end, cancel, add notes.
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR', 'RECEPTIONIST'])
+  const { error, user, hospitalId } = await requirePermission('appointments:write')
   if (error) return error
 
   const { id } = await params

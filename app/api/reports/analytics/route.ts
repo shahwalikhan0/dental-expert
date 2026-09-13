@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import {
   startOfDay,
@@ -498,7 +498,7 @@ async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId:
 }
 
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('reports:operational')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

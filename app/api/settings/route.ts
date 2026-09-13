@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -12,7 +12,7 @@ const updateSettingSchema = z.object({
 
 // GET /api/settings - Get all settings or by category
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('settings:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings - Create or update a setting
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
 // PUT /api/settings - Bulk update settings
 export async function PUT(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

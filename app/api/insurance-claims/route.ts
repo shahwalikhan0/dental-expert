@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { generateClaimNo } from '@/lib/billing-utils'
 import { InsuranceClaimStatus } from '@prisma/client'
 
 // GET - List insurance claims with filters
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -131,20 +131,12 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new insurance claim
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to create insurance claims" },
-        { status: 403 }
-      )
-    }
-
     const body = await request.json()
     const {
       patientId,

@@ -1,9 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import prisma from '@/tests/__mocks__/prisma'
 
-const mockAuth = vi.hoisted(() => ({
-  requireAuthAndRole: vi.fn(),
-}))
+const mockAuth = vi.hoisted(() => {
+  const requireAuthAndRole = vi.fn()
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const { can } = await import('@/lib/rbac')
+    const { NextResponse } = await import('next/server')
+    const res = await requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  return {
+    requireAuthAndRole,
+    requirePermission: vi.fn((p: string) => decide([p])),
+    requireAllPermissions: vi.fn((p: string[]) => decide(p)),
+  }
+})
 
 const mockStorage = vi.hoisted(() => ({
   name: 'local' as const,

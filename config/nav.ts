@@ -38,12 +38,18 @@ import {
   BookOpen,
   type LucideIcon,
 } from 'lucide-react'
+import { holderCan, permissionForRoute, type Permission, type RoleHolder } from '@/lib/rbac'
 
 export interface NavItem {
   title: string
   href: string
   icon: LucideIcon
-  roles?: string[]
+  /**
+   * Override the capability this item needs. Normally omitted: visibility is
+   * derived from `href` through the same route -> permission map that
+   * middleware uses, so the menu cannot show a page the router will bounce.
+   */
+  permission?: Permission
   badge?: string
   subItems?: NavItem[]
 }
@@ -91,7 +97,6 @@ export const navigation: NavSection[] = [
             title: 'Waitlist',
             href: '/appointments/waitlist',
             icon: Clock,
-            roles: ['ADMIN', 'RECEPTIONIST'],
           },
         ],
       },
@@ -99,25 +104,21 @@ export const navigation: NavSection[] = [
         title: 'Video Consults',
         href: '/video',
         icon: Video,
-        roles: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'],
       },
       {
         title: 'Treatments',
         href: '/treatments',
         icon: Stethoscope,
-        roles: ['ADMIN', 'DOCTOR'],
       },
       {
         title: 'Prescriptions',
         href: '/prescriptions',
         icon: ClipboardList,
-        roles: ['ADMIN', 'DOCTOR'],
       },
       {
         title: 'Drug Catalog',
         href: '/medications',
         icon: Pill,
-        roles: ['ADMIN', 'DOCTOR'],
       },
     ],
   },
@@ -128,7 +129,6 @@ export const navigation: NavSection[] = [
         title: 'Billing',
         href: '/billing',
         icon: Receipt,
-        roles: ['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
         subItems: [
           {
             title: 'Overview',
@@ -149,31 +149,26 @@ export const navigation: NavSection[] = [
             title: 'Payment Plans',
             href: '/billing/payment-plans',
             icon: CalendarClock,
-            roles: ['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
           },
           {
             title: 'Insurance Claims',
             href: '/billing/insurance',
             icon: Shield,
-            roles: ['ADMIN', 'ACCOUNTANT'],
           },
           {
             title: 'Pre-Authorizations',
             href: '/billing/insurance/pre-auth',
             icon: FileCheck,
-            roles: ['ADMIN', 'ACCOUNTANT'],
           },
           {
             title: 'Insurance Providers',
             href: '/billing/insurance/providers',
             icon: Building2,
-            roles: ['ADMIN'],
           },
           {
             title: 'Financial Reports',
             href: '/billing/reports',
             icon: TrendingUp,
-            roles: ['ADMIN', 'ACCOUNTANT'],
           },
         ],
       },
@@ -186,7 +181,6 @@ export const navigation: NavSection[] = [
         title: 'CRM',
         href: '/crm',
         icon: Heart,
-        roles: ['ADMIN', 'RECEPTIONIST'],
         subItems: [
           {
             title: 'Dashboard',
@@ -212,7 +206,6 @@ export const navigation: NavSection[] = [
             title: 'Segments',
             href: '/crm/segments',
             icon: Users,
-            roles: ['ADMIN'],
           },
         ],
       },
@@ -225,13 +218,11 @@ export const navigation: NavSection[] = [
         title: 'Inventory',
         href: '/inventory',
         icon: Package,
-        roles: ['ADMIN'],
       },
       {
         title: 'Sterilization',
         href: '/sterilization',
         icon: Shield,
-        roles: ['ADMIN', 'DOCTOR'],
         subItems: [
           {
             title: 'Dashboard',
@@ -252,7 +243,6 @@ export const navigation: NavSection[] = [
             title: 'Compliance',
             href: '/sterilization/reports',
             icon: BarChart3,
-            roles: ['ADMIN'],
           },
         ],
       },
@@ -260,19 +250,16 @@ export const navigation: NavSection[] = [
         title: 'Devices',
         href: '/devices',
         icon: Cpu,
-        roles: ['ADMIN'],
       },
       {
         title: 'Lab Orders',
         href: '/lab',
         icon: FlaskConical,
-        roles: ['ADMIN', 'DOCTOR', 'LAB_TECH'],
       },
       {
         title: 'Communications',
         href: '/communications',
         icon: MessageSquare,
-        roles: ['ADMIN', 'RECEPTIONIST'],
         subItems: [
           {
             title: 'Send Messages',
@@ -283,19 +270,16 @@ export const navigation: NavSection[] = [
             title: 'Analytics',
             href: '/communications/analytics',
             icon: BarChart3,
-            roles: ['ADMIN'],
           },
           {
             title: 'Automations',
             href: '/communications/automations',
             icon: Zap,
-            roles: ['ADMIN'],
           },
           {
             title: 'Feedback',
             href: '/communications/feedback',
             icon: Star,
-            roles: ['ADMIN'],
           },
         ],
       },
@@ -308,7 +292,6 @@ export const navigation: NavSection[] = [
         title: 'Staff',
         href: '/staff',
         icon: UserCog,
-        roles: ['ADMIN'],
         subItems: [
           {
             title: 'All Staff',
@@ -336,7 +319,6 @@ export const navigation: NavSection[] = [
         title: 'Reports',
         href: '/reports',
         icon: BarChart3,
-        roles: ['ADMIN', 'ACCOUNTANT', 'DOCTOR'],
         subItems: [
           {
             title: 'Overview',
@@ -347,7 +329,6 @@ export const navigation: NavSection[] = [
             title: 'Audit Log',
             href: '/reports/audit-log',
             icon: Activity,
-            roles: ['ADMIN'],
           },
         ],
       },
@@ -355,7 +336,6 @@ export const navigation: NavSection[] = [
         title: 'Settings',
         href: '/settings',
         icon: Settings,
-        roles: ['ADMIN'],
         subItems: [
           {
             title: 'General',
@@ -398,18 +378,47 @@ export const navigation: NavSection[] = [
   },
 ]
 
-export function getNavigationForRole(role: string): NavSection[] {
+/**
+ * The capability an item needs: its explicit `permission`, else whatever the
+ * route map says its href requires, else nothing (visible to any staff user).
+ */
+function requiredPermission(item: NavItem): Permission | null {
+  return item.permission ?? permissionForRoute(item.href)
+}
+
+function visible(item: NavItem, holder: RoleHolder): boolean {
+  const needed = requiredPermission(item)
+  return !needed || holderCan(holder, needed)
+}
+
+/**
+ * Build the menu for a role.
+ *
+ * This used to filter on per-item `roles` arrays, which was a third copy of
+ * the access rules alongside middleware and the API routes — and the copy that
+ * went stale first, since adding a role meant editing 26 arrays. Deriving from
+ * lib/rbac means a new role gets a correct menu for free.
+ *
+ * A parent whose children are all hidden is dropped, so a role never sees a
+ * section header with nothing under it.
+ */
+export function getNavigationForRole(
+  role: string | RoleHolder,
+  clinicalRole?: string | null
+): NavSection[] {
+  // Accepts a bare role for the common single-role case, or a RoleHolder for
+  // someone who also holds a clinical role.
+  const holder: RoleHolder = typeof role === 'string' ? { role, clinicalRole } : role
   return navigation
     .map((section) => ({
       ...section,
       items: section.items
-        .filter((item) => !item.roles || item.roles.includes(role))
+        .filter((item) => visible(item, holder))
         .map((item) => ({
           ...item,
-          subItems: item.subItems?.filter(
-            (subItem) => !subItem.roles || subItem.roles.includes(role)
-          ),
-        })),
+          subItems: item.subItems?.filter((subItem) => visible(subItem, holder)),
+        }))
+        .filter((item) => !item.subItems || item.subItems.length > 0),
     }))
     .filter((section) => section.items.length > 0)
 }

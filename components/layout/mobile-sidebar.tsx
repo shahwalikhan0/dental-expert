@@ -12,14 +12,21 @@ import { useSidebar } from './sidebar-context'
 
 interface MobileSidebarProps {
   role: string
+  /** Optional second role; the menu is the union. See lib/rbac.ts. */
+  clinicalRole?: string | null
   hospitalName?: string
   hospitalLogo?: string | null
   plan?: string
 }
 
-export function MobileSidebar({ role, hospitalName, hospitalLogo }: MobileSidebarProps) {
+export function MobileSidebar({
+  role,
+  clinicalRole,
+  hospitalName,
+  hospitalLogo,
+}: MobileSidebarProps) {
   const pathname = usePathname()
-  const navigation = getNavigationForRole(role)
+  const navigation = getNavigationForRole(role, clinicalRole)
   const { mobileOpen, setMobileOpen } = useSidebar()
 
   // Close on route change

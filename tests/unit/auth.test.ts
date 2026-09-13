@@ -23,40 +23,8 @@ vi.mock('@/lib/auth.config', () => ({
   authConfig: { providers: [], callbacks: {} },
 }))
 
-import { hasRole, hasMinimumRole, roleHierarchy } from '@/lib/auth'
-
-describe('roleHierarchy', () => {
-  it('defines 5 roles', () => {
-    expect(Object.keys(roleHierarchy)).toHaveLength(5)
-  })
-
-  it('ADMIN has highest level (5)', () => {
-    expect(roleHierarchy['ADMIN']).toBe(5)
-  })
-
-  it('DOCTOR is level 4', () => {
-    expect(roleHierarchy['DOCTOR']).toBe(4)
-  })
-
-  it('ACCOUNTANT is level 3', () => {
-    expect(roleHierarchy['ACCOUNTANT']).toBe(3)
-  })
-
-  it('RECEPTIONIST is level 2', () => {
-    expect(roleHierarchy['RECEPTIONIST']).toBe(2)
-  })
-
-  it('LAB_TECH is level 1', () => {
-    expect(roleHierarchy['LAB_TECH']).toBe(1)
-  })
-
-  it('ADMIN > DOCTOR > ACCOUNTANT > RECEPTIONIST > LAB_TECH', () => {
-    expect(roleHierarchy['ADMIN']).toBeGreaterThan(roleHierarchy['DOCTOR'])
-    expect(roleHierarchy['DOCTOR']).toBeGreaterThan(roleHierarchy['ACCOUNTANT'])
-    expect(roleHierarchy['ACCOUNTANT']).toBeGreaterThan(roleHierarchy['RECEPTIONIST'])
-    expect(roleHierarchy['RECEPTIONIST']).toBeGreaterThan(roleHierarchy['LAB_TECH'])
-  })
-})
+import { hasRole } from '@/lib/auth'
+import { ALL_ROLES } from '@/lib/rbac'
 
 describe('hasRole', () => {
   it('returns true when role is in allowed list', () => {
@@ -80,55 +48,9 @@ describe('hasRole', () => {
   })
 
   it('works for all defined roles', () => {
-    const allRoles = Object.keys(roleHierarchy)
+    const allRoles = [...ALL_ROLES]
     allRoles.forEach((role) => {
       expect(hasRole(role, allRoles)).toBe(true)
     })
-  })
-})
-
-describe('hasMinimumRole', () => {
-  it('ADMIN meets minimum ADMIN', () => {
-    expect(hasMinimumRole('ADMIN', 'ADMIN')).toBe(true)
-  })
-
-  it('ADMIN meets minimum DOCTOR', () => {
-    expect(hasMinimumRole('ADMIN', 'DOCTOR')).toBe(true)
-  })
-
-  it('ADMIN meets minimum LAB_TECH', () => {
-    expect(hasMinimumRole('ADMIN', 'LAB_TECH')).toBe(true)
-  })
-
-  it('LAB_TECH does not meet minimum ADMIN', () => {
-    expect(hasMinimumRole('LAB_TECH', 'ADMIN')).toBe(false)
-  })
-
-  it('LAB_TECH does not meet minimum DOCTOR', () => {
-    expect(hasMinimumRole('LAB_TECH', 'DOCTOR')).toBe(false)
-  })
-
-  it('DOCTOR meets minimum DOCTOR (equal)', () => {
-    expect(hasMinimumRole('DOCTOR', 'DOCTOR')).toBe(true)
-  })
-
-  it('RECEPTIONIST meets minimum RECEPTIONIST', () => {
-    expect(hasMinimumRole('RECEPTIONIST', 'RECEPTIONIST')).toBe(true)
-  })
-
-  it('RECEPTIONIST does not meet minimum ACCOUNTANT', () => {
-    expect(hasMinimumRole('RECEPTIONIST', 'ACCOUNTANT')).toBe(false)
-  })
-
-  it('unknown role defaults to 0', () => {
-    expect(hasMinimumRole('UNKNOWN', 'LAB_TECH')).toBe(false)
-  })
-
-  it('any role meets unknown minimum (defaults to 0)', () => {
-    expect(hasMinimumRole('LAB_TECH', 'UNKNOWN')).toBe(true)
-  })
-
-  it('unknown vs unknown returns true (both 0)', () => {
-    expect(hasMinimumRole('FAKE', 'FAKE2')).toBe(true)
   })
 })

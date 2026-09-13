@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get available time slots for a doctor on a specific date
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

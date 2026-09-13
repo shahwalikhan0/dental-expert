@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 // POST /api/integrations/google-calendar/disconnect — Remove integration
 export async function POST(req: NextRequest) {
-  const { error, session } = await requireAuthAndRole()
+  const { error, session } = await requirePermission('settings:write')
   if (error || !session) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

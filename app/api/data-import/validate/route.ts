@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
@@ -15,7 +15,7 @@ interface ValidationError {
 }
 
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

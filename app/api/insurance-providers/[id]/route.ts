@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'ACCOUNTANT'])
+  const { error, hospitalId } = await requirePermission('masters:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('billing:config')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -89,7 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('billing:config')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

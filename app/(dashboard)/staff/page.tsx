@@ -57,6 +57,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { ALL_ROLES, roleColor, roleLabel } from '@/lib/rbac'
 
 interface Staff {
   id: string
@@ -82,22 +83,6 @@ interface PaginationInfo {
   limit: number
   total: number
   totalPages: number
-}
-
-const roleColors: Record<string, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700',
-  DOCTOR: 'bg-blue-100 text-blue-700',
-  RECEPTIONIST: 'bg-green-100 text-green-700',
-  LAB_TECH: 'bg-orange-100 text-orange-700',
-  ACCOUNTANT: 'bg-yellow-100 text-yellow-700',
-}
-
-const roleLabels: Record<string, string> = {
-  ADMIN: 'Admin',
-  DOCTOR: 'Doctor',
-  RECEPTIONIST: 'Receptionist',
-  LAB_TECH: 'Lab Tech',
-  ACCOUNTANT: 'Accountant',
 }
 
 export default function StaffPage() {
@@ -184,7 +169,7 @@ export default function StaffPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
+    return new Date(dateString).toLocaleDateString('en-PK', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -209,7 +194,7 @@ export default function StaffPage() {
                 'Last Name': m.lastName,
                 Phone: m.phone,
                 Email: m.email || '',
-                Role: roleLabels[m.user.role] || m.user.role,
+                Role: roleLabel(m.user.role) || m.user.role,
                 Specialization: m.specialization || '',
                 Qualification: m.qualification || '',
                 'Joining Date': formatDate(m.joiningDate),
@@ -258,10 +243,11 @@ export default function StaffPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                  <SelectItem value="DOCTOR">Doctor</SelectItem>
-                  <SelectItem value="RECEPTIONIST">Receptionist</SelectItem>
-                  <SelectItem value="LAB_TECH">Lab Tech</SelectItem>
+                  {ALL_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {roleLabel(r)}
+                    </SelectItem>
+                  ))}
                   <SelectItem value="ACCOUNTANT">Accountant</SelectItem>
                 </SelectContent>
               </Select>
@@ -372,8 +358,8 @@ export default function StaffPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`${roleColors[member.user.role]} border-0`}>
-                        {roleLabels[member.user.role] || member.user.role}
+                      <Badge className={`${roleColor(member.user.role)} border-0`}>
+                        {roleLabel(member.user.role) || member.user.role}
                       </Badge>
                     </TableCell>
                     <TableCell>

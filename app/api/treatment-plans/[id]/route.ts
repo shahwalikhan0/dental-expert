@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
+import { can } from '@/lib/rbac'
 
 // GET - Get single treatment plan with all details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('clinical:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -64,21 +65,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update treatment plan
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('clinical:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'DOCTOR'].includes(session?.user?.role || '')) {
-      return NextResponse.json(
-        { error: "You don't have permission to update treatment plans" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -92,10 +85,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Treatment plan not found' }, { status: 404 })
     }
 
-    // Prevent updates to completed or cancelled plans (except by admin)
+    // Prevent updates to completed or cancelled plans. A record integrity rule,
+    // not an access rule — see the matching comment in treatments/[id].
     if (
       (existingPlan.status === 'COMPLETED' || existingPlan.status === 'CANCELLED') &&
-      session?.user?.role !== 'ADMIN'
+      !can(session?.user?.role, 'clinical:delete')
     ) {
       return NextResponse.json(
         { error: 'Cannot modify completed or cancelled treatment plans' },
@@ -210,21 +204,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('clinical:delete')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can delete treatment plans
-    if (session?.user?.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Only administrators can delete treatment plans' },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
 
     // Check if treatment plan exists and belongs to this hospital

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { buildStorageKey, getStorage } from '@/lib/storage'
 
@@ -39,7 +39,7 @@ async function clearStoredLogos(hospitalId: string): Promise<void> {
 
 // POST — upload / replace hospital logo
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE — remove hospital logo
 export async function DELETE() {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

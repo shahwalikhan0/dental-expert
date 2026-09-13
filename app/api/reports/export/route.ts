@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import ExcelJS from 'exceljs'
 import { format } from 'date-fns'
@@ -280,12 +280,12 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
       ? `
     <h2>Financial Overview</h2>
     <table>
-      <tr><td class="metric">Total Revenue</td><td class="value">₹${data.totalRevenue.toFixed(2)}</td></tr>
-      <tr><td class="metric">Total Expenses</td><td class="value">₹${data.totalExpenses.toFixed(2)}</td></tr>
+      <tr><td class="metric">Total Revenue</td><td class="value">Rs ${data.totalRevenue.toFixed(2)}</td></tr>
+      <tr><td class="metric">Total Expenses</td><td class="value">Rs ${data.totalExpenses.toFixed(2)}</td></tr>
       <tr><td class="metric">Profit Margin</td><td class="value">${data.profitMargin.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Avg. Bill Value</td><td class="value">₹${data.avgBillValue.toFixed(2)}</td></tr>
+      <tr><td class="metric">Avg. Bill Value</td><td class="value">Rs ${data.avgBillValue.toFixed(2)}</td></tr>
       <tr><td class="metric">Collection Efficiency</td><td class="value">${data.collectionEfficiency.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Outstanding Amount</td><td class="value">₹${data.outstandingAmount.toFixed(2)}</td></tr>
+      <tr><td class="metric">Outstanding Amount</td><td class="value">Rs ${data.outstandingAmount.toFixed(2)}</td></tr>
     </table>
 
     ${
@@ -293,11 +293,11 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ? `
       <h2>Payment Methods</h2>
       <table>
-        <tr><th>Method</th><th>Amount (₹)</th><th>Percentage</th></tr>
+        <tr><th>Method</th><th>Amount (Rs)</th><th>Percentage</th></tr>
         ${data.paymentMethodBreakdown
           .map(
             (m: any) => `
-          <tr><td>${m.method}</td><td>₹${m.amount.toFixed(2)}</td><td>${m.percentage.toFixed(2)}%</td></tr>
+          <tr><td>${m.method}</td><td>Rs ${m.amount.toFixed(2)}</td><td>${m.percentage.toFixed(2)}%</td></tr>
         `
           )
           .join('')}
@@ -330,11 +330,11 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ? `
       <h2>Staff Productivity</h2>
       <table>
-        <tr><th>Staff</th><th>Role</th><th>Appointments</th><th>Treatments</th><th>Revenue (₹)</th></tr>
+        <tr><th>Staff</th><th>Role</th><th>Appointments</th><th>Treatments</th><th>Revenue (Rs)</th></tr>
         ${data.staffProductivity
           .map(
             (s: any) => `
-          <tr><td>${s.name}</td><td>${s.role}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>₹${s.revenue.toFixed(2)}</td></tr>
+          <tr><td>${s.name}</td><td>${s.role}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>Rs ${s.revenue.toFixed(2)}</td></tr>
         `
           )
           .join('')}
@@ -358,7 +358,7 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
 }
 
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('reports:export')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

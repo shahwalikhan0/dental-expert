@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -11,7 +11,7 @@ const createHolidaySchema = z.object({
 
 // GET /api/settings/holidays - Get all holidays
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('masters:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings/holidays - Create a new holiday
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/settings/holidays?id=xxx - Delete a holiday
 export async function DELETE(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

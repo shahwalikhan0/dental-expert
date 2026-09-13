@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 // GET /api/appointments/waitlist — List waitlist entries
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -91,16 +91,12 @@ export async function GET(req: NextRequest) {
 
 // POST /api/appointments/waitlist — Add patient to waitlist
 export async function POST(req: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('appointments:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
-
     const body = await req.json()
     const { patientId, doctorId, preferredDays, preferredTime, procedureId, notes } = body
 
@@ -149,7 +145,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/appointments/waitlist — Remove from waitlist
 export async function DELETE(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

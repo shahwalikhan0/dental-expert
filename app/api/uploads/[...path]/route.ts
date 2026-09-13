@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthAndRole } from '@/lib/api-helpers';
+import { requirePermission} from '@/lib/api-helpers';
 import { getStorage, keyBelongsToHospital, StorageNotFoundError, toStorageKey } from '@/lib/storage';
 
 // GET /api/uploads/[...path] - Serve uploaded files
@@ -7,7 +7,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole();
+  const { error, hospitalId } = await requirePermission('patients:read');
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

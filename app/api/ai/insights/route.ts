@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { complete } from '@/lib/ai/openrouter'
 import { getModelByTier } from '@/lib/ai/models'
@@ -13,7 +13,7 @@ import { extractJSON } from '@/lib/ai/openrouter'
 
 // GET – list insights
 export async function GET(req: NextRequest) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
 // POST – generate fresh insights via AI
 export async function POST(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -136,7 +136,7 @@ Respond ONLY with a JSON array of insight objects:
 
 // PUT – dismiss or mark action-taken
 export async function PUT(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

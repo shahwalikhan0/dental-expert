@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole, checkPatientLimit } from '@/lib/api-helpers'
+import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 
 // Generate unique patient ID for the hospital
 async function generatePatientId(hospitalId: string): Promise<string> {
@@ -29,7 +29,7 @@ async function generatePatientId(hospitalId: string): Promise<string> {
 
 // GET - List patients
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new patient
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

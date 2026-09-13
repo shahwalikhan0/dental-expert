@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import path from 'path'
 import { randomUUID } from 'crypto'
@@ -7,7 +7,7 @@ import { buildStorageKey, getStorage } from '@/lib/storage'
 
 // GET /api/patients/[id]/documents - Get all documents for a patient
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // POST /api/patients/[id]/documents - Upload a document
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, user } = await requireAuthAndRole()
+  const { error, hospitalId, user } = await requirePermission('patients:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 /**
  * GET /api/sterilization/instruments/[id]
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId } = await requirePermission('inventory:read')
   if (error) return error
 
   const { id } = await params
@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
  * PUT /api/sterilization/instruments/[id]
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('inventory:write')
   if (error) return error
 
   const { id } = await params
@@ -78,7 +78,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
  * DELETE /api/sterilization/instruments/[id]
  */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('inventory:write')
   if (error) return error
 
   const { id } = await params

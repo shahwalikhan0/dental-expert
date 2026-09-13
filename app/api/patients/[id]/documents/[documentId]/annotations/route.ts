@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 // PUT /api/patients/[id]/documents/[documentId]/annotations — Save annotations
@@ -7,16 +7,12 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('patients:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'DOCTOR'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Only doctors and admins can annotate' }, { status: 403 })
-    }
-
     const { id, documentId } = await params
     const body = await req.json()
     const { annotations } = body
@@ -63,7 +59,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

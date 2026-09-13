@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
 import { getModelByTier } from '@/lib/ai/models'
@@ -112,7 +112,7 @@ User query: "${naturalQuery}"`
 }
 
 export async function POST(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

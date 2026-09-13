@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get today's attendance summary
 export async function GET(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:hr')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

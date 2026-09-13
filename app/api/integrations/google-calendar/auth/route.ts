@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { getAuthUrl } from '@/lib/services/google-calendar'
 
 // GET /api/integrations/google-calendar/auth — Redirect to Google OAuth
 export async function GET(req: NextRequest) {
-  const { error, session } = await requireAuthAndRole()
+  const { error, session } = await requirePermission('settings:read')
   if (error || !session) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

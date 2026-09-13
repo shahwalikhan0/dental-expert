@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { generateFormPdfHtml } from '@/lib/services/pdf-generator'
 
@@ -10,7 +10,7 @@ import { generateFormPdfHtml } from '@/lib/services/pdf-generator'
  * content-disposition for download.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR', 'RECEPTIONIST'])
+  const { error, hospitalId } = await requirePermission('patients:read')
   if (error) return error
 
   const { id } = await params

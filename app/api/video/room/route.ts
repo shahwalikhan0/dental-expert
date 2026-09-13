@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { createRoom, deleteRoom } from '@/lib/services/video.service'
 
 /**
@@ -7,7 +7,7 @@ import { createRoom, deleteRoom } from '@/lib/services/video.service'
  * Create a video room for a consultation.
  */
 export async function POST(req: Request) {
-  const { error } = await requireAuthAndRole(['ADMIN', 'DOCTOR', 'RECEPTIONIST'])
+  const { error } = await requirePermission('appointments:write')
   if (error) return error
 
   const body = await req.json()
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
  * Delete/cleanup a video room.
  */
 export async function DELETE(req: Request) {
-  const { error } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error } = await requirePermission('appointments:write')
   if (error) return error
 
   const { searchParams } = new URL(req.url)

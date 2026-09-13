@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { createRoom } from '@/lib/services/video.service'
 
 /**
@@ -9,7 +9,7 @@ import { createRoom } from '@/lib/services/video.service'
  * Filters: status, doctorId, patientId, date range
  */
 export async function GET(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:read')
   if (error) return error
 
   const { searchParams } = new URL(req.url)
@@ -72,7 +72,7 @@ export async function GET(req: Request) {
  * Create a new video consultation (optionally linked to an appointment).
  */
 export async function POST(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR', 'RECEPTIONIST'])
+  const { error, user, hospitalId } = await requirePermission('appointments:write')
   if (error) return error
 
   const body = await req.json()

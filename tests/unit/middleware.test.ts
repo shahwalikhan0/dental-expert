@@ -158,8 +158,15 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
-  it('redirects RECEPTIONIST from /lab to /dashboard', () => {
+  // Front desk coordinates collection and delivery of lab work (§5.8), so it
+  // holds lab:read. Writing the case is still restricted.
+  it('allows RECEPTIONIST to view /lab', () => {
     middleware(makeRequest('/lab', { user: { role: 'RECEPTIONIST' } }))
+    expect(mockNext).toHaveBeenCalled()
+  })
+
+  it('redirects INVENTORY_STAFF away from /lab', () => {
+    middleware(makeRequest('/lab', { user: { role: 'INVENTORY_STAFF' } }))
     expect(mockRedirect).toHaveBeenCalled()
   })
 
@@ -168,9 +175,21 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
-  it('redirects DOCTOR from /staff to /dashboard', () => {
+  // A dentist can see the staff directory (staff:read) but not salary,
+  // attendance or leave, which sit behind staff:hr on their own routes.
+  it('allows DOCTOR to view the /staff directory', () => {
     middleware(makeRequest('/staff', { user: { role: 'DOCTOR' } }))
+    expect(mockNext).toHaveBeenCalled()
+  })
+
+  it('redirects DOCTOR away from /staff/attendance', () => {
+    middleware(makeRequest('/staff/attendance', { user: { role: 'DOCTOR' } }))
     expect(mockRedirect).toHaveBeenCalled()
+  })
+
+  it('allows CLINIC_MANAGER into /staff/attendance', () => {
+    middleware(makeRequest('/staff/attendance', { user: { role: 'CLINIC_MANAGER' } }))
+    expect(mockNext).toHaveBeenCalled()
   })
 
   it('allows ADMIN to access /inventory', () => {
@@ -178,8 +197,15 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
-  it('redirects DOCTOR from /inventory to /dashboard', () => {
+  // A dentist checks stock before a procedure (inventory:read); only store
+  // staff and assistants can move it.
+  it('allows DOCTOR to view /inventory', () => {
     middleware(makeRequest('/inventory', { user: { role: 'DOCTOR' } }))
+    expect(mockNext).toHaveBeenCalled()
+  })
+
+  it('redirects ACCOUNTANT away from /inventory', () => {
+    middleware(makeRequest('/inventory', { user: { role: 'ACCOUNTANT' } }))
     expect(mockRedirect).toHaveBeenCalled()
   })
 
@@ -199,9 +225,11 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
-  // Dashboard access for all authenticated roles
-  it('allows any authenticated user to access /dashboard', () => {
-    const roles = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'ACCOUNTANT', 'LAB_TECH']
+  // Dashboard access. The dashboard is clinic-wide operational and financial
+  // KPIs (§9), so it needs reports:operational rather than merely being
+  // signed in.
+  it('allows roles with reports:operational into /dashboard', () => {
+    const roles = ['ADMIN', 'CLINIC_MANAGER', 'DOCTOR', 'DENTAL_ASSISTANT', 'RECEPTIONIST']
     roles.forEach((role) => {
       vi.clearAllMocks()
       mockNext.mockReturnValue({ type: 'next' })
@@ -210,14 +238,34 @@ describe('middleware', () => {
     })
   })
 
+  // INVENTORY_STAFF has no dashboard permission, so redirecting them to
+  // /dashboard would bounce them between two forbidden pages. landingPageFor
+  // sends them to /inventory instead.
+  it('does not trap a role that cannot open the dashboard', () => {
+    vi.clearAllMocks()
+    middleware(makeRequest('/dashboard', { user: { role: 'INVENTORY_STAFF' } }))
+    expect(mockRedirect).toHaveBeenCalled()
+    vi.clearAllMocks()
+    mockNext.mockReturnValue({ type: 'next' })
+    middleware(makeRequest('/inventory', { user: { role: 'INVENTORY_STAFF' } }))
+    expect(mockNext).toHaveBeenCalled()
+  })
+
   // Reports access
   it('allows DOCTOR to access /reports', () => {
     middleware(makeRequest('/reports', { user: { role: 'DOCTOR' } }))
     expect(mockNext).toHaveBeenCalled()
   })
 
-  it('redirects RECEPTIONIST from /reports to /dashboard', () => {
+  // Front desk runs the daily appointment, queue and no-show reports (§9), so
+  // it holds reports:operational. Financial reporting is a separate capability.
+  it('allows RECEPTIONIST into /reports', () => {
     middleware(makeRequest('/reports', { user: { role: 'RECEPTIONIST' } }))
+    expect(mockNext).toHaveBeenCalled()
+  })
+
+  it('redirects RECEPTIONIST away from /billing/reports', () => {
+    middleware(makeRequest('/billing/reports', { user: { role: 'RECEPTIONIST' } }))
     expect(mockRedirect).toHaveBeenCalled()
   })
 })

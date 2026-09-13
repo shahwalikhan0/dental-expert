@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
  * List all marketing automation rules for the hospital
  */
 export async function GET(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('communications:read')
   if (error) return error
 
   const automations = await prisma.marketingAutomation.findMany({
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
  * Create a new automation rule
  */
 export async function POST(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('communications:write')
   if (error) return error
 
   const body = await req.json()
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
  * Update an existing automation rule (pass id in body)
  */
 export async function PUT(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('communications:write')
   if (error) return error
 
   const body = await req.json()
@@ -113,7 +113,7 @@ export async function PUT(req: Request) {
  * Delete an automation rule (pass id in body)
  */
 export async function DELETE(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('communications:write')
   if (error) return error
 
   const body = await req.json()

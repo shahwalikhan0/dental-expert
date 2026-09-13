@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { buildContext, serializeContext } from '@/lib/ai/context-builder'
 import { complete, extractJSON, streamResponse } from '@/lib/ai/openrouter'
@@ -82,7 +82,7 @@ Respond ONLY with JSON:
 {"action": "<name>", "params": {…}, "complexity": "simple"|"complex"}`
 
 export async function POST(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -186,7 +186,7 @@ VOICE MODE — The user is speaking to you via voice and your response will be r
 - Instead of bullet lists, use short natural sentences connected with "and", "also", "next", etc.
 - Keep responses brief and to the point — 2-3 sentences for simple queries, up to 5 for complex ones
 - Use natural speech patterns: "So," "Alright," "Got it," "Here's what I found" etc.
-- For numbers, say them naturally (e.g. "twenty-five thousand rupees" not "₹25,000")
+- For numbers, say them naturally (e.g. "twenty-five thousand rupees" not "Rs 25,000")
 - For dates, say "February fifteenth" not "2026-02-15"
 - When an ACTION RESULT is present, you MUST clearly confirm what was done with the key details. For example say "Done! I've created patient John Doe with ID PAT-00001 and phone 9876543210. Want me to book an appointment for them?" — NEVER just say "I will create the patient" if the action already happened.
 - End with a brief prompt like "Want me to do anything else?" or "Should I go ahead?" to keep the conversation flowing

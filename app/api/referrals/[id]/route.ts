@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // PUT - Update referral (mark converted, give reward, etc.)
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
 

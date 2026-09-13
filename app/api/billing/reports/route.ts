@@ -1,24 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { getDateRangeFromPreset } from '@/lib/billing-utils'
 
 // GET - Generate billing reports
 export async function GET(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('reports:financial')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to view reports" },
-        { status: 403 }
-      )
-    }
-
     const { searchParams } = new URL(request.url)
     const reportType = searchParams.get('type') || 'summary'
     const preset = searchParams.get('preset') || 'this_month'
@@ -180,8 +172,7 @@ async function getRevenueReport(startDate: Date, endDate: Date, hospitalId: stri
       totalAmount: true,
       paidAmount: true,
       discountAmount: true,
-      cgstAmount: true,
-      sgstAmount: true,
+      taxAmount: true,
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -214,7 +205,7 @@ async function getRevenueReport(startDate: Date, endDate: Date, hospitalId: stri
     dailyRevenue[dateKey].billed += Number(invoice.totalAmount)
     dailyRevenue[dateKey].collected += Number(invoice.paidAmount)
     dailyRevenue[dateKey].discount += Number(invoice.discountAmount)
-    dailyRevenue[dateKey].tax += Number(invoice.cgstAmount) + Number(invoice.sgstAmount)
+    dailyRevenue[dateKey].tax += Number(invoice.taxAmount)
     dailyRevenue[dateKey].count += 1
   })
 

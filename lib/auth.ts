@@ -42,6 +42,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          clinicalRole: user.clinicalRole ?? undefined,
           staffId: user.staff?.id,
           hospitalId: user.hospitalId,
           isHospitalAdmin: user.isHospitalAdmin,
@@ -61,20 +62,22 @@ export async function getCurrentUser() {
   return session?.user
 }
 
-// Helper function to check if user has required role
+// Helper function to check if user has required role.
+//
+// Prefer `can(role, permission)` from lib/rbac. This remains for the few places
+// that genuinely care about identity rather than capability.
 export function hasRole(userRole: string, allowedRoles: string[]): boolean {
   return allowedRoles.includes(userRole)
 }
 
-// Role hierarchy for permission checking
-export const roleHierarchy: Record<string, number> = {
-  ADMIN: 5,
-  DOCTOR: 4,
-  ACCOUNTANT: 3,
-  RECEPTIONIST: 2,
-  LAB_TECH: 1,
-}
-
-export function hasMinimumRole(userRole: string, minimumRole: string): boolean {
-  return (roleHierarchy[userRole] || 0) >= (roleHierarchy[minimumRole] || 0)
-}
+// `roleHierarchy` and `hasMinimumRole` used to live here, ranking the five
+// roles 1-5 so that a check could ask for "DOCTOR or above".
+//
+// They are gone because the premise does not hold. Roles are not a ladder: an
+// Inventory/Store user is not a weaker Front Desk user, and a Cashier is not a
+// junior Dentist — specification §4 gives each one a different set, and the
+// sets overlap rather than nest. "ACCOUNTANT >= RECEPTIONIST" would have
+// granted a cashier the clinical access the spec explicitly withholds.
+//
+// Nothing in the application used them; only tests did. Ask for the capability
+// you need instead: `can(role, 'billing:refund')`.

@@ -6,6 +6,8 @@ declare module 'next-auth' {
     email: string
     name: string
     role: string
+    /** Optional second role; capabilities are the union. See lib/rbac.ts. */
+    clinicalRole?: string
     staffId?: string
     hospitalId: string
     isHospitalAdmin: boolean
@@ -17,6 +19,7 @@ declare module 'next-auth' {
       email: string
       name: string
       role: string
+      clinicalRole?: string
       staffId?: string
       hospitalId: string
       isHospitalAdmin: boolean
@@ -28,6 +31,7 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string
     role: string
+    clinicalRole?: string
     staffId?: string
     hospitalId: string
     isHospitalAdmin: boolean

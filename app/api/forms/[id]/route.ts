@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET: Single submission detail
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 // PUT: Review/approve/reject a submission
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId, user } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId, user } = await requirePermission('patients:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

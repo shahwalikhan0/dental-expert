@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole, checkStaffLimit, generateToken } from '@/lib/api-helpers'
+import { checkStaffLimit, generateToken, requirePermission } from '@/lib/api-helpers'
 import { Role, StaffInviteStatus } from '@prisma/client'
 import { sendInviteEmail } from '@/lib/email-helpers'
+import { INVITABLE_ROLES } from '@/lib/rbac'
 
 const inviteSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  role: z.enum(['DOCTOR', 'RECEPTIONIST', 'LAB_TECH', 'ACCOUNTANT']),
+  role: z.enum(INVITABLE_ROLES),
 })
 
 // Create a new staff invite
 export async function POST(request: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, user, hospitalId } = await requirePermission('staff:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
 
 // List all invites for the hospital
 export async function GET() {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('staff:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

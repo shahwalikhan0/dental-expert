@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, StockAlertType, StockTransactionType } from '@prisma/client'
 
@@ -34,7 +34,7 @@ function parseType(value: unknown): StockTransactionType | null {
 
 // GET - Fetch stock transactions
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create stock transaction (adjustment, usage, wastage, etc.)
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('inventory:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

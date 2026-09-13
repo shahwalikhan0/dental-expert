@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { generatePaymentNo } from '@/lib/billing-utils'
 import { PaymentMethod, PaymentStatus } from '@prisma/client'
 
 // GET - Get payments for an invoice
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -49,20 +49,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // POST - Record a payment for an invoice
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to record payments" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 

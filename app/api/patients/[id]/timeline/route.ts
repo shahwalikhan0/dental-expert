@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 interface TimelineEvent {
@@ -14,7 +14,7 @@ interface TimelineEvent {
 
 // GET /api/patients/[id]/timeline - Get patient timeline events
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           type: 'payment',
           date: invoice.createdAt,
           title: `Invoice ${invoice.invoiceNo}`,
-          description: `Total: ₹${Number(invoice.totalAmount).toLocaleString()}`,
+          description: `Total: Rs ${Number(invoice.totalAmount).toLocaleString()}`,
           status: invoice.status,
           metadata: {
             invoiceNo: invoice.invoiceNo,
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             type: 'payment',
             date: payment.createdAt,
             title: `Payment Received`,
-            description: `₹${Number(payment.amount).toLocaleString()} via ${payment.paymentMethod}`,
+            description: `Rs ${Number(payment.amount).toLocaleString()} via ${payment.paymentMethod}`,
             status: payment.status,
             metadata: {
               amount: payment.amount,

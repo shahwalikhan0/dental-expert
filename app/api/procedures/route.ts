@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // Generate unique procedure code
 async function generateProcedureCode(category: string, hospitalId: string): Promise<string> {
@@ -41,7 +41,7 @@ async function generateProcedureCode(category: string, hospitalId: string): Prom
 
 // GET - List procedures with filters
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('masters:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -103,20 +103,12 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new procedure
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission (Admin or Doctor)
-    if (!['ADMIN', 'DOCTOR'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to create procedures" },
-        { status: 403 }
-      )
-    }
-
     const body = await request.json()
     const {
       name,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { buildContext, serializeContext } from '@/lib/ai/context-builder'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
@@ -111,7 +111,7 @@ async function execGeneral(command: string, contextStr: string, hospitalName: st
 // Main handler
 // ---------------------------------------------------------------------------
 export async function POST(req: Request) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

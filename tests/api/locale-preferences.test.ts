@@ -6,9 +6,39 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 vi.mock('@/lib/patient-auth', () => ({
   requirePatientAuth: vi.fn(),
@@ -191,7 +221,7 @@ describe('GET /api/settings/profile', () => {
     expect(body.data.locale).toBeNull()
     expect(body.data.hospitalLocale).toBe('en-US')
     expect(body.data.effectiveLocale).toBe('en-US')
-    expect(body.data.supportedLocales).toContain('en-IN')
+    expect(body.data.supportedLocales).toContain('en-PK')
   })
 
   it('returns 404 when the session user no longer exists', async () => {
@@ -342,7 +372,7 @@ describe('getLocaleForRequest', () => {
     auth.mockResolvedValue(null)
     getAuthenticatedPatient.mockResolvedValue(null)
 
-    expect(await getLocaleForRequest()).toBe('en-IN')
+    expect(await getLocaleForRequest()).toBe('en-PK')
   })
 
   // Load-bearing: a formatting concern must never take a page down.
@@ -350,13 +380,13 @@ describe('getLocaleForRequest', () => {
     auth.mockResolvedValue({ user: STAFF })
     prisma.user.findUnique.mockRejectedValue(new Error("Can't reach database server"))
 
-    await expect(getLocaleForRequest()).resolves.toBe('en-IN')
+    await expect(getLocaleForRequest()).resolves.toBe('en-PK')
   })
 
   it('returns the default rather than throwing when auth() fails', async () => {
     auth.mockRejectedValue(new Error('JWT decryption failed'))
 
-    await expect(getLocaleForRequest()).resolves.toBe('en-IN')
+    await expect(getLocaleForRequest()).resolves.toBe('en-PK')
   })
 
   it('falls through an unsupported stored override to the clinic', async () => {
@@ -385,12 +415,12 @@ describe('getLocaleForPatientRequest', () => {
   it('returns the default when there is no portal cookie', async () => {
     getAuthenticatedPatient.mockResolvedValue(null)
 
-    expect(await getLocaleForPatientRequest()).toBe('en-IN')
+    expect(await getLocaleForPatientRequest()).toBe('en-PK')
   })
 
   it('returns the default rather than throwing when the lookup fails', async () => {
     getAuthenticatedPatient.mockRejectedValue(new Error('boom'))
 
-    await expect(getLocaleForPatientRequest()).resolves.toBe('en-IN')
+    await expect(getLocaleForPatientRequest()).resolves.toBe('en-PK')
   })
 })

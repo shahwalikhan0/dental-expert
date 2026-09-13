@@ -34,6 +34,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     name: session.user.name || 'User',
     email: session.user.email || '',
     role: session.user.role || 'RECEPTIONIST',
+    clinicalRole: session.user.clinicalRole,
   }
 
   const hospitalInfo = hospital

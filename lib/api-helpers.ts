@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { auth } from './auth'
 import { prisma } from './prisma'
+import { holderCan, type Permission } from './rbac'
 
 /**
  * Verify a mobile Bearer token (JWT signed with NEXTAUTH_SECRET via jose).
@@ -77,8 +78,79 @@ export function requireRole(userRole: string, allowedRoles: string[]) {
 }
 
 /**
+ * Authenticate, then require a capability from lib/rbac.ts.
+ *
+ * This is the check every API route should use. Prefer it over
+ * `requireAuthAndRole([...])`: a route that names a capability keeps working
+ * when a role is added, whereas a hand-written role array silently excludes
+ * the new role and has to be found and edited.
+ *
+ * Returns the same shape as `requireAuthAndRole`, so converting a route is a
+ * one-line change:
+ *
+ *   const { error, hospitalId } = await requirePermission('clinical:write')
+ *   if (error) return error
+ */
+export async function requirePermission(permission: Permission) {
+  const { error, user, hospitalId } = await getAuthenticatedHospital()
+
+  if (error || !user || !hospitalId) {
+    return {
+      error: error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+      user: null,
+      hospitalId: null,
+      session: null,
+    }
+  }
+
+  if (!holderCan(user, permission)) {
+    return {
+      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+      user: null,
+      hospitalId: null,
+      session: null,
+    }
+  }
+
+  return { error: null, user, hospitalId, session: { user } }
+}
+
+/**
+ * Require *every* listed capability. For handlers that do two things at once —
+ * creating an invoice from completed treatments needs both `billing:write` and
+ * `clinical:read`.
+ */
+export async function requireAllPermissions(permissions: Permission[]) {
+  const { error, user, hospitalId } = await getAuthenticatedHospital()
+
+  if (error || !user || !hospitalId) {
+    return {
+      error: error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+      user: null,
+      hospitalId: null,
+      session: null,
+    }
+  }
+
+  if (!permissions.every((p) => holderCan(user, p))) {
+    return {
+      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+      user: null,
+      hospitalId: null,
+      session: null,
+    }
+  }
+
+  return { error: null, user, hospitalId, session: { user } }
+}
+
+/**
  * Combined auth check: verifies authentication and role access.
- * Use in API route handlers for consistent auth + role checking.
+ *
+ * @deprecated Prefer `requirePermission`. Naming roles at the call site is what
+ * let 66 route files end up with no check at all and made adding a role a
+ * 155-file audit. Kept because a handful of routes gate on identity rather
+ * than capability.
  */
 export async function requireAuthAndRole(allowedRoles?: string[]) {
   const { error, user, hospitalId } = await getAuthenticatedHospital()

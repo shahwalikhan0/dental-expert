@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -30,17 +30,13 @@ const updateSurveySchema = z.object({
 
 // POST /api/communications/surveys - Create survey
 export async function POST(req: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'DOCTOR'].includes(session?.user?.role || '')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const body = await req.json()
     const data = createSurveySchema.parse(body)
 
@@ -71,7 +67,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/communications/surveys - Get surveys
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

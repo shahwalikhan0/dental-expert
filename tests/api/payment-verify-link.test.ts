@@ -6,10 +6,21 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-  getAuthenticatedHospital: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', () => {
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+    getAuthenticatedHospital: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Both names point at the same
+  // mock so existing per-test mockResolvedValue() setup configures either.
+  // This file exercises routes that previously used two different helpers:
+  // the payment routes called getAuthenticatedHospital with no role check,
+  // audit-logs called requireAuthAndRole. Both now call requirePermission, so
+  // it gets its own mock and each setup helper below configures it.
+  helpers.requirePermission = vi.fn()
+  helpers.requireAllPermissions = helpers.requirePermission
+  return helpers
+})
 
 vi.mock('@/lib/payment-gateways', () => ({
   getGateway: vi.fn(),
@@ -20,7 +31,7 @@ vi.mock('@/lib/payment-gateways', () => ({
 import { POST as verifyPOST } from '@/app/api/payments/verify/route'
 import { POST as linkPOST } from '@/app/api/payments/link/route'
 import { GET as auditLogsGET } from '@/app/api/settings/audit-logs/route'
-import { getAuthenticatedHospital, requireAuthAndRole } from '@/lib/api-helpers'
+import { getAuthenticatedHospital, requireAuthAndRole, requirePermission } from '@/lib/api-helpers'
 import { getGateway } from '@/lib/payment-gateways'
 import { prisma } from '@/lib/prisma'
 
@@ -33,12 +44,15 @@ function mockHospitalAuth(overrides: Record<string, unknown> = {}) {
     hospitalId: 'h1',
   }
   vi.mocked(getAuthenticatedHospital).mockResolvedValue({ ...defaults, ...overrides } as any)
+  vi.mocked(requirePermission).mockResolvedValue({ ...defaults, ...overrides } as any)
 }
 
 function mockHospitalAuthError() {
-  vi.mocked(getAuthenticatedHospital).mockResolvedValue({
+  const unauthorized = {
     error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-  } as any)
+  }
+  vi.mocked(getAuthenticatedHospital).mockResolvedValue(unauthorized as any)
+  vi.mocked(requirePermission).mockResolvedValue(unauthorized as any)
 }
 
 function mockAuth(overrides: Record<string, unknown> = {}) {
@@ -48,12 +62,15 @@ function mockAuth(overrides: Record<string, unknown> = {}) {
     hospitalId: 'h1',
   }
   vi.mocked(requireAuthAndRole).mockResolvedValue({ ...defaults, ...overrides } as any)
+  vi.mocked(requirePermission).mockResolvedValue({ ...defaults, ...overrides } as any)
 }
 
 function mockAuthError() {
-  vi.mocked(requireAuthAndRole).mockResolvedValue({
+  const unauthorized = {
     error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-  } as any)
+  }
+  vi.mocked(requireAuthAndRole).mockResolvedValue(unauthorized as any)
+  vi.mocked(requirePermission).mockResolvedValue(unauthorized as any)
 }
 
 function makeReq(path: string, method = 'POST', body?: any): NextRequest {

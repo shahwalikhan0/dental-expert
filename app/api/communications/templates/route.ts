@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { templateService } from '@/lib/services/template.service'
 import { z } from 'zod'
 
@@ -33,7 +33,7 @@ const updateTemplateSchema = z.object({
 
 // POST /api/communications/templates - Create template
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId } = await requirePermission('communications:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/communications/templates - Get templates
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

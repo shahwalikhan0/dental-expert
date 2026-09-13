@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
  * List sterilization logs with filters
  */
 export async function GET(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId } = await requirePermission('inventory:read')
   if (error) return error
 
   const { searchParams } = new URL(req.url)
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
  * Record a sterilization cycle. Auto-updates instrument status and cycle count.
  */
 export async function POST(req: Request) {
-  const { error, hospitalId, user } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId, user } = await requirePermission('inventory:write')
   if (error) return error
 
   const body = await req.json()

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { syncAppointments } from '@/lib/services/google-calendar'
 
 // POST /api/integrations/google-calendar/sync — Trigger sync
 export async function POST(req: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('settings:write')
   if (error || !hospitalId || !session) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/integrations/google-calendar/sync — Get sync status
 export async function GET(req: NextRequest) {
-  const { error, session } = await requireAuthAndRole()
+  const { error, session } = await requirePermission('settings:read')
   if (error || !session) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get loyalty points for a patient or all transactions
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -53,16 +53,12 @@ export async function GET(request: NextRequest) {
 
 // POST - Award or redeem loyalty points
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-    }
-
     const body = await request.json()
     const { patientId, points, type, description, referenceId } = body
 

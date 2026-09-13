@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAuthenticatedHospital } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { randomBytes } from 'crypto'
 
 /**
@@ -9,7 +9,7 @@ import { randomBytes } from 'crypto'
  */
 export async function POST(req: NextRequest) {
   try {
-    const { error, user, hospitalId } = await getAuthenticatedHospital()
+    const { error, user, hospitalId } = await requirePermission('billing:write')
     if (error || !user || !hospitalId) {
       return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

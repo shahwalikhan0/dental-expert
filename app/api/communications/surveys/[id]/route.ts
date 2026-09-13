@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -12,7 +12,7 @@ const updateSurveySchema = z.object({
 
 // GET /api/communications/surveys/[id] - Get survey by ID
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // PUT /api/communications/surveys/[id] - Update survey
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -71,10 +71,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params
-
-    if (!['ADMIN', 'DOCTOR'].includes(session?.user?.role || '')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Verify survey belongs to this hospital
     const existing = await prisma.survey.findFirst({
@@ -110,7 +106,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // DELETE /api/communications/surveys/[id] - Delete survey
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -118,10 +114,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params
-
-    if (session?.user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Verify survey belongs to this hospital
     const existing = await prisma.survey.findFirst({

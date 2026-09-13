@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // POST - Enroll patient in membership plan
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Not authorized to enroll patients' }, { status: 403 })
-    }
-
     const body = await request.json()
     const { patientId, planId, autoRenew } = body
 
@@ -76,7 +72,7 @@ export async function POST(request: NextRequest) {
 
 // GET - List memberships with filters
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

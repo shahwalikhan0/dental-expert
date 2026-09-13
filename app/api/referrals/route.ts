@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 function generateReferralCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -13,7 +13,7 @@ function generateReferralCode(): string {
 
 // GET - List referrals
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -84,16 +84,12 @@ export async function GET(request: NextRequest) {
 
 // POST - Create referral
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-    }
-
     const body = await request.json()
     const { referrerPatientId, referredName, referredPhone, rewardType, rewardValue } = body
 

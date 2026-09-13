@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get staff member's shifts
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -34,17 +34,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update staff member's shifts (replace all)
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can update shifts
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
     const { shifts } = body

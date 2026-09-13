@@ -6,10 +6,40 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-  getAuthenticatedHospital: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+    getAuthenticatedHospital: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 vi.mock('@/lib/payment-gateways', () => ({
   getGateway: vi.fn(),
@@ -20,7 +50,7 @@ vi.mock('@/lib/payment-gateways', () => ({
 import { GET as paymentsGET } from '@/app/api/payments/route'
 import { POST as createOrderPOST } from '@/app/api/payments/create-order/route'
 
-import { requireAuthAndRole, getAuthenticatedHospital } from '@/lib/api-helpers'
+import { requireAuthAndRole, getAuthenticatedHospital, requirePermission } from '@/lib/api-helpers'
 import { getGateway } from '@/lib/payment-gateways'
 import { prisma } from '@/lib/prisma'
 
@@ -42,6 +72,7 @@ function mockHospitalAuth(overrides: Record<string, unknown> = {}) {
     hospitalId: 'h1',
   }
   vi.mocked(getAuthenticatedHospital).mockResolvedValue({ ...defaults, ...overrides } as any)
+  vi.mocked(requirePermission).mockResolvedValue({ ...defaults, ...overrides } as any)
 }
 
 function mockAuthError() {
@@ -51,9 +82,11 @@ function mockAuthError() {
 }
 
 function mockHospitalAuthError() {
-  vi.mocked(getAuthenticatedHospital).mockResolvedValue({
+  const unauthorized = {
     error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-  } as any)
+  }
+  vi.mocked(getAuthenticatedHospital).mockResolvedValue(unauthorized as any)
+  vi.mocked(requirePermission).mockResolvedValue(unauthorized as any)
 }
 
 function makeReq(path: string, method = 'GET', body?: any): NextRequest {

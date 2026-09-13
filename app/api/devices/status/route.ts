@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 /**
  * GET /api/devices/status — Get all devices and their statuses
  */
 export async function GET(request: NextRequest) {
   try {
-    const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+    const { error, hospitalId } = await requirePermission('settings:read')
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+    const { error, hospitalId } = await requirePermission('settings:write')
     if (error) return error
 
     const body = await request.json()
@@ -117,7 +117,7 @@ export async function PUT(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+    const { error, hospitalId } = await requirePermission('settings:write')
     if (error) return error
 
     const { searchParams } = new URL(request.url)

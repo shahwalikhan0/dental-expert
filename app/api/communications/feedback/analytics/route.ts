@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -9,7 +9,7 @@ import { prisma } from '@/lib/prisma'
  * Query params: ?period=7d|30d|90d|all
  */
 export async function GET(req: Request) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('communications:read')
   if (error) return error
 
   const { searchParams } = new URL(req.url)

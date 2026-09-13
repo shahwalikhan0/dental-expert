@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { templateService } from '@/lib/services/template.service'
 import { z } from 'zod'
 
@@ -14,7 +14,7 @@ const updateTemplateSchema = z.object({
 
 // GET /api/communications/templates/[id] - Get template by ID
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // PUT /api/communications/templates/[id] - Update template
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -49,10 +49,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params
-
-    if (!['ADMIN', 'DOCTOR'].includes(session?.user?.role || '')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     const body = await req.json()
     const data = updateTemplateSchema.parse(body)
@@ -90,7 +86,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // DELETE /api/communications/templates/[id] - Delete template
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('communications:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -98,10 +94,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params
-
-    if (session?.user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     await templateService.deleteTemplate(id, hospitalId)
 

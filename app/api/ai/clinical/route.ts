@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
 import { getModelByTier } from '@/lib/ai/models'
@@ -35,7 +35,7 @@ function safeParseJSON(raw: string): Record<string, unknown> | null {
 // Router
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('clinical:read')
   if (error) return error
 
   let body: Record<string, unknown>
@@ -206,7 +206,7 @@ async function costEstimate(hospitalId: string, body: Record<string, unknown>) {
         {
           role: 'system',
           content:
-            'Generate a dental treatment cost breakdown. Include base costs, materials estimate, and GST at 12%.\n\nOutput valid JSON ONLY:\n{"lineItems":[{"description":"...","quantity":1,"unitCost":0,"total":0}],"subtotal":0,"gst":0,"grandTotal":0,"notes":"..."}',
+            'Generate a dental treatment cost breakdown. Include base costs and a materials estimate. Do not add tax: the clinic applies its own rate when the invoice is raised.\n\nOutput valid JSON ONLY:\n{"lineItems":[{"description":"...","quantity":1,"unitCost":0,"total":0}],"subtotal":0,"grandTotal":0,"notes":"..."}',
         },
         {
           role: 'user',
@@ -226,7 +226,6 @@ async function costEstimate(hospitalId: string, body: Record<string, unknown>) {
     const data = safeParseJSON(response.content) ?? {
       lineItems: [],
       subtotal: 0,
-      gst: 0,
       grandTotal: 0,
     }
     return NextResponse.json({ success: true, data })

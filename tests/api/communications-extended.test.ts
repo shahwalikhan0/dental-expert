@@ -6,9 +6,39 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 const { mockTemplateService } = vi.hoisted(() => ({
   mockTemplateService: {
@@ -152,13 +182,13 @@ describe('PUT /api/communications/templates/[id]', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 401 for non-ADMIN/DOCTOR roles', async () => {
-    mockAuth({ session: { user: { id: 'u1', role: 'STAFF' } } })
+  it('returns 403 without communications:write', async () => {
+    mockAuth({ session: { user: { id: 'u1', role: 'DOCTOR' } } })
     const res = await templateDetailPUT(
       makeReq('/api/communications/templates/t1', 'PUT', { name: 'X' }),
       makeParams('t1') as any
     )
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(403)
   })
 
   it('validates template content before update', async () => {
@@ -220,13 +250,13 @@ describe('DELETE /api/communications/templates/[id]', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 401 for non-ADMIN roles', async () => {
+  it('returns 403 without communications:write', async () => {
     mockAuth({ session: { user: { id: 'u1', role: 'DOCTOR' } } })
     const res = await templateDetailDELETE(
       makeReq('/api/communications/templates/t1', 'DELETE'),
       makeParams('t1') as any
     )
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(403)
   })
 
   it('deletes template successfully', async () => {
@@ -360,8 +390,8 @@ describe('POST /api/communications/surveys', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 401 for non-ADMIN/DOCTOR roles', async () => {
-    mockAuth({ session: { user: { id: 'u1', role: 'STAFF' } } })
+  it('returns 403 without communications:write', async () => {
+    mockAuth({ session: { user: { id: 'u1', role: 'DOCTOR' } } })
     const res = await surveysPOST(
       makeReq('/api/communications/surveys', 'POST', {
         title: 'Test',
@@ -369,7 +399,7 @@ describe('POST /api/communications/surveys', () => {
         questions: [{ question: 'Q1', type: 'rating' }],
       })
     )
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(403)
   })
 
   it('creates survey with questions', async () => {

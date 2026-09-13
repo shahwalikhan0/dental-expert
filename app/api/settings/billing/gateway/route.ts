@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { encrypt, decrypt } from '@/lib/encryption'
 
 /**
@@ -8,7 +8,7 @@ import { encrypt, decrypt } from '@/lib/encryption'
  * Secrets are masked in response.
  */
 export async function GET() {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('billing:config')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -46,7 +46,7 @@ export async function GET() {
  * PUT: Create or update payment gateway configuration.
  */
 export async function PUT(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('billing:config')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

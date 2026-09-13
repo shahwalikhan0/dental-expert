@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Single plan with enrolled patients
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('masters:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -40,16 +40,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update plan
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Only admins can update plans' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -83,16 +79,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Only admins can delete plans' }, { status: 403 })
-    }
-
     const { id } = await params
 
     const plan = await prisma.membershipPlan.findUnique({

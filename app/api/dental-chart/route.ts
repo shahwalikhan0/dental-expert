@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get dental chart entries for a patient
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('clinical:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -92,21 +92,13 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new dental chart entry
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('clinical:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'DOCTOR'].includes(session?.user?.role || '')) {
-      return NextResponse.json(
-        { error: "You don't have permission to update dental charts" },
-        { status: 403 }
-      )
-    }
-
     const body = await request.json()
     const {
       patientId,

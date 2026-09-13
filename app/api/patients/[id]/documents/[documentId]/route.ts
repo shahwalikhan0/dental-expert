@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { getStorage, StorageNotFoundError, toStorageKey } from '@/lib/storage'
 
@@ -8,7 +8,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -80,7 +80,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -141,7 +141,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

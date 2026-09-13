@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 /**
  * POST /api/devices/register — Register a new IoT device
  */
 export async function POST(request: NextRequest) {
   try {
-    const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+    const { error, user, hospitalId } = await requirePermission('settings:write')
     if (error) return error
 
     const body = await request.json()

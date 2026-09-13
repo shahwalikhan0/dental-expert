@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, subMonths } from 'date-fns'
 
@@ -21,7 +21,7 @@ function convertBigIntToNumber(obj: any): any {
 
 // GET /api/dashboard/stats - Get dashboard statistics
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('reports:operational')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -157,27 +157,27 @@ export async function GET(req: NextRequest) {
         // Last 7 days revenue (daily breakdown)
         prisma.$queryRaw`
         SELECT
-          DATE(createdAt) as date,
-          CAST(COALESCE(SUM(amount), 0) AS DECIMAL(10,2)) as revenue
-        FROM \`Payment\`
-        WHERE createdAt >= ${last7DaysStart}
+          DATE("createdAt") as "date",
+          COALESCE(SUM(amount), 0)::numeric(10,2) as "revenue"
+        FROM "Payment"
+        WHERE "createdAt" >= ${last7DaysStart}
         AND status = 'COMPLETED'
-        AND hospitalId = ${hospitalId}
-        GROUP BY DATE(createdAt)
-        ORDER BY date ASC
+        AND "hospitalId" = ${hospitalId}
+        GROUP BY DATE("createdAt")
+        ORDER BY "date" ASC
       `,
 
         // Last 6 months revenue (monthly breakdown)
         prisma.$queryRaw`
         SELECT
-          DATE_FORMAT(createdAt, '%Y-%m') as month,
-          CAST(COALESCE(SUM(amount), 0) AS DECIMAL(10,2)) as revenue
-        FROM \`Payment\`
-        WHERE createdAt >= ${last6MonthsStart}
+          to_char("createdAt", 'YYYY-MM') as "month",
+          COALESCE(SUM(amount), 0)::numeric(10,2) as "revenue"
+        FROM "Payment"
+        WHERE "createdAt" >= ${last6MonthsStart}
         AND status = 'COMPLETED'
-        AND hospitalId = ${hospitalId}
-        GROUP BY DATE_FORMAT(createdAt, '%Y-%m')
-        ORDER BY month ASC
+        AND "hospitalId" = ${hospitalId}
+        GROUP BY to_char("createdAt", 'YYYY-MM')
+        ORDER BY "month" ASC
       `,
 
         // Appointments by status
@@ -199,15 +199,15 @@ export async function GET(req: NextRequest) {
         prisma.$queryRaw`
         SELECT
           p.name,
-          CAST(COUNT(*) AS UNSIGNED) as count,
-          CAST(COALESCE(SUM(t.cost), 0) AS DECIMAL(10,2)) as revenue
-        FROM \`Treatment\` t
-        JOIN \`Procedure\` p ON t.procedureId = p.id
-        WHERE t.createdAt >= ${monthStart}
-        AND t.createdAt <= ${monthEnd}
-        AND t.hospitalId = ${hospitalId}
+          COUNT(*)::bigint as "count",
+          COALESCE(SUM(t.cost), 0)::numeric(10,2) as "revenue"
+        FROM "Treatment" t
+        JOIN "Procedure" p ON t."procedureId" = p.id
+        WHERE t."createdAt" >= ${monthStart}
+        AND t."createdAt" <= ${monthEnd}
+        AND t."hospitalId" = ${hospitalId}
         GROUP BY p.id, p.name
-        ORDER BY count DESC
+        ORDER BY "count" DESC
         LIMIT 5
       `,
 
@@ -245,15 +245,15 @@ export async function GET(req: NextRequest) {
         SELECT
           id,
           name,
-          CAST(currentStock AS SIGNED) as currentStock,
-          CAST(minimumStock AS SIGNED) as minimumStock,
+          "currentStock",
+          "minimumStock",
           unit
-        FROM \`InventoryItem\`
-        WHERE currentStock <= minimumStock
-        AND minimumStock > 0
-        AND isActive = true
-        AND hospitalId = ${hospitalId}
-        ORDER BY (minimumStock - currentStock) DESC
+        FROM "InventoryItem"
+        WHERE "currentStock" <= "minimumStock"
+        AND "minimumStock" > 0
+        AND "isActive" = true
+        AND "hospitalId" = ${hospitalId}
+        ORDER BY ("minimumStock" - "currentStock") DESC
         LIMIT 10
       `,
       ])

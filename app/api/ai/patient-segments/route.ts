@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
 import { getModelByTier } from '@/lib/ai/models'
 
@@ -10,7 +10,7 @@ import { getModelByTier } from '@/lib/ai/models'
  */
 export async function GET(req: Request) {
   try {
-    const { session, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+    const { session, hospitalId } = await requirePermission('communications:read')
     if (!hospitalId) {
       return NextResponse.json({ error: 'Hospital not found' }, { status: 401 })
     }

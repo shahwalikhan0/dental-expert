@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
@@ -26,6 +26,33 @@ function LoginForm() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+
+  /**
+   * Optional clinic branding via `?clinic=<slug>`.
+   *
+   * Cosmetic only. The clinic a session belongs to is resolved from the email
+   * address, never from this parameter — so a wrong, missing or hand-edited
+   * slug changes nothing except which name is printed above the form. Failures
+   * are swallowed on purpose: branding must never be able to block a login.
+   */
+  const clinicSlug = searchParams.get('clinic')
+  const [clinic, setClinic] = useState<{ name: string; logo?: string | null } | null>(null)
+
+  useEffect(() => {
+    if (!clinicSlug) return
+    let cancelled = false
+    fetch(`/api/public/${encodeURIComponent(clinicSlug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.name) setClinic({ name: data.name, logo: data.logo })
+      })
+      .catch(() => {
+        /* branding is optional; an unreachable lookup just shows the default */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clinicSlug])
 
   const {
     register,
@@ -69,13 +96,25 @@ function LoginForm() {
   return (
     <Card className="shadow-lg">
       <CardHeader className="space-y-1 text-center">
-        <div className="flex justify-center mb-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-bold">
-            D
-          </div>
+        <div className="mb-4 flex justify-center">
+          {clinic?.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={clinic.logo}
+              alt=""
+              className="h-12 w-12 rounded-xl object-cover"
+              onError={() => setClinic((c) => (c ? { ...c, logo: null } : c))}
+            />
+          ) : (
+            <div className="bg-primary text-primary-foreground flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold">
+              {clinic?.name?.trim()?.[0]?.toUpperCase() ?? 'D'}
+            </div>
+          )}
         </div>
         <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-        <CardDescription>Sign in to your DentalERP account</CardDescription>
+        <CardDescription>
+          {clinic ? `Sign in to ${clinic.name}` : 'Sign in to your account'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

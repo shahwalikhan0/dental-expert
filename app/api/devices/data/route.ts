@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 /**
  * POST /api/devices/data — Receive sensor data from a device
  * Also accepts device API key via Authorization header for machine-to-machine.
  */
+/**
+ * Telemetry ingest.
+ *
+ * This handler had no authentication and no tenant scoping: any caller could
+ * post readings for any deviceId in any clinic and flip that device's status.
+ * It is now gated on a staff capability and scoped to the caller's hospital,
+ * which closes the hole but means a device cannot post to it directly.
+ *
+ * Giving devices their own credential is the real fix — see CHANGES.md. Until
+ * that exists, refusing anonymous writes is the safer default.
+ */
 export async function POST(request: NextRequest) {
+  const { error, hospitalId } = await requirePermission('settings:write')
+  if (error || !hospitalId) {
+    return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const body = await request.json()
     const { deviceId, data, eventType } = body
@@ -15,9 +31,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'deviceId and data are required' }, { status: 400 })
     }
 
-    // Verify device exists
-    const device = await prisma.device.findUnique({
-      where: { id: deviceId },
+    // Scoped to the caller's hospital: findUnique on the id alone would let one
+    // clinic write to another clinic's device.
+    const device = await prisma.device.findFirst({
+      where: { id: deviceId, hospitalId },
     })
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
@@ -53,7 +70,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+    const { error, hospitalId } = await requirePermission('settings:read')
     if (error) return error
 
     const { searchParams } = new URL(request.url)

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get single payment details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -51,20 +51,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update payment (mainly for notes or processing refunds)
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to update payments" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -165,20 +157,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:void')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to delete payments" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
 
     // Check if payment exists

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { getModelForSkill } from '@/lib/ai/models'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
 import { getSkill } from '@/lib/ai/skills'
@@ -10,7 +10,7 @@ import { getSkill } from '@/lib/ai/skills'
  */
 export async function GET(request: NextRequest) {
   try {
-    const { error, user, hospitalId } = await requireAuthAndRole(['ADMIN'])
+    const { error, user, hospitalId } = await requirePermission('reports:financial')
     if (error) return error
 
     const skill = getSkill('dynamic-pricing')
@@ -114,12 +114,12 @@ ${Object.entries(doctorApptCount)
 PROCEDURES:
 ${procedures
   .slice(0, 20)
-  .map((p) => `  ${p.name} (${p.category || 'General'}) — ₹${p.basePrice}`)
+  .map((p) => `  ${p.name} (${p.category || 'General'}) — Rs ${p.basePrice}`)
   .join('\n')}
 
 REVENUE (Last 30 days):
 - Total invoices: ${recentInvoices.length}
-- Total revenue: ₹${recentInvoices.reduce((s, inv) => s + Number(inv.totalAmount), 0).toLocaleString()}
+- Total revenue: Rs ${recentInvoices.reduce((s, inv) => s + Number(inv.totalAmount), 0).toLocaleString()}
 - Working hours: ${hospital.workingHours || '09:00-18:00, Mon-Sat'}
 `
 

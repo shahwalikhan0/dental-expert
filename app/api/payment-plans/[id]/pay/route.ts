@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 
 // POST /api/payment-plans/[id]/pay — Record payment for an installment
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    if (!['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await req.json()
     const { scheduleId, amount, paymentMethod = 'CASH', transactionId, notes } = body
@@ -144,7 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
 
     return NextResponse.json({
-      message: `Payment of ₹${payAmount.toLocaleString('en-IN')} recorded`,
+      message: `Payment of Rs ${payAmount.toLocaleString('en-PK')} recorded`,
       payment: result.payment,
       remainingInstallments: result.remainingInstallments,
     })

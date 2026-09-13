@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 // GET — list prescriptions
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('clinical:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
 
 // POST — create prescription
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId, session } = await requirePermission('clinical:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

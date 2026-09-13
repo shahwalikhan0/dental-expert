@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
+import { roleBadgeVariant, roleLabel } from '@/lib/rbac'
 
 interface UserMenuProps {
   user: {
@@ -21,14 +22,6 @@ interface UserMenuProps {
     email: string
     role: string
   }
-}
-
-const roleColors: Record<string, string> = {
-  ADMIN: 'destructive',
-  DOCTOR: 'default',
-  RECEPTIONIST: 'secondary',
-  ACCOUNTANT: 'outline',
-  LAB_TECH: 'secondary',
 }
 
 export function UserMenu({ user }: UserMenuProps) {
@@ -57,7 +50,9 @@ export function UserMenu({ user }: UserMenuProps) {
             <p className="text-sm font-medium leading-none">{user.name}</p>
             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
             <Badge
-              variant={roleColors[user.role] as 'default' | 'secondary' | 'destructive' | 'outline'}
+              variant={
+                roleBadgeVariant(user.role) as 'default' | 'secondary' | 'destructive' | 'outline'
+              }
               className="w-fit text-xs"
             >
               {user.role}

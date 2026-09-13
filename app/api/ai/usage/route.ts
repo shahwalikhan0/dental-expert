@@ -7,11 +7,11 @@
  */
 
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('ai:use')
   if (error) return error
 
   const now = new Date()
@@ -73,13 +73,13 @@ export async function GET() {
       executions: totalExecs,
       insights: totalInsights,
       tokens: costAgg._sum.tokensUsed ?? 0,
-      costINR: Number(costAgg._sum.cost ?? 0),
+      cost: Number(costAgg._sum.cost ?? 0),
     },
     thisMonth: {
       conversations: monthConvos,
       executions: monthExecs,
       tokens: monthCostAgg._sum.tokensUsed ?? 0,
-      costINR: Number(monthCostAgg._sum.cost ?? 0),
+      cost: Number(monthCostAgg._sum.cost ?? 0),
     },
     skillBreakdown,
   })

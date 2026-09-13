@@ -16,6 +16,8 @@ interface DashboardShellProps {
     name: string
     email: string
     role: string
+    /** Optional second role; the menu is the union. See lib/rbac.ts. */
+    clinicalRole?: string | null
   }
   hospital?: {
     name: string
@@ -33,6 +35,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
           <aside className="hidden md:flex">
             <Sidebar
               role={user.role}
+              clinicalRole={user.clinicalRole}
               hospitalName={hospital?.name}
               hospitalLogo={hospital?.logo}
               plan={hospital?.plan}
@@ -42,6 +45,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
           {/* Mobile sidebar overlay */}
           <MobileSidebar
             role={user.role}
+            clinicalRole={user.clinicalRole}
             hospitalName={hospital?.name}
             hospitalLogo={hospital?.logo}
             plan={hospital?.plan}

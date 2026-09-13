@@ -41,6 +41,7 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id
         token.role = user.role
+        token.clinicalRole = user.clinicalRole
         token.staffId = user.staffId
         token.hospitalId = user.hospitalId
         token.isHospitalAdmin = user.isHospitalAdmin
@@ -51,6 +52,7 @@ export const authConfig: NextAuthConfig = {
       if (token) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        session.user.clinicalRole = token.clinicalRole as string | undefined
         session.user.staffId = token.staffId as string | undefined
         session.user.hospitalId = token.hospitalId as string
         session.user.isHospitalAdmin = token.isHospitalAdmin as boolean

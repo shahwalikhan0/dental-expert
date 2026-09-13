@@ -12,14 +12,16 @@ import { useSidebar } from './sidebar-context'
 
 interface SidebarProps {
   role: string
+  /** Optional second role; the menu is the union. See lib/rbac.ts. */
+  clinicalRole?: string | null
   hospitalName?: string
   hospitalLogo?: string | null
   plan?: string
 }
 
-export function Sidebar({ role, hospitalName, hospitalLogo, plan }: SidebarProps) {
+export function Sidebar({ role, clinicalRole, hospitalName, hospitalLogo, plan }: SidebarProps) {
   const pathname = usePathname()
-  const navigation = getNavigationForRole(role)
+  const navigation = getNavigationForRole(role, clinicalRole)
   const { isCollapsed, toggleSidebar } = useSidebar()
 
   return (

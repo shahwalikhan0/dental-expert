@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { smsService } from '@/lib/services/sms.service'
 import { z } from 'zod'
 
@@ -19,7 +19,7 @@ const bulkSMSSchema = z.object({
 
 // POST /api/communications/sms/bulk - Send bulk SMS
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('communications:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

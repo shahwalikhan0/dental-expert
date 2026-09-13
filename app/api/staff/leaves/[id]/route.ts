@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // GET - Get single leave request details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:hr')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PATCH - Update leave request (approve/reject/cancel)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:hr')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -72,12 +72,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Only admin can approve/reject, staff can only cancel their own
     if (status === 'APPROVED' || status === 'REJECTED') {
-      if (session.user.role !== 'ADMIN') {
-        return NextResponse.json(
-          { error: 'Only admin can approve or reject leaves' },
-          { status: 403 }
-        )
-      }
     }
 
     const updateData: any = {}
@@ -153,7 +147,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:hr')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

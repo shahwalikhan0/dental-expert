@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { buildContext, serializeContext } from '@/lib/ai/context-builder'
 import { complete, extractJSON } from '@/lib/ai/openrouter'
@@ -39,7 +39,7 @@ Keep it concise and relevant.`
 }
 
 export async function GET(req: NextRequest) {
-  const { error, user, hospitalId } = await requireAuthAndRole()
+  const { error, user, hospitalId } = await requirePermission('ai:use')
   if (error || !user || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

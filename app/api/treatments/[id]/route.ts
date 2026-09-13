@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
+import { can } from '@/lib/rbac'
 
 // GET - Get single treatment with all details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('clinical:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -87,20 +88,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update treatment
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('clinical:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'DOCTOR'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to update treatments" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -113,10 +106,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
     }
 
-    // Prevent updates to completed or cancelled treatments (except by admin)
+    // Prevent updates to completed or cancelled treatments. This is a record
+    // integrity rule rather than an access rule, so it is not expressed as the
+    // handler's requirePermission — but the privilege that overrides it is the
+    // same one that allows destroying a clinical record, so it reads from rbac
+    // rather than naming a role here.
     if (
       (existingTreatment.status === 'COMPLETED' || existingTreatment.status === 'CANCELLED') &&
-      session.user.role !== 'ADMIN'
+      !can(session.user.role, 'clinical:delete')
     ) {
       return NextResponse.json(
         { error: 'Cannot modify completed or cancelled treatments' },
@@ -196,20 +193,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('clinical:delete')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can delete treatments
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Only administrators can delete treatments' },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
 
     // Check if treatment exists

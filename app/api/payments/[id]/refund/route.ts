@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 // POST - Process refund for a payment
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:refund')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to process refunds" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 
 interface SearchResult {
   id: string
@@ -10,7 +10,7 @@ interface SearchResult {
 }
 
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('patients:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -151,13 +151,13 @@ export async function GET(req: NextRequest) {
       appointments: appointments.map((a): SearchResult => ({
         id: a.id,
         label: `${a.appointmentNo} — ${a.patient.firstName} ${a.patient.lastName}`,
-        sublabel: `${new Date(a.scheduledDate).toLocaleDateString('en-IN')} ${a.scheduledTime} · Dr. ${a.doctor.firstName} ${a.doctor.lastName} · ${a.status}`,
+        sublabel: `${new Date(a.scheduledDate).toLocaleDateString('en-PK')} ${a.scheduledTime} · Dr. ${a.doctor.firstName} ${a.doctor.lastName} · ${a.status}`,
         href: `/appointments/${a.id}`,
       })),
       invoices: invoices.map((inv): SearchResult => ({
         id: inv.id,
         label: `${inv.invoiceNo} — ${inv.patient.firstName} ${inv.patient.lastName}`,
-        sublabel: `₹${Number(inv.totalAmount).toLocaleString('en-IN')} · ${inv.status}`,
+        sublabel: `Rs ${Number(inv.totalAmount).toLocaleString('en-PK')} · ${inv.status}`,
         href: `/billing/invoices/${inv.id}`,
       })),
       staff: staff.map((s): SearchResult => ({

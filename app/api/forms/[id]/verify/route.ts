@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 
@@ -10,7 +10,7 @@ import crypto from 'crypto'
  * returns verification status with audit trail info.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN', 'DOCTOR'])
+  const { error, hospitalId } = await requirePermission('patients:read')
   if (error) return error
 
   const { id } = await params
