@@ -37,12 +37,7 @@ import {
   Calculator,
   FileText,
 } from 'lucide-react'
-import {
-  formatCurrency,
-  calculateInvoiceTotals,
-  gstConfig,
-  paymentTermsOptions,
-} from '@/lib/billing-utils'
+import { formatCurrency, calculateInvoiceTotals, paymentTermsOptions } from '@/lib/billing-utils'
 
 interface Patient {
   id: string
@@ -114,11 +109,22 @@ export default function NewInvoicePage() {
     discountAmount: 0,
     taxableAmount: 0,
     nonTaxableAmount: 0,
-    cgstAmount: 0,
-    sgstAmount: 0,
-    totalTax: 0,
+    taxAmount: 0,
     totalAmount: 0,
   })
+
+  // The clinic's tax rate, so this preview matches what the server will charge.
+  // Defaults to no tax, which is the configured position for this clinic.
+  const [tax, setTax] = useState({ enabled: false, rate: 0, label: 'Sales Tax' })
+
+  useEffect(() => {
+    fetch('/api/billing/tax-settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setTax(data))
+      .catch(() => {
+        /* preview only; the server still applies the correct rate */
+      })
+  }, [])
 
   // Fetch patients for search
   useEffect(() => {
@@ -196,10 +202,11 @@ export default function NewInvoicePage() {
         taxable: item.taxable,
       })),
       discountType,
-      discountValue
+      discountValue,
+      tax.rate
     )
     setTotals(calculated)
-  }, [items, discountType, discountValue])
+  }, [items, discountType, discountValue, tax.rate])
 
   const selectPatient = (patient: Patient) => {
     setSelectedPatient(patient)
@@ -594,7 +601,7 @@ export default function NewInvoicePage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="FIXED">₹ Fixed</SelectItem>
+                      <SelectItem value="FIXED">Rs Fixed</SelectItem>
                       <SelectItem value="PERCENTAGE">% Percent</SelectItem>
                     </SelectContent>
                   </Select>
@@ -639,14 +646,17 @@ export default function NewInvoicePage() {
                     <span>-{formatCurrency(totals.discountAmount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span>CGST ({gstConfig.cgstRate}%)</span>
-                  <span>{formatCurrency(totals.cgstAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>SGST ({gstConfig.sgstRate}%)</span>
-                  <span>{formatCurrency(totals.sgstAmount)}</span>
-                </div>
+                {/* No tax line at all when the clinic is exempt — printing
+                    "Sales Tax: Rs 0.00" on every invoice invites the question
+                    of why it is there. */}
+                {tax.rate > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>
+                      {tax.label} ({tax.rate}%)
+                    </span>
+                    <span>{formatCurrency(totals.taxAmount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <span>Total</span>
                   <span className="text-primary">{formatCurrency(totals.totalAmount)}</span>

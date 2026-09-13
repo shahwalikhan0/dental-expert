@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole, checkStaffLimit } from '@/lib/api-helpers'
+import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
+import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
 import bcrypt from 'bcryptjs'
 
 // GET - List staff members
 export async function GET(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               role: true,
+              clinicalRole: true,
               isActive: true,
               email: true,
             },
@@ -104,17 +106,12 @@ async function generateEmployeeId(hospitalId: string): Promise<string> {
 
 // POST - Create new staff member
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can create staff
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     // Check staff limit
     const limitCheck = await checkStaffLimit(hospitalId)
     if (!limitCheck.allowed) {
@@ -133,6 +130,7 @@ export async function POST(request: NextRequest) {
       email,
       phone,
       role,
+      clinicalRole,
       password,
       dateOfBirth,
       gender,
@@ -142,7 +140,7 @@ export async function POST(request: NextRequest) {
       state,
       pincode,
       aadharNumber,
-      panNumber,
+      nationalTaxNo,
       qualification,
       specialization,
       licenseNumber,
@@ -160,6 +158,24 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: firstName, lastName, email, phone, role, password' },
         { status: 400 }
       )
+    }
+
+    // A second role is clinical only, and must differ from the primary one —
+    // see SECONDARY_ROLES in lib/rbac.ts for why this is not a general
+    // "grant extra permissions" field.
+    if (clinicalRole) {
+      if (!isAssignableSecondaryRole(clinicalRole)) {
+        return NextResponse.json(
+          { error: `clinicalRole must be one of: ${SECONDARY_ROLES.join(', ')}` },
+          { status: 400 }
+        )
+      }
+      if (clinicalRole === role) {
+        return NextResponse.json(
+          { error: 'clinicalRole must differ from the primary role' },
+          { status: 400 }
+        )
+      }
     }
 
     // Check if email already exists
@@ -187,6 +203,7 @@ export async function POST(request: NextRequest) {
           name: `${firstName} ${lastName}`,
           phone,
           role,
+          clinicalRole: clinicalRole || null,
           isActive: true,
           hospitalId,
         },
@@ -210,7 +227,7 @@ export async function POST(request: NextRequest) {
           state,
           pincode,
           aadharNumber,
-          panNumber,
+          nationalTaxNo,
           qualification,
           specialization,
           licenseNumber,
@@ -227,6 +244,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               role: true,
+              clinicalRole: true,
               isActive: true,
               email: true,
             },

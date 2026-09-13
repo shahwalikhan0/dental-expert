@@ -87,8 +87,8 @@ export default function ClinicSettingsPage() {
     state: 'Tamil Nadu',
     pincode: '',
     registrationNo: '',
-    gstNumber: '',
-    panNumber: '',
+    taxRegistrationNo: '',
+    nationalTaxNo: '',
     workingHours: '',
     bankName: '',
     bankAccountNo: '',
@@ -123,8 +123,8 @@ export default function ClinicSettingsPage() {
           state: result.data.state || 'Tamil Nadu',
           pincode: result.data.pincode || '',
           registrationNo: result.data.registrationNo || '',
-          gstNumber: result.data.gstNumber || '',
-          panNumber: result.data.panNumber || '',
+          taxRegistrationNo: result.data.taxRegistrationNo || '',
+          nationalTaxNo: result.data.nationalTaxNo || '',
           workingHours: result.data.workingHours || '',
           bankName: result.data.bankName || '',
           bankAccountNo: result.data.bankAccountNo || '',
@@ -482,21 +482,21 @@ export default function ClinicSettingsPage() {
               </div>
 
               <div>
-                <Label htmlFor="gstNumber">GST Number</Label>
+                <Label htmlFor="taxRegistrationNo">Sales Tax Registration (STRN)</Label>
                 <Input
-                  id="gstNumber"
-                  value={formData.gstNumber}
-                  onChange={(e) => handleChange('gstNumber', e.target.value)}
+                  id="taxRegistrationNo"
+                  value={formData.taxRegistrationNo}
+                  onChange={(e) => handleChange('taxRegistrationNo', e.target.value)}
                   placeholder="29XXXXX1234X1ZX"
                 />
               </div>
 
               <div>
-                <Label htmlFor="panNumber">PAN Number</Label>
+                <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
                 <Input
-                  id="panNumber"
-                  value={formData.panNumber}
-                  onChange={(e) => handleChange('panNumber', e.target.value)}
+                  id="nationalTaxNo"
+                  value={formData.nationalTaxNo}
+                  onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
                   placeholder="ABCDE1234F"
                 />
               </div>

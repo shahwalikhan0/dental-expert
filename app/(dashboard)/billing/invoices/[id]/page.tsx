@@ -65,7 +65,6 @@ import {
   formatDateTime,
   getDueDays,
   numberToWords,
-  gstConfig,
 } from '@/lib/billing-utils'
 import { PaymentCheckout } from '@/components/billing/payment-checkout'
 
@@ -79,10 +78,8 @@ interface Invoice {
   discountValue: string | number
   discountAmount: string | number
   taxableAmount: string | number
-  cgstRate: string | number
-  cgstAmount: string | number
-  sgstRate: string | number
-  sgstAmount: string | number
+  taxRate: string | number
+  taxAmount: string | number
   totalAmount: string | number
   paidAmount: string | number
   balanceAmount: string | number
@@ -475,14 +472,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         <span>-{formatCurrency(invoice.discountAmount)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">CGST ({invoice.cgstRate}%)</span>
-                      <span>{formatCurrency(invoice.cgstAmount)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">SGST ({invoice.sgstRate}%)</span>
-                      <span>{formatCurrency(invoice.sgstAmount)}</span>
-                    </div>
+                    {/* Reads the rate stamped on this invoice, not the clinic's
+                        current one, so a reprint shows what was actually
+                        charged. No line at all when there was no tax. */}
+                    {Number(invoice.taxRate) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Tax ({invoice.taxRate}%)</span>
+                        <span>{formatCurrency(invoice.taxAmount)}</span>
+                      </div>
+                    )}
                     <Separator />
                     <div className="flex justify-between font-bold text-lg">
                       <span>Total</span>

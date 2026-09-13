@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
-import { calculateInvoiceTotals, gstConfig } from '@/lib/billing-utils'
+import { requirePermission } from '@/lib/api-helpers'
+import { calculateInvoiceTotals } from '@/lib/billing-utils'
 import { DiscountType, InvoiceStatus } from '@prisma/client'
 
 // GET - Get single invoice with full details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -79,20 +79,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update invoice
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to update invoices" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -126,8 +118,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       items,
       discountType,
       discountValue,
-      cgstRate = existingInvoice.cgstRate,
-      sgstRate = existingInvoice.sgstRate,
+      // Defaults to the rate stamped on the invoice when it was raised, so
+      // editing an old invoice does not silently re-tax it at today's rate.
+      taxRate = Number(existingInvoice.taxRate),
       dueDate,
       notes,
       termsAndConditions,
@@ -154,8 +147,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         })),
         (discountType || existingInvoice.discountType) as DiscountType,
         discountValue !== undefined ? discountValue : Number(existingInvoice.discountValue),
-        cgstRate,
-        sgstRate
+        Number(taxRate)
       )
 
       updateData = {
@@ -165,10 +157,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         discountValue: discountValue !== undefined ? discountValue : existingInvoice.discountValue,
         discountAmount: calculatedTotals.discountAmount,
         taxableAmount: calculatedTotals.taxableAmount,
-        cgstRate,
-        cgstAmount: calculatedTotals.cgstAmount,
-        sgstRate,
-        sgstAmount: calculatedTotals.sgstAmount,
+        taxRate,
+        taxAmount: calculatedTotals.taxAmount,
         totalAmount: calculatedTotals.totalAmount,
         balanceAmount: calculatedTotals.totalAmount - Number(existingInvoice.paidAmount),
       }
@@ -265,20 +255,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:void')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to delete invoices" },
-        { status: 403 }
-      )
-    }
-
     const { id } = await params
 
     // Check if invoice exists

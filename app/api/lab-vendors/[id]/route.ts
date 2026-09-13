@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { LabVendorStatus } from '@prisma/client'
 
@@ -14,7 +14,7 @@ function parseStatus(value: unknown): LabVendorStatus | null {
 
 // GET - Fetch single lab vendor
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('lab:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update lab vendor
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('lab:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -73,8 +73,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       city,
       state,
       pincode,
-      gstNumber,
-      panNumber,
+      taxRegistrationNo,
+      nationalTaxNo,
       specializations,
       avgTurnaround,
       rating,
@@ -112,8 +112,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         city: city || null,
         state: state || null,
         pincode: pincode || null,
-        gstNumber: gstNumber || null,
-        panNumber: panNumber || null,
+        taxRegistrationNo: taxRegistrationNo || null,
+        nationalTaxNo: nationalTaxNo || null,
         specializations: specializations || null,
         avgTurnaround: avgTurnaround ?? null,
         rating: rating ?? null,
@@ -139,7 +139,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('lab:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

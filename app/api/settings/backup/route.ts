@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { format } from 'date-fns'
 
 // GET /api/settings/backup - Export database data
 export async function GET(req: NextRequest) {
-  const { error, hospitalId, user } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId, user } = await requirePermission('settings:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
           state: true,
           pincode: true,
           registrationNo: true,
-          gstNumber: true,
-          panNumber: true,
+          taxRegistrationNo: true,
+          nationalTaxNo: true,
           workingHours: true,
           bankName: true,
           bankAccountNo: true,
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings/backup - Get backup statistics
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

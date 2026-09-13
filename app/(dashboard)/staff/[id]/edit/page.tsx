@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ArrowLeft, Loader2, Eye, EyeOff, Clock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -38,6 +39,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     phone: '',
     alternatePhone: '',
     role: '',
+    clinicalRole: '',
     newPassword: '',
 
     // Personal Details
@@ -50,7 +52,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
 
     // Documents
     aadharNumber: '',
-    panNumber: '',
+    nationalTaxNo: '',
 
     // Professional
     qualification: '',
@@ -108,6 +110,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         phone: data.phone || '',
         alternatePhone: data.alternatePhone || '',
         role: data.user.role || '',
+        clinicalRole: data.user.clinicalRole || '',
         newPassword: '',
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString().split('T')[0] : '',
         gender: data.gender || '',
@@ -116,7 +119,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         state: data.state || '',
         pincode: data.pincode || '',
         aadharNumber: data.aadharNumber || '',
-        panNumber: data.panNumber || '',
+        nationalTaxNo: data.nationalTaxNo || '',
         qualification: data.qualification || '',
         specialization: data.specialization || '',
         licenseNumber: data.licenseNumber || '',
@@ -305,13 +308,41 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ADMIN">Admin</SelectItem>
-                    <SelectItem value="DOCTOR">Doctor</SelectItem>
-                    <SelectItem value="RECEPTIONIST">Receptionist</SelectItem>
-                    <SelectItem value="LAB_TECH">Lab Technician</SelectItem>
-                    <SelectItem value="ACCOUNTANT">Accountant</SelectItem>
+                    {ALL_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Optional second role — for the owner who also treats patients.
+                  Capabilities become the union of the two. See lib/rbac.ts. */}
+              <div className="space-y-2">
+                <Label htmlFor="clinicalRole">Also works as (optional)</Label>
+                <Select
+                  value={formData.clinicalRole || 'NONE'}
+                  onValueChange={(value) =>
+                    handleChange('clinicalRole', value === 'NONE' ? '' : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No second role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">No second role</SelectItem>
+                    {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  For someone who holds two jobs — an owner who also treats patients. They get the
+                  permissions of both roles.
+                </p>
               </div>
 
               <Separator />
@@ -464,11 +495,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="panNumber">PAN Number</Label>
+                  <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
                   <Input
-                    id="panNumber"
-                    value={formData.panNumber}
-                    onChange={(e) => handleChange('panNumber', e.target.value)}
+                    id="nationalTaxNo"
+                    value={formData.nationalTaxNo}
+                    onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
                   />
                 </div>
               </div>
@@ -534,7 +565,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
               <Separator />
 
               <div className="space-y-2">
-                <Label htmlFor="salary">Monthly Salary (₹)</Label>
+                <Label htmlFor="salary">Monthly Salary (Rs)</Label>
                 <Input
                   id="salary"
                   type="number"

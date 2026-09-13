@@ -18,6 +18,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
 
 export default function NewStaffPage() {
   const router = useRouter()
@@ -33,6 +34,7 @@ export default function NewStaffPage() {
     phone: '',
     alternatePhone: '',
     role: '',
+    clinicalRole: '',
     password: '',
 
     // Personal Details
@@ -45,7 +47,7 @@ export default function NewStaffPage() {
 
     // Documents
     aadharNumber: '',
-    panNumber: '',
+    nationalTaxNo: '',
 
     // Professional
     qualification: '',
@@ -224,13 +226,41 @@ export default function NewStaffPage() {
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ADMIN">Admin</SelectItem>
-                    <SelectItem value="DOCTOR">Doctor</SelectItem>
-                    <SelectItem value="RECEPTIONIST">Receptionist</SelectItem>
-                    <SelectItem value="LAB_TECH">Lab Technician</SelectItem>
-                    <SelectItem value="ACCOUNTANT">Accountant</SelectItem>
+                    {ALL_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Optional second role — for the owner who also treats patients.
+                  Capabilities become the union of the two. See lib/rbac.ts. */}
+              <div>
+                <Label htmlFor="clinicalRole">Also works as (optional)</Label>
+                <Select
+                  value={formData.clinicalRole || 'NONE'}
+                  onValueChange={(value) =>
+                    handleChange('clinicalRole', value === 'NONE' ? '' : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No second role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">No second role</SelectItem>
+                    {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  For someone who holds two jobs — an owner who also treats patients. They get the
+                  permissions of both roles.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -249,7 +279,7 @@ export default function NewStaffPage() {
                     id="phone"
                     value={formData.phone}
                     onChange={(e) => handleChange('phone', e.target.value)}
-                    placeholder="+91 98765 43210"
+                    placeholder="+92 300 1234567"
                     required
                   />
                 </div>
@@ -259,7 +289,7 @@ export default function NewStaffPage() {
                     id="alternatePhone"
                     value={formData.alternatePhone}
                     onChange={(e) => handleChange('alternatePhone', e.target.value)}
-                    placeholder="+91 98765 43210"
+                    placeholder="+92 300 1234567"
                   />
                 </div>
               </div>
@@ -355,11 +385,11 @@ export default function NewStaffPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="panNumber">PAN Number</Label>
+                  <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
                   <Input
-                    id="panNumber"
-                    value={formData.panNumber}
-                    onChange={(e) => handleChange('panNumber', e.target.value)}
+                    id="nationalTaxNo"
+                    value={formData.nationalTaxNo}
+                    onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
                     placeholder="ABCDE1234F"
                   />
                 </div>
@@ -426,7 +456,7 @@ export default function NewStaffPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="salary">Monthly Salary (₹)</Label>
+                <Label htmlFor="salary">Monthly Salary (Rs)</Label>
                 <Input
                   id="salary"
                   type="number"
@@ -481,7 +511,7 @@ export default function NewStaffPage() {
                   id="emergencyPhone"
                   value={formData.emergencyPhone}
                   onChange={(e) => handleChange('emergencyPhone', e.target.value)}
-                  placeholder="+91 98765 43210"
+                  placeholder="+92 300 1234567"
                 />
               </div>
             </CardContent>

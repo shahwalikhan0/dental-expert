@@ -222,41 +222,66 @@ export const discountTypeConfig: Record<
   },
   FIXED: {
     label: 'Fixed Amount',
-    symbol: '₹',
+    symbol: 'Rs',
   },
 }
 
-// GST Configuration (Indian Tax)
-export const gstConfig = {
-  cgstRate: 9, // Central GST
-  sgstRate: 9, // State GST
-  igstRate: 18, // Integrated GST (for inter-state)
+/**
+ * Sales tax on services.
+ *
+ * Upstream hardcoded India's two-component GST — CGST 9% + SGST 9%, plus an
+ * 18% inter-state IGST — in the calculation *and* in the Invoice columns. This
+ * clinic is in Pakistan, where sales tax on services is a single provincial
+ * levy and dental services are exempt, so the default is no tax at all.
+ *
+ * It stays configurable rather than being removed: `Hospital.taxEnabled`,
+ * `taxRate` and `taxLabel` turn it on without a migration, and the rate that
+ * applied is stamped onto each invoice so reprints stay faithful.
+ */
+export const taxConfig = {
+  /** Off by default — dental services are exempt for this clinic. */
+  rate: 0,
+  /** Printed beside the tax line when there is one. */
+  label: 'Sales Tax',
   defaultTaxable: true,
 }
 
-// Calculate GST breakdown
-export function calculateGST(
+/**
+ * The rate to apply to a new invoice for this clinic.
+ *
+ * Reads the clinic record rather than a constant, so enabling tax is a
+ * settings change. `taxEnabled` is checked separately from the rate: a clinic
+ * that switches tax off should stop charging immediately without having to
+ * zero the rate it will want back later.
+ */
+export function resolveTaxRate(
+  hospital: { taxEnabled?: boolean | null; taxRate?: unknown } | null | undefined
+): number {
+  if (!hospital?.taxEnabled) return 0
+  const rate = Number(hospital.taxRate ?? 0)
+  return Number.isFinite(rate) && rate > 0 ? rate : 0
+}
+
+/**
+ * Tax on an amount.
+ *
+ * A rate of 0 yields a zero tax line, which callers should omit from the
+ * printed document rather than show as "Sales Tax: Rs 0.00".
+ */
+export function calculateTax(
   subtotal: number,
-  cgstRate: number = gstConfig.cgstRate,
-  sgstRate: number = gstConfig.sgstRate
+  taxRate: number = taxConfig.rate
 ): {
   subtotal: number
-  cgstAmount: number
-  sgstAmount: number
-  totalTax: number
+  taxAmount: number
   grandTotal: number
 } {
-  const cgstAmount = (subtotal * cgstRate) / 100
-  const sgstAmount = (subtotal * sgstRate) / 100
-  const totalTax = cgstAmount + sgstAmount
-  const grandTotal = subtotal + totalTax
+  const taxAmount = (subtotal * taxRate) / 100
 
   return {
     subtotal: Math.round(subtotal * 100) / 100,
-    cgstAmount: Math.round(cgstAmount * 100) / 100,
-    sgstAmount: Math.round(sgstAmount * 100) / 100,
-    totalTax: Math.round(totalTax * 100) / 100,
-    grandTotal: Math.round(grandTotal * 100) / 100,
+    taxAmount: Math.round(taxAmount * 100) / 100,
+    grandTotal: Math.round((subtotal + taxAmount) * 100) / 100,
   }
 }
 
@@ -291,16 +316,13 @@ export function calculateInvoiceTotals(
   items: Array<{ quantity: number; unitPrice: number; taxable: boolean }>,
   discountType: DiscountType = 'FIXED',
   discountValue: number = 0,
-  cgstRate: number = gstConfig.cgstRate,
-  sgstRate: number = gstConfig.sgstRate
+  taxRate: number = taxConfig.rate
 ): {
   subtotal: number
   discountAmount: number
   taxableAmount: number
   nonTaxableAmount: number
-  cgstAmount: number
-  sgstAmount: number
-  totalTax: number
+  taxAmount: number
   totalAmount: number
 } {
   // Calculate subtotals
@@ -327,21 +349,17 @@ export function calculateInvoiceTotals(
   const taxableAmount = taxableSubtotal - taxableDiscount
   const nonTaxableAmount = nonTaxableSubtotal - (discountAmount - taxableDiscount)
 
-  // Calculate GST only on taxable amount
-  const cgstAmount = (taxableAmount * cgstRate) / 100
-  const sgstAmount = (taxableAmount * sgstRate) / 100
-  const totalTax = cgstAmount + sgstAmount
+  // Tax applies only to the taxable portion, after its share of the discount.
+  const taxAmount = (taxableAmount * taxRate) / 100
 
-  const totalAmount = taxableAmount + nonTaxableAmount + totalTax
+  const totalAmount = taxableAmount + nonTaxableAmount + taxAmount
 
   return {
     subtotal: Math.round(subtotal * 100) / 100,
     discountAmount: Math.round(discountAmount * 100) / 100,
     taxableAmount: Math.round(taxableAmount * 100) / 100,
     nonTaxableAmount: Math.round(nonTaxableAmount * 100) / 100,
-    cgstAmount: Math.round(cgstAmount * 100) / 100,
-    sgstAmount: Math.round(sgstAmount * 100) / 100,
-    totalTax: Math.round(totalTax * 100) / 100,
+    taxAmount: Math.round(taxAmount * 100) / 100,
     totalAmount: Math.round(totalAmount * 100) / 100,
   }
 }

@@ -40,77 +40,68 @@ vi.mock('@prisma/client', () => ({
   DiscountType: { PERCENTAGE: 'PERCENTAGE', FIXED: 'FIXED' },
 }))
 
+import { formatCurrency, formatDate, formatPhone, validatePakistanPhone } from '@/lib/utils'
 import {
-  formatCurrency,
-  formatDate,
-  formatPhone,
-  validateAadhar,
-  validateIndianPhone,
-  validateGSTIN,
-} from '@/lib/utils'
-import {
-  gstConfig,
-  calculateGST,
   discountTypeConfig,
   formatCurrency as billingFormatCurrency,
   numberToWords,
   formatDateTime as billingFormatDateTime,
 } from '@/lib/billing-utils'
 
-describe('Section 10.1 — Current Locale (India)', () => {
+describe('Section 10.1 — Current Locale (Pakistan)', () => {
   // ─── Currency Display ───────────────────────────────────────────────
 
   describe('Currency Display', () => {
-    it('formatCurrency from utils displays ₹ symbol', () => {
+    it('formatCurrency from utils displays the Rs symbol', () => {
       const result = formatCurrency(500)
-      expect(result).toContain('₹')
+      expect(result).toContain('Rs')
     })
 
-    it('billingFormatCurrency displays ₹ with 2 decimal places', () => {
+    it('billingFormatCurrency displays Rs with 2 decimal places', () => {
       const result = billingFormatCurrency(500)
-      expect(result).toContain('₹')
+      expect(result).toContain('Rs')
       expect(result).toMatch(/500\.00/)
     })
 
-    it('uses Indian number formatting — lakhs (1,00,000 not 100,000)', () => {
+    it('uses western grouping — thousands (100,000 not 1,00,000)', () => {
       const result = formatCurrency(100000)
-      // en-IN formats 100000 as 1,00,000
-      expect(result).toContain('1,00,000')
+      // en-PK formats 100000 as 100,000 — INR's lakh grouping does not apply
+      expect(result).toContain('100,000')
+      expect(result).not.toContain('1,00,000')
     })
 
-    it('uses Indian number formatting — crores', () => {
+    it('uses western grouping — millions', () => {
       const result = formatCurrency(10000000)
-      // en-IN formats 10000000 as 1,00,00,000
-      expect(result).toContain('1,00,00,000')
+      expect(result).toContain('10,000,000')
     })
 
-    it('zero amount renders as ₹0', () => {
+    it('zero amount renders as Rs 0', () => {
       const result = formatCurrency(0)
-      expect(result).toContain('₹')
+      expect(result).toContain('Rs')
       expect(result).toMatch(/0/)
     })
 
-    it('large amounts use crore formatting in billing', () => {
+    it('large amounts group in thousands in billing', () => {
       const result = billingFormatCurrency(25000000)
-      // 2,50,00,000.00
-      expect(result).toContain('2,50,00,000')
+      // 25,000,000.00
+      expect(result).toContain('25,000,000')
     })
 
     it('negative amounts are handled', () => {
       const result = formatCurrency(-1500)
-      expect(result).toContain('₹')
+      expect(result).toContain('Rs')
       expect(result).toContain('1,500')
     })
 
-    it('discountTypeConfig.FIXED.symbol is ₹', () => {
-      expect(discountTypeConfig.FIXED.symbol).toBe('₹')
+    it('discountTypeConfig.FIXED.symbol is Rs', () => {
+      expect(discountTypeConfig.FIXED.symbol).toBe('Rs')
     })
   })
 
   // ─── Date Format ────────────────────────────────────────────────────
 
   describe('Date Format', () => {
-    it('formatDate uses en-IN locale', () => {
+    it('formatDate uses the en-PK locale', () => {
       const result = formatDate(new Date(2026, 2, 8)) // March 8, 2026
       // en-IN with day:2-digit, month:short, year:numeric => "08 Mar 2026"
       expect(result).toMatch(/08/)
@@ -144,91 +135,45 @@ describe('Section 10.1 — Current Locale (India)', () => {
   // ─── Phone Number Format ────────────────────────────────────────────
 
   describe('Phone Number Format', () => {
-    it('formatPhone adds +91 prefix for 10-digit number', () => {
-      const result = formatPhone('9876543210')
-      expect(result).toBe('+91 98765 43210')
+    it('formatPhone adds the +92 prefix for a 10-digit subscriber number', () => {
+      const result = formatPhone('3001234567')
+      expect(result).toBe('+92 300 1234567')
     })
 
-    it('formatPhone handles 12-digit number with 91 prefix', () => {
-      const result = formatPhone('919876543210')
-      expect(result).toBe('+91 98765 43210')
+    it('formatPhone handles a 12-digit number with the 92 prefix', () => {
+      const result = formatPhone('923001234567')
+      expect(result).toBe('+92 300 1234567')
     })
 
-    it('validateIndianPhone accepts valid numbers starting with 6', () => {
-      expect(validateIndianPhone('6123456789')).toBe(true)
+    it('validatePakistanPhone accepts a bare subscriber number', () => {
+      expect(validatePakistanPhone('3123456789')).toBe(true)
     })
 
-    it('validateIndianPhone accepts valid numbers starting with 7', () => {
-      expect(validateIndianPhone('7123456789')).toBe(true)
+    it('validatePakistanPhone accepts the national form with a trunk zero', () => {
+      expect(validatePakistanPhone('03123456789')).toBe(true)
     })
 
-    it('validateIndianPhone accepts valid numbers starting with 8', () => {
-      expect(validateIndianPhone('8123456789')).toBe(true)
+    it('validatePakistanPhone accepts the international form', () => {
+      expect(validatePakistanPhone('923123456789')).toBe(true)
     })
 
-    it('validateIndianPhone accepts valid numbers starting with 9', () => {
-      expect(validateIndianPhone('9123456789')).toBe(true)
+    it('validatePakistanPhone accepts every 3XX mobile prefix', () => {
+      expect(validatePakistanPhone('3451234567')).toBe(true)
     })
 
-    it('validateIndianPhone rejects numbers starting with 0-5', () => {
-      expect(validateIndianPhone('0123456789')).toBe(false)
-      expect(validateIndianPhone('1234567890')).toBe(false)
-      expect(validateIndianPhone('2345678901')).toBe(false)
-      expect(validateIndianPhone('3456789012')).toBe(false)
-      expect(validateIndianPhone('4567890123')).toBe(false)
-      expect(validateIndianPhone('5678901234')).toBe(false)
+    it('validatePakistanPhone rejects subscriber numbers not starting with 3', () => {
+      expect(validatePakistanPhone('1234567890')).toBe(false)
+      expect(validatePakistanPhone('2345678901')).toBe(false)
+      expect(validatePakistanPhone('4567890123')).toBe(false)
+      expect(validatePakistanPhone('5678901234')).toBe(false)
+      // A landline (042 = Lahore) is not a mobile number.
+      expect(validatePakistanPhone('0421234567')).toBe(false)
     })
 
-    it('validateIndianPhone rejects wrong length', () => {
-      expect(validateIndianPhone('98765')).toBe(false)
-      expect(validateIndianPhone('987654321')).toBe(false) // 9 digits
-      expect(validateIndianPhone('98765432101')).toBe(false) // 11 digits
-    })
-  })
-
-  // ─── GST Format ─────────────────────────────────────────────────────
-
-  describe('GST Format', () => {
-    it('gstConfig has CGST 9% and SGST 9%', () => {
-      expect(gstConfig.cgstRate).toBe(9)
-      expect(gstConfig.sgstRate).toBe(9)
-    })
-
-    it('calculateGST(1000) gives 90 CGST + 90 SGST = 180 tax, 1180 total', () => {
-      const result = calculateGST(1000)
-      expect(result.cgstAmount).toBe(90)
-      expect(result.sgstAmount).toBe(90)
-      expect(result.totalTax).toBe(180)
-      expect(result.grandTotal).toBe(1180)
-    })
-
-    it('GST is 18% total (standard Indian goods & services tax)', () => {
-      expect(gstConfig.cgstRate + gstConfig.sgstRate).toBe(18)
-      expect(gstConfig.igstRate).toBe(18)
-    })
-  })
-
-  // ─── Aadhaar Validation ─────────────────────────────────────────────
-
-  describe('Aadhaar Validation', () => {
-    it('validateAadhar accepts 12-digit numbers', () => {
-      expect(validateAadhar('123456789012')).toBe(true)
-    })
-
-    it('rejects shorter numbers', () => {
-      expect(validateAadhar('12345678901')).toBe(false) // 11 digits
-    })
-
-    it('rejects longer numbers', () => {
-      expect(validateAadhar('1234567890123')).toBe(false) // 13 digits
-    })
-
-    it('handles formatted input with spaces', () => {
-      expect(validateAadhar('1234 5678 9012')).toBe(true)
-    })
-
-    it('handles formatted input with dashes', () => {
-      expect(validateAadhar('1234-5678-9012')).toBe(true)
+    it('validatePakistanPhone rejects wrong length', () => {
+      expect(validatePakistanPhone('30012')).toBe(false)
+      expect(validatePakistanPhone('300123456')).toBe(false) // 9 digits
+      expect(validatePakistanPhone('30012345671')).toBe(false) // 11 digits, no trunk zero
     })
   })
 
@@ -258,53 +203,6 @@ describe('Section 10.1 — Current Locale (India)', () => {
 
     it('numberToWords(0) returns "Zero"', () => {
       expect(numberToWords(0)).toBe('Zero')
-    })
-  })
-
-  // ─── GSTIN Validation ──────────────────────────────────────────────
-
-  describe('GSTIN Validation', () => {
-    it('accepts valid GSTIN (27AAPFU0939F1ZV)', () => {
-      expect(validateGSTIN('27AAPFU0939F1ZV')).toBe(true)
-    })
-
-    it('accepts valid GSTIN from different states', () => {
-      // State code 07 = Delhi
-      expect(validateGSTIN('07AAPFU0939F1ZV')).toBe(true)
-      // State code 33 = Tamil Nadu
-      expect(validateGSTIN('33AAPFU0939F1ZV')).toBe(true)
-    })
-
-    it('rejects GSTIN shorter than 15 characters', () => {
-      expect(validateGSTIN('27AAPFU0939F')).toBe(false)
-    })
-
-    it('rejects GSTIN longer than 15 characters', () => {
-      expect(validateGSTIN('27AAPFU0939F1ZVXX')).toBe(false)
-    })
-
-    it('rejects GSTIN with invalid state code (00)', () => {
-      expect(validateGSTIN('00AAPFU0939F1ZV')).toBe(false)
-    })
-
-    it('rejects GSTIN with state code > 37', () => {
-      expect(validateGSTIN('99AAPFU0939F1ZV')).toBe(false)
-    })
-
-    it('rejects empty string', () => {
-      expect(validateGSTIN('')).toBe(false)
-    })
-
-    it('rejects lowercase GSTIN', () => {
-      expect(validateGSTIN('27aapfu0939f1zv')).toBe(false)
-    })
-
-    it('rejects GSTIN without Z in 13th position', () => {
-      expect(validateGSTIN('27AAPFU0939F1AV')).toBe(false)
-    })
-
-    it('rejects GSTIN with special characters', () => {
-      expect(validateGSTIN('27AAPFU0939F1Z!')).toBe(false)
     })
   })
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, PurchaseOrderStatus, SupplierStatus } from '@prisma/client'
 
@@ -22,7 +22,7 @@ const PENDING_ORDER_STATUSES: PurchaseOrderStatus[] = [
 
 // GET - Fetch single supplier with details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update supplier
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -131,8 +131,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       city: body.city ?? null,
       state: body.state ?? null,
       pincode: body.pincode ?? null,
-      gstNumber: body.gstNumber ?? null,
-      panNumber: body.panNumber ?? null,
+      taxRegistrationNo: body.taxRegistrationNo ?? null,
+      nationalTaxNo: body.nationalTaxNo ?? null,
       notes: body.notes ?? null,
     }
 
@@ -163,7 +163,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

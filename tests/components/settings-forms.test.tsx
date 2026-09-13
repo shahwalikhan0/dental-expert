@@ -106,8 +106,8 @@ const clinicData = (overrides = {}) => ({
     slug: 'dr-dev-dental',
     logo: null,
     registrationNo: 'REG001',
-    gstNumber: '29ABCDE1234F1Z5',
-    panNumber: 'ABCDE1234F',
+    taxRegistrationNo: '3277876543210',
+    nationalTaxNo: 'ABCDE1234F',
     workingHours: null,
     bankName: 'HDFC Bank',
     bankAccountNo: '1234567890',
@@ -238,7 +238,7 @@ describe('ClinicSettingsPage', () => {
       })
     })
 
-    it('renders GST number field', async () => {
+    it('renders the sales-tax registration field', async () => {
       ;(global.fetch as any).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(clinicData()),
@@ -247,7 +247,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue('29ABCDE1234F1Z5')).toBeInTheDocument()
+        expect(screen.getByDisplayValue('3277876543210')).toBeInTheDocument()
       })
     })
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, SupplierStatus } from '@prisma/client'
 
@@ -13,7 +13,7 @@ function parseStatus(value: string): SupplierStatus | null {
 
 // GET - Fetch all suppliers
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new supplier
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('inventory:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -115,8 +115,8 @@ export async function POST(request: NextRequest) {
       city,
       state,
       pincode,
-      gstNumber,
-      panNumber,
+      taxRegistrationNo,
+      nationalTaxNo,
       paymentTerms = 'Net 30',
       creditLimit = 0,
       status = SupplierStatus.ACTIVE,
@@ -153,8 +153,8 @@ export async function POST(request: NextRequest) {
         city: city || null,
         state: state || null,
         pincode: pincode || null,
-        gstNumber: gstNumber || null,
-        panNumber: panNumber || null,
+        taxRegistrationNo: taxRegistrationNo || null,
+        nationalTaxNo: nationalTaxNo || null,
         paymentTerms,
         creditLimit,
         status: parseStatus(String(status)) ?? SupplierStatus.ACTIVE,

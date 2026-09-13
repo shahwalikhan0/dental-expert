@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  calculateGST,
+  calculateTax,
+  resolveTaxRate,
   calculateDiscount,
   calculateInvoiceTotals,
   formatCurrency,
@@ -13,75 +14,65 @@ import {
   numberToWords,
   getDateRangeFromPreset,
   getPatientName,
-  gstConfig,
+  taxConfig,
 } from '@/lib/billing-utils'
 
-describe('Billing Utils - calculateGST', () => {
-  it('should calculate GST with default rates', () => {
-    const result = calculateGST(1000)
+describe('Billing Utils - calculateTax', () => {
+  // Dental services are exempt for this clinic, so the default is no tax.
+  it('adds no tax by default', () => {
+    const result = calculateTax(1000)
     expect(result.subtotal).toBe(1000)
-    expect(result.cgstAmount).toBe(90)
-    expect(result.sgstAmount).toBe(90)
-    expect(result.totalTax).toBe(180)
-    expect(result.grandTotal).toBe(1180)
+    expect(result.taxAmount).toBe(0)
+    expect(result.grandTotal).toBe(1000)
   })
 
-  it('should calculate GST with custom rates', () => {
-    const result = calculateGST(1000, 6, 6)
-    expect(result.cgstAmount).toBe(60)
-    expect(result.sgstAmount).toBe(60)
-    expect(result.totalTax).toBe(120)
-    expect(result.grandTotal).toBe(1120)
+  it('applies an explicit rate', () => {
+    const result = calculateTax(1000, 16)
+    expect(result.taxAmount).toBe(160)
+    expect(result.grandTotal).toBe(1160)
   })
 
-  it('should handle zero subtotal', () => {
-    const result = calculateGST(0)
+  it('handles a zero subtotal', () => {
+    const result = calculateTax(0, 16)
+    expect(result.taxAmount).toBe(0)
     expect(result.grandTotal).toBe(0)
-    expect(result.totalTax).toBe(0)
   })
 
-  it('should round to 2 decimal places', () => {
-    const result = calculateGST(99.99)
-    expect(result.cgstAmount).toBe(9)
-    expect(result.grandTotal).toBeCloseTo(117.99, 2)
+  it('rounds to 2 decimal places', () => {
+    const result = calculateTax(99.99, 16)
+    expect(result.taxAmount).toBe(16)
   })
 
-  it('should handle large amounts', () => {
-    const result = calculateGST(1000000)
-    expect(result.totalTax).toBe(180000)
-    expect(result.grandTotal).toBe(1180000)
+  it('handles large amounts', () => {
+    const result = calculateTax(1000000, 16)
+    expect(result.taxAmount).toBe(160000)
+  })
+
+  it('taxConfig defaults to exempt', () => {
+    expect(taxConfig.rate).toBe(0)
   })
 })
 
-describe('Billing Utils - calculateDiscount', () => {
-  it('should calculate percentage discount correctly', () => {
-    const result = calculateDiscount(1000, 'PERCENTAGE', 10)
-    expect(result.discountAmount).toBe(100)
-    expect(result.afterDiscount).toBe(900)
+describe('Billing Utils - resolveTaxRate', () => {
+  it('returns 0 when the clinic has tax switched off', () => {
+    expect(resolveTaxRate({ taxEnabled: false, taxRate: 16 })).toBe(0)
   })
 
-  it('should calculate fixed discount correctly', () => {
-    const result = calculateDiscount(1000, 'FIXED', 150)
-    expect(result.discountAmount).toBe(150)
-    expect(result.afterDiscount).toBe(850)
+  it('returns the rate when tax is switched on', () => {
+    expect(resolveTaxRate({ taxEnabled: true, taxRate: 16 })).toBe(16)
   })
 
-  it('should cap discount at subtotal', () => {
-    const result = calculateDiscount(100, 'FIXED', 150)
-    expect(result.discountAmount).toBe(100)
-    expect(result.afterDiscount).toBe(0)
+  // Prisma hands back Decimal, not number.
+  it('accepts a Decimal-like value', () => {
+    expect(resolveTaxRate({ taxEnabled: true, taxRate: '16.00' as unknown as number })).toBe(16)
   })
 
-  it('should handle zero discount', () => {
-    const result = calculateDiscount(1000, 'PERCENTAGE', 0)
-    expect(result.discountAmount).toBe(0)
-    expect(result.afterDiscount).toBe(1000)
-  })
-
-  it('should handle 100% discount', () => {
-    const result = calculateDiscount(1000, 'PERCENTAGE', 100)
-    expect(result.discountAmount).toBe(1000)
-    expect(result.afterDiscount).toBe(0)
+  it('is safe with a missing or malformed clinic', () => {
+    expect(resolveTaxRate(null)).toBe(0)
+    expect(resolveTaxRate(undefined)).toBe(0)
+    expect(resolveTaxRate({})).toBe(0)
+    expect(resolveTaxRate({ taxEnabled: true, taxRate: 'abc' as unknown as number })).toBe(0)
+    expect(resolveTaxRate({ taxEnabled: true, taxRate: -5 })).toBe(0)
   })
 })
 
@@ -96,8 +87,13 @@ describe('Billing Utils - calculateInvoiceTotals', () => {
     expect(result.subtotal).toBe(1000)
     expect(result.taxableAmount).toBe(1000)
     expect(result.nonTaxableAmount).toBe(0)
-    expect(result.totalTax).toBe(180)
-    expect(result.totalAmount).toBe(1180)
+    // Exempt by default, so the total is the subtotal.
+    expect(result.taxAmount).toBe(0)
+    expect(result.totalAmount).toBe(1000)
+
+    const taxed = calculateInvoiceTotals(items, 'FIXED', 0, 16)
+    expect(taxed.taxAmount).toBe(160)
+    expect(taxed.totalAmount).toBe(1160)
   })
 
   it('should calculate totals for mixed taxable/non-taxable items', () => {
@@ -105,24 +101,24 @@ describe('Billing Utils - calculateInvoiceTotals', () => {
       { quantity: 1, unitPrice: 500, taxable: true },
       { quantity: 1, unitPrice: 500, taxable: false },
     ]
-    const result = calculateInvoiceTotals(items)
+    const result = calculateInvoiceTotals(items, 'FIXED', 0, 16)
 
     expect(result.subtotal).toBe(1000)
     expect(result.taxableAmount).toBe(500)
     expect(result.nonTaxableAmount).toBe(500)
-    expect(result.totalTax).toBe(90) // 18% of 500
-    expect(result.totalAmount).toBe(1090)
+    expect(result.taxAmount).toBe(80) // 16% of the taxable 500 only
+    expect(result.totalAmount).toBe(1080)
   })
 
   it('should apply discount before tax calculation', () => {
     const items = [{ quantity: 1, unitPrice: 1000, taxable: true }]
-    const result = calculateInvoiceTotals(items, 'FIXED', 100)
+    const result = calculateInvoiceTotals(items, 'FIXED', 100, 16)
 
     expect(result.subtotal).toBe(1000)
     expect(result.discountAmount).toBe(100)
     expect(result.taxableAmount).toBe(900)
-    expect(result.totalTax).toBe(162) // 18% of 900
-    expect(result.totalAmount).toBe(1062)
+    expect(result.taxAmount).toBe(144) // 16% of 900, i.e. after the discount
+    expect(result.totalAmount).toBe(1044)
   })
 
   it('should handle empty items array', () => {
@@ -133,15 +129,17 @@ describe('Billing Utils - calculateInvoiceTotals', () => {
 })
 
 describe('Billing Utils - formatCurrency', () => {
-  it('should format positive amounts in INR', () => {
+  it('should format positive amounts in PKR', () => {
     const result = formatCurrency(1234.56)
     expect(result).toContain('1,234.56')
-    expect(result).toContain('₹')
+    expect(result).toContain('Rs')
   })
 
   it('should handle null/undefined', () => {
-    expect(formatCurrency(null)).toBe('₹0.00')
-    expect(formatCurrency(undefined)).toBe('₹0.00')
+    // Intl separates the symbol from the amount with a non-breaking space, so
+    // match rather than compare against a literal ASCII space.
+    expect(formatCurrency(null)).toMatch(/^Rs\s0\.00$/)
+    expect(formatCurrency(undefined)).toMatch(/^Rs\s0\.00$/)
   })
 
   it('should handle string amounts', () => {
@@ -149,7 +147,7 @@ describe('Billing Utils - formatCurrency', () => {
   })
 
   it('should handle invalid string amounts', () => {
-    expect(formatCurrency('invalid')).toBe('₹0.00')
+    expect(formatCurrency('invalid')).toMatch(/^Rs\s0\.00$/)
   })
 
   it('should format zero correctly', () => {
@@ -405,11 +403,10 @@ describe('Billing Utils - getPatientName', () => {
   })
 })
 
-describe('Billing Utils - gstConfig', () => {
-  it('should have correct default values', () => {
-    expect(gstConfig.cgstRate).toBe(9)
-    expect(gstConfig.sgstRate).toBe(9)
-    expect(gstConfig.igstRate).toBe(18)
-    expect(gstConfig.defaultTaxable).toBe(true)
+describe('Billing Utils - taxConfig', () => {
+  it('defaults to exempt, with items taxable if a rate is ever set', () => {
+    expect(taxConfig.rate).toBe(0)
+    expect(taxConfig.label).toBe('Sales Tax')
+    expect(taxConfig.defaultTaxable).toBe(true)
   })
 })

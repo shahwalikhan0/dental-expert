@@ -16,12 +16,13 @@ import {
 } from '@/lib/i18n/format'
 
 describe('i18n config', () => {
-  it('defaults to Indian English', () => {
-    expect(defaultLocale).toBe('en-IN')
-    expect(locales).toContain('en-IN')
+  it('defaults to Pakistani English', () => {
+    expect(defaultLocale).toBe('en-PK')
+    expect(locales).toContain('en-PK')
   })
 
   it('recognises supported locales', () => {
+    expect(isSupportedLocale('en-PK')).toBe(true)
     expect(isSupportedLocale('en-IN')).toBe(true)
     expect(isSupportedLocale('en-US')).toBe(true)
     expect(isSupportedLocale('xx-XX')).toBe(false)
@@ -30,12 +31,17 @@ describe('i18n config', () => {
 
   // A stale or hand-edited Hospital.locale must never break formatting.
   it('falls back to the default for unknown or missing locales', () => {
-    expect(resolveLocale('de-DE')).toBe('en-IN')
-    expect(resolveLocale(undefined)).toBe('en-IN')
+    expect(resolveLocale('de-DE')).toBe('en-PK')
+    expect(resolveLocale(undefined)).toBe('en-PK')
     expect(resolveLocale('en-US')).toBe('en-US')
   })
 
   it('maps each locale to its currency, country and timezone', () => {
+    expect(getLocaleDefaults('en-PK')).toEqual({
+      currency: 'PKR',
+      country: 'PK',
+      timezone: 'Asia/Karachi',
+    })
     expect(getLocaleDefaults('en-IN')).toEqual({
       currency: 'INR',
       country: 'IN',
@@ -46,15 +52,22 @@ describe('i18n config', () => {
 })
 
 describe('formatCurrency', () => {
-  it('defaults to rupees so existing call sites are unchanged', () => {
-    expect(formatCurrency(1000)).toContain('₹')
+  it('defaults to Pakistani rupees', () => {
+    expect(formatCurrency(1000)).toContain('Rs')
     expect(formatCurrency(1000)).toContain('1,000')
   })
 
-  it('uses the Indian grouping system for en-IN', () => {
+  it('uses western grouping for en-PK', () => {
+    // PKR groups in thousands, unlike INR's lakh/crore grouping. This is the
+    // difference that makes the locale, not the symbol, the thing to change.
+    expect(formatCurrency(100000)).toContain('100,000')
+    expect(formatCurrency(10000000)).toContain('10,000,000')
+  })
+
+  it('still uses the Indian grouping system for en-IN', () => {
     // The grouping differs, not just the symbol: 1,00,000 rather than 100,000.
-    expect(formatCurrency(100000)).toContain('1,00,000')
-    expect(formatCurrency(10000000)).toContain('1,00,00,000')
+    expect(formatCurrency(100000, { locale: 'en-IN' })).toContain('1,00,000')
+    expect(formatCurrency(10000000, { locale: 'en-IN' })).toContain('1,00,00,000')
   })
 
   it('uses western grouping and dollars for en-US', () => {
@@ -95,7 +108,8 @@ describe('formatCurrency', () => {
 
 describe('formatNumber', () => {
   it('groups by locale without a currency symbol', () => {
-    expect(formatNumber(100000)).toBe('1,00,000')
+    expect(formatNumber(100000)).toBe('100,000')
+    expect(formatNumber(100000, { locale: 'en-IN' })).toBe('1,00,000')
     expect(formatNumber(100000, { locale: 'en-US' })).toBe('100,000')
   })
 
@@ -145,7 +159,7 @@ describe('createFormatters', () => {
   })
 
   it('falls back to the default locale for unsupported input', () => {
-    expect(createFormatters('fr-FR').locale).toBe('en-IN')
-    expect(createFormatters(null).currency).toBe('INR')
+    expect(createFormatters('fr-FR').locale).toBe('en-PK')
+    expect(createFormatters(null).currency).toBe('PKR')
   })
 })

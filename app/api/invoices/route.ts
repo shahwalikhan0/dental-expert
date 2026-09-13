@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
-import { generateInvoiceNo, calculateInvoiceTotals, gstConfig } from '@/lib/billing-utils'
+import { requirePermission } from '@/lib/api-helpers'
+import { generateInvoiceNo, calculateInvoiceTotals, resolveTaxRate } from '@/lib/billing-utils'
 import { DiscountType, InvoiceStatus } from '@prisma/client'
 
 // GET - List invoices with filters
 export async function GET(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -158,28 +158,19 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new invoice
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Check if user has permission
-    if (!['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: "You don't have permission to create invoices" },
-        { status: 403 }
-      )
-    }
-
     const body = await request.json()
     const {
       patientId,
       items,
       discountType = 'FIXED',
       discountValue = 0,
-      cgstRate = gstConfig.cgstRate,
-      sgstRate = gstConfig.sgstRate,
+      taxRate: requestedTaxRate,
       dueDate,
       notes,
       termsAndConditions,
@@ -204,6 +195,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
+    // The rate comes from the clinic's own settings unless the caller names
+    // one explicitly. Whatever is used is stamped onto the invoice below, so a
+    // later change to the clinic's rate cannot alter an invoice already issued.
+    const clinic = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
+      select: { taxEnabled: true, taxRate: true },
+    })
+    const taxRate =
+      requestedTaxRate !== undefined ? Number(requestedTaxRate) : resolveTaxRate(clinic)
+
     // Validate items
     for (const item of items) {
       if (!item.description || item.quantity <= 0 || item.unitPrice < 0) {
@@ -226,8 +227,7 @@ export async function POST(request: NextRequest) {
       })),
       discountType as DiscountType,
       discountValue,
-      cgstRate,
-      sgstRate
+      taxRate
     )
 
     // Generate invoice number
@@ -255,10 +255,8 @@ export async function POST(request: NextRequest) {
         discountValue,
         discountAmount: calculatedTotals.discountAmount,
         taxableAmount: calculatedTotals.taxableAmount,
-        cgstRate,
-        cgstAmount: calculatedTotals.cgstAmount,
-        sgstRate,
-        sgstAmount: calculatedTotals.sgstAmount,
+        taxRate,
+        taxAmount: calculatedTotals.taxAmount,
         totalAmount: calculatedTotals.totalAmount,
         paidAmount: 0,
         balanceAmount: calculatedTotals.totalAmount,

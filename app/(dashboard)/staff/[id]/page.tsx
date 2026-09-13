@@ -41,7 +41,7 @@ interface StaffDetail {
   state: string | null
   pincode: string | null
   aadharNumber: string | null
-  panNumber: string | null
+  nationalTaxNo: string | null
   qualification: string | null
   specialization: string | null
   licenseNumber: string | null
@@ -136,7 +136,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('en-IN', {
+    return new Date(dateString).toLocaleDateString('en-PK', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -145,7 +145,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-'
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-PK', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 0,
@@ -312,8 +312,8 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium">{staff.aadharNumber || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">PAN Number</p>
-                    <p className="font-medium">{staff.panNumber || '-'}</p>
+                    <p className="text-sm text-muted-foreground">National Tax Number (NTN)</p>
+                    <p className="font-medium">{staff.nationalTaxNo || '-'}</p>
                   </div>
                 </div>
                 <Separator />

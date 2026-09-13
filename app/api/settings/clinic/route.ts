@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -27,19 +27,26 @@ const clinicInfoSchema = z.object({
   state: z.string().min(1),
   pincode: z.string().min(6),
   registrationNo: optionalString,
-  gstNumber: optionalString,
-  panNumber: optionalString,
+  taxRegistrationNo: optionalString,
+  nationalTaxNo: optionalString,
   workingHours: optionalString,
   bankName: optionalString,
   bankAccountNo: optionalString,
   bankIfsc: optionalString,
   upiId: optionalString,
   patientPortalEnabled: z.boolean().optional(),
+  // Sales tax on services. Off for this clinic — dental services are exempt —
+  // but kept configurable so turning it on is a settings change rather than a
+  // migration. The rate is stamped onto each invoice at the moment it is
+  // raised, so changing it here never restates a document already issued.
+  taxEnabled: z.boolean().optional(),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
+  taxLabel: z.string().min(1).max(60).optional(),
 })
 
 // GET /api/settings/clinic - Get clinic information
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('settings:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -61,8 +68,8 @@ export async function GET(req: NextRequest) {
         state: true,
         pincode: true,
         registrationNo: true,
-        gstNumber: true,
-        panNumber: true,
+        taxRegistrationNo: true,
+        nationalTaxNo: true,
         workingHours: true,
         bankName: true,
         bankAccountNo: true,
@@ -70,6 +77,9 @@ export async function GET(req: NextRequest) {
         upiId: true,
         slug: true,
         patientPortalEnabled: true,
+        taxEnabled: true,
+        taxRate: true,
+        taxLabel: true,
       },
     })
 
@@ -96,14 +106,23 @@ export async function GET(req: NextRequest) {
 
 // POST /api/settings/clinic - Create or update clinic information
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     const body = await req.json()
-    const data = clinicInfoSchema.parse(body)
+    // Partial on purpose. This route only ever updates an existing clinic
+    // (`hospital.update` below), and callers legitimately send a slice of it —
+    // the billing screen saves tax settings alone. Fields that *are* present
+    // still get their full validation; absent ones are left untouched rather
+    // than being rejected or blanked.
+    const data = clinicInfoSchema.partial().parse(body)
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
 
     const clinicInfo = await prisma.hospital.update({
       where: { id: hospitalId },

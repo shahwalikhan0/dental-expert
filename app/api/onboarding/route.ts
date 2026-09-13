@@ -14,7 +14,7 @@ const onboardingSchema = z.object({
   website: z.string().optional(),
 
   // Step 2: Business Details
-  gstNumber: z.string().optional(),
+  taxRegistrationNo: z.string().optional(),
   registrationNo: z.string().optional(),
 
   // Step 3: Working Hours
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
         pincode: data.pincode,
         alternatePhone: data.alternatePhone,
         website: data.website,
-        gstNumber: data.gstNumber,
+        taxRegistrationNo: data.taxRegistrationNo,
         registrationNo: data.registrationNo,
         workingHours: data.workingHours,
         upiId: data.upiId,
@@ -121,7 +121,7 @@ export async function GET() {
         pincode: true,
         alternatePhone: true,
         website: true,
-        gstNumber: true,
+        taxRegistrationNo: true,
         registrationNo: true,
         workingHours: true,
         upiId: true,

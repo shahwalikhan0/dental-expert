@@ -6,9 +6,39 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 vi.mock('@/lib/services/template.service', () => ({
   templateService: {
@@ -313,7 +343,10 @@ describe('POST /api/settings/clinic', () => {
     })
   })
 
-  it('returns 500 for validation error (missing name)', async () => {
+  // The clinic route only ever updates an existing record, and callers
+  // legitimately send a slice of it — the billing screen saves tax settings
+  // alone — so a partial body is accepted rather than rejected.
+  it('accepts a partial update without every field', async () => {
     mockAuth()
     const res = await clinicPOST(
       makeReq('/api/settings/clinic', 'POST', {
@@ -324,8 +357,20 @@ describe('POST /api/settings/clinic', () => {
         pincode: '400001',
       })
     )
-    // Zod validation error goes to catch block → 500
+    expect(res.status).toBe(200)
+  })
+
+  it('still validates the fields that are present', async () => {
+    mockAuth()
+    const res = await clinicPOST(makeReq('/api/settings/clinic', 'POST', { taxRate: 500 }))
+    // A rate over 100% is nonsense whether or not the rest of the body is there.
     expect(res.status).toBe(500)
+  })
+
+  it('rejects an empty body rather than issuing a no-op update', async () => {
+    mockAuth()
+    const res = await clinicPOST(makeReq('/api/settings/clinic', 'POST', {}))
+    expect(res.status).toBe(400)
   })
 
   it('converts empty optional strings to undefined', async () => {

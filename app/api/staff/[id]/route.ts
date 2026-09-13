@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import bcrypt from 'bcryptjs'
+import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
 
 // GET - Get single staff member details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             id: true,
             email: true,
             role: true,
+            clinicalRole: true,
             isActive: true,
             createdAt: true,
           },
@@ -51,17 +53,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PATCH - Update staff member
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can update staff
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
 
@@ -86,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       state,
       pincode,
       aadharNumber,
-      panNumber,
+      nationalTaxNo,
       qualification,
       specialization,
       licenseNumber,
@@ -97,16 +94,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       emergencyPhone,
       isActive,
       role,
+      clinicalRole,
       newPassword,
     } = body
+
+    // `clinicalRole: null` clears it; any other value must be a clinical role
+    // that differs from the primary one. See SECONDARY_ROLES in lib/rbac.ts.
+    if (clinicalRole) {
+      if (!isAssignableSecondaryRole(clinicalRole)) {
+        return NextResponse.json(
+          { error: `clinicalRole must be one of: ${SECONDARY_ROLES.join(', ')}` },
+          { status: 400 }
+        )
+      }
+      if (clinicalRole === (role || existingStaff.user?.role)) {
+        return NextResponse.json(
+          { error: 'clinicalRole must differ from the primary role' },
+          { status: 400 }
+        )
+      }
+    }
 
     // Update in transaction
     const result = await prisma.$transaction(async (tx) => {
       // Update user if role or password changed
-      if (role || newPassword || isActive !== undefined) {
+      if (role || clinicalRole !== undefined || newPassword || isActive !== undefined) {
         const userUpdateData: any = {}
 
         if (role) userUpdateData.role = role
+        if (clinicalRole !== undefined) userUpdateData.clinicalRole = clinicalRole || null
         if (isActive !== undefined) userUpdateData.isActive = isActive
         if (newPassword) {
           userUpdateData.password = await bcrypt.hash(newPassword, 10)
@@ -136,7 +152,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           ...(state !== undefined && { state }),
           ...(pincode !== undefined && { pincode }),
           ...(aadharNumber !== undefined && { aadharNumber }),
-          ...(panNumber !== undefined && { panNumber }),
+          ...(nationalTaxNo !== undefined && { nationalTaxNo }),
           ...(qualification !== undefined && { qualification }),
           ...(specialization !== undefined && { specialization }),
           ...(licenseNumber !== undefined && { licenseNumber }),
@@ -153,6 +169,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
               id: true,
               email: true,
               role: true,
+              clinicalRole: true,
               isActive: true,
             },
           },
@@ -174,17 +191,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requireAuthAndRole()
+  const { error, hospitalId, session } = await requirePermission('staff:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // Only admin can delete staff
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const { id } = await params
 
     const staff = await prisma.staff.findUnique({

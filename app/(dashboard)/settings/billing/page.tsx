@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import { Receipt, Save } from 'lucide-react'
 import { GatewaySettings } from '@/components/billing/gateway-settings'
 
@@ -21,9 +22,29 @@ export default function BillingSettingsPage() {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
 
+  // Tax lives on the clinic record rather than the key-value settings store,
+  // because that is where the invoice routes read it from. Keeping it in two
+  // places is how a rate gets changed in the UI and ignored by billing.
+  const [tax, setTax] = useState({ taxEnabled: false, taxRate: '0', taxLabel: 'Sales Tax' })
+
+  useEffect(() => {
+    fetch('/api/settings/clinic')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        const d = result?.data
+        if (!d) return
+        setTax({
+          taxEnabled: !!d.taxEnabled,
+          taxRate: String(d.taxRate ?? 0),
+          taxLabel: d.taxLabel || 'Sales Tax',
+        })
+      })
+      .catch(() => {
+        /* leave the exempt default in place */
+      })
+  }, [])
+
   const [settings, setSettings] = useState({
-    cgstRate: '9',
-    sgstRate: '9',
     defaultPaymentTerms: '30',
     invoicePrefix: 'INV',
     receiptPrefix: 'REC',
@@ -31,7 +52,7 @@ export default function BillingSettingsPage() {
     invoiceNotes: 'Thank you for choosing our services.',
     termsAndConditions:
       'Payment is due within 30 days from the invoice date.\nLate payments may incur additional charges.',
-    currencySymbol: '₹',
+    currencySymbol: 'Rs',
     currencyCode: 'INR',
     enableAutoInvoice: 'true',
     lateFeePercentage: '2',
@@ -70,13 +91,27 @@ export default function BillingSettingsPage() {
         category: 'billing',
       }))
 
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: settingsArray }),
-      })
+      // Two destinations: invoice numbering and terms live in the key-value
+      // settings store, tax lives on the clinic record because that is where
+      // the invoice routes read it. Both must succeed for the save to count.
+      const [response, taxResponse] = await Promise.all([
+        fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: settingsArray }),
+        }),
+        fetch('/api/settings/clinic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taxEnabled: tax.taxEnabled,
+            taxRate: Number(tax.taxRate) || 0,
+            taxLabel: tax.taxLabel,
+          }),
+        }),
+      ])
 
-      if (response.ok) {
+      if (response.ok && taxResponse.ok) {
         toast({
           title: 'Success',
           description: 'Billing settings saved successfully',
@@ -115,40 +150,69 @@ export default function BillingSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Tax Configuration</CardTitle>
-            <CardDescription>GST and tax rates for invoicing</CardDescription>
+            <CardDescription>Sales tax applied to invoices</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <Label htmlFor="cgstRate">CGST Rate (%)</Label>
-                <Input
-                  id="cgstRate"
-                  type="number"
-                  step="0.01"
-                  value={settings.cgstRate}
-                  onChange={(e) => setSettings({ ...settings, cgstRate: e.target.value })}
-                />
-                <p className="text-sm text-muted-foreground mt-1">Central Goods and Services Tax</p>
+                <Label htmlFor="taxEnabled">Charge sales tax on invoices</Label>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Dental services are exempt for most clinics. Leave this off unless the clinic is
+                  registered for provincial sales tax on services.
+                </p>
               </div>
-
-              <div>
-                <Label htmlFor="sgstRate">SGST Rate (%)</Label>
-                <Input
-                  id="sgstRate"
-                  type="number"
-                  step="0.01"
-                  value={settings.sgstRate}
-                  onChange={(e) => setSettings({ ...settings, sgstRate: e.target.value })}
-                />
-                <p className="text-sm text-muted-foreground mt-1">State Goods and Services Tax</p>
-              </div>
+              <Switch
+                id="taxEnabled"
+                checked={tax.taxEnabled}
+                onCheckedChange={(checked) => setTax({ ...tax, taxEnabled: checked })}
+              />
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            {tax.taxEnabled && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="taxRate">Rate (%)</Label>
+                  <Input
+                    id="taxRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={tax.taxRate}
+                    onChange={(e) => setTax({ ...tax, taxRate: e.target.value })}
+                  />
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    The provincial rate that applies to your clinic.
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="taxLabel">Label on invoices</Label>
+                  <Input
+                    id="taxLabel"
+                    value={tax.taxLabel}
+                    onChange={(e) => setTax({ ...tax, taxLabel: e.target.value })}
+                  />
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    e.g. &ldquo;PRA Sales Tax&rdquo;. Printed beside the tax line.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
               <p className="text-sm text-blue-800">
-                <strong>Total GST:</strong>{' '}
-                {parseFloat(settings.cgstRate) + parseFloat(settings.sgstRate)}% (CGST{' '}
-                {settings.cgstRate}% + SGST {settings.sgstRate}%)
+                {tax.taxEnabled && Number(tax.taxRate) > 0 ? (
+                  <>
+                    Invoices will show <strong>{tax.taxLabel}</strong> at{' '}
+                    <strong>{tax.taxRate}%</strong>.
+                  </>
+                ) : (
+                  <>
+                    Invoices carry <strong>no tax line</strong>. Changing this affects new invoices
+                    only — existing ones keep the rate they were issued with.
+                  </>
+                )}
               </p>
             </div>
           </CardContent>
@@ -275,7 +339,7 @@ export default function BillingSettingsPage() {
                   id="currencySymbol"
                   value={settings.currencySymbol}
                   onChange={(e) => setSettings({ ...settings, currencySymbol: e.target.value })}
-                  placeholder="₹"
+                  placeholder="Rs"
                 />
               </div>
             </div>

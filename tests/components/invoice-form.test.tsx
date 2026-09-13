@@ -192,10 +192,14 @@ describe('NewInvoicePage', () => {
       expect(screen.getByTestId('select-item-30')).toBeInTheDocument()
     })
 
-    it('renders GST breakdown labels', () => {
+    // The clinic is exempt, so there is no tax row at all — printing
+    // "Sales Tax: Rs 0.00" on every invoice invites the question of why.
+    it('renders no tax line when the clinic is exempt', () => {
       render(<NewInvoicePage />)
-      expect(screen.getByText('CGST (9%)')).toBeInTheDocument()
-      expect(screen.getByText('SGST (9%)')).toBeInTheDocument()
+      expect(screen.getByText('Subtotal')).toBeInTheDocument()
+      expect(screen.queryByText(/Sales Tax/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/CGST/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/SGST/)).not.toBeInTheDocument()
     })
 
     it('renders "Create & Send Invoice" and "Save as Draft" buttons', () => {

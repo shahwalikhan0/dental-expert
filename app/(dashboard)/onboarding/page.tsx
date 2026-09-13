@@ -29,7 +29,7 @@ const onboardingSchema = z.object({
   pincode: z.string().min(5, 'Valid pincode is required'),
   alternatePhone: z.string().optional(),
   website: z.string().optional(),
-  gstNumber: z.string().optional(),
+  taxRegistrationNo: z.string().optional(),
   registrationNo: z.string().optional(),
   workingHours: z.string().optional(),
   upiId: z.string().optional(),
@@ -271,11 +271,11 @@ export default function OnboardingPage() {
                       <Input id="website" placeholder="www.myclinic.com" {...register('website')} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="gstNumber">GST Number</Label>
+                      <Label htmlFor="taxRegistrationNo">Sales Tax Registration (STRN)</Label>
                       <Input
-                        id="gstNumber"
+                        id="taxRegistrationNo"
                         placeholder="33AAACX1234X1ZX"
-                        {...register('gstNumber')}
+                        {...register('taxRegistrationNo')}
                       />
                     </div>
                   </div>
