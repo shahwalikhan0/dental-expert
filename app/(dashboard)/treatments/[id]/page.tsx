@@ -37,6 +37,9 @@ import {
   AlertCircle,
   Pill,
   Receipt,
+  Lock,
+  PenLine,
+  History,
 } from 'lucide-react'
 import { VoiceInput } from '@/components/clinical/voice-input'
 import {
@@ -68,6 +71,17 @@ interface Treatment {
   followUpDate: string | null
   createdAt: string
   updatedAt: string
+  signedAt: string | null
+  amendedAt: string | null
+  signedBy: { id: string; name: string } | null
+  addenda?: { id: string; body: string; createdAt: string; author: { name: string } }[]
+  revisions?: {
+    id: string
+    reason: string
+    changes: Record<string, { from: unknown; to: unknown }>
+    createdAt: string
+    amendedBy: { name: string }
+  }[]
   patient: {
     id: string
     patientId: string
@@ -114,6 +128,10 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const [treatment, setTreatment] = useState<Treatment | null>(null)
   const [loading, setLoading] = useState(true)
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false)
+  const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const [addendumOpen, setAddendumOpen] = useState(false)
+  const [addendumText, setAddendumText] = useState('')
+  const [noteError, setNoteError] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -181,6 +199,43 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       fetchTreatment()
     } catch (error) {
       console.error('Error completing treatment:', error)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleSignTreatment = async () => {
+    try {
+      setActionLoading(true)
+      setNoteError(null)
+      const response = await fetch(`/api/treatments/${id}/sign`, { method: 'POST' })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to sign the treatment')
+      setSignDialogOpen(false)
+      fetchTreatment()
+    } catch (error: any) {
+      setNoteError(error.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleAddAddendum = async () => {
+    try {
+      setActionLoading(true)
+      setNoteError(null)
+      const response = await fetch(`/api/treatments/${id}/addenda`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: addendumText }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to add the addendum')
+      setAddendumOpen(false)
+      setAddendumText('')
+      fetchTreatment()
+    } catch (error: any) {
+      setNoteError(error.message)
     } finally {
       setActionLoading(false)
     }
@@ -272,30 +327,66 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               Complete Treatment
             </Button>
           )}
-          {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
-            <>
-              <Link href={`/treatments/${id}/edit`}>
-                <Button variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                className="text-red-600"
-                onClick={() => setCancelDialogOpen(true)}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-            </>
+          {treatment.status === 'COMPLETED' && !treatment.signedAt && (
+            <Button onClick={() => setSignDialogOpen(true)}>
+              <PenLine className="h-4 w-4 mr-2" />
+              Sign Note
+            </Button>
           )}
+          {treatment.signedAt && (
+            <Button variant="outline" onClick={() => setAddendumOpen(true)}>
+              <FileText className="h-4 w-4 mr-2" />
+              Add Addendum
+            </Button>
+          )}
+          {!treatment.signedAt &&
+            treatment.status !== 'COMPLETED' &&
+            treatment.status !== 'CANCELLED' && (
+              <>
+                <Link href={`/treatments/${id}/edit`}>
+                  <Button variant="outline">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  className="text-red-600"
+                  onClick={() => setCancelDialogOpen(true)}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+              </>
+            )}
           <Button variant="outline">
             <Printer className="h-4 w-4 mr-2" />
             Print
           </Button>
         </div>
       </div>
+
+      {/* FR-007: whether this note is locked, and who put their name to it */}
+      {treatment.signedAt && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <Lock className="h-4 w-4 shrink-0" />
+          <span>
+            Signed by <strong>{treatment.signedBy?.name || 'a clinician'}</strong> on{' '}
+            {formatDateTime(treatment.signedAt)}. This note is locked — additions go in an addendum.
+          </span>
+          {treatment.amendedAt && (
+            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+              Amended {formatDateTime(treatment.amendedAt)}
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {noteError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {noteError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -465,6 +556,66 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                     <p className="mt-1">{treatment.procedure.postInstructions}</p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Addenda — FR-007's "later amendments" */}
+          {treatment.addenda && treatment.addenda.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Addenda
+                </CardTitle>
+                <CardDescription>Added after the note was signed</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {treatment.addenda.map((addendum) => (
+                  <div key={addendum.id} className="rounded-lg border p-4">
+                    <p className="whitespace-pre-wrap text-sm">{addendum.body}</p>
+                    <p className="text-muted-foreground mt-2 text-xs">
+                      {addendum.author.name} · {formatDateTime(addendum.createdAt)}
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Amendment history — what the note said before it was corrected */}
+          {treatment.revisions && treatment.revisions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Amendment History
+                </CardTitle>
+                <CardDescription>
+                  What this note said before each correction, and why it was changed
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {treatment.revisions.map((revision) => (
+                  <div key={revision.id} className="rounded-lg border p-4">
+                    <p className="text-sm font-medium">{revision.reason}</p>
+                    <div className="mt-2 space-y-1">
+                      {Object.entries(revision.changes || {}).map(([field, change]) => (
+                        <div key={field} className="text-sm">
+                          <span className="text-muted-foreground">{field}: </span>
+                          <span className="text-red-700 line-through">
+                            {String(change.from ?? '—')}
+                          </span>
+                          <span className="text-muted-foreground"> → </span>
+                          <span className="text-emerald-700">{String(change.to ?? '—')}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground mt-2 text-xs">
+                      {revision.amendedBy.name} · {formatDateTime(revision.createdAt)}
+                    </p>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           )}
@@ -742,6 +893,59 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             </Button>
             <Button onClick={handleCompleteTreatment} disabled={actionLoading}>
               {actionLoading ? 'Completing...' : 'Complete Treatment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Note Dialog — deliberately spells out that this is irreversible */}
+      <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign this clinical note</DialogTitle>
+            <DialogDescription>
+              Signing attests that you are the treating provider for this treatment. The note is
+              then locked: it cannot be deleted, and anything further goes in an addendum. A
+              correction afterwards needs a reason and is recorded. There is no way to unsign.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSignTreatment} disabled={actionLoading}>
+              <PenLine className="h-4 w-4 mr-2" />
+              Sign and lock
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Addendum Dialog */}
+      <Dialog open={addendumOpen} onOpenChange={setAddendumOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add an addendum</DialogTitle>
+            <DialogDescription>
+              Appended to the signed note, under your name. It cannot be edited or removed once
+              saved.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={6}
+            value={addendumText}
+            onChange={(e) => setAddendumText(e.target.value)}
+            placeholder="What you want to add to this note…"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddendumOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddAddendum}
+              disabled={actionLoading || addendumText.trim().length < 3}
+            >
+              Save addendum
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -702,7 +702,78 @@ anyone's drawer count.
 
 ---
 
-## 8. Verification
+## 8. FR-007: clinical note locking
+
+### 8.1 A correction to what this file previously said
+
+An earlier version of this document recorded that "there is a `signedAt` field
+but no `lockedAt`". That was wrong. `signedAt` is on `FormSubmission` — consent
+and intake forms — and the clinical note, which is `Treatment`, **had no
+signature of any kind**. The gap was larger than recorded.
+
+### 8.2 What "locked" replaced
+
+`COMPLETED` is a workflow status, not an attestation. The only protection on a
+completed note was this:
+
+```ts
+if ((status === 'COMPLETED' || status === 'CANCELLED') &&
+    !can(session.user.role, 'clinical:delete')) { ...refuse... }
+```
+
+The override is `clinical:delete`, which **ADMIN** holds — and ADMIN
+deliberately cannot sign a clinical note. So the one role that may not author
+clinical content could rewrite completed clinical content, with nothing
+recording what changed. That is precisely the "silent overwrite" spec §10
+forbids. A completed note could also be deleted outright, provided it had not
+been invoiced.
+
+### 8.3 The model
+
+Signing is a clinical act (`clinical:sign`, which only DOCTOR holds) and
+signing is what locks the note. There is no separate `isLocked` flag — a second
+field is one more thing that can disagree with the first.
+
+Once signed:
+
+| Route                         | Before                                               | Now                                                                                       |
+| ----------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `PUT /api/treatments/[id]`    | ADMIN could rewrite anything                         | Clinical content needs `clinical:sign` **and** a reason, and writes a `TreatmentRevision` |
+| `DELETE /api/treatments/[id]` | Allowed if uninvoiced                                | **Refused for anyone**, always                                                            |
+| `POST .../complete`           | Rewrote procedureNotes, materialsUsed, complications | Refused                                                                                   |
+| `POST .../addenda`            | did not exist                                        | Append-only, attributed, never editable                                                   |
+
+Closing `DELETE` matters as much as the edit guard: without it, delete and
+re-enter achieves the silent overwrite by another route.
+
+### 8.4 Why both addenda and amendments
+
+FR-007 allows "locked **or** version-controlled". Addenda alone would be the
+safer-looking choice, but they do not fix a wrong value in a structured field:
+a note recording tooth 26 when the work was on 27 leaves every report on tooth
+26 wrong forever, and an addendum saying so does not change the data. So a
+signed note can be corrected — by a clinician, with a reason of at least 10
+characters — and `TreatmentRevision` records what it said beforehand.
+
+The 10-character floor exists because "fix", "typo" and "." are what get typed
+into a field that is merely required.
+
+Two things deliberately do **not** count as clinical amendments: `cost` and
+`status`. Correcting a price has not changed what was recorded about the
+patient, and demanding a clinical reason for a billing fix teaches people to
+type meaningless ones. Nor does resubmitting a form unchanged — the diff
+compares by value, so a date arriving as an ISO string and stored as a `Date`
+compare equal.
+
+### 8.5 Existing notes are not backfilled
+
+Migrations do not invent a `signedAt` for treatments recorded before this.
+Backfilling would be fabricating an attestation nobody made. Those notes stay
+editable under the old workflow rule until somebody signs them.
+
+---
+
+## 9. Verification
 
 Everything below was actually run, not assumed.
 
@@ -782,7 +853,7 @@ Note the server used was PostgreSQL **15**, while the compose files ship
 **16**. Nothing in the schema or the rewritten SQL is version-specific above 13
 (`DROP DATABASE ... WITH (FORCE)` in `restore.sh` is the highest requirement).
 
-### 8.1 What was created on the local Postgres at `localhost:5432`
+### 9.1 What was created on the local Postgres at `localhost:5432`
 
 Your existing databases — `cmms`, `expert_advisor`, `keycloak`, `snaptap`,
 `snaptap-do`, `stripe_db` — and the `payment_service` role were **not touched**.
@@ -820,12 +891,12 @@ Use the existing server (as configured), or change the host port to `5433` as
 
 ---
 
-## 9. Not done — decide before go-live
+## 10. Not done — decide before go-live
 
 Nothing below is broken by the changes above; these are pre-existing gaps and
 India assumptions that a Pakistani dental clinic will hit.
 
-### 9.1 Remaining India coupling
+### 10.1 Remaining India coupling
 
 | Area                                             | Where                                              | Note                                                                                                                                                                                                                     |
 | ------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -835,7 +906,7 @@ India assumptions that a Pakistani dental clinic will hit.
 | **`Hospital` locale defaults**                   | `prisma/schema.prisma`                             | `locale` now defaults to `en-PK`, but `country`, `currency` and `timezone` still default to `IN` / `INR` / `Asia/Kolkata`. Harmless for the seeded clinic, which sets them, but wrong for a new one.                     |
 | **Seed sample data**                             | `prisma/seed.ts`                                   | The three original accounts and the sample patients still carry Indian names, cities (Chennai, Tamil Nadu) and phone numbers that fail `validatePakistanPhone`. The five roles added in this pass use Pakistani numbers. |
 
-### 9.2 Spec gaps (present upstream, still absent here)
+### 10.2 Spec gaps (present upstream, still absent here)
 
 Measured against the Dental Clinic Management System specification:
 
@@ -847,8 +918,6 @@ Measured against the Dental Clinic Management System specification:
   capability (§3.6), which means IoT devices cannot post to it. They need their
   own credential — a per-device key checked like the cron secret — before that
   feature works again.
-- **FR-007 Clinical note locking** — there is a `signedAt` field but no
-  `lockedAt`/`isLocked` and no addendum model. Signed notes are still mutable.
 - **Per-user data scoping** — access is now correct _by module_, but every
   query is still scoped to `hospitalId` alone. A dentist sees the whole
   clinic's patients, which is the agreed model for a single practice; if you
@@ -861,7 +930,7 @@ Measured against the Dental Clinic Management System specification:
 
 ---
 
-## 10. Pulling from upstream
+## 11. Pulling from upstream
 
 Upstream remains configured as the `upstream` remote. Before merging anything:
 

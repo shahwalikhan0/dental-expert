@@ -75,6 +75,8 @@ model Hospital {
   chairs              Chair[]
   refunds             Refund[]
   cashierSessions     CashierSession[]
+  treatmentAddenda    TreatmentAddendum[]
+  treatmentRevisions  TreatmentRevision[]
   treatments          Treatment[]
   treatmentPlans      TreatmentPlan[]
   dentalChartEntries  DentalChartEntry[]
@@ -253,6 +255,9 @@ model User {
   paymentsRecorded        Payment[]        @relation("PaymentsRecorded")
   cashierSessionsOpened   CashierSession[] @relation("CashierSessionsOpened")
   cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
+  treatmentsSigned        Treatment[]         @relation("TreatmentsSigned")
+  treatmentAddenda        TreatmentAddendum[] @relation("TreatmentAddenda")
+  treatmentAmendments     TreatmentRevision[] @relation("TreatmentAmendments")
 
   @@index([email])
   @@index([role])
@@ -945,6 +950,19 @@ model Treatment {
 
   cost            Decimal         @db.Decimal(10, 2)
 
+  // FR-007: "Completed/signed notes must be locked or version-controlled with
+  // audit history for later amendments."
+  //
+  // There is no separate `isLocked`: signed *is* locked, and a second flag is
+  // one more thing that can disagree with the first. `COMPLETED` is a workflow
+  // status, not an attestation — a note is only signed when a clinician puts
+  // their name to it.
+  signedById      String?
+  signedAt        DateTime?
+  // Set the first time a signed note is amended, so a reader can see at a
+  // glance that what they are looking at is not what was originally signed.
+  amendedAt       DateTime?
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -953,6 +971,9 @@ model Treatment {
   appointment     Appointment?    @relation(fields: [appointmentId], references: [id])
   procedure       Procedure       @relation(fields: [procedureId], references: [id])
   doctor          Staff           @relation(fields: [doctorId], references: [id])
+  signedBy        User?           @relation("TreatmentsSigned", fields: [signedById], references: [id])
+  addenda         TreatmentAddendum[]
+  revisions       TreatmentRevision[]
   invoiceItems    InvoiceItem[]
   documents       Document[]
 
@@ -961,6 +982,58 @@ model Treatment {
   @@index([patientId])
   @@index([appointmentId])
   @@index([doctorId])
+  @@index([signedById])
+}
+
+/// An addition made to a clinical note after it was signed.
+///
+/// The normal way to say something further about a treatment. The signed note
+/// itself is never touched: an addendum is appended, attributed and dated, and
+/// cannot be edited or removed once written. This is what "later amendments"
+/// means in FR-007 for anything that is not a factual correction.
+model TreatmentAddendum {
+  id              String    @id @default(cuid())
+  hospitalId      String
+  treatmentId     String
+
+  body            String    @db.Text
+  authorId        String
+
+  createdAt       DateTime  @default(now())
+
+  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatment       Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  author          User      @relation("TreatmentAddenda", fields: [authorId], references: [id])
+
+  @@index([hospitalId])
+  @@index([treatmentId])
+}
+
+/// What a signed clinical note said before it was corrected.
+///
+/// Addenda cover almost everything, but not a wrong value in a structured
+/// field: a note recording tooth 26 when the work was on 27 leaves every report
+/// on tooth 26 wrong, and an addendum saying so does not fix the data. So a
+/// signed note *can* be corrected — by a clinician, with a reason — and this
+/// records what it said beforehand.
+model TreatmentRevision {
+  id              String    @id @default(cuid())
+  hospitalId      String
+  treatmentId     String
+
+  reason          String    @db.Text
+  /// `{ field: { from, to } }` for each field this amendment changed.
+  changes         Json
+  amendedById     String
+
+  createdAt       DateTime  @default(now())
+
+  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatment       Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  amendedBy       User      @relation("TreatmentAmendments", fields: [amendedById], references: [id])
+
+  @@index([hospitalId])
+  @@index([treatmentId])
 }
 
 enum TreatmentStatus {

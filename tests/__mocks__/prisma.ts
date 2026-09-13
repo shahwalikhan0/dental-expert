@@ -170,6 +170,22 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
+  // TreatmentAddendum
+  treatmentAddendum: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    count: vi.fn(),
+  },
+
+  // TreatmentRevision
+  treatmentRevision: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    count: vi.fn(),
+  },
+
   // Refund
   refund: {
     findUnique: vi.fn(),

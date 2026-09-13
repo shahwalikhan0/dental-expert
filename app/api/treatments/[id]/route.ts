@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
-import { can } from '@/lib/rbac'
+import { can, holderCan } from '@/lib/rbac'
+import {
+  MIN_REASON_LENGTH,
+  diffClinicalFields,
+  isSigned,
+  isUsableReason,
+} from '@/lib/clinical-notes'
 
 // GET - Get single treatment with all details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -72,6 +79,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
           },
         },
+        // FR-007: the note is not complete without who signed it and what has
+        // been said or corrected since.
+        signedBy: { select: { id: true, name: true } },
+        addenda: {
+          orderBy: { createdAt: 'asc' },
+          include: { author: { select: { id: true, name: true } } },
+        },
+        revisions: {
+          orderBy: { createdAt: 'desc' },
+          include: { amendedBy: { select: { id: true, name: true } } },
+        },
       },
     })
 
@@ -88,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update treatment
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requirePermission('clinical:write')
+  const { error, hospitalId, user, session } = await requirePermission('clinical:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -106,12 +124,46 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
     }
 
-    // Prevent updates to completed or cancelled treatments. This is a record
-    // integrity rule rather than an access rule, so it is not expressed as the
-    // handler's requirePermission — but the privilege that overrides it is the
-    // same one that allows destroying a clinical record, so it reads from rbac
-    // rather than naming a role here.
+    // FR-007. A signed note is locked: what happens next depends on whether
+    // this request would change the clinical record or only the billing and
+    // workflow fields around it.
+    //
+    // Note the override here is `clinical:sign`, not `clinical:delete` as it
+    // used to be. ADMIN holds `clinical:delete` and deliberately cannot sign a
+    // note, so the old rule let the one role that may not author clinical
+    // content rewrite signed content — with nothing recording the change. That
+    // is exactly the silent overwrite spec §10 forbids.
+    const signed = isSigned(existingTreatment)
+    const clinicalChanges = signed ? diffClinicalFields(existingTreatment, body) : {}
+    const amendsClinicalContent = Object.keys(clinicalChanges).length > 0
+
+    if (signed && amendsClinicalContent) {
+      if (!holderCan(user, 'clinical:sign')) {
+        return NextResponse.json(
+          {
+            error: `${existingTreatment.treatmentNo} is signed. Only a clinician can amend it, and the change will be recorded.`,
+            signedAt: existingTreatment.signedAt,
+            fields: Object.keys(clinicalChanges),
+          },
+          { status: 409 }
+        )
+      }
+
+      if (!isUsableReason(body.amendmentReason)) {
+        return NextResponse.json(
+          {
+            error: `Amending a signed note needs a reason of at least ${MIN_REASON_LENGTH} characters saying what was wrong`,
+            fields: Object.keys(clinicalChanges),
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Pre-signature, the old workflow rule still applies: a completed or
+    // cancelled treatment is not casually editable.
     if (
+      !signed &&
       (existingTreatment.status === 'COMPLETED' || existingTreatment.status === 'CANCELLED') &&
       !can(session.user.role, 'clinical:delete')
     ) {
@@ -151,35 +203,56 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const treatment = await prisma.treatment.update({
-      where: { id, hospitalId },
-      data: updateData,
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        doctor: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        procedure: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            category: true,
-          },
+    if (amendsClinicalContent) {
+      updateData.amendedAt = new Date()
+    }
+
+    const include = {
+      patient: {
+        select: {
+          id: true,
+          patientId: true,
+          firstName: true,
+          lastName: true,
         },
       },
-    })
+      doctor: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      procedure: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          category: true,
+        },
+      },
+      signedBy: { select: { id: true, name: true } },
+    }
+
+    // The revision and the update go together: a note changed without the
+    // record of what it used to say is the failure this whole requirement is
+    // about, so neither lands without the other.
+    const [treatment] = amendsClinicalContent
+      ? await prisma.$transaction([
+          prisma.treatment.update({ where: { id, hospitalId }, data: updateData, include }),
+          prisma.treatmentRevision.create({
+            data: {
+              hospitalId,
+              treatmentId: id,
+              reason: String(body.amendmentReason).trim(),
+              // Prisma's Json input type does not accept a plain index
+              // signature; the shape is `{ field: { from, to } }`.
+              changes: clinicalChanges as unknown as Prisma.InputJsonValue,
+              amendedById: user!.id,
+            },
+          }),
+        ])
+      : [await prisma.treatment.update({ where: { id, hospitalId }, data: updateData, include })]
 
     return NextResponse.json(treatment)
   } catch (error) {
@@ -211,6 +284,21 @@ export async function DELETE(
 
     if (!treatment) {
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
+    }
+
+    // FR-007. A signed note cannot be deleted by anyone, including the roles
+    // that hold `clinical:delete` — otherwise the lock is decorative, since
+    // deleting and re-entering achieves the silent overwrite by another route.
+    // Spec §10 wants staff deactivated "without deleting historical records";
+    // the same reasoning applies to the records themselves.
+    if (treatment.signedAt) {
+      return NextResponse.json(
+        {
+          error: `${treatment.treatmentNo} is a signed clinical record and cannot be deleted. Amend it or add an addendum instead.`,
+          signedAt: treatment.signedAt,
+        },
+        { status: 409 }
+      )
     }
 
     // Check if treatment has invoices

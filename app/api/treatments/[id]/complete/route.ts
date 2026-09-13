@@ -22,6 +22,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
     }
 
+    // FR-007: this route writes procedureNotes, materialsUsed and
+    // complications, so it is another way into the clinical record. A signed
+    // note is closed to it.
+    if (treatment.signedAt) {
+      return NextResponse.json(
+        { error: `${treatment.treatmentNo} is signed and cannot be completed again` },
+        { status: 409 }
+      )
+    }
+
     // Check if treatment can be completed
     if (treatment.status !== 'IN_PROGRESS' && treatment.status !== 'PLANNED') {
       return NextResponse.json(
