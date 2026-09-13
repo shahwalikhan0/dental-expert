@@ -90,6 +90,13 @@ const prismaMock = vi.hoisted(() => {
       update: vi.fn(),
       count: vi.fn(),
     },
+    // FR-013 reads the clinic's discount approval threshold from Setting.
+    setting: {
+      findUnique: vi.fn(),
+    },
+    cashierSession: {
+      findFirst: vi.fn(),
+    },
     $transaction: vi.fn((fn: any) => {
       if (typeof fn === 'function') return fn(mock)
       return Promise.resolve(fn)

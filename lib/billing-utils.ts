@@ -142,6 +142,11 @@ export const paymentStatusConfig: Record<
     color: 'text-red-700',
     bgColor: 'bg-red-100',
   },
+  PARTIALLY_REFUNDED: {
+    label: 'Partially Refunded',
+    color: 'text-purple-700',
+    bgColor: 'bg-purple-50',
+  },
   REFUNDED: {
     label: 'Refunded',
     color: 'text-purple-700',

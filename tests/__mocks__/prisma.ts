@@ -4,7 +4,12 @@ import { vi } from 'vitest'
 const mockPrismaClient = {
   $connect: vi.fn(),
   $disconnect: vi.fn(),
-  $transaction: vi.fn((fn) => fn(mockPrismaClient)),
+  // Prisma's $transaction takes either a callback or an array of operations.
+  // The routes in this codebase use both, so the mock has to accept both —
+  // handing an array to `fn(client)` throws.
+  $transaction: vi.fn((arg: any) =>
+    Array.isArray(arg) ? Promise.all(arg) : arg(mockPrismaClient)
+  ),
   $queryRaw: vi.fn(),
   $queryRawUnsafe: vi.fn(),
   $executeRaw: vi.fn(),
@@ -163,6 +168,37 @@ const mockPrismaClient = {
     update: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
+  },
+
+  // Refund
+  refund: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+    groupBy: vi.fn(),
+  },
+
+  // CashierSession
+  cashierSession: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+
+  // CashierSessionCount
+  cashierSessionCount: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    deleteMany: vi.fn(),
   },
 
   // Chair

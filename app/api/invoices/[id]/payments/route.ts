@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { generatePaymentNo } from '@/lib/billing-utils'
+import { getOpenSession } from '@/lib/cashier'
 import { PaymentMethod, PaymentStatus } from '@prisma/client'
 
 // GET - Get payments for an invoice
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // POST - Record a payment for an invoice
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requirePermission('billing:write')
+  const { error, hospitalId, user } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -112,6 +113,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Generate payment number
     const paymentNo = await generatePaymentNo(prisma)
 
+    // FR-015: a payment taken while a till is open belongs to that till's
+    // reconciliation, and spec §12 names the cashier on a financial
+    // transaction. Taking payment with no session open still works — it simply
+    // will not appear in anyone's drawer count.
+    const openSession = await getOpenSession(hospitalId)
+
     // Create payment
     const payment = await prisma.payment.create({
       data: {
@@ -128,6 +135,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         chequeDate: chequeDate ? new Date(chequeDate) : null,
         upiId,
         notes,
+        cashierSessionId: openSession?.id ?? null,
+        recordedById: user?.id ?? null,
       },
     })
 

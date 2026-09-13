@@ -53,10 +53,13 @@ export default function BillingSettingsPage() {
     termsAndConditions:
       'Payment is due within 30 days from the invoice date.\nLate payments may incur additional charges.',
     currencySymbol: 'Rs',
-    currencyCode: 'INR',
+    currencyCode: 'PKR',
     enableAutoInvoice: 'true',
     lateFeePercentage: '2',
     minimumDueAmount: '100',
+    // FR-013. Saved as `billing.discountApprovalThreshold`, which is the key
+    // the invoice route reads.
+    discountApprovalThreshold: '1000',
   })
 
   useEffect(() => {
@@ -211,6 +214,51 @@ export default function BillingSettingsPage() {
                   <>
                     Invoices carry <strong>no tax line</strong>. Changing this affects new invoices
                     only — existing ones keep the rate they were issued with.
+                  </>
+                )}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Discount control — FR-013 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Discount Approval</CardTitle>
+            <CardDescription>
+              When a discount needs a reason and a manager&rsquo;s approval
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="discountApprovalThreshold">Approval threshold (Rs)</Label>
+              <Input
+                id="discountApprovalThreshold"
+                type="number"
+                min="0"
+                value={settings.discountApprovalThreshold}
+                onChange={(e) =>
+                  setSettings({ ...settings, discountApprovalThreshold: e.target.value })
+                }
+              />
+              <p className="text-muted-foreground mt-1 text-sm">
+                Discounts above this amount need a written reason and approval from someone holding
+                the discount permission. Set it to 0 to have every discount approved.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm text-blue-800">
+                {Number(settings.discountApprovalThreshold) > 0 ? (
+                  <>
+                    Discounts up to <strong>Rs {settings.discountApprovalThreshold}</strong> go
+                    through without approval. Anything larger holds the invoice in draft until a
+                    manager decides.
+                  </>
+                ) : (
+                  <>
+                    <strong>Every discount</strong> needs a reason and approval before the invoice
+                    can be issued.
                   </>
                 )}
               </p>

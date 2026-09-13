@@ -51,6 +51,10 @@ vi.mock('@/lib/prisma', () => ({
     insuranceClaim: {
       findUnique: vi.fn(),
     },
+    // FR-013 reads the clinic's discount approval threshold from Setting.
+    setting: {
+      findUnique: vi.fn(),
+    },
   },
 }))
 

@@ -194,6 +194,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         REFUNDED: [],
       }
 
+      // FR-013: an unapproved discount must not reach the patient. Cancelling
+      // stays open — an invoice stuck waiting on an approval nobody intends to
+      // give still has to be disposable.
+      if (
+        existingInvoice.discountApprovalStatus === 'PENDING' &&
+        status !== 'DRAFT' &&
+        status !== 'CANCELLED'
+      ) {
+        return NextResponse.json(
+          {
+            error: `The discount on this invoice is still awaiting approval, so it cannot be moved to ${status}`,
+          },
+          { status: 409 }
+        )
+      }
+
       const allowedStatuses = validTransitions[existingInvoice.status]
       if (allowedStatuses && allowedStatuses.includes(status)) {
         updateData.status = status

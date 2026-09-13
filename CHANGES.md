@@ -619,7 +619,90 @@ nothing to compare against until some exist.
 
 ---
 
-## 7. Verification
+## 7. FR-015 daily closing, and the FR-013/014 approval trail
+
+### 7.1 What was missing
+
+The capabilities were enforced — `billing:closing`, `billing:discount` and
+`billing:refund` all had teeth — but nothing was written down behind them:
+
+| Requirement             | State                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| FR-013 Discount Control | A discount had a type, a value and an amount. No reason, no approver, no threshold.                             |
+| FR-014 Refund Control   | Amount, date and reason were **overwritten onto the payment**. No authoriser, no method, no second refund ever. |
+| FR-015 Daily Closing    | Nothing at all. A till could not be opened, let alone reconciled.                                               |
+
+### 7.2 A refund is now a transaction, not an edit
+
+The old route mutated `Payment.refundAmount` in place, which lost three
+things:
+
+- **the authoriser** — `session` was destructured and never used, so nobody
+  was accountable for money leaving
+- **the method** — a card payment refunded in cash left the drawer short with
+  nothing on record to explain it
+- **any second refund** — `refundAmount` being set at all was read as "already
+  refunded", so a partial refund could never be followed by another
+
+`Refund` carries amount, method, reason (required), authoriser and the link to
+the original payment. The legacy `Payment.refundAmount/refundDate/refundReason`
+columns are kept up to date as a running total so existing reads still work.
+`PaymentStatus` gains `PARTIALLY_REFUNDED`, which the old set could not express
+— COMPLETED hid the refund, REFUNDED claimed the whole amount had gone back.
+
+### 7.3 The till
+
+`CashierSession` is opened with a float and collects the payments and refunds
+taken while it is open; `CashierSessionCount` holds one counted line per
+payment method at close, with the variance.
+
+Two decisions worth naming:
+
+**Refunds come off the method they were paid out by**, not the one the payment
+came in by. Refunding a card payment in cash takes cash out of the drawer;
+charging it to CARD would report a cash shortfall and a card surplus every
+single time. Verified live: a Rs 3,000 cash refund against a Rs 6,000 card
+payment left CARD at 6,000 and took CASH to 12,000 (5,000 float + 10,000 −
+3,000).
+
+**`expectedAmount` is stamped at close**, not recomputed on read — the same
+principle as the stamped tax rate. A reconciliation records what was found at
+the time. Verified by editing a payment to Rs 99,999 after closing: the stamped
+line still read expected 12,000, variance −200.
+
+Opening the till is `billing:write` (reception takes the money); closing it is
+`billing:closing` (reception does not hold it). One open session per clinic —
+a second would split the day's takings across two reconciliations and leave
+neither able to balance.
+
+### 7.4 Discount approval
+
+A discount over `billing.discountApprovalThreshold` needs a written reason and
+someone holding `billing:discount` — ADMIN or CLINIC_MANAGER, deliberately not
+reception and not the accountant. The invoice is held in DRAFT until decided,
+because issuing it would put an unapproved discount in front of the patient.
+Cancelling stays available: an invoice waiting on an approval nobody intends to
+give still has to be disposable.
+
+A discount cannot be approved by the person who requested it, even where they
+hold the capability. That is the separation FR-013 is asking for.
+
+> **The default threshold is Rs 1,000, and that number is a guess — please set
+> it.** It is deliberately not zero: a zero threshold sends every goodwill
+> rounding-down of a bill to a manager, and the predictable result is that
+> staff stop using the discount field and quietly adjust the price instead,
+> which records less than before. Settings → Billing → Discount Approval.
+
+### 7.5 Payments now name the cashier
+
+`Payment.recordedById` and `Payment.cashierSessionId`. Spec §12 lists the
+cashier among the fields of a financial transaction, and it was not stored.
+Payments taken with no session open still work — they simply do not appear in
+anyone's drawer count.
+
+---
+
+## 8. Verification
 
 Everything below was actually run, not assumed.
 
@@ -699,7 +782,7 @@ Note the server used was PostgreSQL **15**, while the compose files ship
 **16**. Nothing in the schema or the rewritten SQL is version-specific above 13
 (`DROP DATABASE ... WITH (FORCE)` in `restore.sh` is the highest requirement).
 
-### 7.1 What was created on the local Postgres at `localhost:5432`
+### 8.1 What was created on the local Postgres at `localhost:5432`
 
 Your existing databases — `cmms`, `expert_advisor`, `keycloak`, `snaptap`,
 `snaptap-do`, `stripe_db` — and the `payment_service` role were **not touched**.
@@ -737,12 +820,12 @@ Use the existing server (as configured), or change the host port to `5433` as
 
 ---
 
-## 8. Not done — decide before go-live
+## 9. Not done — decide before go-live
 
 Nothing below is broken by the changes above; these are pre-existing gaps and
 India assumptions that a Pakistani dental clinic will hit.
 
-### 8.1 Remaining India coupling
+### 9.1 Remaining India coupling
 
 | Area                                             | Where                                              | Note                                                                                                                                                                                                                     |
 | ------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -752,7 +835,7 @@ India assumptions that a Pakistani dental clinic will hit.
 | **`Hospital` locale defaults**                   | `prisma/schema.prisma`                             | `locale` now defaults to `en-PK`, but `country`, `currency` and `timezone` still default to `IN` / `INR` / `Asia/Kolkata`. Harmless for the seeded clinic, which sets them, but wrong for a new one.                     |
 | **Seed sample data**                             | `prisma/seed.ts`                                   | The three original accounts and the sample patients still carry Indian names, cities (Chennai, Tamil Nadu) and phone numbers that fail `validatePakistanPhone`. The five roles added in this pass use Pakistani numbers. |
 
-### 8.2 Spec gaps (present upstream, still absent here)
+### 9.2 Spec gaps (present upstream, still absent here)
 
 Measured against the Dental Clinic Management System specification:
 
@@ -764,11 +847,6 @@ Measured against the Dental Clinic Management System specification:
   capability (§3.6), which means IoT devices cannot post to it. They need their
   own credential — a per-device key checked like the cron secret — before that
   feature works again.
-- **FR-015 Daily closing** — no cashier session or shift reconciliation exists
-  anywhere in the codebase. Needs a `CashierSession` model. The capabilities
-  `billing:closing`, `billing:discount` and `billing:refund` are defined and
-  enforced, but the _approval workflow_ FR-013/FR-014 describe (reason,
-  authoriser, link to the original transaction) is not built yet.
 - **FR-007 Clinical note locking** — there is a `signedAt` field but no
   `lockedAt`/`isLocked` and no addendum model. Signed notes are still mutable.
 - **Per-user data scoping** — access is now correct _by module_, but every
@@ -783,7 +861,7 @@ Measured against the Dental Clinic Management System specification:
 
 ---
 
-## 9. Pulling from upstream
+## 10. Pulling from upstream
 
 Upstream remains configured as the `upstream` remote. Before merging anything:
 

@@ -58,6 +58,7 @@ describe('Payments Detail & Refund API', () => {
     mockAuth.requireAuthAndRole.mockResolvedValue({
       error: null,
       hospitalId: 'hospital-1',
+      user: { id: 'user-1', role: 'ADMIN' },
       session: { user: { id: 'user-1', role: 'ADMIN' } },
     })
   })
@@ -254,40 +255,37 @@ describe('Payments Detail & Refund API', () => {
   })
 
   // ─── POST /api/payments/[id]/refund ───────────────────
+  //
+  // Rewritten for FR-014. A refund is now its own record rather than an edit
+  // of the payment, so these assert the shape of that record and the invoice
+  // it writes back to; the full FR-014 surface (method, authoriser, partial
+  // refunds, till attachment) is covered in refund-and-discount-approval.test.
   describe('POST /api/payments/[id]/refund', () => {
-    it('processes full refund successfully', async () => {
-      ;(prisma.payment.findUnique as any)
-        .mockResolvedValueOnce({
-          id: 'pay-1',
-          status: 'COMPLETED',
-          amount: 1000,
-          refundAmount: null,
-          invoiceId: 'inv-1',
-          invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
-        })
-        .mockResolvedValueOnce({
-          id: 'pay-1',
-          status: 'REFUNDED',
-          refundAmount: 1000,
-          invoice: {
-            id: 'inv-1',
-            invoiceNo: 'INV001',
-            totalAmount: 1000,
-            paidAmount: 0,
-            balanceAmount: 1000,
-            status: 'REFUNDED',
-          },
-        })
+    beforeEach(() => {
+      ;(prisma.cashierSession.findFirst as any).mockResolvedValue(null)
+      ;(prisma.refund.findFirst as any).mockResolvedValue(null)
+      ;(prisma.refund.create as any).mockResolvedValue({ id: 'ref-1', refundNo: 'REF-1' })
       ;(prisma.payment.update as any).mockResolvedValue({})
       ;(prisma.invoice.update as any).mockResolvedValue({})
+    })
+
+    it('processes full refund successfully', async () => {
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
+        id: 'pay-1',
+        paymentNo: 'PAY-1',
+        status: 'COMPLETED',
+        amount: 1000,
+        paymentMethod: 'CASH',
+        invoiceId: 'inv-1',
+        refunds: [],
+        invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
+      })
 
       const res = await refundModule.POST(
         makeRequest('POST', { refundAmount: 1000, refundReason: 'Patient request' }),
         ctx
       )
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.message).toContain('Refund processed')
+      expect(res.status).toBe(201)
       expect(prisma.invoice.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'REFUNDED' }),
@@ -296,25 +294,22 @@ describe('Payments Detail & Refund API', () => {
     })
 
     it('processes partial refund', async () => {
-      ;(prisma.payment.findUnique as any)
-        .mockResolvedValueOnce({
-          id: 'pay-1',
-          status: 'COMPLETED',
-          amount: 1000,
-          refundAmount: null,
-          invoiceId: 'inv-1',
-          invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
-        })
-        .mockResolvedValueOnce({
-          id: 'pay-1',
-          status: 'REFUNDED',
-          refundAmount: 500,
-        })
-      ;(prisma.payment.update as any).mockResolvedValue({})
-      ;(prisma.invoice.update as any).mockResolvedValue({})
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
+        id: 'pay-1',
+        paymentNo: 'PAY-1',
+        status: 'COMPLETED',
+        amount: 1000,
+        paymentMethod: 'CASH',
+        invoiceId: 'inv-1',
+        refunds: [],
+        invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
+      })
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
-      expect(res.status).toBe(200)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 500, refundReason: 'Partial adjustment' }),
+        ctx
+      )
+      expect(res.status).toBe(201)
       expect(prisma.invoice.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'PARTIALLY_PAID' }),
@@ -323,70 +318,106 @@ describe('Payments Detail & Refund API', () => {
     })
 
     it('returns 400 for invalid refund amount', async () => {
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 0 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 0, refundReason: 'Nothing to give back' }),
+        ctx
+      )
       expect(res.status).toBe(400)
     })
 
+    // New under FR-014: the reason is the point of the record.
+    it('returns 400 when no reason is given', async () => {
+      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
+      expect(res.status).toBe(400)
+      expect(prisma.refund.create).not.toHaveBeenCalled()
+    })
+
     it('returns 400 when refund exceeds payment amount', async () => {
-      ;(prisma.payment.findUnique as any).mockResolvedValue({
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
         id: 'pay-1',
+        paymentNo: 'PAY-1',
         status: 'COMPLETED',
         amount: 500,
-        refundAmount: null,
+        paymentMethod: 'CASH',
+        invoiceId: 'inv-1',
+        refunds: [],
         invoice: { paidAmount: 500, totalAmount: 500, status: 'PAID' },
       })
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 1000 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 1000, refundReason: 'Too much' }),
+        ctx
+      )
       expect(res.status).toBe(400)
       const body = await res.json()
       expect(body.error).toContain('exceeds')
     })
 
-    it('returns 400 for non-COMPLETED payment', async () => {
-      ;(prisma.payment.findUnique as any).mockResolvedValue({
+    it('returns 400 for a payment that never settled', async () => {
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
         id: 'pay-1',
+        paymentNo: 'PAY-1',
         status: 'PENDING',
         amount: 1000,
-        refundAmount: null,
+        paymentMethod: 'CASH',
+        refunds: [],
         invoice: {},
       })
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 500, refundReason: 'Never arrived' }),
+        ctx
+      )
       expect(res.status).toBe(400)
       const body = await res.json()
-      expect(body.error).toContain('completed')
+      expect(body.error).toContain('settled')
     })
 
-    it('returns 400 for already refunded payment', async () => {
-      ;(prisma.payment.findUnique as any).mockResolvedValue({
+    // Fully refunded is now decided by the refund records, not by a single
+    // legacy field being non-null — which is what used to block second
+    // refunds after a partial one.
+    it('returns 400 for an already fully refunded payment', async () => {
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
         id: 'pay-1',
-        status: 'COMPLETED',
+        paymentNo: 'PAY-1',
+        status: 'REFUNDED',
         amount: 1000,
-        refundAmount: 500,
+        paymentMethod: 'CASH',
+        refunds: [{ amount: 1000 }],
         invoice: {},
       })
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 500, refundReason: 'Once more' }),
+        ctx
+      )
       expect(res.status).toBe(400)
       const body = await res.json()
       expect(body.error).toContain('already been refunded')
     })
 
     it('returns 404 when payment not found', async () => {
-      ;(prisma.payment.findUnique as any).mockResolvedValue(null)
+      ;(prisma.payment.findFirst as any).mockResolvedValue(null)
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 500, refundReason: 'Not ours' }),
+        ctx
+      )
       expect(res.status).toBe(404)
     })
 
-    it('returns 403 for non-ADMIN/ACCOUNTANT roles', async () => {
+    it('returns 403 for a role without billing:refund', async () => {
       mockAuth.requireAuthAndRole.mockResolvedValue({
         error: null,
         hospitalId: 'hospital-1',
+        user: { id: 'user-1', role: 'DOCTOR' },
         session: { user: { id: 'user-1', role: 'DOCTOR' } },
       })
 
-      const res = await refundModule.POST(makeRequest('POST', { refundAmount: 500 }), ctx)
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 500, refundReason: 'Please' }),
+        ctx
+      )
       expect(res.status).toBe(403)
     })
   })

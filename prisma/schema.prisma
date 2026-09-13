@@ -73,6 +73,8 @@ model Hospital {
   patients            Patient[]
   appointments        Appointment[]
   chairs              Chair[]
+  refunds             Refund[]
+  cashierSessions     CashierSession[]
   treatments          Treatment[]
   treatmentPlans      TreatmentPlan[]
   dentalChartEntries  DentalChartEntry[]
@@ -245,6 +247,12 @@ model User {
   acknowledgedStockAlerts StockAlert[]
   labOrderStatusChanges   LabOrderHistory[]
   uploadedLabOrderDocuments LabOrderDocument[]
+  discountsRequested      Invoice[]        @relation("DiscountsRequested")
+  discountsApproved       Invoice[]        @relation("DiscountsApproved")
+  refundsAuthorised       Refund[]         @relation("RefundsAuthorised")
+  paymentsRecorded        Payment[]        @relation("PaymentsRecorded")
+  cashierSessionsOpened   CashierSession[] @relation("CashierSessionsOpened")
+  cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
 
   @@index([email])
   @@index([role])
@@ -1046,6 +1054,17 @@ model Invoice {
   discountType    DiscountType?
   discountValue   Decimal?      @db.Decimal(10, 2)
   discountAmount  Decimal       @default(0) @db.Decimal(10, 2)
+
+  // FR-013: a discount over the clinic's threshold needs a reason and an
+  // approver who is not the person raising the invoice. Reception holds
+  // `billing:write` but not `billing:discount`, so their request sits PENDING
+  // and the invoice cannot leave DRAFT until a manager decides.
+  discountReason         String?                @db.Text
+  discountApprovalStatus DiscountApprovalStatus @default(NOT_REQUIRED)
+  discountRequestedById  String?
+  discountApprovedById   String?
+  discountDecidedAt      DateTime?
+  discountDecisionNote   String?                @db.Text
   taxableAmount   Decimal       @db.Decimal(10, 2)
   // One tax line, stamped onto the invoice at the moment it is raised.
   //
@@ -1080,12 +1099,126 @@ model Invoice {
   paymentLinks    PaymentLink[]
   paymentPlans    PaymentPlan[]
   insuranceClaim  InsuranceClaim? @relation(fields: [insuranceClaimId], references: [id])
+  discountRequestedBy User?     @relation("DiscountsRequested", fields: [discountRequestedById], references: [id])
+  discountApprovedBy  User?     @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
 
   @@unique([hospitalId, invoiceNo])
   @@index([hospitalId])
   @@index([patientId])
   @@index([status])
   @@index([createdAt])
+}
+
+/// FR-014 — "Record refund amount, method, reason, authorizer, and link to
+/// original transaction."
+///
+/// A refund is its own transaction, not an edit of the payment it reverses.
+/// The previous implementation mutated `Payment.refundAmount` in place, which
+/// recorded no authoriser, could not express a refund paid back by a different
+/// method than it came in, and refused any second refund — so a partial refund
+/// could never be followed by another.
+model Refund {
+  id              String        @id @default(cuid())
+  hospitalId      String
+  refundNo        String
+  paymentId       String
+
+  amount          Decimal       @db.Decimal(10, 2)
+  /// May differ from the original payment: card takings are often refunded in
+  /// cash, and the till reconciliation has to see the outflow under the method
+  /// the money actually left by.
+  refundMethod    PaymentMethod
+  reason          String        @db.Text
+  authorisedById  String
+  cashierSessionId String?
+
+  transactionId   String?
+  refundedAt      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  hospital        Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  payment         Payment         @relation(fields: [paymentId], references: [id])
+  authorisedBy    User            @relation("RefundsAuthorised", fields: [authorisedById], references: [id])
+  cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
+
+  @@unique([hospitalId, refundNo])
+  @@index([hospitalId])
+  @@index([paymentId])
+  @@index([cashierSessionId])
+  @@index([refundedAt])
+}
+
+/// FR-015 — "Provide daily cashier/payment-method reconciliation and variance
+/// record."
+///
+/// A till: opened with a float, collecting the payments and refunds taken while
+/// it is open, closed against a physical count per payment method.
+model CashierSession {
+  id              String               @id @default(cuid())
+  hospitalId      String
+  sessionNo       String
+  status          CashierSessionStatus @default(OPEN)
+
+  openingFloat    Decimal              @default(0) @db.Decimal(10, 2)
+  openedById      String
+  openedAt        DateTime             @default(now())
+  openingNotes    String?              @db.Text
+
+  closedById      String?
+  closedAt        DateTime?
+  closingNotes    String?              @db.Text
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  hospital        Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  openedBy        User                  @relation("CashierSessionsOpened", fields: [openedById], references: [id])
+  closedBy        User?                 @relation("CashierSessionsClosed", fields: [closedById], references: [id])
+  payments        Payment[]
+  refunds         Refund[]
+  counts          CashierSessionCount[]
+
+  @@unique([hospitalId, sessionNo])
+  @@index([hospitalId])
+  @@index([status])
+  @@index([openedAt])
+}
+
+/// One counted line per payment method on a closed session.
+///
+/// `expectedAmount` is stamped at close rather than recalculated on read, for
+/// the same reason the tax rate is stamped on an invoice: a reconciliation
+/// records what was found at the time, and must not drift if a payment is
+/// corrected afterwards.
+model CashierSessionCount {
+  id              String         @id @default(cuid())
+  sessionId       String
+  paymentMethod   PaymentMethod
+
+  expectedAmount  Decimal        @db.Decimal(10, 2)
+  countedAmount   Decimal        @db.Decimal(10, 2)
+  varianceAmount  Decimal        @db.Decimal(10, 2)
+  notes           String?        @db.Text
+
+  createdAt       DateTime       @default(now())
+
+  session         CashierSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, paymentMethod])
+  @@index([sessionId])
+}
+
+enum CashierSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum DiscountApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model InvoiceItem {
@@ -1128,6 +1261,11 @@ model Payment {
   refundDate      DateTime?
   refundReason    String?
 
+  // FR-015, and spec §12 which names the cashier on a financial transaction.
+  // A payment taken while a till is open belongs to that till's reconciliation.
+  cashierSessionId String?
+  recordedById    String?
+
   gateway           String?    // razorpay / phonepe / paytm
   gatewayOrderId    String?    // Provider's order/transaction ID
   gatewayPaymentId  String?    // Provider's payment ID
@@ -1138,12 +1276,16 @@ model Payment {
 
   hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+  cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
+  recordedBy      User?         @relation("PaymentsRecorded", fields: [recordedById], references: [id])
+  refunds         Refund[]
 
   @@unique([hospitalId, paymentNo])
   @@index([hospitalId])
   @@index([invoiceId])
   @@index([paymentDate])
   @@index([gatewayOrderId])
+  @@index([cashierSessionId])
 }
 
 model InsuranceClaim {
@@ -1222,6 +1364,10 @@ enum PaymentStatus {
   PENDING
   COMPLETED
   FAILED
+  // Some of the money has gone back but not all of it. Without this a payment
+  // refunded in part had to be marked either COMPLETED (hiding the refund) or
+  // REFUNDED (claiming the whole amount went back).
+  PARTIALLY_REFUNDED
   REFUNDED
   CANCELLED
 }

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { generateInvoiceNo, calculateInvoiceTotals, resolveTaxRate } from '@/lib/billing-utils'
-import { DiscountType, InvoiceStatus } from '@prisma/client'
+import { DiscountApprovalStatus, DiscountType, InvoiceStatus } from '@prisma/client'
+import { discountNeedsApproval, getDiscountApprovalThreshold } from '@/lib/cashier'
+import { holderCan } from '@/lib/rbac'
 
 // GET - List invoices with filters
 export async function GET(request: NextRequest) {
@@ -158,7 +160,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new invoice
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requirePermission('billing:write')
+  const { error, hospitalId, user } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -171,6 +173,7 @@ export async function POST(request: NextRequest) {
       discountType = 'FIXED',
       discountValue = 0,
       taxRate: requestedTaxRate,
+      discountReason,
       dueDate,
       notes,
       termsAndConditions,
@@ -230,6 +233,45 @@ export async function POST(request: NextRequest) {
       taxRate
     )
 
+    // FR-013 — "Require reason and approval for discounts above a configurable
+    // threshold." A discount over the threshold needs a reason, and someone
+    // holding `billing:discount` to stand behind it. Reception raises invoices
+    // but does not hold that capability, so their request is recorded PENDING
+    // and a manager decides; the invoice cannot leave DRAFT until they do.
+    const discountAmount = Number(calculatedTotals.discountAmount)
+    const threshold = await getDiscountApprovalThreshold(hospitalId)
+    const needsApproval = discountNeedsApproval(discountAmount, threshold)
+
+    let discountApprovalStatus: DiscountApprovalStatus = 'NOT_REQUIRED'
+    let discountApprovedById: string | null = null
+    let discountRequestedById: string | null = null
+    let discountDecidedAt: Date | null = null
+    let requestedStatus = status as InvoiceStatus
+
+    if (needsApproval) {
+      if (!discountReason || String(discountReason).trim().length < 3) {
+        return NextResponse.json(
+          {
+            error: `A discount of ${discountAmount} is above the ${threshold} approval threshold and needs a reason`,
+          },
+          { status: 400 }
+        )
+      }
+
+      discountRequestedById = user?.id ?? null
+
+      if (holderCan(user, 'billing:discount')) {
+        discountApprovalStatus = 'APPROVED'
+        discountApprovedById = user?.id ?? null
+        discountDecidedAt = new Date()
+      } else {
+        discountApprovalStatus = 'PENDING'
+        // Issuing it now would put an unapproved discount in front of the
+        // patient, so the invoice is held as a draft until someone decides.
+        requestedStatus = 'DRAFT'
+      }
+    }
+
     // Generate invoice number
     const invoiceNo = await generateInvoiceNo(prisma)
 
@@ -260,7 +302,12 @@ export async function POST(request: NextRequest) {
         totalAmount: calculatedTotals.totalAmount,
         paidAmount: 0,
         balanceAmount: calculatedTotals.totalAmount,
-        status: status as InvoiceStatus,
+        status: requestedStatus,
+        discountReason: discountReason || null,
+        discountApprovalStatus,
+        discountRequestedById,
+        discountApprovedById,
+        discountDecidedAt,
         notes,
         termsAndConditions,
         items: {
