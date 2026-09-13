@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { formatCNIC } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -40,7 +41,7 @@ interface StaffDetail {
   city: string | null
   state: string | null
   pincode: string | null
-  aadharNumber: string | null
+  cnic: string | null
   nationalTaxNo: string | null
   qualification: string | null
   specialization: string | null
@@ -308,8 +309,8 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <Separator />
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Aadhar Number</p>
-                    <p className="font-medium">{staff.aadharNumber || '-'}</p>
+                    <p className="text-sm text-muted-foreground">CNIC</p>
+                    <p className="font-medium">{formatCNIC(staff.cnic) || '-'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">National Tax Number (NTN)</p>

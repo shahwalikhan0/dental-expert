@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -46,7 +47,7 @@ export default function NewStaffPage() {
     pincode: '',
 
     // Documents
-    aadharNumber: '',
+    cnic: '',
     nationalTaxNo: '',
 
     // Professional
@@ -376,12 +377,13 @@ export default function NewStaffPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="aadharNumber">Aadhar Number</Label>
+                  <Label htmlFor="cnic">CNIC</Label>
                   <Input
-                    id="aadharNumber"
-                    value={formData.aadharNumber}
-                    onChange={(e) => handleChange('aadharNumber', e.target.value)}
-                    placeholder="1234 5678 9012"
+                    id="cnic"
+                    value={formData.cnic}
+                    onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
+                    placeholder={CNIC_PLACEHOLDER}
+                    inputMode="numeric"
                   />
                 </div>
                 <div className="space-y-2">
@@ -390,7 +392,7 @@ export default function NewStaffPage() {
                     id="nationalTaxNo"
                     value={formData.nationalTaxNo}
                     onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
-                    placeholder="ABCDE1234F"
+                    placeholder="1234567"
                   />
                 </div>
               </div>

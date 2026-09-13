@@ -372,7 +372,10 @@ model Staff {
   city            String?
   state           String?
   pincode         String?
-  aadharNumber    String?
+  // Pakistan's national identity number. Aadhaar is India's, 12 digits;
+  // a CNIC is 13, issued by NADRA. Stored as digits only and formatted
+  // 00000-0000000-0 for display — see lib/cnic.ts.
+  cnic            String?
   nationalTaxNo   String?
   qualification   String?
   specialization  String?
@@ -499,9 +502,15 @@ model Patient {
   email           String?
   address         String?    @db.Text
   city            String?
-  state           String?    @default("Tamil Nadu")
+  // No default: the upstream schema defaulted this to "Tamil Nadu", which
+  // silently stamped an Indian state onto every Pakistani patient. There is no
+  // right default — the clinic's own province is a guess for anyone who
+  // travelled in — so it is left blank.
+  state           String?
   pincode         String?
-  aadharNumber    String?
+  // See the note on Staff.cnic. Children are issued a B-Form rather than a
+  // CNIC, so this is nullable and stays that way.
+  cnic            String?
   occupation      String?
   referredBy      String?
 

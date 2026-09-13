@@ -193,10 +193,12 @@ describe('NewStaffPage', () => {
       expect(screen.getByPlaceholderText('HDFC0001234')).toBeInTheDocument()
     })
 
-    it('renders document fields (Aadhar, PAN)', () => {
+    // Pakistan's identity and tax numbers, not India's: a CNIC rather than an
+    // Aadhaar number, and an NTN rather than a PAN.
+    it('renders document fields (CNIC, NTN)', () => {
       render(<NewStaffPage />)
-      expect(screen.getByPlaceholderText('1234 5678 9012')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('ABCDE1234F')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('00000-0000000-0')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('1234567')).toBeInTheDocument()
     })
 
     it('renders emergency contact fields', () => {

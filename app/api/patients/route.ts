@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
+import { parseOptionalCNIC } from '@/lib/cnic'
 
 // Generate unique patient ID for the hospital
 async function generatePatientId(hospitalId: string): Promise<string> {
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
       city,
       state,
       pincode,
-      aadharNumber,
+      cnic,
       occupation,
       referredBy,
       emergencyContactName,
@@ -163,6 +164,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // A CNIC that is wrong is worse than one that is absent: it is what tells
+    // two patients of the same name apart. Blank stays acceptable — children
+    // hold a B-Form, and plenty of people do not have theirs at the desk.
+    const cnicResult = parseOptionalCNIC(cnic)
+    if (!cnicResult.ok) {
+      return NextResponse.json({ error: cnicResult.error }, { status: 400 })
+    }
+    const parsedCnic = cnicResult.value
+
     // Generate patient ID for this hospital
     const patientId = await generatePatientId(hospitalId)
 
@@ -183,7 +193,7 @@ export async function POST(request: NextRequest) {
         city,
         state,
         pincode,
-        aadharNumber,
+        cnic: parsedCnic,
         occupation,
         referredBy,
         emergencyContactName,

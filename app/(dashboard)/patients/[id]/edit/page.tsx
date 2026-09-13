@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export default function EditPatientPage() {
     city: '',
     state: '',
     pincode: '',
-    aadharNumber: '',
+    cnic: '',
     occupation: '',
     referredBy: '',
     emergencyContactName: '',
@@ -81,7 +82,7 @@ export default function EditPatientPage() {
           city: p.city || '',
           state: p.state || '',
           pincode: p.pincode || '',
-          aadharNumber: p.aadharNumber || '',
+          cnic: formatCNIC(p.cnic) || '',
           occupation: p.occupation || '',
           referredBy: p.referredBy || '',
           emergencyContactName: p.emergencyContactName || '',
@@ -355,12 +356,13 @@ export default function EditPatientPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="aadharNumber">Aadhar Number</Label>
+              <Label htmlFor="cnic">CNIC</Label>
               <Input
-                id="aadharNumber"
-                value={form.aadharNumber}
-                onChange={(e) => updateField('aadharNumber', e.target.value)}
-                placeholder="Enter Aadhar number"
+                id="cnic"
+                value={form.cnic}
+                onChange={(e) => updateField('cnic', formatCNICInput(e.target.value))}
+                placeholder={CNIC_PLACEHOLDER}
+                inputMode="numeric"
               />
             </div>
             <div className="space-y-2">

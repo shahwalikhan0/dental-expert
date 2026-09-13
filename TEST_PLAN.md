@@ -20,7 +20,8 @@
 
 #### Core Utilities
 
-- [x] `lib/utils.ts` — cn(), formatCurrency(), formatDate(), formatPhone(), generatePatientId(), validateAadhar(), validatePakistanPhone() (tests/unit/utils.test.ts)
+- [x] `lib/utils.ts` — cn(), formatCurrency(), formatDate(), formatPhone(), generatePatientId(), validatePakistanPhone() (tests/unit/utils.test.ts)
+- [x] `lib/cnic.ts` — validateCNIC(), formatCNIC(), formatCNICInput(), parseOptionalCNIC() (tests/unit/cnic.test.ts — 22 tests)
 - [x] `lib/encryption.ts` — encrypt/decrypt round-trip, format validation, error handling, generateEncryptionKey() (tests/unit/encryption.test.ts)
 - [x] `lib/billing-utils.ts` — calculateGST, calculateDiscount, calculateInvoiceTotals, numberToWords, getDateRangeFromPreset, isInvoiceOverdue (tests/unit/billing-utils.test.ts)
 - [x] `lib/treatment-utils.ts` — status configs, tooth numbering (FDI), parseToothNumbers, formatDuration, calculatePlanProgress, tooth classification (tests/unit/treatment-utils.test.ts)
@@ -696,7 +697,7 @@
 - [x] SQL injection — Prisma parameterized queries (data stays as bind params) (tests/security/security.test.ts)
 - [x] XSS — escapeHtml prevents script injection, escapes quotes/ampersands/tags (tests/security/security.test.ts — 6 tests)
 - [x] Phone number validation — 10-digit, +91 prefix, reject short/long/letters (tests/security/security.test.ts — 5 tests)
-- [x] Aadhaar validation — 12-digit format, reject short/letters (tests/security/security.test.ts — 4 tests)
+- [x] CNIC validation — 13-digit format, province digit, rejects letters and 12-digit Aadhaar numbers (tests/unit/cnic.test.ts, tests/api/cnic-validation.test.ts)
 - [x] NL query injection — whitelist-only Prisma model names (tests/security/security.test.ts)
 - [x] Path traversal — reject ../ patterns (tests/security/security.test.ts)
 - [x] CSRF — SameSite cookie attribute (lax/strict), origin/referer validation (same-origin accept, cross-origin reject) (tests/security/security-extended.test.ts — 5 tests)
@@ -954,7 +955,7 @@
 - [x] Date format — DD Mon YYYY via en-IN locale, invalid date handling, string/Date inputs (tests/unit/localization.test.ts — 5 tests)
 - [x] Phone number format — +92 prefix, 10/11/12-digit, validatePakistanPhone accepts 3XX prefixes, rejects others/wrong length (tests/unit/localization.test.ts — 7 tests)
 - [x] GST format — CGST 9%, SGST 9%, IGST 18%, calculateGST(1000) = 1180 total (tests/unit/localization.test.ts — 3 tests)
-- [x] Aadhaar validation — 12-digit, rejects shorter/longer, handles spaces/dashes (tests/unit/localization.test.ts — 5 tests)
+- [x] CNIC validation — 13-digit, rejects shorter/longer, handles spaces/dashes (tests/unit/cnic.test.ts)
 - [x] Number to words — Indian numbering (Lakh, Crore, Rupees, Paise, Zero) (tests/unit/localization.test.ts — 5 tests)
 - [x] Time format — 12-hour AM/PM via billingFormatDateTime (tests/unit/localization.test.ts — 2 tests)
 - [x] GSTIN validation — 15-character format, state code 01-37, PAN structure, Z in 13th position, rejects invalid/short/long/lowercase/special chars (tests/unit/localization.test.ts — 10 tests)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
 
@@ -82,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       city,
       state,
       pincode,
-      aadharNumber,
+      cnic,
       nationalTaxNo,
       qualification,
       specialization,
@@ -97,6 +98,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       clinicalRole,
       newPassword,
     } = body
+
+    const cnicResult = parseOptionalCNIC(cnic)
+    if (!cnicResult.ok) {
+      return NextResponse.json({ error: cnicResult.error }, { status: 400 })
+    }
+    const parsedCnic = cnicResult.value
 
     // `clinicalRole: null` clears it; any other value must be a clinical role
     // that differs from the primary one. See SECONDARY_ROLES in lib/rbac.ts.
@@ -151,7 +158,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           ...(city !== undefined && { city }),
           ...(state !== undefined && { state }),
           ...(pincode !== undefined && { pincode }),
-          ...(aadharNumber !== undefined && { aadharNumber }),
+          ...(cnic !== undefined && { cnic: parsedCnic }),
           ...(nationalTaxNo !== undefined && { nationalTaxNo }),
           ...(qualification !== undefined && { qualification }),
           ...(specialization !== undefined && { specialization }),

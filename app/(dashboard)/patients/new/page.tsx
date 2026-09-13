@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -49,7 +50,7 @@ export default function NewPatientPage() {
     city: '',
     state: 'Tamil Nadu',
     pincode: '',
-    aadharNumber: '',
+    cnic: '',
     occupation: '',
     referredBy: '',
     referralCode: '',
@@ -92,7 +93,7 @@ export default function NewPatientPage() {
       if (form.city) payload.city = form.city
       if (form.state) payload.state = form.state
       if (form.pincode) payload.pincode = form.pincode
-      if (form.aadharNumber) payload.aadharNumber = form.aadharNumber
+      if (form.cnic) payload.cnic = form.cnic
       if (form.occupation) payload.occupation = form.occupation
       if (form.referredBy) payload.referredBy = form.referredBy
       if (form.referralCode) payload.referralCode = form.referralCode
@@ -309,13 +310,17 @@ export default function NewPatientPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="aadharNumber">Aadhar Number</Label>
+              <Label htmlFor="cnic">CNIC</Label>
               <Input
-                id="aadharNumber"
-                value={form.aadharNumber}
-                onChange={(e) => updateField('aadharNumber', e.target.value)}
-                placeholder="Enter Aadhar number"
+                id="cnic"
+                value={form.cnic}
+                onChange={(e) => updateField('cnic', formatCNICInput(e.target.value))}
+                placeholder={CNIC_PLACEHOLDER}
+                inputMode="numeric"
               />
+              <p className="text-muted-foreground text-xs">
+                Optional — children are issued a B-Form rather than a CNIC.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="occupation">Occupation</Label>

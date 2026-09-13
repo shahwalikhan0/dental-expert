@@ -235,7 +235,7 @@ const PATIENT_FIELDS: FieldDefinition[] = [
     required: false,
     description: 'Alternate phone number',
   },
-  { name: 'aadharNumber', type: 'string', required: false, description: 'Aadhar number' },
+  { name: 'cnic', type: 'string', required: false, description: 'CNIC (13 digits)' },
   {
     name: 'emergencyContactName',
     type: 'string',
@@ -306,7 +306,7 @@ const STAFF_FIELDS: FieldDefinition[] = [
   { name: 'city', type: 'string', required: false, description: 'City' },
   { name: 'state', type: 'string', required: false, description: 'State' },
   { name: 'pincode', type: 'string', required: false, description: 'PIN code' },
-  { name: 'aadharNumber', type: 'string', required: false, description: 'Aadhar number' },
+  { name: 'cnic', type: 'string', required: false, description: 'CNIC (13 digits)' },
   { name: 'nationalTaxNo', type: 'string', required: false, description: 'PAN number' },
 ]
 

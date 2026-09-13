@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { normalizeCNIC } from '@/lib/cnic'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import bcrypt from 'bcryptjs'
@@ -269,7 +270,7 @@ async function importPatients(
           occupation: row.occupation || undefined,
           referredBy: row.referredBy || undefined,
           alternatePhone: row.alternatePhone || undefined,
-          aadharNumber: row.aadharNumber || undefined,
+          cnic: normalizeCNIC(row.cnic) || undefined,
           emergencyContactName: row.emergencyContactName || undefined,
           emergencyContactPhone: row.emergencyContactPhone || undefined,
           emergencyContactRelation: row.emergencyContactRelation || undefined,
@@ -381,7 +382,7 @@ async function importStaff(
             city: row.city || undefined,
             state: row.state || undefined,
             pincode: row.pincode || undefined,
-            aadharNumber: row.aadharNumber || undefined,
+            cnic: normalizeCNIC(row.cnic) || undefined,
             nationalTaxNo: row.nationalTaxNo || undefined,
           },
         })

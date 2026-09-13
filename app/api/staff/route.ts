@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
 import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
+import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 
 // GET - List staff members
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       city,
       state,
       pincode,
-      aadharNumber,
+      cnic,
       nationalTaxNo,
       qualification,
       specialization,
@@ -187,6 +188,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 400 })
     }
 
+    const cnicResult = parseOptionalCNIC(cnic)
+    if (!cnicResult.ok) {
+      return NextResponse.json({ error: cnicResult.error }, { status: 400 })
+    }
+    const parsedCnic = cnicResult.value
+
     // Generate employee ID
     const employeeId = await generateEmployeeId(hospitalId)
 
@@ -226,7 +233,7 @@ export async function POST(request: NextRequest) {
           city,
           state,
           pincode,
-          aadharNumber,
+          cnic: parsedCnic,
           nationalTaxNo,
           qualification,
           specialization,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     pincode: '',
 
     // Documents
-    aadharNumber: '',
+    cnic: '',
     nationalTaxNo: '',
 
     // Professional
@@ -118,7 +119,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         city: data.city || '',
         state: data.state || '',
         pincode: data.pincode || '',
-        aadharNumber: data.aadharNumber || '',
+        cnic: formatCNIC(data.cnic) || '',
         nationalTaxNo: data.nationalTaxNo || '',
         qualification: data.qualification || '',
         specialization: data.specialization || '',
@@ -487,11 +488,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="aadharNumber">Aadhar Number</Label>
+                  <Label htmlFor="cnic">CNIC</Label>
                   <Input
-                    id="aadharNumber"
-                    value={formData.aadharNumber}
-                    onChange={(e) => handleChange('aadharNumber', e.target.value)}
+                    id="cnic"
+                    value={formData.cnic}
+                    onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
                   />
                 </div>
                 <div className="space-y-2">

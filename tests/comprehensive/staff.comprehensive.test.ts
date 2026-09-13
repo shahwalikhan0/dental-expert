@@ -518,7 +518,7 @@ describe('Staff API - Comprehensive Tests', () => {
           salary: '50000',
           bankAccountNo: '1234567890',
           bankIfsc: 'HDFC0001234',
-          aadharNumber: '123456789012',
+          cnic: '35202-1234567-1',
           panNumber: 'ABCDE1234F',
         }),
       })

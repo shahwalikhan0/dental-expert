@@ -441,7 +441,7 @@ describe('Patients API - Comprehensive Tests', () => {
           city: 'Mumbai',
           state: 'Maharashtra',
           pincode: '400001',
-          aadharNumber: '123456789012',
+          cnic: '35202-1234567-1',
           occupation: 'Engineer',
           referredBy: 'Dr. Smith',
           emergencyContactName: 'Jane Doe',

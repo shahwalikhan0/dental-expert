@@ -773,7 +773,70 @@ editable under the old workflow rule until somebody signs them.
 
 ---
 
-## 9. Verification
+## 9. Aadhaar → CNIC
+
+### 9.1 The field
+
+`Staff.aadharNumber` and `Patient.aadharNumber` held India's identity number.
+Pakistan's is the CNIC, issued by NADRA: **thirteen** digits rather than
+Aadhaar's twelve, written `00000-0000000-0`, where the first digit is the
+province (1 KP, 2 FATA, 3 Punjab, 4 Sindh, 5 Balochistan, 6 Islamabad,
+7 Gilgit-Baltistan) and the last is a gender digit.
+
+The migration is hand-written, again: `prisma migrate diff` wanted
+`DROP COLUMN "aadharNumber", ADD COLUMN "cnic"`, which would discard every
+identity number on file. A rename keeps them.
+
+### 9.2 Stored one way, typed any way
+
+A CNIC arrives hyphenated, spaced or bare depending on who is at the keyboard.
+All three now store the same thirteen digits and display as `35202-1234567-1`,
+because this field is what tells two patients of the same name apart — and it
+cannot do that if the same person can be three different strings.
+
+### 9.3 What is validated, and what deliberately is not
+
+The field previously had **no validation at all**; anything typed was stored.
+Now: thirteen digits, and a province digit of 1–7. The two failure messages are
+separate, because telling someone staring at a thirteen-digit number that it
+"must be 13 digits" tells them nothing — a bad province digit says so.
+
+Not validated: the **gender digit against the patient's recorded gender**. The
+two legitimately disagree for transgender citizens, for records NADRA has since
+amended, and for anyone whose gender is recorded here as something the card
+does not carry. A clinical system refusing a valid identity document over that
+would be both wrong and unkind.
+
+There is no checksum in a CNIC, so a transposition inside the middle seven
+digits cannot be caught by anything short of asking NADRA.
+
+Blank stays acceptable — children are issued a B-Form rather than a CNIC, and
+plenty of adults arrive without theirs. But text that contains no digits at all
+("N/A", a mistyped word) is now **rejected rather than silently dropped**: a
+receptionist who typed something and got a saved record with an empty field
+would reasonably think it had been stored.
+
+### 9.4 Two more India leftovers fixed in passing
+
+- `Patient.state` defaulted to **"Tamil Nadu"**, stamping an Indian state onto
+  every Pakistani patient who left the field blank. The default is removed
+  rather than replaced: the clinic's own province is a guess for anyone who
+  travelled in.
+- The staff form's NTN field still carried `ABCDE1234F` as its placeholder —
+  the format of an Indian PAN, on a field renamed to NTN two commits earlier.
+
+### 9.5 Not done: a uniqueness constraint
+
+A CNIC identifies one person, so `@@unique([hospitalId, cnic])` would be a real
+duplicate guard for FR-002. It is **not** added here, because it turns a
+mistyped digit into a hard failure at the registration desk, and because the
+right response to a suspected duplicate is a warning that a human resolves, not
+a refusal. Worth deciding on deliberately rather than as a side effect of this
+rename.
+
+---
+
+## 10. Verification
 
 Everything below was actually run, not assumed.
 
@@ -853,7 +916,7 @@ Note the server used was PostgreSQL **15**, while the compose files ship
 **16**. Nothing in the schema or the rewritten SQL is version-specific above 13
 (`DROP DATABASE ... WITH (FORCE)` in `restore.sh` is the highest requirement).
 
-### 9.1 What was created on the local Postgres at `localhost:5432`
+### 10.1 What was created on the local Postgres at `localhost:5432`
 
 Your existing databases — `cmms`, `expert_advisor`, `keycloak`, `snaptap`,
 `snaptap-do`, `stripe_db` — and the `payment_service` role were **not touched**.
@@ -891,22 +954,22 @@ Use the existing server (as configured), or change the host port to `5433` as
 
 ---
 
-## 10. Not done — decide before go-live
+## 11. Not done — decide before go-live
 
 Nothing below is broken by the changes above; these are pre-existing gaps and
 India assumptions that a Pakistani dental clinic will hit.
 
-### 10.1 Remaining India coupling
+### 11.1 Remaining India coupling
 
-| Area                                             | Where                                              | Note                                                                                                                                                                                                                     |
-| ------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Payment gateways**                             | `lib/payment-gateways/{razorpay,phonepe,paytm}.ts` | All three are India-only. Pakistan needs a local processor or cash/bank-transfer only.                                                                                                                                   |
-| **`Staff.aadharNumber`, `Patient.aadharNumber`** | `prisma/schema.prisma`, staff and patient forms    | Aadhaar is India's identity document; Pakistan uses CNIC (13 digits, different shape). Left deliberately out of the tax pass — it is identity, not tax — and there is no validator for CNIC yet.                         |
-| **SMS pricing copy**                             | `app/(dashboard)/settings/setup-guide/page.tsx`    | Still quotes Indian per-message rates.                                                                                                                                                                                   |
-| **`Hospital` locale defaults**                   | `prisma/schema.prisma`                             | `locale` now defaults to `en-PK`, but `country`, `currency` and `timezone` still default to `IN` / `INR` / `Asia/Kolkata`. Harmless for the seeded clinic, which sets them, but wrong for a new one.                     |
-| **Seed sample data**                             | `prisma/seed.ts`                                   | The three original accounts and the sample patients still carry Indian names, cities (Chennai, Tamil Nadu) and phone numbers that fail `validatePakistanPhone`. The five roles added in this pass use Pakistani numbers. |
+| Area                           | Where                                              | Note                                                                                                                                                                                                                     |
+| ------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Payment gateways**           | `lib/payment-gateways/{razorpay,phonepe,paytm}.ts` | All three are India-only. Pakistan needs a local processor or cash/bank-transfer only.                                                                                                                                   |
+| **Bank IFSC code**             | `prisma/schema.prisma`, staff and clinic forms     | `bankIfsc` is an Indian routing code (placeholder `HDFC0001234`). Pakistan uses IBAN. A schema rename plus forms — left out of the CNIC pass because it is banking, not identity.                                        |
+| **SMS pricing copy**           | `app/(dashboard)/settings/setup-guide/page.tsx`    | Still quotes Indian per-message rates.                                                                                                                                                                                   |
+| **`Hospital` locale defaults** | `prisma/schema.prisma`                             | `locale` now defaults to `en-PK`, but `country`, `currency` and `timezone` still default to `IN` / `INR` / `Asia/Kolkata`. Harmless for the seeded clinic, which sets them, but wrong for a new one.                     |
+| **Seed sample data**           | `prisma/seed.ts`                                   | The three original accounts and the sample patients still carry Indian names, cities (Chennai, Tamil Nadu) and phone numbers that fail `validatePakistanPhone`. The five roles added in this pass use Pakistani numbers. |
 
-### 10.2 Spec gaps (present upstream, still absent here)
+### 11.2 Spec gaps (present upstream, still absent here)
 
 Measured against the Dental Clinic Management System specification:
 
@@ -930,7 +993,7 @@ Measured against the Dental Clinic Management System specification:
 
 ---
 
-## 11. Pulling from upstream
+## 12. Pulling from upstream
 
 Upstream remains configured as the `upstream` remote. Before merging anything:
 
