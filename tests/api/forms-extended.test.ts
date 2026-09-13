@@ -96,7 +96,7 @@ describe('Forms API', () => {
         address: '123 Main St',
         city: 'Mumbai',
         state: 'MH',
-        pincode: '400001',
+        postalCode: '400001',
         logo: null,
       })
 
@@ -146,7 +146,7 @@ describe('Forms API', () => {
         address: null,
         city: null,
         state: null,
-        pincode: null,
+        postalCode: null,
         logo: null,
       })
 

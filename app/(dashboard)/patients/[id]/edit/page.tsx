@@ -51,7 +51,7 @@ export default function EditPatientPage() {
     address: '',
     city: '',
     state: '',
-    pincode: '',
+    postalCode: '',
     cnic: '',
     occupation: '',
     referredBy: '',
@@ -81,7 +81,7 @@ export default function EditPatientPage() {
           address: p.address || '',
           city: p.city || '',
           state: p.state || '',
-          pincode: p.pincode || '',
+          postalCode: p.postalCode || '',
           cnic: formatCNIC(p.cnic) || '',
           occupation: p.occupation || '',
           referredBy: p.referredBy || '',
@@ -135,7 +135,7 @@ export default function EditPatientPage() {
       if (form.address) payload.address = form.address
       if (form.city) payload.city = form.city
       if (form.state) payload.state = form.state
-      if (form.pincode) payload.pincode = form.pincode
+      if (form.postalCode) payload.postalCode = form.postalCode
       if (form.occupation) payload.occupation = form.occupation
       if (form.emergencyContactName) payload.emergencyContactName = form.emergencyContactName
       if (form.emergencyContactPhone) payload.emergencyContactPhone = form.emergencyContactPhone
@@ -337,12 +337,12 @@ export default function EditPatientPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pincode">Pincode</Label>
+              <Label htmlFor="postalCode">Postal Code</Label>
               <Input
-                id="pincode"
-                value={form.pincode}
-                onChange={(e) => updateField('pincode', e.target.value)}
-                placeholder="Pincode"
+                id="postalCode"
+                value={form.postalCode}
+                onChange={(e) => updateField('postalCode', e.target.value)}
+                placeholder="Postal code"
               />
             </div>
           </CardContent>

@@ -54,7 +54,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       address: true,
       city: true,
       state: true,
-      pincode: true,
+      postalCode: true,
       logo: true,
     },
   })

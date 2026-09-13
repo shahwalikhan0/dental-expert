@@ -42,7 +42,7 @@ async function main() {
       address: '123, Anna Nagar Main Road, Ayanavaram',
       city: 'Chennai',
       state: 'Tamil Nadu',
-      pincode: '600023',
+      postalCode: '600023',
       tagline: 'Your Smile, Our Priority',
       website: 'www.example.com',
       taxRegistrationNo: '33AAACX1234X1ZX',
@@ -370,7 +370,7 @@ async function main() {
         city: 'Chennai',
         state: 'Tamil Nadu',
         address: `${123 + i}, Anna Nagar Main Road`,
-        pincode: '600040',
+        postalCode: '600040',
         hospitalId: hospital.id,
         medicalHistory: {
           create: {

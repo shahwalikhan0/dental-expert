@@ -26,7 +26,7 @@ const onboardingSchema = z.object({
   address: z.string().min(1, 'Address is required'),
   city: z.string().min(1, 'City is required'),
   state: z.string().min(1, 'State is required'),
-  pincode: z.string().min(5, 'Valid pincode is required'),
+  postalCode: z.string().min(5, 'Valid postalCode is required'),
   alternatePhone: z.string().optional(),
   website: z.string().optional(),
   taxRegistrationNo: z.string().optional(),
@@ -35,7 +35,7 @@ const onboardingSchema = z.object({
   upiId: z.string().optional(),
   bankName: z.string().optional(),
   bankAccountNo: z.string().optional(),
-  bankIfsc: z.string().optional(),
+  bankIban: z.string().optional(),
   bankAccountName: z.string().optional(),
 })
 
@@ -78,7 +78,7 @@ export default function OnboardingPage() {
       address: '',
       city: '',
       state: '',
-      pincode: '',
+      postalCode: '',
     },
   })
 
@@ -99,7 +99,7 @@ export default function OnboardingPage() {
         if (data.address) setValue('address', data.address)
         if (data.city) setValue('city', data.city)
         if (data.state) setValue('state', data.state)
-        if (data.pincode) setValue('pincode', data.pincode)
+        if (data.postalCode) setValue('postalCode', data.postalCode)
         if (data.workingHours) {
           try {
             setWorkingHours(JSON.parse(data.workingHours))
@@ -249,10 +249,10 @@ export default function OnboardingPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="pincode">Pincode *</Label>
-                      <Input id="pincode" placeholder="600001" {...register('pincode')} />
-                      {errors.pincode && (
-                        <p className="text-sm text-destructive">{errors.pincode.message}</p>
+                      <Label htmlFor="postalCode">Postal Code *</Label>
+                      <Input id="postalCode" placeholder="54000" {...register('postalCode')} />
+                      {errors.postalCode && (
+                        <p className="text-sm text-destructive">{errors.postalCode.message}</p>
                       )}
                     </div>
                     <div className="space-y-2">
@@ -364,11 +364,11 @@ export default function OnboardingPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="bankIfsc">IFSC Code</Label>
+                          <Label htmlFor="bankIban">IBAN</Label>
                           <Input
-                            id="bankIfsc"
+                            id="bankIban"
                             placeholder="SBIN0001234"
-                            {...register('bankIfsc')}
+                            {...register('bankIban')}
                           />
                         </div>
                       </div>

@@ -85,14 +85,14 @@ export default function ClinicSettingsPage() {
     address: '',
     city: '',
     state: 'Tamil Nadu',
-    pincode: '',
+    postalCode: '',
     registrationNo: '',
     taxRegistrationNo: '',
     nationalTaxNo: '',
     workingHours: '',
     bankName: '',
     bankAccountNo: '',
-    bankIfsc: '',
+    bankIban: '',
     upiId: '',
   })
 
@@ -121,14 +121,14 @@ export default function ClinicSettingsPage() {
           address: result.data.address || '',
           city: result.data.city || '',
           state: result.data.state || 'Tamil Nadu',
-          pincode: result.data.pincode || '',
+          postalCode: result.data.postalCode || '',
           registrationNo: result.data.registrationNo || '',
           taxRegistrationNo: result.data.taxRegistrationNo || '',
           nationalTaxNo: result.data.nationalTaxNo || '',
           workingHours: result.data.workingHours || '',
           bankName: result.data.bankName || '',
           bankAccountNo: result.data.bankAccountNo || '',
-          bankIfsc: result.data.bankIfsc || '',
+          bankIban: result.data.bankIban || '',
           upiId: result.data.upiId || '',
         })
       }
@@ -450,11 +450,11 @@ export default function ClinicSettingsPage() {
               </div>
 
               <div>
-                <Label htmlFor="pincode">Pincode *</Label>
+                <Label htmlFor="postalCode">Postal Code *</Label>
                 <Input
-                  id="pincode"
-                  value={formData.pincode}
-                  onChange={(e) => handleChange('pincode', e.target.value)}
+                  id="postalCode"
+                  value={formData.postalCode}
+                  onChange={(e) => handleChange('postalCode', e.target.value)}
                   placeholder="600023"
                   required
                 />
@@ -593,11 +593,11 @@ export default function ClinicSettingsPage() {
               </div>
 
               <div>
-                <Label htmlFor="bankIfsc">IFSC Code</Label>
+                <Label htmlFor="bankIban">IBAN</Label>
                 <Input
-                  id="bankIfsc"
-                  value={formData.bankIfsc}
-                  onChange={(e) => handleChange('bankIfsc', e.target.value)}
+                  id="bankIban"
+                  value={formData.bankIban}
+                  onChange={(e) => handleChange('bankIban', e.target.value)}
                   placeholder="SBIN0001234"
                 />
               </div>

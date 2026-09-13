@@ -49,7 +49,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     address: '',
     city: '',
     state: '',
-    pincode: '',
+    postalCode: '',
 
     // Documents
     cnic: '',
@@ -63,7 +63,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     // Financial
     salary: '',
     bankAccountNo: '',
-    bankIfsc: '',
+    bankIban: '',
 
     // Emergency
     emergencyContact: '',
@@ -118,7 +118,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         address: data.address || '',
         city: data.city || '',
         state: data.state || '',
-        pincode: data.pincode || '',
+        postalCode: data.postalCode || '',
         cnic: formatCNIC(data.cnic) || '',
         nationalTaxNo: data.nationalTaxNo || '',
         qualification: data.qualification || '',
@@ -126,7 +126,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         licenseNumber: data.licenseNumber || '',
         salary: data.salary ? data.salary.toString() : '',
         bankAccountNo: data.bankAccountNo || '',
-        bankIfsc: data.bankIfsc || '',
+        bankIban: data.bankIban || '',
         emergencyContact: data.emergencyContact || '',
         emergencyPhone: data.emergencyPhone || '',
         isActive: data.isActive,
@@ -440,11 +440,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode</Label>
+                  <Label htmlFor="postalCode">Postal Code</Label>
                   <Input
-                    id="pincode"
-                    value={formData.pincode}
-                    onChange={(e) => handleChange('pincode', e.target.value)}
+                    id="postalCode"
+                    value={formData.postalCode}
+                    onChange={(e) => handleChange('postalCode', e.target.value)}
                   />
                 </div>
               </div>
@@ -585,11 +585,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bankIfsc">IFSC Code</Label>
+                  <Label htmlFor="bankIban">IBAN</Label>
                   <Input
-                    id="bankIfsc"
-                    value={formData.bankIfsc}
-                    onChange={(e) => handleChange('bankIfsc', e.target.value)}
+                    id="bankIban"
+                    value={formData.bankIban}
+                    onChange={(e) => handleChange('bankIban', e.target.value)}
                   />
                 </div>
               </div>

@@ -130,7 +130,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       address: body.address ?? null,
       city: body.city ?? null,
       state: body.state ?? null,
-      pincode: body.pincode ?? null,
+      postalCode: body.postalCode ?? null,
       taxRegistrationNo: body.taxRegistrationNo ?? null,
       nationalTaxNo: body.nationalTaxNo ?? null,
       notes: body.notes ?? null,

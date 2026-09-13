@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             address: true,
             city: true,
             state: true,
-            pincode: true,
+            postalCode: true,
           },
         },
         invoices: {

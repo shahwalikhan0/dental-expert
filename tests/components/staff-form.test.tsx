@@ -190,7 +190,8 @@ describe('NewStaffPage', () => {
       render(<NewStaffPage />)
       expect(screen.getByPlaceholderText('50000')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('1234567890')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('HDFC0001234')).toBeInTheDocument()
+      // An IBAN, not an IFSC code — IFSC is India's bank routing identifier.
+      expect(screen.getByPlaceholderText('PK36SCBL0000001123456702')).toBeInTheDocument()
     })
 
     // Pakistan's identity and tax numbers, not India's: a CNIC rather than an

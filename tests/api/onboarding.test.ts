@@ -60,7 +60,7 @@ const validOnboardingData = {
   address: '123 Main St',
   city: 'Mumbai',
   state: 'Maharashtra',
-  pincode: '400001',
+  postalCode: '400001',
   tagline: 'Best dental clinic',
   taxRegistrationNo: '27AAPFU0939F1ZV',
   registrationNo: 'MH/12345',
@@ -68,7 +68,7 @@ const validOnboardingData = {
   upiId: 'clinic@upi',
   bankName: 'HDFC Bank',
   bankAccountNo: '1234567890',
-  bankIfsc: 'HDFC0001234',
+  bankIban: 'HDFC0001234',
   bankAccountName: 'Dental Clinic',
 }
 
@@ -122,8 +122,8 @@ describe('Onboarding API — POST /api/onboarding', () => {
     expect(res.status).toBe(400)
   })
 
-  it('should return 400 for short pincode', async () => {
-    const res = await POST(createRequest({ ...validOnboardingData, pincode: '123' }))
+  it('should return 400 for short postalCode', async () => {
+    const res = await POST(createRequest({ ...validOnboardingData, postalCode: '123' }))
     expect(res.status).toBe(400)
   })
 
@@ -159,7 +159,7 @@ describe('Onboarding API — POST /api/onboarding', () => {
           address: '123 Main St',
           city: 'Mumbai',
           state: 'Maharashtra',
-          pincode: '400001',
+          postalCode: '400001',
           taxRegistrationNo: '27AAPFU0939F1ZV',
         }),
       })
@@ -177,7 +177,7 @@ describe('Onboarding API — POST /api/onboarding', () => {
       address: '123 Main St',
       city: 'Mumbai',
       state: 'Maharashtra',
-      pincode: '400001',
+      postalCode: '400001',
     }
 
     const res = await POST(createRequest(minimalData))
@@ -227,7 +227,7 @@ describe('Onboarding API — GET /api/onboarding', () => {
       address: '123 Main St',
       city: 'Mumbai',
       state: 'Maharashtra',
-      pincode: '400001',
+      postalCode: '400001',
       onboardingCompleted: true,
       plan: 'FREE',
     })
@@ -258,7 +258,7 @@ describe('Onboarding API — GET /api/onboarding', () => {
       address: '123 St',
       city: 'Delhi',
       state: 'Delhi',
-      pincode: '110001',
+      postalCode: '110001',
       alternatePhone: '9999999999',
       website: 'https://clinic.com',
       taxRegistrationNo: '07AAPFU0939F1ZV',
@@ -267,7 +267,7 @@ describe('Onboarding API — GET /api/onboarding', () => {
       upiId: 'clinic@upi',
       bankName: 'SBI',
       bankAccountNo: '123456',
-      bankIfsc: 'SBIN0001',
+      bankIban: 'SBIN0001',
       bankAccountName: 'Clinic',
       onboardingCompleted: true,
       plan: 'PROFESSIONAL',

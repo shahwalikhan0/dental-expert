@@ -221,7 +221,7 @@ const PATIENT_FIELDS: FieldDefinition[] = [
   { name: 'address', type: 'string', required: false, description: 'Full address' },
   { name: 'city', type: 'string', required: false, description: 'City' },
   { name: 'state', type: 'string', required: false, description: 'State' },
-  { name: 'pincode', type: 'string', required: false, description: 'PIN code' },
+  { name: 'postalCode', type: 'string', required: false, description: 'PIN code' },
   { name: 'occupation', type: 'string', required: false, description: 'Occupation' },
   {
     name: 'referredBy',
@@ -305,7 +305,7 @@ const STAFF_FIELDS: FieldDefinition[] = [
   { name: 'address', type: 'string', required: false, description: 'Address' },
   { name: 'city', type: 'string', required: false, description: 'City' },
   { name: 'state', type: 'string', required: false, description: 'State' },
-  { name: 'pincode', type: 'string', required: false, description: 'PIN code' },
+  { name: 'postalCode', type: 'string', required: false, description: 'PIN code' },
   { name: 'cnic', type: 'string', required: false, description: 'CNIC (13 digits)' },
   { name: 'nationalTaxNo', type: 'string', required: false, description: 'PAN number' },
 ]

@@ -49,7 +49,7 @@ export default function NewPatientPage() {
     address: '',
     city: '',
     state: 'Tamil Nadu',
-    pincode: '',
+    postalCode: '',
     cnic: '',
     occupation: '',
     referredBy: '',
@@ -92,7 +92,7 @@ export default function NewPatientPage() {
       if (form.address) payload.address = form.address
       if (form.city) payload.city = form.city
       if (form.state) payload.state = form.state
-      if (form.pincode) payload.pincode = form.pincode
+      if (form.postalCode) payload.postalCode = form.postalCode
       if (form.cnic) payload.cnic = form.cnic
       if (form.occupation) payload.occupation = form.occupation
       if (form.referredBy) payload.referredBy = form.referredBy
@@ -291,12 +291,12 @@ export default function NewPatientPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pincode">Pincode</Label>
+              <Label htmlFor="postalCode">Postal Code</Label>
               <Input
-                id="pincode"
-                value={form.pincode}
-                onChange={(e) => updateField('pincode', e.target.value)}
-                placeholder="Pincode"
+                id="postalCode"
+                value={form.postalCode}
+                onChange={(e) => updateField('postalCode', e.target.value)}
+                placeholder="Postal code"
               />
             </div>
           </CardContent>

@@ -40,7 +40,7 @@ interface StaffDetail {
   address: string | null
   city: string | null
   state: string | null
-  pincode: string | null
+  postalCode: string | null
   cnic: string | null
   nationalTaxNo: string | null
   qualification: string | null
@@ -49,7 +49,7 @@ interface StaffDetail {
   joiningDate: string
   salary: number | null
   bankAccountNo: string | null
-  bankIfsc: string | null
+  bankIban: string | null
   emergencyContact: string | null
   emergencyPhone: string | null
   isActive: boolean
@@ -277,7 +277,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                         {staff.address}
                         {staff.city && `, ${staff.city}`}
                         {staff.state && `, ${staff.state}`}
-                        {staff.pincode && ` - ${staff.pincode}`}
+                        {staff.postalCode && ` - ${staff.postalCode}`}
                       </>
                     ) : (
                       '-'
@@ -408,8 +408,8 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium">{staff.bankAccountNo || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">IFSC Code</p>
-                    <p className="font-medium">{staff.bankIfsc || '-'}</p>
+                    <p className="text-sm text-muted-foreground">IBAN</p>
+                    <p className="font-medium">{staff.bankIban || '-'}</p>
                   </div>
                 </div>
               </CardContent>

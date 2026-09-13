@@ -99,7 +99,7 @@ interface Patient {
   address?: string
   city?: string
   state?: string
-  pincode?: string
+  postalCode?: string
   occupation?: string
   emergencyContactName?: string
   emergencyContactPhone?: string
@@ -552,7 +552,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                       <p className="text-sm text-muted-foreground">Address</p>
                       <p>{patient.address}</p>
                       <p className="text-sm text-muted-foreground">
-                        {[patient.city, patient.state, patient.pincode].filter(Boolean).join(', ')}
+                        {[patient.city, patient.state, patient.postalCode]
+                          .filter(Boolean)
+                          .join(', ')}
                       </p>
                     </div>
                   </div>

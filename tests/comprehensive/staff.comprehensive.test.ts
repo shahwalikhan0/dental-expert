@@ -475,7 +475,7 @@ describe('Staff API - Comprehensive Tests', () => {
           address: '123 Medical St',
           city: 'Mumbai',
           state: 'Maharashtra',
-          pincode: '400001',
+          postalCode: '400001',
         }),
       })
       const response = await POST(request)
@@ -517,7 +517,7 @@ describe('Staff API - Comprehensive Tests', () => {
           // Financial info
           salary: '50000',
           bankAccountNo: '1234567890',
-          bankIfsc: 'HDFC0001234',
+          bankIban: 'HDFC0001234',
           cnic: '35202-1234567-1',
           panNumber: 'ABCDE1234F',
         }),

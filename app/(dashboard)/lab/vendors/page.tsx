@@ -71,7 +71,7 @@ interface LabVendor {
   address: string
   city: string
   state: string
-  pincode: string
+  postalCode: string
   gstin: string
   pan: string
   specializations: string
@@ -122,7 +122,7 @@ export default function LabVendorsPage() {
     address: '',
     city: '',
     state: 'Tamil Nadu',
-    pincode: '',
+    postalCode: '',
     gstin: '',
     pan: '',
     specializations: '',
@@ -181,7 +181,7 @@ export default function LabVendorsPage() {
         address: vendor.address || '',
         city: vendor.city || '',
         state: vendor.state || 'Tamil Nadu',
-        pincode: vendor.pincode || '',
+        postalCode: vendor.postalCode || '',
         gstin: vendor.gstin || '',
         pan: vendor.pan || '',
         specializations: vendor.specializations || '',
@@ -204,7 +204,7 @@ export default function LabVendorsPage() {
         address: '',
         city: '',
         state: 'Tamil Nadu',
-        pincode: '',
+        postalCode: '',
         gstin: '',
         pan: '',
         specializations: '',
@@ -644,11 +644,11 @@ export default function LabVendorsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="pincode">Pincode</Label>
+                <Label htmlFor="postalCode">Postal Code</Label>
                 <Input
-                  id="pincode"
-                  value={formData.pincode}
-                  onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                  id="postalCode"
+                  value={formData.postalCode}
+                  onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
                 />
               </div>
             </div>

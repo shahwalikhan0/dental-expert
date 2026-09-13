@@ -52,7 +52,7 @@ interface Hospital {
   address: string | null
   city: string | null
   state: string | null
-  pincode: string | null
+  postalCode: string | null
   logo: string | null
   registrationNo: string | null
 }
@@ -175,7 +175,7 @@ export default function PrescriptionDetailPage() {
                     <p className="text-sm text-muted-foreground">{hospital.tagline}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {[hospital?.address, hospital?.city, hospital?.state, hospital?.pincode]
+                    {[hospital?.address, hospital?.city, hospital?.state, hospital?.postalCode]
                       .filter(Boolean)
                       .join(', ')}
                   </p>

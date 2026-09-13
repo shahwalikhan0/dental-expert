@@ -96,7 +96,7 @@ interface Invoice {
     address: string | null
     city: string | null
     state: string | null
-    pincode: string | null
+    postalCode: string | null
   }
   items: Array<{
     id: string
@@ -406,7 +406,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         {invoice.patient.address}
                         {invoice.patient.city && `, ${invoice.patient.city}`}
                         {invoice.patient.state && `, ${invoice.patient.state}`}
-                        {invoice.patient.pincode && ` - ${invoice.patient.pincode}`}
+                        {invoice.patient.postalCode && ` - ${invoice.patient.postalCode}`}
                       </div>
                     )}
                   </div>

@@ -258,7 +258,7 @@ const responseLookup: Record<string, any> = {
     address: '',
     city: '',
     state: '',
-    pincode: '',
+    postalCode: '',
     workingHours: '{}',
   },
   '/api/billing/reports': {

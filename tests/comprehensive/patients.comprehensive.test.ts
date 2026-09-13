@@ -440,7 +440,7 @@ describe('Patients API - Comprehensive Tests', () => {
           address: '123 Main St',
           city: 'Mumbai',
           state: 'Maharashtra',
-          pincode: '400001',
+          postalCode: '400001',
           cnic: '35202-1234567-1',
           occupation: 'Engineer',
           referredBy: 'Dr. Smith',

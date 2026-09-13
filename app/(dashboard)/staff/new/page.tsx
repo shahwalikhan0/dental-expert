@@ -44,7 +44,7 @@ export default function NewStaffPage() {
     address: '',
     city: '',
     state: 'Tamil Nadu',
-    pincode: '',
+    postalCode: '',
 
     // Documents
     cnic: '',
@@ -59,7 +59,7 @@ export default function NewStaffPage() {
     // Financial
     salary: '',
     bankAccountNo: '',
-    bankIfsc: '',
+    bankIban: '',
 
     // Emergency
     emergencyContact: '',
@@ -326,12 +326,12 @@ export default function NewStaffPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode</Label>
+                  <Label htmlFor="postalCode">Postal Code</Label>
                   <Input
-                    id="pincode"
-                    value={formData.pincode}
-                    onChange={(e) => handleChange('pincode', e.target.value)}
-                    placeholder="600001"
+                    id="postalCode"
+                    value={formData.postalCode}
+                    onChange={(e) => handleChange('postalCode', e.target.value)}
+                    placeholder="54000"
                   />
                 </div>
               </div>
@@ -479,12 +479,12 @@ export default function NewStaffPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bankIfsc">IFSC Code</Label>
+                  <Label htmlFor="bankIban">IBAN</Label>
                   <Input
-                    id="bankIfsc"
-                    value={formData.bankIfsc}
-                    onChange={(e) => handleChange('bankIfsc', e.target.value)}
-                    placeholder="HDFC0001234"
+                    id="bankIban"
+                    value={formData.bankIban}
+                    onChange={(e) => handleChange('bankIban', e.target.value)}
+                    placeholder="PK36SCBL0000001123456702"
                   />
                 </div>
               </div>

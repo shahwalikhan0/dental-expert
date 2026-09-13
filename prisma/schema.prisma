@@ -23,7 +23,8 @@ model Hospital {
   address             String?   @db.Text
   city                String?
   state               String?
-  pincode             String?
+  // "PIN code" is India's term; Pakistan Post calls it a postal code.
+  postalCode          String?
   logo                String?
   registrationNo      String?
   // Tax identifiers. Renamed from the Indian gstNumber/panNumber: Pakistan
@@ -64,7 +65,10 @@ model Hospital {
   bankName            String?
   bankAccountNo       String?
   bankAccountName     String?
-  bankIfsc            String?
+  // IBAN, not an IFSC code: IFSC is India's bank routing identifier. Pakistani
+  // accounts are identified by a 24-character IBAN (PK + 2 check digits + 4
+  // bank code + 16 account number).
+  bankIban            String?
   upiId               String?
 
   createdAt           DateTime  @default(now())
@@ -373,7 +377,7 @@ model Staff {
   address         String?   @db.Text
   city            String?
   state           String?
-  pincode         String?
+  postalCode      String?
   // Pakistan's national identity number. Aadhaar is India's, 12 digits;
   // a CNIC is 13, issued by NADRA. Stored as digits only and formatted
   // 00000-0000000-0 for display — see lib/cnic.ts.
@@ -385,7 +389,7 @@ model Staff {
   joiningDate     DateTime  @default(now())
   salary          Decimal?  @db.Decimal(10, 2)
   bankAccountNo   String?
-  bankIfsc        String?
+  bankIban        String?
   emergencyContact String?
   emergencyPhone  String?
   isActive        Boolean   @default(true)
@@ -509,7 +513,7 @@ model Patient {
   // right default — the clinic's own province is a guess for anyone who
   // travelled in — so it is left blank.
   state           String?
-  pincode         String?
+  postalCode      String?
   // See the note on Staff.cnic. Children are issued a B-Form rather than a
   // CNIC, so this is nullable and stays that way.
   cnic            String?
@@ -1792,11 +1796,11 @@ model Supplier {
   address         String?   @db.Text
   city            String?
   state           String?
-  pincode         String?
+  postalCode      String?
   taxRegistrationNo String?
   nationalTaxNo   String?
   bankAccountNo   String?
-  bankIfsc        String?
+  bankIban        String?
   paymentTerms    String?
   creditLimit     Decimal?  @db.Decimal(12, 2)
   notes           String?   @db.Text
@@ -1961,7 +1965,7 @@ model LabVendor {
   address         String?   @db.Text
   city            String?
   state           String?
-  pincode         String?
+  postalCode      String?
   taxRegistrationNo String?
   nationalTaxNo   String?
   specializations String?   @db.Text

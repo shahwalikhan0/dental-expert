@@ -222,7 +222,7 @@ const DEFAULT_TEMPLATES = [
         id: 'address',
         type: 'textarea',
         label: 'Full Address',
-        placeholder: 'Street, area, city, pincode',
+        placeholder: 'Street, area, city, postalCode',
         required: true,
       },
       {

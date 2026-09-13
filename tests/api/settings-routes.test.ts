@@ -281,7 +281,7 @@ describe('GET /api/settings/clinic', () => {
       address: '123 Main St',
       city: 'Delhi',
       state: 'Delhi',
-      pincode: '110001',
+      postalCode: '110001',
       slug: 'test-dental',
     }
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue(mockClinic as any)
@@ -327,7 +327,7 @@ describe('POST /api/settings/clinic', () => {
       address: '456 New Rd',
       city: 'Mumbai',
       state: 'Maharashtra',
-      pincode: '400001',
+      postalCode: '400001',
     }
     vi.mocked(prisma.hospital.update).mockResolvedValue({ id: 'h1', ...clinicData } as any)
 
@@ -354,7 +354,7 @@ describe('POST /api/settings/clinic', () => {
         address: '456 New Rd',
         city: 'Mumbai',
         state: 'Maharashtra',
-        pincode: '400001',
+        postalCode: '400001',
       })
     )
     expect(res.status).toBe(200)
@@ -384,7 +384,7 @@ describe('POST /api/settings/clinic', () => {
         address: 'Addr',
         city: 'City',
         state: 'State',
-        pincode: '110001',
+        postalCode: '110001',
         tagline: '',
         website: '',
       })
