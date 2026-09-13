@@ -1,3 +1,4 @@
+import { defaultLocale, localeDefaults } from '@/lib/i18n/config'
 import prisma from '@/lib/prisma'
 
 // Google Calendar OAuth2 and sync service
@@ -140,7 +141,14 @@ export async function createCalendarEvent(
     doctorName: string
     chiefComplaint?: string | null
     appointmentType: string
-  }
+  },
+  /**
+   * The clinic's IANA timezone. Was hardcoded to 'Asia/Kolkata', which put
+   * every synced appointment 30 minutes out for a Pakistani clinic — and
+   * silently, since the time on screen stayed right and only the calendar
+   * invitation was wrong.
+   */
+  timeZone: string = localeDefaults[defaultLocale].timezone
 ): Promise<{ eventId: string }> {
   const date =
     typeof appointment.scheduledDate === 'string'
@@ -166,11 +174,11 @@ export async function createCalendarEvent(
       .join('\n'),
     start: {
       dateTime: startDateTime.toISOString(),
-      timeZone: 'Asia/Kolkata',
+      timeZone,
     },
     end: {
       dateTime: endDateTime.toISOString(),
-      timeZone: 'Asia/Kolkata',
+      timeZone,
     },
     extendedProperties: {
       private: {

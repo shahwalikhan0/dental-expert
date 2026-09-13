@@ -39,12 +39,14 @@ model Hospital {
   website             String?
   tagline             String?
 
-  // Localization. Defaults keep existing clinics on Indian formatting.
-  // `country` will select the tax provider — see docs/LOCALIZATION.md.
+  // Localization. `country` will select the tax provider — see
+  // docs/LOCALIZATION.md. All four defaults are Pakistan: leaving three of them
+  // on Indian values while `locale` said en-PK meant a clinic created without
+  // an explicit setting billed in rupees on Kolkata time.
   locale              String    @default("en-PK")
-  country             String    @default("IN")
-  currency            String    @default("INR")
-  timezone            String    @default("Asia/Kolkata")
+  country             String    @default("PK")
+  currency            String    @default("PKR")
+  timezone            String    @default("Asia/Karachi")
 
   plan                Plan      @default(FREE)
   planExpiresAt       DateTime?
@@ -174,7 +176,7 @@ model SubscriptionPayment {
   id                String                    @id @default(cuid())
   subscriptionId    String
   amount            Decimal                   @db.Decimal(10, 2)
-  currency          String                    @default("INR")
+  currency          String                    @default("PKR")
   status            SubscriptionPaymentStatus @default(PENDING)
   paymentMethod     String?
   externalPaymentId String?
