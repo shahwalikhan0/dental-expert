@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -26,14 +26,22 @@ model Hospital {
   pincode             String?
   logo                String?
   registrationNo      String?
-  gstNumber           String?
-  panNumber           String?
+  // Tax identifiers. Renamed from the Indian gstNumber/panNumber: Pakistan
+  // issues an STRN for sales-tax registration and an NTN for income tax.
+  taxRegistrationNo   String?
+  nationalTaxNo       String?
+  // Sales tax on services, off by default because dental services are exempt
+  // for this clinic. Turning it on is a settings change, not a migration:
+  // set taxEnabled, a rate and the label to print on invoices.
+  taxEnabled          Boolean   @default(false)
+  taxRate             Decimal   @default(0) @db.Decimal(5, 2)
+  taxLabel            String    @default("Sales Tax")
   website             String?
   tagline             String?
 
   // Localization. Defaults keep existing clinics on Indian formatting.
   // `country` will select the tax provider — see docs/LOCALIZATION.md.
-  locale              String    @default("en-IN")
+  locale              String    @default("en-PK")
   country             String    @default("IN")
   currency            String    @default("INR")
   timezone            String    @default("Asia/Kolkata")
@@ -64,6 +72,7 @@ model Hospital {
   staff               Staff[]
   patients            Patient[]
   appointments        Appointment[]
+  chairs              Chair[]
   treatments          Treatment[]
   treatmentPlans      TreatmentPlan[]
   dentalChartEntries  DentalChartEntry[]
@@ -199,6 +208,15 @@ model User {
   name            String
   phone           String?
   role            Role      @default(RECEPTIONIST)
+  // Optional second role, for the person who holds two jobs — most often the
+  // owner who also treats patients. Permissions become the union of the two.
+  //
+  // This exists because `role` alone forces a false choice on that person:
+  // ADMIN deliberately cannot sign a clinical note (FR-007 wants a signature
+  // to attest as the treating provider), so an owner-dentist with a single
+  // ADMIN account could not sign their own work. Only clinical roles are
+  // assignable here — see SECONDARY_ROLES in lib/rbac.ts.
+  clinicalRole    Role?
   isActive        Boolean   @default(true)
   isHospitalAdmin Boolean   @default(false)
   emailVerified   DateTime?
@@ -268,12 +286,28 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// The seven roles of specification §4, plus LAB_TECH for the dental-laboratory
+// coordination of §5.8. Spec name -> enum value:
+//
+//   System Administrator  -> ADMIN
+//   Clinic Manager        -> CLINIC_MANAGER
+//   Dentist               -> DOCTOR
+//   Dental Assistant      -> DENTAL_ASSISTANT
+//   Front Desk/Reception  -> RECEPTIONIST
+//   Accounts/Cashier      -> ACCOUNTANT
+//   Inventory/Store       -> INVENTORY_STAFF
+//
+// What each one may actually do lives in lib/rbac.ts, not here. Adding a value
+// to this enum grants nothing on its own.
 enum Role {
   ADMIN
+  CLINIC_MANAGER
   DOCTOR
+  DENTAL_ASSISTANT
   RECEPTIONIST
-  LAB_TECH
   ACCOUNTANT
+  INVENTORY_STAFF
+  LAB_TECH
 }
 
 // ==================== STAFF INVITES ====================
@@ -326,7 +360,7 @@ model Staff {
   state           String?
   pincode         String?
   aadharNumber    String?
-  panNumber       String?
+  nationalTaxNo   String?
   qualification   String?
   specialization  String?
   licenseNumber   String?
@@ -586,7 +620,7 @@ model Appointment {
   scheduledDate   DateTime          @db.Date
   scheduledTime   String
   duration        Int               @default(30)
-  chairNumber     Int?
+  chairId         String?
 
   appointmentType AppointmentType   @default(CONSULTATION)
   status          AppointmentStatus @default(SCHEDULED)
@@ -611,6 +645,7 @@ model Appointment {
   hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient           @relation(fields: [patientId], references: [id])
   doctor          Staff             @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  chair           Chair?            @relation(fields: [chairId], references: [id], onDelete: SetNull)
   treatments      Treatment[]
   reminders       AppointmentReminder[]
   videoConsultation VideoConsultation?
@@ -620,7 +655,31 @@ model Appointment {
   @@index([scheduledDate])
   @@index([patientId])
   @@index([doctorId])
+  @@index([chairId])
   @@index([status])
+}
+
+/// A treatment chair / operatory. FR-025 lists chairs among the master data a
+/// clinic maintains, and FR-004 requires double-booking to be caught on the
+/// chair as well as the doctor — neither is possible while a chair is only a
+/// free-typed integer on the appointment.
+model Chair {
+  id              String    @id @default(cuid())
+  hospitalId      String
+  name            String
+  room            String?
+  notes           String?
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+
+  @@unique([hospitalId, name])
+  @@index([hospitalId])
 }
 
 model AppointmentReminder {
@@ -988,10 +1047,16 @@ model Invoice {
   discountValue   Decimal?      @db.Decimal(10, 2)
   discountAmount  Decimal       @default(0) @db.Decimal(10, 2)
   taxableAmount   Decimal       @db.Decimal(10, 2)
-  cgstRate        Decimal       @default(9) @db.Decimal(5, 2)
-  sgstRate        Decimal       @default(9) @db.Decimal(5, 2)
-  cgstAmount      Decimal       @db.Decimal(10, 2)
-  sgstAmount      Decimal       @db.Decimal(10, 2)
+  // One tax line, stamped onto the invoice at the moment it is raised.
+  //
+  // Upstream carried India's two-component split (CGST + SGST at 9% each).
+  // Pakistan levies a single provincial sales tax on services, and dental
+  // services are exempt for this clinic — hence the 0 default. The rate lives
+  // on the invoice rather than being read from settings at display time so
+  // that reprinting an old invoice shows the tax that was actually charged,
+  // not today's rate.
+  taxRate         Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal       @default(0) @db.Decimal(10, 2)
   totalAmount     Decimal       @db.Decimal(10, 2)
   paidAmount      Decimal       @default(0) @db.Decimal(10, 2)
   balanceAmount   Decimal       @db.Decimal(10, 2)
@@ -1498,8 +1563,8 @@ model Supplier {
   city            String?
   state           String?
   pincode         String?
-  gstNumber       String?
-  panNumber       String?
+  taxRegistrationNo String?
+  nationalTaxNo   String?
   bankAccountNo   String?
   bankIfsc        String?
   paymentTerms    String?
@@ -1667,8 +1732,8 @@ model LabVendor {
   city            String?
   state           String?
   pincode         String?
-  gstNumber       String?
-  panNumber       String?
+  taxRegistrationNo String?
+  nationalTaxNo   String?
   specializations String?   @db.Text
   avgTurnaround   Int?
   rating          Int?      @default(0)
@@ -2386,7 +2451,7 @@ model FormSubmission {
   appointmentId String?
 
   data          Json                 // Submitted form data
-  signature     String?              @db.LongText
+  signature     String?              @db.Text
   signedAt      DateTime?
   ipAddress     String?
 
@@ -2878,7 +2943,7 @@ model DataImportJob {
 
   signedOffAt     DateTime?
   completedAt     DateTime?
-  errorLog        String?          @db.LongText
+  errorLog        String?          @db.Text
 
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
