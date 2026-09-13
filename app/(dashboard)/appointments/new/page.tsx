@@ -66,7 +66,8 @@ export default function NewAppointmentPage() {
   const [duration, setDuration] = useState('30')
   const [appointmentType, setAppointmentType] = useState('CONSULTATION')
   const [priority, setPriority] = useState('NORMAL')
-  const [chairNumber, setChairNumber] = useState('')
+  const [chairId, setChairId] = useState('none')
+  const [chairs, setChairs] = useState<{ id: string; name: string; room: string | null }[]>([])
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [notes, setNotes] = useState('')
   const [isVirtual, setIsVirtual] = useState(false)
@@ -76,9 +77,10 @@ export default function NewAppointmentPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [patientsRes, doctorsRes] = await Promise.all([
+        const [patientsRes, doctorsRes, chairsRes] = await Promise.all([
           fetch('/api/patients?all=true'),
           fetch('/api/staff/doctors'),
+          fetch('/api/chairs'),
         ])
 
         if (patientsRes.ok) {
@@ -97,6 +99,11 @@ export default function NewAppointmentPage() {
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
           setDoctors(data.doctors)
+        }
+
+        if (chairsRes.ok) {
+          const data = await chairsRes.json()
+          setChairs(data.data || [])
         }
       } catch (err) {
         console.error('Error fetching data:', err)
@@ -188,7 +195,7 @@ export default function NewAppointmentPage() {
           duration: parseInt(duration),
           appointmentType,
           priority,
-          chairNumber: chairNumber ? parseInt(chairNumber) : null,
+          chairId: chairId !== 'none' ? chairId : null,
           chiefComplaint: chiefComplaint || null,
           notes: notes || null,
           isVirtual,
@@ -470,17 +477,20 @@ export default function NewAppointmentPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Chair Number</Label>
-                  <Select value={chairNumber} onValueChange={setChairNumber}>
+                  <Label>Chair</Label>
+                  <Select value={chairId} onValueChange={setChairId} disabled={!chairs.length}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select chair" />
+                      <SelectValue
+                        placeholder={chairs.length ? 'Select chair' : 'No chairs configured'}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Chair 1</SelectItem>
-                      <SelectItem value="2">Chair 2</SelectItem>
-                      <SelectItem value="3">Chair 3</SelectItem>
-                      <SelectItem value="4">Chair 4</SelectItem>
-                      <SelectItem value="5">Chair 5</SelectItem>
+                      <SelectItem value="none">Not assigned</SelectItem>
+                      {chairs.map((chair) => (
+                        <SelectItem key={chair.id} value={chair.id}>
+                          {chair.room ? `${chair.name} — ${chair.room}` : chair.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

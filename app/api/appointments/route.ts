@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { createRoom } from '@/lib/services/video.service'
+import {
+  conflictResponseBody,
+  findAppointmentConflicts,
+  getDoubleBookingPolicy,
+} from '@/lib/appointment-conflicts'
 
 // Generate unique appointment number for the hospital
 async function generateAppointmentNo(hospitalId: string): Promise<string> {
@@ -30,7 +35,7 @@ async function generateAppointmentNo(hospitalId: string): Promise<string> {
 
 // GET - List appointments with filters
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -140,6 +145,7 @@ export async function GET(request: NextRequest) {
               specialization: true,
             },
           },
+          chair: { select: { id: true, name: true } },
         },
         orderBy: [{ scheduledDate: 'asc' }, { scheduledTime: 'asc' }],
         skip: view === 'list' ? skip : undefined,
@@ -165,7 +171,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new appointment
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId } = await requirePermission('appointments:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -179,7 +185,7 @@ export async function POST(request: NextRequest) {
       scheduledDate,
       scheduledTime,
       duration = 30,
-      chairNumber,
+      chairId,
       appointmentType = 'CONSULTATION',
       priority = 'NORMAL',
       chiefComplaint,
@@ -239,25 +245,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
     }
 
-    // Check for conflicting appointments (same doctor, same time, same hospital)
+    // Check the chair belongs to this clinic and is in service
+    if (chairId) {
+      const chair = await prisma.chair.findFirst({
+        where: { id: chairId, hospitalId },
+        select: { id: true, isActive: true },
+      })
+      if (!chair) {
+        return NextResponse.json({ error: 'Chair not found' }, { status: 404 })
+      }
+      if (!chair.isActive) {
+        return NextResponse.json({ error: 'That chair is out of service' }, { status: 400 })
+      }
+    }
+
+    // FR-004: refuse (or warn about) an overlap on either the doctor or the
+    // chair. This compares intervals, not start times — see
+    // lib/appointment-conflicts.ts.
     const appointmentDate = new Date(scheduledDate)
-    const existingAppointment = await prisma.appointment.findFirst({
-      where: {
-        hospitalId,
-        doctorId,
-        scheduledDate: appointmentDate,
-        scheduledTime,
-        status: {
-          notIn: ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'],
-        },
-      },
+    const conflicts = await findAppointmentConflicts({
+      hospitalId,
+      scheduledDate: appointmentDate,
+      scheduledTime,
+      duration,
+      doctorId,
+      chairId,
     })
 
-    if (existingAppointment) {
-      return NextResponse.json(
-        { error: 'Doctor already has an appointment at this time' },
-        { status: 409 }
-      )
+    let conflictWarnings: typeof conflicts = []
+    if (conflicts.length > 0) {
+      const policy = await getDoubleBookingPolicy(hospitalId)
+      if (policy === 'BLOCK') {
+        return NextResponse.json(conflictResponseBody(conflicts), { status: 409 })
+      }
+      conflictWarnings = conflicts
     }
 
     // Generate appointment number for this hospital
@@ -273,7 +294,7 @@ export async function POST(request: NextRequest) {
         scheduledDate: appointmentDate,
         scheduledTime,
         duration,
-        chairNumber,
+        chairId,
         appointmentType,
         priority,
         chiefComplaint,
@@ -298,6 +319,7 @@ export async function POST(request: NextRequest) {
             lastName: true,
           },
         },
+        chair: { select: { id: true, name: true } },
       },
     })
 
@@ -332,6 +354,12 @@ export async function POST(request: NextRequest) {
         console.error('Failed to create video consultation:', videoErr)
         // Appointment is still created — video setup can be retried
       }
+    }
+
+    // Under the WARN policy the booking stands, but the caller is told exactly
+    // what it overlaps so the front desk can see it rather than discover it.
+    if (conflictWarnings.length > 0) {
+      return NextResponse.json({ ...appointment, conflicts: conflictWarnings }, { status: 201 })
     }
 
     return NextResponse.json(appointment, { status: 201 })

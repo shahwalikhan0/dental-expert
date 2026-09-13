@@ -5,6 +5,8 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
+import { calculateTax, resolveTaxRate } from '@/lib/billing-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -190,19 +192,22 @@ export async function execBookAppointment(params: Record<string, string>, hospit
   const date = params.date || new Date().toISOString().split('T')[0]
   const time = params.time || '10:00'
 
-  const conflict = await prisma.appointment.findFirst({
-    where: {
-      hospitalId,
-      doctorId: doctor.id,
-      scheduledDate: new Date(date + 'T00:00:00'),
-      scheduledTime: time,
-      status: { in: ['SCHEDULED', 'CONFIRMED', 'CHECKED_IN'] },
-    },
+  const duration = params.duration ? parseInt(params.duration) : DEFAULT_APPOINTMENT_DURATION
+
+  // Same interval check as the booking screens. The AI assistant must not be a
+  // way round FR-004, and this route was doubly wrong: an exact time match, and
+  // a status whitelist that let an IN_PROGRESS appointment be booked over.
+  const conflicts = await findAppointmentConflicts({
+    hospitalId,
+    scheduledDate: new Date(date + 'T00:00:00'),
+    scheduledTime: time,
+    duration,
+    doctorId: doctor.id,
   })
-  if (conflict) {
+  if (conflicts.length > 0) {
     return {
       success: false,
-      message: `Dr. ${doctor.firstName} already has a booking at ${time} on ${date}. Pick another time.`,
+      message: `${conflicts[0].message}. Pick another time.`,
     }
   }
 
@@ -216,7 +221,7 @@ export async function execBookAppointment(params: Record<string, string>, hospit
       doctorId: doctor.id,
       scheduledDate: new Date(date + 'T00:00:00'),
       scheduledTime: time,
-      duration: params.duration ? parseInt(params.duration) : 30,
+      duration,
       appointmentType: (params.type as any) || 'CONSULTATION',
       status: 'SCHEDULED',
       priority: params.type === 'EMERGENCY' ? 'URGENT' : 'NORMAL',
@@ -313,21 +318,17 @@ export async function execRescheduleAppointment(
   const newTime = params.newTime || appointment.scheduledTime
 
   // Check conflict on new slot
-  const conflict = await prisma.appointment.findFirst({
-    where: {
-      hospitalId,
-      doctorId: appointment.doctor.id,
-      scheduledDate: new Date(newDate + 'T00:00:00'),
-      scheduledTime: newTime,
-      status: { in: ['SCHEDULED', 'CONFIRMED', 'CHECKED_IN'] },
-      id: { not: appointment.id },
-    },
+  const conflicts = await findAppointmentConflicts({
+    hospitalId,
+    scheduledDate: new Date(newDate + 'T00:00:00'),
+    scheduledTime: newTime,
+    duration: appointment.duration,
+    doctorId: appointment.doctor.id,
+    chairId: appointment.chairId,
+    excludeAppointmentId: appointment.id,
   })
-  if (conflict) {
-    return {
-      success: false,
-      message: `Dr. ${appointment.doctor.firstName} already has a booking at ${newTime} on ${newDate}.`,
-    }
+  if (conflicts.length > 0) {
+    return { success: false, message: conflicts[0].message }
   }
 
   await prisma.appointment.update({
@@ -335,7 +336,10 @@ export async function execRescheduleAppointment(
     data: {
       scheduledDate: new Date(newDate + 'T00:00:00'),
       scheduledTime: newTime,
-      status: 'RESCHEDULED',
+      // Deliberately not setting status: 'RESCHEDULED'. This moves the booking
+      // in place rather than superseding it, and RESCHEDULED is one of the
+      // statuses treated as vacating the slot — so stamping it here left the
+      // appointment live at its new time while looking free to book over.
     },
   })
 
@@ -463,7 +467,7 @@ export async function execCreateTreatment(params: Record<string, string>, hospit
 
   return {
     success: true,
-    message: `Treatment ${treatment.treatmentNo} created: ${procedure.name} for ${patient.firstName} ${patient.lastName} by Dr. ${doctor.firstName}. Cost: ₹${Number(treatment.cost).toLocaleString('en-IN')}.`,
+    message: `Treatment ${treatment.treatmentNo} created: ${procedure.name} for ${patient.firstName} ${patient.lastName} by Dr. ${doctor.firstName}. Cost: Rs ${Number(treatment.cost).toLocaleString('en-PK')}.`,
   }
 }
 
@@ -539,7 +543,7 @@ export async function execShowTreatments(params: Record<string, string>, hospita
       patient: `${t.patient.firstName} ${t.patient.lastName}`,
       procedure: t.procedure.name,
       doctor: `Dr. ${t.doctor.firstName}`,
-      cost: `₹${Number(t.cost).toLocaleString('en-IN')}`,
+      cost: `Rs ${Number(t.cost).toLocaleString('en-PK')}`,
       status: t.status,
       date: t.createdAt.toISOString().split('T')[0],
     })),
@@ -566,12 +570,18 @@ export async function execCreateInvoice(params: Record<string, string>, hospital
     }
 
   const subtotal = unbilled.reduce((s, t) => s + Number(t.cost), 0)
-  const cgstRate = 9
-  const sgstRate = 9
   const taxableAmount = subtotal
-  const cgstAmount = (taxableAmount * cgstRate) / 100
-  const sgstAmount = (taxableAmount * sgstRate) / 100
-  const totalAmount = subtotal + cgstAmount + sgstAmount
+
+  // Was hardcoded to India's CGST 9% + SGST 9%. The AI agent must bill at the
+  // same rate as the rest of the application, or the same treatment costs a
+  // different amount depending on which screen raised the invoice.
+  const clinic = await prisma.hospital.findUnique({
+    where: { id: hospitalId },
+    select: { taxEnabled: true, taxRate: true, taxLabel: true },
+  })
+  const taxRate = resolveTaxRate(clinic)
+  const { taxAmount } = calculateTax(taxableAmount, taxRate)
+  const totalAmount = subtotal + taxAmount
 
   const invoiceNo = await nextNumber(hospitalId, 'invoice', 'INV')
 
@@ -582,10 +592,8 @@ export async function execCreateInvoice(params: Record<string, string>, hospital
       patientId: patient.id,
       subtotal,
       taxableAmount,
-      cgstRate,
-      sgstRate,
-      cgstAmount,
-      sgstAmount,
+      taxRate,
+      taxAmount,
       totalAmount,
       balanceAmount: totalAmount,
       status: 'PENDING',
@@ -602,7 +610,7 @@ export async function execCreateInvoice(params: Record<string, string>, hospital
 
   return {
     success: true,
-    message: `Invoice ${invoice.invoiceNo} created for ${patient.firstName} ${patient.lastName}. Subtotal: ₹${subtotal.toLocaleString('en-IN')}, GST: ₹${(cgstAmount + sgstAmount).toFixed(2)}, Total: ₹${totalAmount.toFixed(2)}. Includes ${unbilled.length} treatment(s).`,
+    message: `Invoice ${invoice.invoiceNo} created for ${patient.firstName} ${patient.lastName}. Subtotal: Rs ${subtotal.toLocaleString('en-PK')}${taxAmount > 0 ? `, ${clinic?.taxLabel ?? 'Tax'}: Rs ${taxAmount.toFixed(2)}` : ''}, Total: Rs ${totalAmount.toFixed(2)}. Includes ${unbilled.length} treatment(s).`,
     invoiceNo: invoice.invoiceNo,
   }
 }
@@ -642,7 +650,7 @@ export async function execRecordPayment(params: Record<string, string>, hospital
   if (amount > Number(invoice.balanceAmount)) {
     return {
       success: false,
-      message: `Amount ₹${amount} exceeds balance ₹${Number(invoice.balanceAmount).toLocaleString('en-IN')}.`,
+      message: `Amount Rs ${amount} exceeds balance Rs ${Number(invoice.balanceAmount).toLocaleString('en-PK')}.`,
     }
   }
 
@@ -674,7 +682,7 @@ export async function execRecordPayment(params: Record<string, string>, hospital
 
   return {
     success: true,
-    message: `Payment ${paymentNo} of ₹${amount.toLocaleString('en-IN')} recorded for invoice ${invoice.invoiceNo} (${invoice.patient.firstName} ${invoice.patient.lastName}). ${newBalance <= 0 ? 'Invoice fully paid.' : `Remaining balance: ₹${newBalance.toFixed(2)}.`}`,
+    message: `Payment ${paymentNo} of Rs ${amount.toLocaleString('en-PK')} recorded for invoice ${invoice.invoiceNo} (${invoice.patient.firstName} ${invoice.patient.lastName}). ${newBalance <= 0 ? 'Invoice fully paid.' : `Remaining balance: Rs ${newBalance.toFixed(2)}.`}`,
   }
 }
 
@@ -699,9 +707,9 @@ export async function execShowInvoices(params: Record<string, string>, hospitalI
     invoices: invoices.map((i) => ({
       invoiceNo: i.invoiceNo,
       patient: `${i.patient.firstName} ${i.patient.lastName}`,
-      total: `₹${Number(i.totalAmount).toLocaleString('en-IN')}`,
-      paid: `₹${Number(i.paidAmount).toLocaleString('en-IN')}`,
-      balance: `₹${Number(i.balanceAmount).toLocaleString('en-IN')}`,
+      total: `Rs ${Number(i.totalAmount).toLocaleString('en-PK')}`,
+      paid: `Rs ${Number(i.paidAmount).toLocaleString('en-PK')}`,
+      balance: `Rs ${Number(i.balanceAmount).toLocaleString('en-PK')}`,
       status: i.status,
       date: i.createdAt.toISOString().split('T')[0],
     })),
@@ -718,11 +726,11 @@ export async function execCheckOverdue(hospitalId: string) {
   return {
     success: true,
     count: overdue.length,
-    totalOverdue: `₹${overdue.reduce((s, i) => s + Number(i.balanceAmount), 0).toLocaleString('en-IN')}`,
+    totalOverdue: `Rs ${overdue.reduce((s, i) => s + Number(i.balanceAmount), 0).toLocaleString('en-PK')}`,
     invoices: overdue.map((i) => ({
       invoiceNo: i.invoiceNo,
       patient: `${i.patient.firstName} ${i.patient.lastName}`,
-      balance: `₹${Number(i.balanceAmount).toLocaleString('en-IN')}`,
+      balance: `Rs ${Number(i.balanceAmount).toLocaleString('en-PK')}`,
     })),
   }
 }
@@ -759,8 +767,8 @@ export async function execShowRevenue(params: Record<string, string>, hospitalId
   return {
     success: true,
     period,
-    totalBilled: `₹${billed.toLocaleString('en-IN')}`,
-    totalCollected: `₹${collected.toLocaleString('en-IN')}`,
+    totalBilled: `Rs ${billed.toLocaleString('en-PK')}`,
+    totalCollected: `Rs ${collected.toLocaleString('en-PK')}`,
     collectionRate: billed > 0 ? `${((collected / billed) * 100).toFixed(1)}%` : 'N/A',
     invoiceCount: invoices.length,
   }
@@ -1256,7 +1264,7 @@ export async function execDailySummary(hospitalId: string) {
         remaining: todayAppointments - completedToday - cancelledToday - noShowToday,
       },
       billing: {
-        todayCollected: `₹${Number(todayRevenue._sum.amount || 0).toLocaleString('en-IN')}`,
+        todayCollected: `Rs ${Number(todayRevenue._sum.amount || 0).toLocaleString('en-PK')}`,
         pendingInvoices,
         overdueInvoices,
       },
@@ -1311,7 +1319,7 @@ export async function execCheckPatient(params: Record<string, string>, hospitalI
       gender: patient.gender,
       email: patient.email,
       medicalFlags: flags,
-      outstandingBalance: `₹${patient.invoices.reduce((s, i) => s + Number(i.balanceAmount), 0).toLocaleString('en-IN')}`,
+      outstandingBalance: `Rs ${patient.invoices.reduce((s, i) => s + Number(i.balanceAmount), 0).toLocaleString('en-PK')}`,
       recentAppointments: patient.appointments.map(
         (a) => `${a.scheduledDate.toISOString().split('T')[0]} – ${a.appointmentType} (${a.status})`
       ),

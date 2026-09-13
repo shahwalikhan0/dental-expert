@@ -26,6 +26,12 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
+    chair: {
+      findFirst: vi.fn(),
+    },
+    setting: {
+      findUnique: vi.fn(),
+    },
     treatment: {
       findMany: vi.fn(),
     },
@@ -42,9 +48,39 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 // Mock auth
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 import { prisma } from '@/lib/prisma'
 import { requireAuthAndRole } from '@/lib/api-helpers'
@@ -265,7 +301,7 @@ describe('Appointments API - Comprehensive Tests', () => {
         id: mockDoctorId,
         hospitalId: mockHospitalId,
       })
-      mockPrisma.appointment.findFirst.mockResolvedValue(null) // No conflict
+      mockPrisma.appointment.findMany.mockResolvedValue([]) // No conflict
     })
 
     it('should create a new appointment with valid data', async () => {
@@ -352,14 +388,21 @@ describe('Appointments API - Comprehensive Tests', () => {
     })
 
     it('should detect and reject conflicting appointments', async () => {
-      // Doctor already has appointment at this time
-      mockPrisma.appointment.findFirst.mockResolvedValue({
-        id: 'existing-apt',
-        doctorId: mockDoctorId,
-        scheduledDate: new Date('2025-01-29'),
-        scheduledTime: '10:00',
-        status: 'SCHEDULED',
-      })
+      // Doctor is occupied 10:00-11:00; the new booking starts halfway through
+      // it. The old exact-start-time check treated this as free.
+      mockPrisma.appointment.findMany.mockResolvedValue([
+        {
+          id: 'existing-apt',
+          appointmentNo: 'APT00001',
+          scheduledTime: '10:00',
+          duration: 60,
+          doctorId: mockDoctorId,
+          chairId: null,
+          patient: { firstName: 'Ali', lastName: 'Raza' },
+          doctor: { firstName: 'Imran', lastName: 'Shah' },
+          chair: null,
+        },
+      ])
 
       const request = new NextRequest('http://localhost/api/appointments', {
         method: 'POST',
@@ -367,14 +410,15 @@ describe('Appointments API - Comprehensive Tests', () => {
           patientId: mockPatientId,
           doctorId: mockDoctorId,
           scheduledDate: '2030-06-15',
-          scheduledTime: '10:00',
+          scheduledTime: '10:30',
+          duration: 30,
         }),
       })
       const response = await POST(request)
 
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data.error).toContain('already has an appointment')
+      expect(data.error).toContain('Dr. Imran Shah')
     })
 
     it('should allow appointment at same time with different doctor', async () => {
@@ -383,7 +427,7 @@ describe('Appointments API - Comprehensive Tests', () => {
         id: differentDoctorId,
         hospitalId: mockHospitalId,
       })
-      mockPrisma.appointment.findFirst.mockResolvedValue(null) // No conflict for this doctor
+      mockPrisma.appointment.findMany.mockResolvedValue([]) // No conflict for this doctor
       mockPrisma.appointment.create.mockResolvedValue({
         id: 'apt-2',
         appointmentNo: 'APT202501290002',
@@ -404,10 +448,10 @@ describe('Appointments API - Comprehensive Tests', () => {
     })
 
     it('should generate unique appointment numbers', async () => {
-      // Order: conflict check runs FIRST, then generateAppointmentNo
-      mockPrisma.appointment.findFirst
-        .mockResolvedValueOnce(null) // 1st call: conflict check → no conflict
-        .mockResolvedValueOnce({ appointmentNo: 'APT202501290005' }) // 2nd call: ID generation
+      // The conflict check now uses findMany, so findFirst is left to the
+      // appointment-number generator alone.
+      mockPrisma.appointment.findMany.mockResolvedValue([])
+      mockPrisma.appointment.findFirst.mockResolvedValue({ appointmentNo: 'APT202501290005' })
 
       mockPrisma.appointment.create.mockResolvedValue({
         id: 'apt-6',
@@ -530,7 +574,7 @@ describe('Appointments API - Comprehensive Tests', () => {
 
     it('should allow cancelled appointment slots to be reused', async () => {
       // Conflict check should exclude cancelled appointments
-      mockPrisma.appointment.findFirst.mockResolvedValue(null) // Query excludes CANCELLED status
+      mockPrisma.appointment.findMany.mockResolvedValue([]) // Query excludes CANCELLED status
       mockPrisma.appointment.create.mockResolvedValue({ id: 'apt-new' })
 
       const request = new NextRequest('http://localhost/api/appointments', {
@@ -545,7 +589,7 @@ describe('Appointments API - Comprehensive Tests', () => {
       const response = await POST(request)
 
       expect(response.status).toBe(201)
-      expect(mockPrisma.appointment.findFirst).toHaveBeenCalledWith(
+      expect(mockPrisma.appointment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             status: {
@@ -558,6 +602,7 @@ describe('Appointments API - Comprehensive Tests', () => {
 
     it('should include optional fields in appointment', async () => {
       mockPrisma.appointment.create.mockResolvedValue({ id: 'apt-1' })
+      mockPrisma.chair.findFirst.mockResolvedValue({ id: 'chair-1', isActive: true })
 
       const request = new NextRequest('http://localhost/api/appointments', {
         method: 'POST',
@@ -567,7 +612,7 @@ describe('Appointments API - Comprehensive Tests', () => {
           scheduledDate: '2030-06-15',
           scheduledTime: '10:00',
           duration: 45,
-          chairNumber: 'Chair 1',
+          chairId: 'chair-1',
           appointmentType: 'TREATMENT',
           priority: 'HIGH',
           chiefComplaint: 'Tooth pain',
@@ -579,7 +624,7 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(mockPrisma.appointment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            chairNumber: 'Chair 1',
+            chairId: 'chair-1',
             chiefComplaint: 'Tooth pain',
             notes: 'Patient requested early morning slot',
           }),

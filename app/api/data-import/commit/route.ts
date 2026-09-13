@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
-import { requireAuthAndRole } from '@/lib/api-helpers'
+import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
-  const { error, session, hospitalId } = await requireAuthAndRole(['ADMIN'])
+  const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -382,7 +382,7 @@ async function importStaff(
             state: row.state || undefined,
             pincode: row.pincode || undefined,
             aadharNumber: row.aadharNumber || undefined,
-            panNumber: row.panNumber || undefined,
+            nationalTaxNo: row.nationalTaxNo || undefined,
           },
         })
       })
@@ -429,6 +429,20 @@ async function importAppointments(
     staffLookup.set(s.employeeId, s.id)
     staffLookup.set(`${s.firstName} ${s.lastName}`.toLowerCase(), s.id)
     staffLookup.set(s.firstName.toLowerCase(), s.id)
+  })
+
+  // Chairs are matched by name. An unrecognised chair is left unassigned rather
+  // than failing the row — the column is optional, and a historical import
+  // whose chair no longer exists is still worth keeping.
+  const chairs = await prisma.chair.findMany({
+    where: { hospitalId },
+    select: { id: true, name: true },
+  })
+  const chairLookup = new Map<string, string>()
+  chairs.forEach((c) => {
+    chairLookup.set(c.name.toLowerCase(), c.id)
+    // "3" should also find "Chair 3", which is how the old numeric column read.
+    chairLookup.set(c.name.toLowerCase().replace(/^chair\s*/, ''), c.id)
   })
 
   for (const row of rows) {
@@ -480,7 +494,7 @@ async function importAppointments(
           status: row.status || 'COMPLETED',
           chiefComplaint: row.chiefComplaint || undefined,
           notes: row.notes || undefined,
-          chairNumber: row.chairNumber || undefined,
+          chairId: row.chair ? chairLookup.get(String(row.chair).toLowerCase()) : undefined,
         },
       })
       successCount++
@@ -654,8 +668,10 @@ async function importInvoices(
       const paidAmount = row.paidAmount ?? 0
       const balanceAmount = row.balanceAmount ?? totalAmount - paidAmount
       const taxableAmount = row.taxableAmount ?? subtotal
-      const cgstAmount = row.cgstAmount ?? 0
-      const sgstAmount = row.sgstAmount ?? 0
+      // Imported invoices keep whatever tax they were issued with. A row from
+      // an Indian system may carry cgst/sgst columns; sum them into the single
+      // tax line rather than dropping them.
+      const taxAmount = row.taxAmount ?? (row.cgstAmount ?? 0) + (row.sgstAmount ?? 0)
 
       await prisma.invoice.create({
         data: {
@@ -667,8 +683,7 @@ async function importInvoices(
           paidAmount,
           balanceAmount,
           taxableAmount,
-          cgstAmount,
-          sgstAmount,
+          taxAmount,
           discountAmount: row.discountAmount || 0,
           status:
             row.status ||

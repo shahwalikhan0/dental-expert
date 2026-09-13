@@ -146,7 +146,8 @@ describe('Command Executors', () => {
         firstName: 'Alice',
         lastName: 'Brown',
       })
-      // conflict check returns null (no conflict)
+      // conflict check finds nothing overlapping
+      ;(prisma.appointment.findMany as any).mockResolvedValue([])
       ;(prisma.appointment.findFirst as any).mockResolvedValue(null)
       ;(prisma.appointment.count as any).mockResolvedValue(10)
       ;(prisma.appointment.create as any).mockResolvedValue({
@@ -161,6 +162,41 @@ describe('Command Executors', () => {
       )
       expect(result.success).toBe(true)
       expect(result.message).toContain('Appointment')
+    })
+
+    // The assistant must not be a way around FR-004.
+    it('refuses a slot that overlaps one the doctor already has', async () => {
+      ;(prisma.patient.findFirst as any).mockResolvedValue({
+        id: 'p1',
+        firstName: 'John',
+        lastName: 'Doe',
+      })
+      ;(prisma.staff.findFirst as any).mockResolvedValue({
+        id: 's1',
+        firstName: 'Alice',
+        lastName: 'Brown',
+      })
+      ;(prisma.appointment.findMany as any).mockResolvedValue([
+        {
+          id: 'a9',
+          appointmentNo: 'APT-00009',
+          scheduledTime: '09:45',
+          duration: 30,
+          doctorId: 's1',
+          chairId: null,
+          patient: { firstName: 'Prior', lastName: 'Patient' },
+          doctor: { firstName: 'Alice', lastName: 'Brown' },
+          chair: null,
+        },
+      ])
+
+      const result = await execBookAppointment(
+        { patientName: 'John', date: '2026-03-10', time: '10:00', doctorName: 'Alice' },
+        'h1'
+      )
+      expect(result.success).toBe(false)
+      expect(result.message).toContain('Pick another time')
+      expect(prisma.appointment.create).not.toHaveBeenCalled()
     })
 
     it('returns error when patient not found', async () => {

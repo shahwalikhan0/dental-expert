@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -82,6 +83,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       )
     }
 
+    // FR-004 on the public booking page. This checked only whether the patient
+    // was double-booking *themselves* — nothing stopped an outside caller
+    // booking a dentist who was already occupied. Unlike the staff routes this
+    // never honours a WARN policy: overbooking is a decision for the front
+    // desk, not for whoever is on the website.
+    const conflicts = await findAppointmentConflicts({
+      hospitalId: hospital.id,
+      scheduledDate: dateObj,
+      scheduledTime: time,
+      duration: DEFAULT_APPOINTMENT_DURATION,
+      doctorId,
+    })
+
+    if (conflicts.length > 0) {
+      return NextResponse.json(
+        { error: 'That time has just been taken. Please choose another slot.' },
+        { status: 409 }
+      )
+    }
+
     // Generate appointment number
     const lastAppt = await prisma.appointment.findFirst({
       where: { hospitalId: hospital.id },
@@ -99,6 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         doctorId,
         scheduledDate: dateObj,
         scheduledTime: time,
+        duration: DEFAULT_APPOINTMENT_DURATION,
         appointmentType: (type as any) || 'CONSULTATION',
         status: 'SCHEDULED',
         chiefComplaint: chiefComplaint || null,

@@ -70,7 +70,7 @@ interface Appointment {
   scheduledDate: string
   scheduledTime: string
   duration: number
-  chairNumber: number | null
+  chair: { id: string; name: string } | null
   appointmentType: string
   status: string
   priority: string
@@ -316,7 +316,7 @@ export default function AppointmentsPage() {
                   Date: formatDate(a.scheduledDate),
                   Time: formatTime(a.scheduledTime),
                   'Duration (min)': a.duration,
-                  Chair: a.chairNumber || '',
+                  Chair: a.chair?.name || '',
                   Type: a.appointmentType,
                   Status: a.status,
                   Priority: a.priority,
@@ -457,9 +457,9 @@ export default function AppointmentsPage() {
                     <TableRow key={appointment.id}>
                       <TableCell>
                         <div className="font-medium">{appointment.appointmentNo}</div>
-                        {appointment.chairNumber && (
+                        {appointment.chair && (
                           <div className="text-sm text-muted-foreground">
-                            Chair {appointment.chairNumber}
+                            {appointment.chair.name}
                           </div>
                         )}
                       </TableCell>

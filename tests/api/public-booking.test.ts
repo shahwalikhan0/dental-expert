@@ -219,10 +219,9 @@ describe('POST /api/public/[slug]/book', () => {
       lastName: 'Smith',
     } as any)
     vi.mocked(prisma.appointment.findFirst)
-      .mockResolvedValueOnce(null) // no duplicate
+      .mockResolvedValueOnce(null) // patient's own duplicate check
       .mockResolvedValueOnce({ appointmentNo: 'APT00099' } as any) // last appt for number gen
-    // Wait - the findFirst is called twice: once for duplicate check, once for last appt number
-    // Actually looking at the code: first findFirst checks duplicate, second findFirst gets last appt
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([] as any) // doctor's slot is free
     vi.mocked(prisma.appointment.create).mockResolvedValue({
       appointmentNo: 'APT00100',
       scheduledDate: new Date('2026-03-15'),
@@ -245,5 +244,56 @@ describe('POST /api/public/[slug]/book', () => {
     expect(body.success).toBe(true)
     expect(body.appointment.appointmentNo).toBe('APT00100')
     expect(body.appointment.doctor).toBe('Dr. Dr Smith')
+  })
+
+  // Before this check the route only asked whether the *patient* was already
+  // booked at that time; the doctor's own calendar was never consulted, so the
+  // public page could book over an occupied slot.
+  it('refuses a slot the doctor is already occupying', async () => {
+    vi.mocked(prisma.hospital.findFirst).mockResolvedValue({
+      id: 'h1',
+      name: 'Test Clinic',
+      isActive: true,
+    } as any)
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({
+      id: 'p1',
+      firstName: 'John',
+      lastName: 'Doe',
+    } as any)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({
+      id: 'd1',
+      firstName: 'Dr',
+      lastName: 'Smith',
+    } as any)
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null) // not the patient's own
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      {
+        id: 'apt-1',
+        appointmentNo: 'APT00042',
+        scheduledTime: '09:45',
+        duration: 30,
+        doctorId: 'd1',
+        chairId: null,
+        patient: { firstName: 'Someone', lastName: 'Else' },
+        doctor: { firstName: 'Dr', lastName: 'Smith' },
+        chair: null,
+      },
+    ] as any)
+
+    const res = await publicBookPOST(
+      makeReq('/api/public/test/book', 'POST', {
+        phone: '9876543210',
+        doctorId: 'd1',
+        date: '2026-03-15',
+        time: '10:00',
+      }),
+      makeParams('test')
+    )
+
+    expect(res.status).toBe(409)
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+    // The other patient's name must not leak to an anonymous booker.
+    const body = await res.json()
+    expect(JSON.stringify(body)).not.toContain('Someone')
   })
 })

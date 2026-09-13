@@ -32,6 +32,7 @@ class CommunicationTriggersService {
             user: true,
           },
         },
+        chair: { select: { name: true } },
       },
     })
 
@@ -62,7 +63,10 @@ class CommunicationTriggersService {
           appointmentTime: appointment.scheduledTime,
           appointmentNo: appointment.appointmentNo,
           doctorName: `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`,
-          chairNumber: appointment.chairNumber?.toString() || 'TBA',
+          chair: appointment.chair?.name || 'TBA',
+          // Kept as an alias so templates written against the old variable name
+          // keep rendering; only `chair` is offered in the variable picker.
+          chairNumber: appointment.chair?.name || 'TBA',
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
           clinicPhone: clinicInfo?.phone || '',
         }
@@ -251,8 +255,8 @@ class CommunicationTriggersService {
           patientName: `${invoice.patient.firstName} ${invoice.patient.lastName}`,
           firstName: invoice.patient.firstName,
           invoiceNo: invoice.invoiceNo,
-          invoiceAmount: `₹${invoice.totalAmount.toFixed(2)}`,
-          balanceAmount: `₹${invoice.balanceAmount.toFixed(2)}`,
+          invoiceAmount: `Rs ${invoice.totalAmount.toFixed(2)}`,
+          balanceAmount: `Rs ${invoice.balanceAmount.toFixed(2)}`,
           dueDate: invoice.dueDate ? format(invoice.dueDate, 'dd-MMM-yyyy') : 'ASAP',
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
           clinicPhone: clinicInfo?.phone || '',

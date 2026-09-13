@@ -37,7 +37,7 @@ interface Appointment {
   scheduledDate: string
   scheduledTime: string
   duration: number
-  chairNumber: number | null
+  chairId: string | null
   appointmentType: string
   status: string
   priority: string
@@ -79,7 +79,10 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
   const [duration, setDuration] = useState('30')
   const [appointmentType, setAppointmentType] = useState('CONSULTATION')
   const [priority, setPriority] = useState('NORMAL')
-  const [chairNumber, setChairNumber] = useState('none')
+  const [chairId, setChairId] = useState('none')
+  const [chairs, setChairs] = useState<
+    { id: string; name: string; room: string | null; isActive?: boolean }[]
+  >([])
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -88,9 +91,12 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [appointmentRes, doctorsRes] = await Promise.all([
+        const [appointmentRes, doctorsRes, chairsRes] = await Promise.all([
           fetch(`/api/appointments/${id}`),
           fetch('/api/staff/doctors'),
+          // Include retired chairs: an appointment already sitting in one must
+          // still show which chair it is in.
+          fetch('/api/chairs?includeInactive=true'),
         ])
 
         if (appointmentRes.ok) {
@@ -103,9 +109,14 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           setDuration(data.duration.toString())
           setAppointmentType(data.appointmentType)
           setPriority(data.priority)
-          setChairNumber(data.chairNumber?.toString() || '')
+          setChairId(data.chairId || 'none')
           setChiefComplaint(data.chiefComplaint || '')
           setNotes(data.notes || '')
+        }
+
+        if (chairsRes.ok) {
+          const chairData = await chairsRes.json()
+          setChairs(chairData.data || [])
         }
 
         if (doctorsRes.ok) {
@@ -197,7 +208,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           duration: parseInt(duration),
           appointmentType,
           priority,
-          chairNumber: chairNumber && chairNumber !== 'none' ? parseInt(chairNumber) : null,
+          chairId: chairId !== 'none' ? chairId : null,
           chiefComplaint: chiefComplaint || null,
           notes: notes || null,
         }),
@@ -427,18 +438,21 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Chair Number</Label>
-                  <Select value={chairNumber} onValueChange={setChairNumber}>
+                  <Label>Chair</Label>
+                  <Select value={chairId} onValueChange={setChairId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select chair" />
+                      <SelectValue
+                        placeholder={chairs.length ? 'Select chair' : 'No chairs configured'}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Not assigned</SelectItem>
-                      <SelectItem value="1">Chair 1</SelectItem>
-                      <SelectItem value="2">Chair 2</SelectItem>
-                      <SelectItem value="3">Chair 3</SelectItem>
-                      <SelectItem value="4">Chair 4</SelectItem>
-                      <SelectItem value="5">Chair 5</SelectItem>
+                      {chairs.map((chair) => (
+                        <SelectItem key={chair.id} value={chair.id}>
+                          {chair.room ? `${chair.name} — ${chair.room}` : chair.name}
+                          {chair.isActive === false ? ' (out of service)' : ''}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

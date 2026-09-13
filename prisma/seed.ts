@@ -45,7 +45,7 @@ async function main() {
       pincode: '600023',
       tagline: 'Your Smile, Our Priority',
       website: 'www.example.com',
-      gstNumber: '33AAACX1234X1ZX',
+      taxRegistrationNo: '33AAACX1234X1ZX',
       registrationNo: 'TN-MED-2020-12345',
       workingHours: JSON.stringify({
         monday: { open: '09:00', close: '20:00' },
@@ -114,7 +114,10 @@ async function main() {
       staff: {
         create: {
           employeeId: 'EMP002',
-          firstName: 'Dr. Priya',
+          // The honorific belongs to the display helper, not the stored name:
+          // `getDoctorName` prefixes "Dr. ", so storing it here rendered
+          // "Dr. Dr. Priya Kumar" everywhere a doctor is named.
+          firstName: 'Priya',
           lastName: 'Kumar',
           phone: '9876543211',
           email: 'doctor@demo-dental.com',
@@ -159,6 +162,106 @@ async function main() {
   })
 
   console.log('Created receptionist user:', receptionist.email)
+
+  // The remaining roles from spec §4, so every role can be signed into without
+  // creating accounts by hand. Each gets a Staff record: several screens join
+  // through Staff, and a user without one silently shows nothing.
+  const otherRoles: {
+    email: string
+    name: string
+    role: Role
+    employeeId: string
+    firstName: string
+    lastName: string
+    phone: string
+  }[] = [
+    {
+      email: 'clinic_manager@demo-dental.com',
+      name: 'Ayesha Malik',
+      role: Role.CLINIC_MANAGER,
+      employeeId: 'EMP004',
+      firstName: 'Ayesha',
+      lastName: 'Malik',
+      phone: '3001234504',
+    },
+    {
+      email: 'dental_assistant@demo-dental.com',
+      name: 'Bilal Ahmed',
+      role: Role.DENTAL_ASSISTANT,
+      employeeId: 'EMP005',
+      firstName: 'Bilal',
+      lastName: 'Ahmed',
+      phone: '3001234505',
+    },
+    {
+      email: 'accountant@demo-dental.com',
+      name: 'Faisal Iqbal',
+      role: Role.ACCOUNTANT,
+      employeeId: 'EMP006',
+      firstName: 'Faisal',
+      lastName: 'Iqbal',
+      phone: '3001234506',
+    },
+    {
+      email: 'inventory_staff@demo-dental.com',
+      name: 'Hina Raza',
+      role: Role.INVENTORY_STAFF,
+      employeeId: 'EMP007',
+      firstName: 'Hina',
+      lastName: 'Raza',
+      phone: '3001234507',
+    },
+    {
+      email: 'lab_tech@demo-dental.com',
+      name: 'Usman Tariq',
+      role: Role.LAB_TECH,
+      employeeId: 'EMP008',
+      firstName: 'Usman',
+      lastName: 'Tariq',
+      phone: '3001234508',
+    },
+  ]
+
+  const testPassword = await bcrypt.hash('Test@123', 10)
+
+  for (const person of otherRoles) {
+    const created = await prisma.user.upsert({
+      where: { email: person.email },
+      update: {},
+      create: {
+        email: person.email,
+        name: person.name,
+        password: testPassword,
+        role: person.role,
+        phone: person.phone,
+        hospitalId: hospital.id,
+        isHospitalAdmin: false,
+        staff: {
+          create: {
+            employeeId: person.employeeId,
+            firstName: person.firstName,
+            lastName: person.lastName,
+            email: person.email,
+            phone: person.phone,
+            hospitalId: hospital.id,
+          },
+        },
+      },
+    })
+    console.log(`Created ${person.role} user:`, created.email)
+  }
+
+  // Chairs (FR-025). Appointments cannot be assigned a chair until some exist,
+  // and FR-004's chair conflict check has nothing to compare against.
+  for (const [index, name] of ['Chair 1', 'Chair 2', 'Chair 3'].entries()) {
+    await prisma.chair.upsert({
+      where: { hospitalId_name: { hospitalId: hospital.id, name } },
+      update: {},
+      create: { hospitalId: hospital.id, name, sortOrder: index },
+    })
+  }
+
+  console.log('Created 3 chairs')
 
   // Create sample patients
   const patients = [
@@ -1504,11 +1607,12 @@ async function main() {
         invoiceNo: 'INV-E2E-0001',
         subtotal: 1000,
         taxableAmount: 1000,
-        cgstAmount: 90,
-        sgstAmount: 90,
-        totalAmount: 1180,
+        // Dental services are exempt for this clinic, so no tax line.
+        taxRate: 0,
+        taxAmount: 0,
+        totalAmount: 1000,
         paidAmount: 0,
-        balanceAmount: 1180,
+        balanceAmount: 1000,
         status: InvoiceStatus.PENDING,
       },
     })

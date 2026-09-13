@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { describe, it, expect } from 'vitest'
 import { navigation, getNavigationForRole } from '@/config/nav'
+import { permissionForRoute } from '@/lib/rbac'
 
 describe('navigation config', () => {
   it('exports navigation as an array of sections', () => {
@@ -47,10 +48,10 @@ describe('navigation config', () => {
     expect(dashboard.roles).toBeUndefined()
   })
 
-  it('Settings requires ADMIN role', () => {
+  it('Settings requires the settings:read capability', () => {
     const admin = navigation.find((s) => s.title === 'Administration')!
     const settings = admin.items.find((i) => i.title === 'Settings')!
-    expect(settings.roles).toEqual(['ADMIN'])
+    expect(permissionForRoute(settings.href)).toBe('settings:read')
   })
 
   it('Billing has subItems', () => {
@@ -66,7 +67,8 @@ describe('navigation config', () => {
     expect(appointments.subItems).toBeDefined()
     const waitlist = appointments.subItems!.find((i) => i.title === 'Waitlist')
     expect(waitlist).toBeDefined()
-    expect(waitlist!.roles).toContain('ADMIN')
+    // Visibility is derived from the href, not from a per-item role list.
+    expect(permissionForRoute(waitlist!.href)).toBe('appointments:read')
   })
 })
 
@@ -162,22 +164,38 @@ describe('getNavigationForRole', () => {
     }
   })
 
-  it('DOCTOR does not see Waitlist subItem', () => {
+  // The waitlist is the chair-side queue. A dentist needs to see who is
+  // waiting, so it now follows appointments:read like the rest of scheduling
+  // rather than being restricted to reception.
+  it('DOCTOR sees the Waitlist subItem', () => {
     const nav = getNavigationForRole('DOCTOR')
     const care = nav.find((s) => s.title === 'Patient Care')!
-    const appointments = care.items.find((i) => i.title === 'Appointments')
-    if (appointments?.subItems) {
-      const waitlist = appointments.subItems.find((i) => i.title === 'Waitlist')
-      expect(waitlist).toBeUndefined()
-    }
+    const appointments = care.items.find((i) => i.title === 'Appointments')!
+    const waitlist = appointments.subItems!.find((i) => i.title === 'Waitlist')
+    expect(waitlist).toBeDefined()
   })
 
-  it('everyone sees Dashboard (no role restriction)', () => {
-    const roles = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'ACCOUNTANT', 'LAB_TECH']
+  it('LAB_TECH does not see the Waitlist subItem', () => {
+    const nav = getNavigationForRole('LAB_TECH')
+    const care = nav.find((s) => s.title === 'Patient Care')
+    const appointments = care?.items.find((i) => i.title === 'Appointments')
+    expect(appointments).toBeUndefined()
+  })
+
+  it('roles with reports:operational see Dashboard', () => {
+    const roles = ['ADMIN', 'CLINIC_MANAGER', 'DOCTOR', 'DENTAL_ASSISTANT', 'RECEPTIONIST']
     roles.forEach((role) => {
       const nav = getNavigationForRole(role)
       const overview = nav.find((s) => s.title === 'Overview')!
       expect(overview.items.map((i) => i.title)).toContain('Dashboard')
     })
+  })
+
+  // The dashboard is clinic-wide operational and financial KPIs (§9), which
+  // is not something a lab technician has any business reading.
+  it('LAB_TECH does not see Dashboard', () => {
+    const nav = getNavigationForRole('LAB_TECH')
+    const overview = nav.find((s) => s.title === 'Overview')
+    expect(overview?.items.map((i) => i.title) ?? []).not.toContain('Dashboard')
   })
 })

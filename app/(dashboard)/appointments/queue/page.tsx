@@ -42,7 +42,7 @@ interface Appointment {
   scheduledDate: string
   scheduledTime: string
   duration: number
-  chairNumber: number | null
+  chair: { id: string; name: string } | null
   appointmentType: string
   status: string
   priority: string
@@ -273,8 +273,8 @@ export default function QueueManagementPage() {
             <p className="text-xs text-muted-foreground mt-1">
               {getDoctorName(appointment.doctor)}
             </p>
-            {appointment.chairNumber && (
-              <p className="text-xs text-muted-foreground">Chair {appointment.chairNumber}</p>
+            {appointment.chair && (
+              <p className="text-xs text-muted-foreground">{appointment.chair.name}</p>
             )}
           </div>
         </div>
@@ -337,7 +337,7 @@ export default function QueueManagementPage() {
     </Card>
   )
 
-  const today = new Date().toLocaleDateString('en-IN', {
+  const today = new Date().toLocaleDateString('en-PK', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

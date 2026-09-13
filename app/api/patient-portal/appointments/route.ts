@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
 import { prisma } from '@/lib/prisma'
 import { requirePatientAuth } from '@/lib/patient-auth'
 
@@ -94,6 +95,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
     }
 
+    // FR-004. The portal previously created the appointment outright: a patient
+    // could book straight on top of an occupied slot, and staff only found out
+    // when two people arrived. As on the public page this always blocks — a
+    // WARN policy lets the front desk overbook, not the patient.
+    const conflicts = await findAppointmentConflicts({
+      hospitalId: patient!.hospitalId,
+      scheduledDate: new Date(date),
+      scheduledTime: time,
+      duration: DEFAULT_APPOINTMENT_DURATION,
+      doctorId,
+    })
+
+    if (conflicts.length > 0) {
+      return NextResponse.json(
+        { error: 'That time has just been taken. Please choose another slot.' },
+        { status: 409 }
+      )
+    }
+
     // Generate appointment number
     const lastAppt = await prisma.appointment.findFirst({
       where: { hospitalId: patient!.hospitalId },
@@ -111,6 +131,7 @@ export async function POST(req: NextRequest) {
         doctorId,
         scheduledDate: new Date(date),
         scheduledTime: time,
+        duration: DEFAULT_APPOINTMENT_DURATION,
         appointmentType: (type as any) || 'CONSULTATION',
         status: 'SCHEDULED',
         chiefComplaint: chiefComplaint || null,

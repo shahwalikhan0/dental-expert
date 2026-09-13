@@ -53,7 +53,7 @@ interface Appointment {
   scheduledDate: string
   scheduledTime: string
   duration: number
-  chairNumber: number | null
+  chair: { id: string; name: string; room: string | null } | null
   appointmentType: string
   status: string
   priority: string
@@ -372,9 +372,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Chair</p>
-                <p className="font-medium">
-                  {appointment.chairNumber ? `Chair ${appointment.chairNumber}` : 'Not assigned'}
-                </p>
+                <p className="font-medium">{appointment.chair?.name || 'Not assigned'}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Type</p>

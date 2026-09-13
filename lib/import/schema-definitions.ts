@@ -307,7 +307,7 @@ const STAFF_FIELDS: FieldDefinition[] = [
   { name: 'state', type: 'string', required: false, description: 'State' },
   { name: 'pincode', type: 'string', required: false, description: 'PIN code' },
   { name: 'aadharNumber', type: 'string', required: false, description: 'Aadhar number' },
-  { name: 'panNumber', type: 'string', required: false, description: 'PAN number' },
+  { name: 'nationalTaxNo', type: 'string', required: false, description: 'PAN number' },
 ]
 
 const APPOINTMENT_FIELDS: FieldDefinition[] = [
@@ -376,7 +376,12 @@ const APPOINTMENT_FIELDS: FieldDefinition[] = [
     description: 'Chief complaint or reason for visit',
   },
   { name: 'notes', type: 'string', required: false, description: 'Additional notes' },
-  { name: 'chairNumber', type: 'integer', required: false, description: 'Chair/room number' },
+  {
+    name: 'chair',
+    type: 'string',
+    required: false,
+    description: "Chair / operatory name, matched against the clinic's chairs",
+  },
 ]
 
 const TREATMENT_FIELDS: FieldDefinition[] = [
@@ -459,16 +464,25 @@ const INVOICE_FIELDS: FieldDefinition[] = [
     description: 'Taxable amount (defaults to subtotal)',
   },
   {
+    name: 'taxAmount',
+    type: 'decimal',
+    required: false,
+    description: 'Tax amount (defaults to 0)',
+  },
+  // Accepted for migrations off an Indian system, which splits tax into two
+  // columns. The commit step sums them into taxAmount when that column is
+  // absent, so history imports with the tax it was actually charged.
+  {
     name: 'cgstAmount',
     type: 'decimal',
     required: false,
-    description: 'CGST amount (defaults to 0)',
+    description: 'Legacy CGST amount — summed into Tax amount if present',
   },
   {
     name: 'sgstAmount',
     type: 'decimal',
     required: false,
-    description: 'SGST amount (defaults to 0)',
+    description: 'Legacy SGST amount — summed into Tax amount if present',
   },
   { name: 'discountAmount', type: 'decimal', required: false, description: 'Discount amount' },
   {

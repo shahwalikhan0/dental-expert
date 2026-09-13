@@ -17,6 +17,12 @@ vi.mock('@/lib/prisma', () => ({
     staff: {
       findFirst: vi.fn(),
     },
+    chair: {
+      findFirst: vi.fn(),
+    },
+    setting: {
+      findUnique: vi.fn(),
+    },
   },
 }))
 
@@ -24,16 +30,46 @@ vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
 }))
 
-vi.mock('@/lib/api-helpers', () => ({
-  requireAuthAndRole: vi.fn(),
-  requireRole: vi.fn(),
-  PLAN_LIMITS: {
-    FREE: { patientLimit: 100, staffLimit: 3, storageLimitMb: 500 },
-    PROFESSIONAL: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-    ENTERPRISE: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-    SELF_HOSTED: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-  },
-}))
+vi.mock('@/lib/api-helpers', async () => {
+  const { can } = await import('@/lib/rbac')
+  const { NextResponse } = await import('next/server')
+  const helpers: any = {
+    requireAuthAndRole: vi.fn(),
+    requireRole: vi.fn(),
+    PLAN_LIMITS: {
+      FREE: { patientLimit: 100, staffLimit: 3, storageLimitMb: 500 },
+      PROFESSIONAL: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
+      ENTERPRISE: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
+      SELF_HOSTED: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
+    },
+  }
+  // Routes gate on capabilities now (lib/rbac). Rather than stub the check
+  // away, run the real matrix against whatever role the test put on
+  // requireAuthAndRole — so a "returns 403 for X" case exercises the actual
+  // rules instead of a mock that always says yes.
+  const decide = async (perms: string[]) => {
+    const res = await helpers.requireAuthAndRole()
+    if (!res || res.error) return res
+    // Fixtures shallow-spread their overrides, so a test that sets
+    // `session.user.role` leaves the default `user.role` behind (and vice
+    // versa). Reading just one of them would silently use the stale default,
+    // so require the capability for every role the fixture names.
+    const roles = [res.user?.role, res.session?.user?.role].filter(Boolean)
+    if (roles.length === 0) return res
+    if (!roles.every((r: string) => perms.every((p) => can(r, p)))) {
+      return {
+        error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        user: null,
+        hospitalId: null,
+        session: null,
+      }
+    }
+    return res
+  }
+  helpers.requirePermission = vi.fn((p: string) => decide([p]))
+  helpers.requireAllPermissions = vi.fn((p: string[]) => decide(p))
+  return helpers
+})
 
 // Import after mocks
 import { GET, POST } from '@/app/api/appointments/route'
@@ -170,7 +206,7 @@ describe('Appointments API - POST /api/appointments', () => {
       id: 'doctor-1',
       hospitalId: 'hospital-1',
     } as any)
-    vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null) // No conflict
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([]) // No conflict
     vi.mocked(prisma.appointment.create).mockResolvedValue({
       id: 'new-apt-id',
       appointmentNo: 'APT202501150001',
@@ -276,11 +312,22 @@ describe('Appointments API - POST /api/appointments', () => {
       id: 'doctor-1',
       hospitalId: 'hospital-1',
     } as any)
-    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
-      id: 'existing-apt',
-      scheduledDate: new Date('2030-06-15'),
-      scheduledTime: '09:00',
-    } as any)
+    // Deliberately a *partial* overlap rather than the same start time: this is
+    // the case the previous exact-match check let through.
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      {
+        id: 'existing-apt',
+        appointmentNo: 'APT00001',
+        scheduledTime: '09:00',
+        duration: 60,
+        doctorId: 'doctor-1',
+        chairId: null,
+        patient: { firstName: 'Ali', lastName: 'Raza' },
+        doctor: { firstName: 'Imran', lastName: 'Shah' },
+        chair: null,
+      },
+    ] as any)
+    vi.mocked(prisma.setting.findUnique).mockResolvedValue(null)
 
     const request = new NextRequest('http://localhost:3000/api/appointments', {
       method: 'POST',
@@ -288,14 +335,17 @@ describe('Appointments API - POST /api/appointments', () => {
         patientId: 'patient-1',
         doctorId: 'doctor-1',
         scheduledDate: '2030-06-15',
-        scheduledTime: '09:00',
+        scheduledTime: '09:30',
+        duration: 30,
       }),
     })
     const response = await POST(request)
 
     expect(response.status).toBe(409)
     const data = await response.json()
-    expect(data.error).toContain('already has an appointment')
+    expect(data.error).toContain('Dr. Imran Shah')
+    expect(data.conflicts).toHaveLength(1)
+    expect(data.conflicts[0].resource).toBe('doctor')
   })
 
   it('should handle database errors gracefully', async () => {
@@ -307,7 +357,7 @@ describe('Appointments API - POST /api/appointments', () => {
       id: 'doctor-1',
       hospitalId: 'hospital-1',
     } as any)
-    vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
     vi.mocked(prisma.appointment.create).mockRejectedValue(new Error('Database error'))
 
     const request = new NextRequest('http://localhost:3000/api/appointments', {

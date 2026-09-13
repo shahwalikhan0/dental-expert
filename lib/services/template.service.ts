@@ -64,7 +64,12 @@ class TemplateService {
       description: 'Name of the doctor',
       example: 'Dr. Smith',
     },
-    { key: 'chairNumber', label: 'Chair Number', description: 'Dental chair number', example: '3' },
+    {
+      key: 'chair',
+      label: 'Chair',
+      description: 'Assigned chair / operatory',
+      example: 'Chair 3',
+    },
 
     {
       key: 'treatmentName',
@@ -76,7 +81,7 @@ class TemplateService {
       key: 'treatmentCost',
       label: 'Treatment Cost',
       description: 'Cost of treatment',
-      example: '₹5,000',
+      example: 'Rs 5,000',
     },
 
     {
@@ -89,14 +94,14 @@ class TemplateService {
       key: 'invoiceAmount',
       label: 'Invoice Amount',
       description: 'Total invoice amount',
-      example: '₹5,000',
+      example: 'Rs 5,000',
     },
-    { key: 'paidAmount', label: 'Paid Amount', description: 'Amount paid', example: '₹3,000' },
+    { key: 'paidAmount', label: 'Paid Amount', description: 'Amount paid', example: 'Rs 3,000' },
     {
       key: 'balanceAmount',
       label: 'Balance Amount',
       description: 'Remaining balance',
-      example: '₹2,000',
+      example: 'Rs 2,000',
     },
     { key: 'dueDate', label: 'Due Date', description: 'Payment due date', example: '31-Jan-2026' },
 
@@ -327,7 +332,7 @@ class TemplateService {
         category: 'APPOINTMENT' as TemplateCategory,
         channel: 'SMS' as CommunicationChannel,
         content:
-          'Dear {{patientName}}, your appointment is confirmed for {{appointmentDate}} at {{appointmentTime}} with {{doctorName}}. Chair: {{chairNumber}}. - {{clinicName}}',
+          'Dear {{patientName}}, your appointment is confirmed for {{appointmentDate}} at {{appointmentTime}} with {{doctorName}}. Chair: {{chair}}. - {{clinicName}}',
         language: 'en',
         isDefault: true,
       },
@@ -354,7 +359,7 @@ class TemplateService {
         category: 'PAYMENT' as TemplateCategory,
         channel: 'SMS' as CommunicationChannel,
         content:
-          'Dear {{patientName}}, this is a reminder that payment of ₹{{balanceAmount}} for Invoice {{invoiceNo}} is pending. Due date: {{dueDate}}. Pay at {{clinicName}} or call {{clinicPhone}}',
+          'Dear {{patientName}}, this is a reminder that payment of Rs {{balanceAmount}} for Invoice {{invoiceNo}} is pending. Due date: {{dueDate}}. Pay at {{clinicName}} or call {{clinicPhone}}',
         language: 'en',
         isDefault: true,
       },
@@ -363,7 +368,7 @@ class TemplateService {
         category: 'PAYMENT' as TemplateCategory,
         channel: 'SMS' as CommunicationChannel,
         content:
-          'Dear {{patientName}}, we have received your payment of ₹{{paidAmount}} for Invoice {{invoiceNo}}. Thank you! - {{clinicName}}',
+          'Dear {{patientName}}, we have received your payment of Rs {{paidAmount}} for Invoice {{invoiceNo}}. Thank you! - {{clinicName}}',
         language: 'en',
         isDefault: true,
       },
@@ -409,7 +414,7 @@ class TemplateService {
             <li><strong>Date:</strong> {{appointmentDate}}</li>
             <li><strong>Time:</strong> {{appointmentTime}}</li>
             <li><strong>Doctor:</strong> {{doctorName}}</li>
-            <li><strong>Chair:</strong> {{chairNumber}}</li>
+            <li><strong>Chair:</strong> {{chair}}</li>
             <li><strong>Appointment No:</strong> {{appointmentNo}}</li>
           </ul>
           <p>Please arrive 10 minutes before your scheduled time.</p>
@@ -430,9 +435,9 @@ class TemplateService {
           <h3>Invoice Details:</h3>
           <ul>
             <li><strong>Invoice No:</strong> {{invoiceNo}}</li>
-            <li><strong>Total Amount:</strong> ₹{{invoiceAmount}}</li>
-            <li><strong>Paid Amount:</strong> ₹{{paidAmount}}</li>
-            <li><strong>Balance:</strong> ₹{{balanceAmount}}</li>
+            <li><strong>Total Amount:</strong> Rs {{invoiceAmount}}</li>
+            <li><strong>Paid Amount:</strong> Rs {{paidAmount}}</li>
+            <li><strong>Balance:</strong> Rs {{balanceAmount}}</li>
             <li><strong>Due Date:</strong> {{dueDate}}</li>
           </ul>
           <p>The detailed invoice is attached to this email.</p>
