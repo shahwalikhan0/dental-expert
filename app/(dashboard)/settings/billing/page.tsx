@@ -377,7 +377,7 @@ export default function BillingSettingsPage() {
                   id="currencyCode"
                   value={settings.currencyCode}
                   onChange={(e) => setSettings({ ...settings, currencyCode: e.target.value })}
-                  placeholder="INR"
+                  placeholder="PKR"
                 />
               </div>
 

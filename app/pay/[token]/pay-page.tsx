@@ -132,6 +132,7 @@ export function PayPage({
       const options = {
         key: checkout.key,
         amount: checkout.amount,
+        // Razorpay settles in INR only — the gateway's currency, not the clinic's.
         currency: 'INR',
         name: hospital.name,
         description: `Payment for ${invoice.invoiceNo}`,

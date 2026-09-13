@@ -384,6 +384,6 @@ describe('SMSService - checkBalance', () => {
     const result = await smsService.checkBalance()
     expect(result).toHaveProperty('balance')
     expect(result).toHaveProperty('currency')
-    expect(result.currency).toBe('INR')
+    expect(result.currency).toBe('PKR')
   })
 })

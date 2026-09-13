@@ -369,7 +369,7 @@ class SMSService {
     // Implementation depends on gateway
     return {
       balance: 0,
-      currency: 'INR',
+      currency: 'PKR',
     }
   }
 }

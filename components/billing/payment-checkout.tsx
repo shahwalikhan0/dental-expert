@@ -222,6 +222,7 @@ export function PaymentCheckout({
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('en-PK', {
       style: 'currency',
+      // Razorpay settles in INR only — the gateway's currency, not the clinic's.
       currency: 'INR',
       minimumFractionDigits: 0,
     }).format(val)

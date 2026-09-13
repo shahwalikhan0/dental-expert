@@ -79,7 +79,7 @@ export default function SuppliersPage() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
-      currency: 'INR',
+      currency: 'PKR',
       minimumFractionDigits: 0,
     }).format(amount)
   }

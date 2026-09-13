@@ -89,7 +89,7 @@ export default function PatientBills() {
   const formatCurrency = (val: number | string) =>
     new Intl.NumberFormat('en-PK', {
       style: 'currency',
-      currency: 'INR',
+      currency: 'PKR',
       minimumFractionDigits: 0,
     }).format(Number(val))
 

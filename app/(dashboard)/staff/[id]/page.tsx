@@ -148,7 +148,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
     if (amount === null) return '-'
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
-      currency: 'INR',
+      currency: 'PKR',
       maximumFractionDigits: 0,
     }).format(amount)
   }

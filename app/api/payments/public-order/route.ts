@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
 
     const order = await gateway.createOrder({
       amount: payAmount,
+      // Razorpay settles in INR only — not the clinic's currency, the gateway's.
       currency: 'INR',
       invoiceId: link.invoice.id,
       receipt: link.invoice.invoiceNo,

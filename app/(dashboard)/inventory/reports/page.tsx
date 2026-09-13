@@ -39,7 +39,7 @@ export default function InventoryReportsPage() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
-      currency: 'INR',
+      currency: 'PKR',
       minimumFractionDigits: 0,
     }).format(amount)
   }
