@@ -36,6 +36,6 @@ If you discover a security vulnerability in DentalERP, please report it responsi
 - **Never commit `.env` files** — use `.env.example` as a template
 - **Generate strong secrets** for `NEXTAUTH_SECRET`, `ENCRYPTION_KEY`, and `CRON_SECRET`
 - **Use HTTPS** in production (reverse proxy with nginx or Caddy)
-- **Restrict database access** — don't expose MySQL to the public internet
+- **Restrict database access** — don't expose PostgreSQL to the public internet
 - **Keep dependencies updated** — run `npm audit` regularly
 - **Change default credentials** immediately after seeding the database

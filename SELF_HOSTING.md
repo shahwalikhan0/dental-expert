@@ -1,7 +1,11 @@
 # Self-hosting DentalERP
 
-Running DentalERP on your own server, from a published image, with no build
-step.
+Running this system on your own server.
+
+> **This fork builds from source.** The upstream `ghcr.io/abinauv/dental-erp`
+> image ships the original MySQL schema and migration history and will not run
+> against this Postgres stack, so the "fetch four files, pull an image" path
+> below has been replaced by a checkout. See [CHANGES.md](CHANGES.md).
 
 This is the operator's guide. If you want to _develop_ DentalERP, read the
 [README](README.md) instead — the development stack is a different file and a
@@ -12,30 +16,26 @@ different set of trade-offs.
 ## What you need
 
 - A Linux host with Docker Engine 24+ and the Compose plugin. 2 GB RAM is
-  workable for one clinic; 4 GB is comfortable.
+  workable for one clinic; 4 GB is comfortable (the image is built on the host,
+  which wants headroom).
 - A domain name pointing at that host, if you want HTTPS — and you do.
 - 20 minutes.
 
-You do **not** need Node.js, a build toolchain, or a checkout of the source.
+You do **not** need Node.js on the host — the build happens inside Docker.
 
 ---
 
 ## 1. Get the files
 
-Only four files matter. Fetch them into an empty directory:
+The image is built from source, so clone the repository:
 
 ```bash
-mkdir -p /opt/dental-erp && cd /opt/dental-erp
-
-BASE=https://raw.githubusercontent.com/abinauv/dental-erp/main
-curl -fsSLO $BASE/docker-compose.yml
-curl -fsSLO $BASE/docker-compose.caddy.yml
-curl -fsSLO $BASE/Caddyfile
-curl -fsSL  $BASE/.env.production.example -o .env
+git clone <your-fork-url> /opt/dental-clinic && cd /opt/dental-clinic
+cp .env.production.example .env
 ```
 
-(Cloning the repository works too and gets you the backup scripts as well —
-see [Backups](#5-backups-do-this-before-you-need-it).)
+That also gets you the backup scripts — see
+[Backups](#5-backups-do-this-before-you-need-it).
 
 ## 2. Fill in `.env`
 
@@ -71,8 +71,8 @@ Two that are easy to get wrong:
   payment-gateway credentials; change it and they become undecryptable. Keep a
   copy somewhere other than this server.
 
-Then pin your version. `latest` means the next `docker compose pull` changes
-what you are running without asking:
+Then tag the build, so you can tell which commit is running and roll back to a
+previous image by tag:
 
 ```bash
 DENTAL_ERP_VERSION="v1.0.0"
@@ -84,15 +84,15 @@ DENTAL_ERP_VERSION="v1.0.0"
 docker compose up -d
 ```
 
-That pulls the image, waits for MySQL to be healthy, runs the database
+That builds the image, waits for PostgreSQL to be healthy, runs the database
 migrations as a one-shot `migrate` container, and only then starts the app.
 
 ```bash
 docker compose ps
 ```
 
-`migrate` shows as `Exited (0)` — that is success, not a failure. `mysql` and
-`app` show as healthy.
+`migrate` shows as `Exited (0)` — that is success, not a failure. `postgres`
+and `app` show as healthy.
 
 ```bash
 curl -fsS localhost:3000/api/health   # {"status":"ok",...}
@@ -141,25 +141,21 @@ behind your `https://` and the login flow will break.
 
 The scripts live in the repository:
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/abinauv/dental-erp/main/scripts/backup.sh
-curl -fsSLO https://raw.githubusercontent.com/abinauv/dental-erp/main/scripts/restore.sh
-chmod +x backup.sh restore.sh
-```
+They came with the checkout, in `scripts/`:
 
 ```bash
-./backup.sh                 # -> ./backups/<timestamp>/
-./backup.sh /mnt/backups    # or somewhere else
+./scripts/backup.sh                 # -> ./backups/<timestamp>/
+./scripts/backup.sh /mnt/backups    # or somewhere else
 ```
 
-Each backup holds a `mysqldump` of the database, a tar of the uploads volume, a
-manifest, and SHA-256 checksums. The database dump uses `--single-transaction`,
-so the clinic keeps working while it runs.
+Each backup holds a `pg_dump` of the database, a tar of the uploads volume, a
+manifest, and SHA-256 checksums. `pg_dump` takes its snapshot inside a
+repeatable-read transaction, so the clinic keeps working while it runs.
 
 Nightly, via cron:
 
 ```cron
-15 2 * * * cd /opt/dental-erp && ./backup.sh /mnt/backups >> /var/log/dental-backup.log 2>&1
+15 2 * * * cd /opt/dental-clinic && ./scripts/backup.sh /mnt/backups >> /var/log/dental-backup.log 2>&1
 ```
 
 **A backup on the same machine as the thing it protects is not a backup.** Copy
@@ -169,8 +165,8 @@ failure mode.
 ### Restoring
 
 ```bash
-./restore.sh ./backups/20260803T101500Z          # says what it would do, changes nothing
-./restore.sh ./backups/20260803T101500Z --yes    # actually restores
+./scripts/restore.sh ./backups/20260803T101500Z          # says what it would do, changes nothing
+./scripts/restore.sh ./backups/20260803T101500Z --yes    # actually restores
 ```
 
 It verifies checksums before touching anything, stops the app, drops and
@@ -193,9 +189,10 @@ lifecycle policy there. The database backup still covers everything else.
 ## 6. Upgrading
 
 ```bash
-./backup.sh                          # first, always
+./scripts/backup.sh                  # first, always
+git pull
 # edit .env: DENTAL_ERP_VERSION="v1.1.0"
-docker compose pull
+docker compose build
 docker compose up -d
 ```
 
@@ -227,17 +224,21 @@ defaults assume. Local disk for uploads, no Redis, one app container.
 2. **Database connections.** Each replica opens its own pool. The arithmetic:
 
    ```
-   replicas × DB_CONNECTION_LIMIT + headroom < MYSQL_MAX_CONNECTIONS
+   replicas × DB_CONNECTION_LIMIT + headroom < POSTGRES_MAX_CONNECTIONS
    ```
 
-   `DB_CONNECTION_LIMIT` defaults to 10 and `MYSQL_MAX_CONNECTIONS` to 151, so
-   four replicas is comfortable and eight is not. Leave a dozen spare for the
-   migrate job and your own `mysql` shell.
+   `DB_CONNECTION_LIMIT` defaults to 10 and `POSTGRES_MAX_CONNECTIONS` to 100,
+   so four replicas is comfortable and eight is not. Leave a dozen spare for the
+   migrate job and your own `psql` shell.
+
+   Postgres allocates a backend process per connection, so a pooler (PgBouncer,
+   or your provider's) is the answer past a handful of replicas rather than
+   simply raising the ceiling.
 
    The default matters more than it looks: Prisma's own default is
    `num_cpus * 2 + 1`, and inside a container `num_cpus` is the **host's** core
    count, not the container's share of it. On a 16-core host that is 33
-   connections per replica, and five replicas would exhaust a stock MySQL.
+   connections per replica, and three replicas would exhaust a stock Postgres.
    Setting it explicitly is what stops that being discovered in production.
 
 ---
@@ -249,7 +250,7 @@ failed migration stops the deployment instead of leaving a half-migrated
 database under running code. `docker compose logs migrate` has the reason.
 
 **`/api/ready` returns 503 but `/api/health` returns 200.** The process is fine
-and the database is not. Check `docker compose logs mysql`. Point liveness
+and the database is not. Check `docker compose logs postgres`. Point liveness
 probes at `/api/health` and readiness at `/api/ready` — pointing liveness at
 `/api/ready` turns a brief database blip into a restart loop.
 
@@ -257,10 +258,11 @@ probes at `/api/health` and readiness at `/api/ready` — pointing liveness at
 not match the URL in the browser, or your proxy is not forwarding
 `X-Forwarded-Proto`.
 
-**`Access denied for user` after changing a database password.** The MySQL
-volume keeps the user created on first start; changing `MYSQL_PASSWORD` in
-`.env` afterwards does not change it in the database. Change it in MySQL, or
-start from a fresh volume and restore a backup.
+**`password authentication failed for user` after changing a database
+password.** The Postgres volume keeps the role created on first start; changing
+`POSTGRES_PASSWORD` in `.env` afterwards does not change it in the database.
+Change it with `ALTER ROLE dental PASSWORD '...'`, or start from a fresh volume
+and restore a backup.
 
 **Uploaded files vanished after a redeploy.** The `uploads` volume was not
 mounted. If the container still exists, rescue them before doing anything else:

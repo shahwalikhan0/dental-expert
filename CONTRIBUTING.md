@@ -47,7 +47,7 @@ npm install
 
 # Copy environment file
 cp .env.example .env
-# Edit .env with your local MySQL credentials
+# Edit .env with your local PostgreSQL credentials
 
 # Set up the database
 npx prisma migrate deploy
@@ -140,7 +140,7 @@ test(api): add integration tests for patient routes
 - **App Router**: All pages use Next.js App Router (`app/` directory)
 - **Auth**: NextAuth v5 with credentials provider, hospital-scoped sessions
 - **API Pattern**: Route handlers in `app/api/`, use `requireAuthAndRole()` for auth
-- **Database**: Prisma ORM with MySQL, all queries scoped by `hospitalId`
+- **Database**: Prisma ORM with PostgreSQL, all queries scoped by `hospitalId`
 - **AI Skills**: Defined in `lib/ai/`, use OpenRouter for model access
 - **UI**: shadcn/ui components in `components/ui/`, Tailwind CSS for styling
 

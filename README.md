@@ -39,7 +39,7 @@ A comprehensive, AI-powered **dental hospital management system** built with Nex
 | --------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Framework | [Next.js 16](https://nextjs.org/) (App Router)                                                                           |
 | Language  | [TypeScript 5](https://www.typescriptlang.org/)                                                                          |
-| Database  | [MySQL 8](https://www.mysql.com/) via [Prisma 5](https://www.prisma.io/) ORM                                             |
+| Database  | [PostgreSQL 16](https://www.postgresql.org/) via [Prisma 5](https://www.prisma.io/) ORM                                  |
 | Auth      | [NextAuth v5](https://authjs.dev/) (beta) with credentials provider                                                      |
 | UI        | [Tailwind CSS 3](https://tailwindcss.com/) + [Radix UI](https://www.radix-ui.com/) + [shadcn/ui](https://ui.shadcn.com/) |
 | Charts    | [Recharts](https://recharts.org/)                                                                                        |
@@ -63,11 +63,11 @@ cd dental-erp
 npm install
 cp .env.example .env
 
-# Start MySQL, Redis, MinIO and Mailpit
+# Start PostgreSQL, Redis, MinIO and Mailpit
 docker compose -f docker-compose.dev.yml up -d
 
 # Set DATABASE_URL in .env to match the container:
-#   DATABASE_URL="mysql://root:dental@localhost:3306/dental_erp"
+#   DATABASE_URL="postgresql://dental:dental@localhost:5432/test_db"
 
 npx prisma migrate deploy   # create the schema
 npx prisma db seed          # sample data (optional)
@@ -88,12 +88,12 @@ better. `docker-compose.dev.yml` is a convenience for contributors and is
 
 ### What Compose gives you
 
-| Service | Port       | What it is for                                                    |
-| ------- | ---------- | ----------------------------------------------------------------- |
-| MySQL   | 3306       | The application database                                          |
-| Redis   | 6379       | Reserved for caching and queues; nothing uses it yet              |
-| MinIO   | 9000, 9001 | S3-compatible storage; reserved for Phase 3. Console on 9001      |
-| Mailpit | 1025, 8025 | Captures every outbound email. Read them at http://localhost:8025 |
+| Service    | Port       | What it is for                                                    |
+| ---------- | ---------- | ----------------------------------------------------------------- |
+| PostgreSQL | 5432       | The application database                                          |
+| Redis      | 6379       | Reserved for caching and queues; nothing uses it yet              |
+| MinIO      | 9000, 9001 | S3-compatible storage; reserved for Phase 3. Console on 9001      |
+| Mailpit    | 1025, 8025 | Captures every outbound email. Read them at http://localhost:8025 |
 
 Mailpit is the useful one right away. Point the `SMTP_*` variables at it (the
 values are commented into `.env.example`) and you can exercise password resets,
@@ -111,9 +111,9 @@ docker compose -f docker-compose.dev.yml down         # stop, keep the data
 docker compose -f docker-compose.dev.yml down -v      # stop and wipe the data
 ```
 
-**Port 3306 already in use?** You have MySQL installed locally. Either stop it,
-or change the host port in `docker-compose.dev.yml` to `'3307:3306'` and update
-`DATABASE_URL` to match.
+**Port 5432 already in use?** You have PostgreSQL installed locally. Either stop
+it, or change the host port in `docker-compose.dev.yml` to `'5433:5432'` and
+update `DATABASE_URL` to match.
 
 > **If you were running this stack before August 2026**, its compose project was
 > renamed from `dental-erp` to `dental-erp-dev`, so that a production stack on
@@ -127,16 +127,17 @@ or change the host port in `docker-compose.dev.yml` to `'3307:3306'` and update
 ### Alternative setup: without Docker
 
 <details>
-<summary>Install MySQL 8 yourself</summary>
+<summary>Install PostgreSQL 16 yourself</summary>
 
-Docker is not a requirement. With MySQL 8.0+ installed locally:
+Docker is not a requirement. With PostgreSQL 14+ installed locally:
 
 ```bash
-# Verify MySQL is accessible
-mysql -u root -p -e "SELECT 1"
+# Verify PostgreSQL is accessible
+psql -U postgres -c "SELECT 1"
 
-# Create the database
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS dental_erp"
+# Create the role and database
+psql -U postgres -c "CREATE ROLE dental LOGIN PASSWORD 'dental'"
+psql -U postgres -c "CREATE DATABASE test_db OWNER dental"
 ```
 
 Then set `DATABASE_URL` in `.env` to your own credentials and continue from
@@ -181,7 +182,7 @@ See [`.env.example`](.env.example) for all available variables. Key ones:
 
 | Variable                                    | Required | Description                                   |
 | ------------------------------------------- | -------- | --------------------------------------------- |
-| `DATABASE_URL`                              | Yes      | MySQL connection string                       |
+| `DATABASE_URL`                              | Yes      | PostgreSQL connection string                  |
 | `NEXTAUTH_URL`                              | Yes      | App URL (e.g., `http://localhost:3000`)       |
 | `NEXTAUTH_SECRET`                           | Yes      | Random secret for session encryption          |
 | `ENCRYPTION_KEY`                            | Yes      | 64-char hex string for AES-256-GCM encryption |
@@ -277,10 +278,13 @@ curl -fsSL  https://raw.githubusercontent.com/abinauv/dental-erp/main/.env.produ
 docker compose up -d
 ```
 
-That pulls a published multi-architecture image (`linux/amd64` and
-`linux/arm64`) from `ghcr.io/abinauv/dental-erp`, waits for MySQL, runs the
-database migrations as a one-shot container, and starts the app. Add
+That builds the image from this repo, waits for PostgreSQL, runs the database
+migrations as a one-shot container, and starts the app. Add
 `-f docker-compose.caddy.yml` for HTTPS with automatic certificates.
+
+The upstream `ghcr.io/abinauv/dental-erp` image is **not** usable with this
+fork — it ships the original MySQL schema and migration history. See
+[CHANGES.md](CHANGES.md).
 
 SELF_HOSTING.md also covers backups and restores, upgrading, and what to do
 when something is wrong.
@@ -345,7 +349,7 @@ Deploying from the published image, all you need is Docker Engine 24+ with the
 Compose plugin. Building or developing from source needs:
 
 - Node.js 20+
-- MySQL 8.0+ (with a dedicated database)
+- PostgreSQL 14+ (with a dedicated database; 16 is what the stack ships)
 - Reverse proxy (nginx/Caddy) for HTTPS in production —
   [`docker-compose.caddy.yml`](docker-compose.caddy.yml) is a working example
 - A persistent volume mounted at `/app/uploads`

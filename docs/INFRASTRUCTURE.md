@@ -28,18 +28,18 @@ The development Docker Compose stack is a convenience for contributors. It is ne
 
 ## Where we are today
 
-| Capability            | Today                                                                           |
-| --------------------- | ------------------------------------------------------------------------------- |
-| Database              | MySQL 8 via Prisma, 81 models                                                   |
-| Dev environment       | `docker compose -f docker-compose.dev.yml up -d` — MySQL, Redis, MinIO, Mailpit |
-| File storage          | Pluggable — local disk (default) or any S3-compatible bucket                    |
-| Cache / rate limiting | None                                                                            |
-| Background jobs       | Cron-style HTTP routes behind a shared secret, driven by an external scheduler  |
-| Auth                  | NextAuth v5 (beta) credentials, plus a separate patient OTP session             |
-| Observability         | `console.error`                                                                 |
-| Container             | Published multi-arch image on GHCR (`linux/amd64`, `linux/arm64`), non-root     |
-| Health probes         | `/api/health` (liveness) and `/api/ready` (readiness)                           |
-| CI                    | Lint, type check, unit tests and build on every PR; Playwright E2E nightly      |
+| Capability            | Today                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Database              | PostgreSQL 16 via Prisma, 81 models                                                |
+| Dev environment       | `docker compose -f docker-compose.dev.yml up -d` — Postgres, Redis, MinIO, Mailpit |
+| File storage          | Pluggable — local disk (default) or any S3-compatible bucket                       |
+| Cache / rate limiting | None                                                                               |
+| Background jobs       | Cron-style HTTP routes behind a shared secret, driven by an external scheduler     |
+| Auth                  | NextAuth v5 (beta) credentials, plus a separate patient OTP session                |
+| Observability         | `console.error`                                                                    |
+| Container             | Published multi-arch image on GHCR (`linux/amd64`, `linux/arm64`), non-root        |
+| Health probes         | `/api/health` (liveness) and `/api/ready` (readiness)                              |
+| CI                    | Lint, type check, unit tests and build on every PR; Playwright E2E nightly         |
 
 Two known infrastructure defects were listed here when this document was first published. Both are now fixed, and are kept below as the record:
 
@@ -71,11 +71,11 @@ Phases 5–7 are deliberately **not committed**. They were sized before Phases 1
 
 `git clone` to a running, seeded application in one command.
 
-A `docker-compose.dev.yml` brings up MySQL, Redis, MinIO and Mailpit, each with a healthcheck and a named volume, plus a one-shot container to create the MinIO bucket. Adds `/api/health` and `/api/ready`, a `HEALTHCHECK` in the `Dockerfile`, and a volume for `uploads`.
+A `docker-compose.dev.yml` brings up PostgreSQL, Redis, MinIO and Mailpit, each with a healthcheck and a named volume, plus a one-shot container to create the MinIO bucket. Adds `/api/health` and `/api/ready`, a `HEALTHCHECK` in the `Dockerfile`, and a volume for `uploads`.
 
 **The app itself stays on the host**, run with `npm run dev`. Only the backing services are containerised. Bind-mounting `node_modules` into a container is slow enough on Windows and macOS to ruin the edit-reload loop, and native hot reload is significantly better. A fully-containerised `app` service can be added behind a Compose profile later for anyone who wants one.
 
-The manual MySQL setup path stays documented as an alternative. Docker will not become a requirement for contributing.
+The manual PostgreSQL setup path stays documented as an alternative. Docker will not become a requirement for contributing.
 
 ---
 
@@ -143,14 +143,14 @@ Tagging `v*` builds `linux/amd64` and `linux/arm64` on native runners and publis
 Three decisions worth knowing:
 
 - **Migrations run as a one-shot `migrate` container**, not on app boot. With more than one replica, an on-boot migration means several containers racing to alter the same schema; and when a migration fails it should fail visibly rather than inside a crash-looping app. The image carries the Prisma CLI so it can migrate its own database.
-- **Nothing has a weak default.** Every credential comes from `.env` and the stack refuses to start without it. MySQL publishes no port at all, and the app publishes on `127.0.0.1` only — put a proxy in front, and `docker-compose.caddy.yml` is a working one with automatic TLS.
-- **`connection_limit` is set explicitly.** Prisma's default is `num_cpus * 2 + 1`, and inside a container `num_cpus` is the _host's_ core count, not the container's share — on a 16-core host that is 33 connections per replica against MySQL's stock ceiling of 151. This was the last open item from the database-pool cleanup that landed in PR #20.
+- **Nothing has a weak default.** Every credential comes from `.env` and the stack refuses to start without it. PostgreSQL publishes no port at all, and the app publishes on `127.0.0.1` only — put a proxy in front, and `docker-compose.caddy.yml` is a working one with automatic TLS.
+- **`connection_limit` is set explicitly.** Prisma's default is `num_cpus * 2 + 1`, and inside a container `num_cpus` is the _host's_ core count, not the container's share — on a 16-core host that is 33 connections per replica against Postgres's stock ceiling of 100. This was the last open item from the database-pool cleanup that landed in PR #20.
 
 ---
 
 ## Deliberately not doing
 
-**Migrating from MySQL to PostgreSQL.** It has been suggested, and it is not unreasonable — Postgres is the more common default in this ecosystem. But the schema carries 142 MySQL-specific native type annotations, there is raw SQL in two routes, and the migration lock is pinned to MySQL. A port means regenerating the entire migration history and re-verifying 81 models against the full test suite, in exchange for no capability this project currently lacks. If Postgres support arrives it should be as an _additional_ supported database, driven by real demand from people self-hosting, not as a replacement.
+**Migrating from MySQL to PostgreSQL.** Done in this fork — see [CHANGES.md](../CHANGES.md). Upstream declined it on the grounds that the schema carried MySQL-specific native type annotations, raw SQL in two routes, and a migration lock pinned to MySQL. In practice only two of the native types (`@db.LongText`) had no Postgres equivalent, the raw SQL was five queries, and regenerating the migration history was the right move anyway for a fork that has no deployed databases to migrate. MySQL is **not** a supported target here any more; this fork is Postgres-only, which is what keeps the raw SQL and the ops scripts honest.
 
 **Bundling an identity provider.** Keycloak in the Compose stack would make SSO look easy and self-hosting hard. The plan is to support any OIDC provider through configuration, which is strictly more useful and costs a fraction of the operational weight.
 
