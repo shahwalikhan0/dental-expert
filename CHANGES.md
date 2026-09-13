@@ -954,42 +954,99 @@ Use the existing server (as configured), or change the host port to `5433` as
 
 ---
 
-## 11. Not done — decide before go-live
+## 11. Not done — and why
 
-Nothing below is broken by the changes above; these are pre-existing gaps and
-India assumptions that a Pakistani dental clinic will hit.
+Everything here is either **waiting on a decision that is yours**, or a feature
+that was never built upstream. Nothing below is broken by the changes above.
 
-### 11.1 Remaining India coupling
+### 11.1 Waiting on your decision
 
-| Area                           | Where                                              | Note                                                                                                                                                                                                                     |
-| ------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Payment gateways**           | `lib/payment-gateways/{razorpay,phonepe,paytm}.ts` | All three are India-only. Pakistan needs a local processor or cash/bank-transfer only.                                                                                                                                   |
-| **Bank IFSC code**             | `prisma/schema.prisma`, staff and clinic forms     | `bankIfsc` is an Indian routing code (placeholder `HDFC0001234`). Pakistan uses IBAN. A schema rename plus forms — left out of the CNIC pass because it is banking, not identity.                                        |
-| **SMS pricing copy**           | `app/(dashboard)/settings/setup-guide/page.tsx`    | Still quotes Indian per-message rates.                                                                                                                                                                                   |
-| **`Hospital` locale defaults** | `prisma/schema.prisma`                             | `locale` now defaults to `en-PK`, but `country`, `currency` and `timezone` still default to `IN` / `INR` / `Asia/Kolkata`. Harmless for the seeded clinic, which sets them, but wrong for a new one.                     |
-| **Seed sample data**           | `prisma/seed.ts`                                   | The three original accounts and the sample patients still carry Indian names, cities (Chennai, Tamil Nadu) and phone numbers that fail `validatePakistanPhone`. The five roles added in this pass use Pakistani numbers. |
+These were deliberately left alone. Each needs a choice I should not make on
+the clinic's behalf.
 
-### 11.2 Spec gaps (present upstream, still absent here)
+#### Payment gateway — blocks online payment at go-live
 
-Measured against the Dental Clinic Management System specification:
+`lib/payment-gateways/{razorpay,phonepe,paytm}.ts` are the only three
+integrations, and all three onboard Indian merchants only. **No online payment
+works in Pakistan today.** The setup guide now says so plainly rather than
+walking you through configuring one.
 
-- **`clinical:sign` is defined but no route enforces it.** The capability
-  exists and is correctly restricted to `DOCTOR`, but nothing calls
-  `requirePermission('clinical:sign')` because the FR-007 sign-and-lock flow is
-  not built. It is scaffolding for that work, not a control that is live today.
+Everything that does not need a gateway already works: cash, card-on-terminal
+and bank transfer all record against an invoice and reconcile through the daily
+closing. What breaks without one is payment links and the pay-online buttons.
+
+Picking a processor is a commercial decision — rates, settlement times, KYC —
+so tell me which one and I will build it. The gateway interface in
+`lib/payment-gateways/types.ts` is the seam to implement against.
+
+#### SMS provider
+
+Three of the four gateways (MSG91, TextLocal, Fast2SMS) are India-only and do
+not deliver to Pakistani numbers. **Twilio is the one that works** and now leads
+the setup guide. If you would rather use a local bulk-SMS provider, that is
+another integration and another vendor choice.
+
+The Indian per-message prices are removed rather than replaced — quoting a
+Pakistani rate I have not verified would be worse than quoting none.
+
+#### `PaymentMethod.UPI` and `Payment.upiId`
+
+UPI is India's instant-payment rail. Pakistan's equivalent is Raast, and mobile
+wallets are usually JazzCash or EasyPaisa — but `WALLET` already exists as a
+method, so what `UPI` should become depends on what the clinic actually accepts
+at the desk. Renaming an enum value is a clean migration once you say which.
+
+Note it currently appears as a countable method in the daily closing, so
+whatever it becomes will show up in the reconciliation.
+
+#### A uniqueness constraint on CNIC
+
+`@@unique([hospitalId, cnic])` would be a real FR-002 duplicate guard — a CNIC
+identifies one person. It is not added because it turns a mistyped digit into a
+hard failure at the registration desk, and because a suspected duplicate
+usually wants a warning a human resolves rather than a refusal. Three patients
+can currently be registered on one CNIC.
+
+Three options: hard constraint, soft warning at registration, or leave as is.
+
+#### Per-user data scoping
+
+Access is correct _by module_, but every query is scoped to `hospitalId` alone,
+so a dentist sees the whole clinic's patients. That was the agreed model for a
+single practice. "Own patients only" is a separate pass over every patient,
+appointment, treatment and chart query.
+
+### 11.2 Not built upstream either
+
+- **Periodontal charting** — `components/dental-chart/` is a 609-line tooth
+  grid with no probing depths, recession or bleeding-on-probing. Consider
+  [`react-advanced-odontogram`](https://www.npmjs.com/package/react-advanced-odontogram)
+  (MIT), persisting its JSON into a `jsonb` column. Adding a dependency is a
+  decision worth taking deliberately.
 - **Device credentials.** `app/api/devices/data` now requires a staff
   capability (§3.6), which means IoT devices cannot post to it. They need their
   own credential — a per-device key checked like the cron secret — before that
   feature works again.
-- **Per-user data scoping** — access is now correct _by module_, but every
-  query is still scoped to `hospitalId` alone. A dentist sees the whole
-  clinic's patients, which is the agreed model for a single practice; if you
-  later want "own patients only", that is a separate pass over every patient,
-  appointment, treatment and chart query.
-- **Periodontal charting** — `components/dental-chart/` is a 609-line tooth grid
-  with no probing depths, recession or bleeding-on-probing. Consider
-  [`react-advanced-odontogram`](https://www.npmjs.com/package/react-advanced-odontogram)
-  (MIT), persisting its JSON into a `jsonb` column.
+- **`AuditLog` is almost unused.** The model exists and spec §10 asks for audit
+  history on clinical and financial changes. FR-007 amendments and FR-013/014
+  approvals each keep their own purpose-built trail, which is better than a
+  generic log for those cases — but logins, patient-record access and
+  configuration changes are still unrecorded.
+
+### 11.3 Localisation: what is now clean
+
+For the record, since this took several passes to get right:
+
+|               |                                                                                                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Currency      | No `INR`, `₹`, `en-IN` or `Asia/Kolkata` anywhere outside the locale table and the India-only gateway path — enforced by `tests/unit/currency-hardcoding.test.ts` |
+| Identity      | CNIC, not Aadhaar (§9)                                                                                                                                            |
+| Tax           | STRN / NTN, configurable and exempt by default (§5)                                                                                                               |
+| Banking       | IBAN, not IFSC                                                                                                                                                    |
+| Address       | Postal code, not PIN code; no province is pre-filled                                                                                                              |
+| Phone         | `validatePakistanPhone`; all 24 seeded numbers pass it                                                                                                            |
+| Clinic record | `PK` / `PKR` / `Asia/Karachi` / `en-PK`                                                                                                                           |
+| Seed data     | Lahore, Punjab; PMDC licence numbers                                                                                                                              |
 
 ---
 
