@@ -1631,13 +1631,13 @@ describe('AIUsageStats', () => {
         executions: 320,
         insights: 45,
         tokens: 1250000,
-        costINR: 245.5,
+        cost: 245.5,
       },
       thisMonth: {
         conversations: 25,
         executions: 60,
         tokens: 200000,
-        costINR: 42.3,
+        cost: 42.3,
       },
       skillBreakdown: [
         { skill: 'patient-intake', executions: 30, cost: 5.2 },
@@ -1679,8 +1679,8 @@ describe('AIUsageStats', () => {
 
   it('renders skill breakdown bars', async () => {
     mockFetchResponse({
-      allTime: { conversations: 10, executions: 20, insights: 5, tokens: 1000, costINR: 10 },
-      thisMonth: { conversations: 5, executions: 10, tokens: 500, costINR: 5 },
+      allTime: { conversations: 10, executions: 20, insights: 5, tokens: 1000, cost: 10 },
+      thisMonth: { conversations: 5, executions: 10, tokens: 500, cost: 5 },
       skillBreakdown: [
         { skill: 'patient-intake', executions: 30, cost: 5 },
         { skill: 'smart-scheduler', executions: 20, cost: 3 },
@@ -1714,8 +1714,8 @@ describe('AIUsageStats', () => {
 
   it('shows disclaimer about AI cost estimates', async () => {
     mockFetchResponse({
-      allTime: { conversations: 1, executions: 1, insights: 0, tokens: 100, costINR: 0.5 },
-      thisMonth: { conversations: 1, executions: 1, tokens: 100, costINR: 0.5 },
+      allTime: { conversations: 1, executions: 1, insights: 0, tokens: 100, cost: 0.5 },
+      thisMonth: { conversations: 1, executions: 1, tokens: 100, cost: 0.5 },
       skillBreakdown: [],
     })
 
@@ -1730,8 +1730,8 @@ describe('AIUsageStats', () => {
 
   it('does not show skill breakdown when empty', async () => {
     mockFetchResponse({
-      allTime: { conversations: 1, executions: 1, insights: 0, tokens: 100, costINR: 0.5 },
-      thisMonth: { conversations: 1, executions: 1, tokens: 100, costINR: 0.5 },
+      allTime: { conversations: 1, executions: 1, insights: 0, tokens: 100, cost: 0.5 },
+      thisMonth: { conversations: 1, executions: 1, tokens: 100, cost: 0.5 },
       skillBreakdown: [],
     })
 
@@ -1746,8 +1746,8 @@ describe('AIUsageStats', () => {
 
   it('calls /api/ai/usage on mount', async () => {
     mockFetchResponse({
-      allTime: { conversations: 0, executions: 0, insights: 0, tokens: 0, costINR: 0 },
-      thisMonth: { conversations: 0, executions: 0, tokens: 0, costINR: 0 },
+      allTime: { conversations: 0, executions: 0, insights: 0, tokens: 0, cost: 0 },
+      thisMonth: { conversations: 0, executions: 0, tokens: 0, cost: 0 },
       skillBreakdown: [],
     })
 

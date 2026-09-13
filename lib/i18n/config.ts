@@ -8,12 +8,17 @@
  * See docs/LOCALIZATION.md for the wider plan.
  */
 
-export const locales = ['en-IN', 'en-US'] as const
+export const locales = ['en-PK', 'en-IN', 'en-US'] as const
 
 export type Locale = (typeof locales)[number]
 
-/** India remains the default — this app started as an Indian dental ERP. */
-export const defaultLocale: Locale = 'en-IN'
+/**
+ * Pakistan is the default: this fork runs a PKR clinic. Upstream defaulted to
+ * en-IN because it started as an Indian dental ERP, and en-IN is kept in the
+ * list rather than removed so that any row already carrying it still resolves
+ * instead of silently falling back.
+ */
+export const defaultLocale: Locale = 'en-PK'
 
 export interface LocaleDefaults {
   /** ISO 4217 currency code. */
@@ -25,6 +30,7 @@ export interface LocaleDefaults {
 }
 
 export const localeDefaults: Record<Locale, LocaleDefaults> = {
+  'en-PK': { currency: 'PKR', country: 'PK', timezone: 'Asia/Karachi' },
   'en-IN': { currency: 'INR', country: 'IN', timezone: 'Asia/Kolkata' },
   'en-US': { currency: 'USD', country: 'US', timezone: 'America/New_York' },
 }

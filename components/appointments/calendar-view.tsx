@@ -100,7 +100,7 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
 
   const getDateLabel = () => {
     if (viewMode === 'day') {
-      return currentDate.toLocaleDateString('en-IN', {
+      return currentDate.toLocaleDateString('en-PK', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -111,16 +111,16 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
       weekStart.setDate(weekStart.getDate() - weekStart.getDay())
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
-      return `${weekStart.toLocaleDateString('en-IN', {
+      return `${weekStart.toLocaleDateString('en-PK', {
         day: 'numeric',
         month: 'short',
-      })} - ${weekEnd.toLocaleDateString('en-IN', {
+      })} - ${weekEnd.toLocaleDateString('en-PK', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
       })}`
     } else {
-      return currentDate.toLocaleDateString('en-IN', {
+      return currentDate.toLocaleDateString('en-PK', {
         month: 'long',
         year: 'numeric',
       })
@@ -275,7 +275,7 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
               }`}
             >
               <p className="text-xs text-muted-foreground">
-                {day.toLocaleDateString('en-IN', { weekday: 'short' })}
+                {day.toLocaleDateString('en-PK', { weekday: 'short' })}
               </p>
               <p className="font-semibold">{day.getDate()}</p>
             </div>

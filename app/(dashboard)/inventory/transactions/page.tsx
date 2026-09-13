@@ -177,7 +177,7 @@ export default function TransactionsPage() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-PK', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 2,
@@ -409,7 +409,7 @@ export default function TransactionsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Unit Price (₹)
+                    Unit Price (Rs)
                   </label>
                   <input
                     type="number"

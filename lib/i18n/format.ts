@@ -13,7 +13,7 @@ import { defaultLocale, getLocaleDefaults, resolveLocale } from './config'
 
 export interface CurrencyFormatOptions {
   locale?: string
-  /** ISO 4217. Defaults to the locale's currency (INR for en-IN). */
+  /** ISO 4217. Defaults to the locale's currency (PKR for en-PK). */
   currency?: string
   minimumFractionDigits?: number
   maximumFractionDigits?: number
@@ -52,7 +52,7 @@ export function formatCurrency(
   const {
     minimumFractionDigits = 0,
     maximumFractionDigits = 2,
-    // Format the fallback rather than hardcoding a symbol, so a non-INR
+    // Format the fallback rather than hardcoding a symbol, so a non-PKR
     // clinic does not get a stray rupee sign on empty values.
     fallback = new Intl.NumberFormat(locale, {
       style: 'currency',

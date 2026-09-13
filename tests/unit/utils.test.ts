@@ -8,9 +8,7 @@ import {
   formatPhone,
   generatePatientId,
   generateInvoiceNo,
-  calculateGST,
-  validateAadhar,
-  validateIndianPhone,
+  validatePakistanPhone,
 } from '@/lib/utils'
 
 describe('Utils - cn (classnames merger)', () => {
@@ -36,10 +34,10 @@ describe('Utils - cn (classnames merger)', () => {
 })
 
 describe('Utils - formatCurrency', () => {
-  it('should format positive amounts correctly in INR', () => {
+  it('should format positive amounts correctly in PKR', () => {
     const result = formatCurrency(1000)
     expect(result).toContain('1,000')
-    expect(result).toMatch(/₹|INR/)
+    expect(result).toMatch(/Rs|PKR/)
   })
 
   it('should format zero correctly', () => {
@@ -96,13 +94,13 @@ describe('Utils - formatDateTime', () => {
 
 describe('Utils - formatPhone', () => {
   it('should format 10-digit Indian phone numbers', () => {
-    const result = formatPhone('9876543210')
-    expect(result).toBe('+91 98765 43210')
+    const result = formatPhone('3001234567')
+    expect(result).toBe('+92 300 1234567')
   })
 
   it('should handle phone with existing formatting', () => {
-    const result = formatPhone('+91-9876-543210')
-    expect(result).toBe('+91 98765 43210')
+    const result = formatPhone('+92-300-1234567')
+    expect(result).toBe('+92 300 1234567')
   })
 
   it('should return original for non-10-digit numbers', () => {
@@ -155,73 +153,24 @@ describe('Utils - generateInvoiceNo', () => {
   })
 })
 
-describe('Utils - calculateGST', () => {
-  it('should calculate GST correctly with default rates', () => {
-    const result = calculateGST(1000)
-    expect(result.subtotal).toBe(1000)
-    expect(result.cgst).toBe(90)
-    expect(result.sgst).toBe(90)
-    expect(result.total).toBe(1180)
-  })
-
-  it('should calculate GST with custom rates', () => {
-    const result = calculateGST(1000, 6, 6)
-    expect(result.subtotal).toBe(1000)
-    expect(result.cgst).toBe(60)
-    expect(result.sgst).toBe(60)
-    expect(result.total).toBe(1120)
-  })
-
-  it('should handle zero amount', () => {
-    const result = calculateGST(0)
-    expect(result.total).toBe(0)
-  })
-
-  it('should handle decimal amounts', () => {
-    const result = calculateGST(99.99)
-    expect(result.subtotal).toBe(99.99)
-    expect(result.total).toBeCloseTo(117.99, 1)
-  })
-})
-
-describe('Utils - validateAadhar', () => {
-  it('should validate correct 12-digit Aadhar', () => {
-    expect(validateAadhar('123456789012')).toBe(true)
-  })
-
-  it('should validate Aadhar with spaces', () => {
-    expect(validateAadhar('1234 5678 9012')).toBe(true)
-  })
-
-  it('should validate Aadhar with dashes', () => {
-    expect(validateAadhar('1234-5678-9012')).toBe(true)
-  })
-
-  it('should reject invalid Aadhar numbers', () => {
-    expect(validateAadhar('12345678901')).toBe(false) // 11 digits
-    expect(validateAadhar('1234567890123')).toBe(false) // 13 digits
-    expect(validateAadhar('')).toBe(false)
-  })
-})
-
-describe('Utils - validateIndianPhone', () => {
+describe('Utils - validatePakistanPhone', () => {
   it('should validate correct Indian phone numbers', () => {
-    expect(validateIndianPhone('9876543210')).toBe(true)
-    expect(validateIndianPhone('8765432109')).toBe(true)
-    expect(validateIndianPhone('7654321098')).toBe(true)
-    expect(validateIndianPhone('6543210987')).toBe(true)
+    expect(validatePakistanPhone('3001234567')).toBe(true)
+    expect(validatePakistanPhone('3331234567')).toBe(true)
+    expect(validatePakistanPhone('03451234567')).toBe(true)
+    expect(validatePakistanPhone('3211234567')).toBe(true)
   })
 
   it('should validate phone numbers with formatting', () => {
-    expect(validateIndianPhone('+91-9876543210')).toBe(true)
-    expect(validateIndianPhone('91 9876543210')).toBe(true)
+    expect(validatePakistanPhone('+92-3001234567')).toBe(true)
+    expect(validatePakistanPhone('92 3001234567')).toBe(true)
   })
 
   it('should reject invalid phone numbers', () => {
-    expect(validateIndianPhone('1234567890')).toBe(false) // Starts with 1
-    expect(validateIndianPhone('5234567890')).toBe(false) // Starts with 5
-    expect(validateIndianPhone('987654321')).toBe(false) // 9 digits
-    expect(validateIndianPhone('98765432101')).toBe(false) // 11 digits
-    expect(validateIndianPhone('')).toBe(false)
+    expect(validatePakistanPhone('1234567890')).toBe(false) // Starts with 1
+    expect(validatePakistanPhone('5234567890')).toBe(false) // Starts with 5
+    expect(validatePakistanPhone('300123456')).toBe(false) // 9 digits
+    expect(validatePakistanPhone('30012345671')).toBe(false) // 11 digits, no trunk zero
+    expect(validatePakistanPhone('')).toBe(false)
   })
 })

@@ -141,7 +141,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
   }, [resolvedParams.id, startDate, endDate])
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-PK', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 0,

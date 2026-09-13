@@ -220,7 +220,7 @@ export function PaymentCheckout({
   }
 
   const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('en-IN', {
+    new Intl.NumberFormat('en-PK', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,

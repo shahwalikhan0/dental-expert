@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s | DentalERP',
   },
   description:
-    'Free open-source dental clinic management software for India. Patient records, appointment scheduling, GST billing, inventory, AI-powered treatment planning, insurance claims, tele-dentistry. Built for Indian dental hospitals and clinics.',
+    'Dental clinic management: patient records, appointment scheduling, clinical charting, billing, inventory, laboratory cases and reporting.',
   keywords: [
     'dental software India',
     'dental clinic management software',
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     'dental practice management',
     'open source dental software',
     'free dental software India',
-    'dental billing software GST',
+    'dental billing software',
     'patient management system dental',
     'appointment scheduling dental',
     'dental clinic software free',
@@ -43,14 +43,14 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     title: 'DentalERP - Open Source Dental Hospital Management Software',
     description:
-      'Free, AI-powered dental clinic management system built for Indian dental hospitals. Patient records, GST billing, appointments, inventory, insurance, tele-dentistry and more.',
+      'Dental clinic management: patient records, billing, appointments, inventory, laboratory cases and reporting.',
     siteName: 'DentalERP',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DentalERP - Open Source Dental Hospital Management Software',
     description:
-      'Free, AI-powered dental clinic management system for India. 16 AI skills, GST billing, patient portal, tele-dentistry.',
+      'Dental clinic management: clinical records, billing, scheduling and the patient portal.',
   },
   robots: {
     index: true,

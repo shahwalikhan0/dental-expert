@@ -150,13 +150,13 @@ describe('useWebVoice', () => {
     expect(instance.lang).toBe('hi-IN')
   })
 
-  it('defaults lang to en-IN', () => {
+  it('defaults lang to en-PK', () => {
     const { result } = renderHook(() => useWebVoice())
     act(() => {
       result.current.startListening()
     })
     const instance = MockSpeechRecognition.mock.results[0].value
-    expect(instance.lang).toBe('en-IN')
+    expect(instance.lang).toBe('en-PK')
   })
 
   it('stopListening sets state to idle', () => {

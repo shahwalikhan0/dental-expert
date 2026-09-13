@@ -61,7 +61,7 @@ describe('SMSService - Phone Validation', () => {
     )
   })
 
-  it('rejects phone starting with 0-5', async () => {
+  it('rejects a subscriber number not starting with 3', async () => {
     const { smsService } = smsServiceModule
 
     await expect(smsService.sendSMS({ phone: '0123456789', message: 'test' })).rejects.toThrow(
@@ -76,7 +76,7 @@ describe('SMSService - Phone Validation', () => {
   it('rejects phone with fewer than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '98765', message: 'test' })).rejects.toThrow(
+    await expect(smsService.sendSMS({ phone: '30012', message: 'test' })).rejects.toThrow(
       'Invalid phone number'
     )
   })
@@ -84,7 +84,7 @@ describe('SMSService - Phone Validation', () => {
   it('rejects phone with more than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '98765432100', message: 'test' })).rejects.toThrow(
+    await expect(smsService.sendSMS({ phone: '30012345670', message: 'test' })).rejects.toThrow(
       'Invalid phone number'
     )
   })
@@ -105,7 +105,7 @@ describe('SMSService - Communication Preferences', () => {
 
     await expect(
       smsService.sendSMS({
-        phone: '9876543210',
+        phone: '3001234567',
         message: 'test',
         patientId: 'patient-1',
       })
@@ -122,7 +122,7 @@ describe('SMSService - Communication Preferences', () => {
 
     await expect(
       smsService.sendSMS({
-        phone: '9876543210',
+        phone: '3001234567',
         message: 'test',
         patientId: 'patient-1',
       })
@@ -143,7 +143,7 @@ describe('SMSService - Time Restrictions', () => {
     vi.setSystemTime(mockDate)
 
     // No patient preferences to check
-    await expect(smsService.sendSMS({ phone: '9876543210', message: 'test' })).rejects.toThrow(
+    await expect(smsService.sendSMS({ phone: '3001234567', message: 'test' })).rejects.toThrow(
       'outside 9 AM - 9 PM'
     )
 
@@ -163,7 +163,7 @@ describe('SMSService - Time Restrictions', () => {
     vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
     // Should get past phone validation and time check, fail at initialize
-    await expect(smsService.sendSMS({ phone: '9876543210', message: 'test' })).rejects.toThrow(
+    await expect(smsService.sendSMS({ phone: '3001234567', message: 'test' })).rejects.toThrow(
       'SMS gateway not configured'
     )
 
@@ -188,7 +188,7 @@ describe('SMSService - SMS Logging', () => {
 
     try {
       await smsService.sendSMS({
-        phone: '9876543210',
+        phone: '3001234567',
         message: 'Hello',
         hospitalId: 'hosp-1',
         // No patientId — skip DND/preference checks
@@ -200,7 +200,7 @@ describe('SMSService - SMS Logging', () => {
     expect(prisma.sMSLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          phone: '9876543210',
+          phone: '3001234567',
           message: 'Hello',
           hospitalId: 'hosp-1',
           status: 'QUEUED',
@@ -221,7 +221,7 @@ describe('SMSService - SMS Logging', () => {
     vi.mocked(prisma.sMSLog.create).mockResolvedValue({ id: 'sms-1' } as any)
 
     const result = await smsService.sendSMS({
-      phone: '9876543210',
+      phone: '3001234567',
       message: 'Scheduled',
       scheduledFor: futureDate,
     })

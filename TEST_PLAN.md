@@ -20,7 +20,7 @@
 
 #### Core Utilities
 
-- [x] `lib/utils.ts` — cn(), formatCurrency(), formatDate(), formatPhone(), generatePatientId(), validateAadhar(), validateIndianPhone() (tests/unit/utils.test.ts)
+- [x] `lib/utils.ts` — cn(), formatCurrency(), formatDate(), formatPhone(), generatePatientId(), validateAadhar(), validatePakistanPhone() (tests/unit/utils.test.ts)
 - [x] `lib/encryption.ts` — encrypt/decrypt round-trip, format validation, error handling, generateEncryptionKey() (tests/unit/encryption.test.ts)
 - [x] `lib/billing-utils.ts` — calculateGST, calculateDiscount, calculateInvoiceTotals, numberToWords, getDateRangeFromPreset, isInvoiceOverdue (tests/unit/billing-utils.test.ts)
 - [x] `lib/treatment-utils.ts` — status configs, tooth numbering (FDI), parseToothNumbers, formatDuration, calculatePlanProgress, tooth classification (tests/unit/treatment-utils.test.ts)
@@ -188,7 +188,7 @@
 
 - [x] `GET/POST /api/lab-orders` — create lab order, status tracking, pagination (tests/api/lab-medications-routes.test.ts)
 - [x] `GET/PUT/DELETE /api/lab-orders/[id]` — order detail with history/docs, update with status logging, soft delete (tests/api/lab-vendors-routes.test.ts)
-- [x] `PATCH /api/lab-orders/[id]/status` — 9 valid statuses, auto-set dates (sent/received/delivered), history insert, raw MySQL pool mock (tests/api/lab-order-status.test.ts)
+- [x] `PATCH /api/lab-orders/[id]/status` — 9 valid statuses, auto-set dates (sent/received/delivered), history insert, raw SQL pool mock (tests/api/lab-order-status.test.ts)
 - [x] `GET/POST /api/lab-vendors` — vendor list with search/status filter, create vendor (tests/api/lab-vendors-routes.test.ts)
 - [x] `GET/PUT/DELETE /api/lab-vendors/[id]` — vendor detail, update with code uniqueness, soft delete with order check (tests/api/lab-vendors-routes.test.ts)
 
@@ -882,7 +882,7 @@
 - [x] Partial backup — type=patients, type=billing, type=inventory (tests/database/database-migration-backup.test.ts — 3 tests)
 - [x] Backup format — valid JSON, ISO date preservation, null/undefined handling (tests/database/database-migration-backup.test.ts — 3 tests)
 - [ ] Backup file can be restored to a fresh database (manual test)
-- [ ] Point-in-time recovery with MySQL binlog (if configured)
+- [ ] Point-in-time recovery with PostgreSQL WAL archiving (if configured)
 
 ### 8.5 Performance
 
@@ -898,7 +898,7 @@
 ### 9.1 Build Testing
 
 - [x] next.config.js — standalone output, TS errors not ignored, compression, strict mode, powered-by disabled, body size limit (tests/deployment/deployment-config.test.ts — 6 tests)
-- [x] Prisma configuration — MySQL provider, native+debian binary targets (tests/deployment/deployment-config.test.ts — 2 tests)
+- [x] Prisma configuration — PostgreSQL provider, native+debian binary targets (tests/deployment/deployment-config.test.ts — 2 tests)
 - [x] package.json scripts — test/dev/build/start commands verified (tests/deployment/deployment-config.test.ts — 4 tests)
 - [x] Vitest configuration — jsdom, E2E excluded, include patterns, setup file, timeout, coverage targets (tests/deployment/deployment-config.test.ts — 6 tests)
 - [x] Playwright configuration — test dir, browsers, retries, screenshots, base URL (tests/deployment/deployment-config.test.ts — 5 tests)
@@ -917,7 +917,7 @@
 
 - [x] Required env vars — DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, CRON_SECRET, ENCRYPTION_KEY format/length (tests/deployment/deployment-config.test.ts — 5 tests)
 - [x] Missing/invalid config — clear error messages, invalid URL detection, valid URL acceptance (tests/deployment/deployment-config.test.ts — 4 tests)
-- [x] MySQL pool config — DB_HOST default, DB_PORT default, connection limit (tests/deployment/deployment-config.test.ts — 3 tests)
+- [x] PostgreSQL pool config — DB_HOST default, DB_PORT default, connection limit (tests/deployment/deployment-config.test.ts — 3 tests)
 - [x] Security config — headers defined, permissions policy, CORS for API routes (tests/deployment/deployment-config.test.ts — 4 tests)
 - [x] Payment gateway config — Razorpay/PhonePe/Paytm required fields, secret masking (tests/deployment/deployment-config.test.ts — 4 tests)
 - [x] SMS/Email config — required fields, graceful failure when unconfigured (tests/deployment/deployment-config.test.ts — 3 tests)
@@ -929,7 +929,7 @@
 - [x] Lint check on PR (lint-and-type-check job)
 - [x] Type check on PR (lint-and-type-check job)
 - [x] Unit tests on PR (unit-tests job with coverage upload)
-- [x] E2E tests on merge to main (e2e-tests job with MySQL service)
+- [x] E2E tests on merge to main (e2e-tests job with PostgreSQL service)
 - [x] Production build verification (build job)
 - [ ] Auto-deploy to staging on merge (deployment config needed)
 - [ ] Auto-deploy to production on release tag (deployment config needed)
@@ -952,7 +952,7 @@
 
 - [x] Currency displays as ₹ (INR) — formatCurrency from utils and billing-utils, Indian lakh/crore grouping, zero/negative handling, ₹ symbol in discountTypeConfig (tests/unit/localization.test.ts — 8 tests)
 - [x] Date format — DD Mon YYYY via en-IN locale, invalid date handling, string/Date inputs (tests/unit/localization.test.ts — 5 tests)
-- [x] Phone number format — +91 prefix, 10/12-digit, validateIndianPhone accepts 6-9 start, rejects 0-5/wrong length (tests/unit/localization.test.ts — 7 tests)
+- [x] Phone number format — +92 prefix, 10/11/12-digit, validatePakistanPhone accepts 3XX prefixes, rejects others/wrong length (tests/unit/localization.test.ts — 7 tests)
 - [x] GST format — CGST 9%, SGST 9%, IGST 18%, calculateGST(1000) = 1180 total (tests/unit/localization.test.ts — 3 tests)
 - [x] Aadhaar validation — 12-digit, rejects shorter/longer, handles spaces/dashes (tests/unit/localization.test.ts — 5 tests)
 - [x] Number to words — Indian numbering (Lakh, Crore, Rupees, Paise, Zero) (tests/unit/localization.test.ts — 5 tests)

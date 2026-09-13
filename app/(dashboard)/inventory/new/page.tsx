@@ -260,7 +260,9 @@ export default function NewInventoryItemPage() {
 
           {/* Unit Price */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Unit Price (₹)</label>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Unit Price (Rs)
+            </label>
             <input
               type="number"
               name="purchasePrice"
@@ -274,7 +276,7 @@ export default function NewInventoryItemPage() {
           {/* Selling Price */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              Selling Price (₹)
+              Selling Price (Rs)
             </label>
             <input
               type="number"

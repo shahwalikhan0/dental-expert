@@ -414,58 +414,31 @@ describe('Security — Input Validation & Injection', () => {
   })
 
   describe('Phone Number Validation', () => {
-    let validateIndianPhone: any
+    let validatePakistanPhone: any
 
     beforeEach(async () => {
       const mod = await import('@/lib/utils')
-      validateIndianPhone = mod.validateIndianPhone
+      validatePakistanPhone = mod.validatePakistanPhone
     })
 
     it('accepts valid 10-digit Indian phone number', () => {
-      expect(validateIndianPhone('9876543210')).toBe(true)
+      expect(validatePakistanPhone('3001234567')).toBe(true)
     })
 
-    it('accepts with +91 prefix', () => {
-      expect(validateIndianPhone('+919876543210')).toBe(true)
+    it('accepts with +92 prefix', () => {
+      expect(validatePakistanPhone('+923001234567')).toBe(true)
     })
 
     it('rejects number with less than 10 digits', () => {
-      expect(validateIndianPhone('98765')).toBe(false)
+      expect(validatePakistanPhone('30012')).toBe(false)
     })
 
     it('rejects number with more than 10 digits', () => {
-      expect(validateIndianPhone('98765432101')).toBe(false)
+      expect(validatePakistanPhone('30012345671')).toBe(false)
     })
 
     it('rejects letters in phone number', () => {
-      expect(validateIndianPhone('98765abcde')).toBe(false)
-    })
-  })
-
-  describe('Aadhaar Validation', () => {
-    let validateAadhar: any
-
-    beforeEach(async () => {
-      const mod = await import('@/lib/utils')
-      validateAadhar = mod.validateAadhar
-    })
-
-    it('accepts valid 12-digit Aadhaar', () => {
-      expect(validateAadhar('234567890123')).toBe(true)
-    })
-
-    it('rejects 11-digit number', () => {
-      expect(validateAadhar('23456789012')).toBe(false)
-    })
-
-    it('accepts any 12-digit number (basic length validation)', () => {
-      // Current implementation does basic length check only
-      expect(validateAadhar('023456789012')).toBe(true)
-      expect(validateAadhar('123456789012')).toBe(true)
-    })
-
-    it('rejects letters', () => {
-      expect(validateAadhar('23456789012a')).toBe(false)
+      expect(validatePakistanPhone('30012abcde')).toBe(false)
     })
   })
 

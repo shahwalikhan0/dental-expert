@@ -250,11 +250,11 @@ export default function SegmentsPage() {
                             <TableCell>{patient.phone}</TableCell>
                             <TableCell>
                               {patient.lastVisit
-                                ? new Date(patient.lastVisit).toLocaleDateString('en-IN')
+                                ? new Date(patient.lastVisit).toLocaleDateString('en-PK')
                                 : 'Never'}
                             </TableCell>
                             <TableCell className="text-right">
-                              ₹{patient.totalSpend.toLocaleString('en-IN')}
+                              Rs {patient.totalSpend.toLocaleString('en-PK')}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -365,7 +365,9 @@ export default function SegmentsPage() {
                         <TableCell>{p.rfm?.recency || 'N/A'}</TableCell>
                         <TableCell>{p.rfm?.frequency || 0}</TableCell>
                         <TableCell>
-                          {p.rfm?.monetary ? `₹${p.rfm.monetary.toLocaleString('en-IN')}` : '₹0'}
+                          {p.rfm?.monetary
+                            ? `Rs ${p.rfm.monetary.toLocaleString('en-PK')}`
+                            : 'Rs 0'}
                         </TableCell>
                         <TableCell>
                           <Badge

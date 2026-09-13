@@ -317,20 +317,20 @@ function CostEstimate({
                   <span className="text-muted-foreground ml-1">×{item.quantity}</span>
                 )}
               </span>
-              <span className="font-medium">₹{Number(item.total).toLocaleString()}</span>
+              <span className="font-medium">Rs {Number(item.total).toLocaleString()}</span>
             </div>
           ))}
           <div className="flex justify-between text-xs text-muted-foreground pt-1">
             <span>Subtotal</span>
-            <span>₹{Number(result.subtotal || 0).toLocaleString()}</span>
+            <span>Rs {Number(result.subtotal || 0).toLocaleString()}</span>
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>GST (12%)</span>
-            <span>₹{Number(result.gst || 0).toLocaleString()}</span>
-          </div>
+          {/* The estimator no longer invents a tax rate — it was quoting 12%
+              while invoices charged 18%, so the estimate never matched the
+              bill. Tax is applied when the invoice is raised, at the clinic's
+              configured rate. */}
           <div className="flex justify-between text-sm font-semibold border-t pt-1.5 mt-1">
             <span>Total</span>
-            <span>₹{Number(result.grandTotal || 0).toLocaleString()}</span>
+            <span>Rs {Number(result.grandTotal || 0).toLocaleString()}</span>
           </div>
           {result.notes && (
             <p className="text-xs text-muted-foreground italic mt-1">{String(result.notes)}</p>

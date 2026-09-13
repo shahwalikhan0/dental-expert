@@ -64,14 +64,14 @@ export default function PatientDashboard() {
   }, [])
 
   const formatCurrency = (val: number | string) =>
-    new Intl.NumberFormat('en-IN', {
+    new Intl.NumberFormat('en-PK', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
     }).format(Number(val))
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-IN', {
+    new Date(d).toLocaleDateString('en-PK', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',

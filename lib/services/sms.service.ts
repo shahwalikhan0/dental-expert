@@ -50,7 +50,7 @@ class SMSService {
 
   async sendSMS(payload: SMSPayload): Promise<string> {
     // Validate phone number (Indian format)
-    if (!this.isValidIndianPhoneNumber(payload.phone)) {
+    if (!this.isValidPakistanPhoneNumber(payload.phone)) {
       throw new Error('Invalid phone number format')
     }
 
@@ -162,7 +162,7 @@ class SMSService {
       body: JSON.stringify({
         sender: this.config?.senderId,
         route: this.config?.route || '4',
-        country: '91',
+        country: '92',
         sms: [
           {
             message: payload.message,
@@ -253,7 +253,7 @@ class SMSService {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
 
     const params = new URLSearchParams({
-      To: '+91' + this.normalizePhoneNumber(payload.phone),
+      To: '+92' + this.normalizePhoneNumber(payload.phone),
       From: this.config?.senderId || '',
       Body: payload.message,
     })
@@ -278,12 +278,12 @@ class SMSService {
     }
   }
 
-  private isValidIndianPhoneNumber(phone: string): boolean {
+  private isValidPakistanPhoneNumber(phone: string): boolean {
     // Remove all non-digit characters
     const cleaned = phone.replace(/\D/g, '')
 
-    // Check if it's a valid 10-digit Indian mobile number
-    return /^[6-9]\d{9}$/.test(cleaned)
+    // Check if it's a valid 10-digit Pakistani mobile number (3XX XXXXXXX)
+    return /^3\d{9}$/.test(cleaned)
   }
 
   private normalizePhoneNumber(phone: string): string {

@@ -390,7 +390,7 @@ export default function MembershipPlansPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  const formatCurrency = (price: number) => `\u20B9${Number(price).toLocaleString('en-IN')}`
+  const formatCurrency = (price: number) => `Rs ${Number(price).toLocaleString('en-PK')}`
 
   const formatDuration = (months: number) => {
     if (months === 1) return '1 month'
@@ -400,7 +400,7 @@ export default function MembershipPlansPage() {
   }
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-IN', {
+    return new Date(dateStr).toLocaleDateString('en-PK', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -641,7 +641,7 @@ export default function MembershipPlansPage() {
                   <div className="flex items-center gap-1">
                     <IndianRupee className="h-4 w-4 text-muted-foreground" />
                     <span className="text-2xl font-bold">
-                      {Number(plan.price).toLocaleString('en-IN')}
+                      {Number(plan.price).toLocaleString('en-PK')}
                     </span>
                   </div>
                   <span className="text-sm text-muted-foreground">
@@ -715,7 +715,7 @@ export default function MembershipPlansPage() {
             {/* Price & Duration */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Price (\u20B9) *</Label>
+                <Label>Price (Rs) *</Label>
                 <Input
                   type="number"
                   min="0"

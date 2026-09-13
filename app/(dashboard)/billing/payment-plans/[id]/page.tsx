@@ -276,7 +276,7 @@ export default function PaymentPlanDetailPage({ params }: { params: Promise<{ id
   }
 
   const formatCurrency = (amount: number) =>
-    `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    `Rs ${amount.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
   if (loading) {
     return (
@@ -620,7 +620,7 @@ export default function PaymentPlanDetailPage({ params }: { params: Promise<{ id
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Amount (₹)</Label>
+              <Label>Amount (Rs)</Label>
               <Input
                 type="number"
                 value={payAmount}

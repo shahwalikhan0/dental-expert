@@ -78,7 +78,7 @@ export default function CRMDashboardPage() {
             <div className="text-2xl font-bold">{data?.memberships.active || 0}</div>
             <p className="text-xs text-muted-foreground">
               <IndianRupee className="h-3 w-3 inline" />
-              {(data?.memberships.revenue || 0).toLocaleString('en-IN')} revenue
+              {(data?.memberships.revenue || 0).toLocaleString('en-PK')} revenue
             </p>
           </CardContent>
         </Card>
