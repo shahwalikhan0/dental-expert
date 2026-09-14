@@ -135,7 +135,7 @@ const faqs = [
   {
     question: 'What payment methods do you accept?',
     answer:
-      'We accept all major credit/debit cards, UPI, net banking, and can arrange invoicing for Enterprise customers.',
+      'We accept major credit and debit cards and bank transfer, and can arrange invoicing for Enterprise customers.',
   },
   {
     question: 'Can I get a refund?',

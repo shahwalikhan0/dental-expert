@@ -15,7 +15,6 @@ import type { PaymentMethod, Prisma } from '@prisma/client'
 export const PAYMENT_METHODS = [
   'CASH',
   'CARD',
-  'UPI',
   'BANK_TRANSFER',
   'CHEQUE',
   'INSURANCE',

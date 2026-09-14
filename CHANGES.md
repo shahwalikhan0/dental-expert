@@ -1536,12 +1536,10 @@ The first three were done in §17. The rest stand:
   why.** The _existence_ of an alert is derivable; the acknowledgement on it is
   not, and that is the part the table is there for.
 - ~~`Supplier.isActive` duplicates `Supplier.status`~~ — gone, §17.1.
-- **`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay** pending
-  your decision on a Pakistani rail — §11.1's open question. Removing them
-  before there is something to replace them with would leave the billing screens
-  with a gap.
-- **`sms.service.ts` still enforces a 9am–9pm _IST_ send window** and still
-  names MSG91/TextLocal/Fast2SMS. Part of the same §11.1 decision.
+- ~~`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay~~ — gone,
+  §18.1. The decision turned out not to need making: the two things a Pakistani
+  patient pays with already had values in the enum.
+- ~~`sms.service.ts` still enforces a 9am–9pm _IST_ send window~~ — §18.2.
 
 ---
 
@@ -1643,3 +1641,123 @@ already records.
 Two of those tables did not exist at the fork: `Subscription` and
 `SubscriptionInvoice`, which are what make it a platform rather than one
 practice's installation.
+
+---
+
+## 18. The last of the India coupling
+
+Two items in §11.1 were listed as waiting on a decision from you. Both turned
+out to need less of one than they looked like.
+
+### 18.1 `PaymentMethod.UPI`
+
+UPI is India's instant-payment rail. No Pakistani clinic can take one — so the
+question "what replaces it" had an answer already sitting in the same enum:
+
+| A Pakistani patient pays by    | Value           |
+| ------------------------------ | --------------- |
+| JazzCash, Easypaisa, SadaPay   | `WALLET`        |
+| Raast or an interbank transfer | `BANK_TRANSFER` |
+
+Nothing had to be invented, and nothing was lost. What UPI was actually doing
+was putting a method on the till screen that nobody could select honestly, and a
+line on every daily reconciliation that was always zero.
+
+Anything recorded as UPI becomes `WALLET` — it was a phone payment, and that is
+where phone payments belong in a reconciliation. The till counts are **merged**
+rather than updated: `CashierSessionCount` is unique on
+`(sessionId, paymentMethod)`, so a session that counted both would have
+collided, and the answer to that is to add the two together. This is a cash
+reconciliation; losing a line loses money. Dry-run against sample rows before
+committing:
+
+```
+sessionId | paymentMethod | expected | counted | variance | notes
+s1        | WALLET        |  1500.00 | 1400.00 |  -100.00 | phone takings
+s2        | WALLET        |   250.00 |  250.00 |     0.00 |
+```
+
+Two columns went with it:
+
+- **`Payment.upiId`** recorded the payer's handle for a UPI payment — the same
+  kind of thing as `transactionId` sitting beside it, which covers every rail
+  rather than one. Any value is copied into `transactionId` where that is empty,
+  then the column goes.
+- **`Hospital.upiId`** → **`mobileWalletId`**. Renamed rather than dropped: a
+  Pakistani clinic does print a JazzCash or Easypaisa number on an invoice, and
+  nothing else covers that.
+
+Three things surfaced while doing it:
+
+- **The daily collection report had a "UPI" column that was always zero** — and
+  the route was computing a `wallet` total that no column displayed. The report
+  now shows Mobile Wallet, which is the number that was being thrown away.
+- **The IBAN fields on both the settings and onboarding forms were placeheld
+  `SBIN0001234`** — an Indian IFSC code, on a field §5 had already renamed to
+  IBAN.
+- **The setup guide still walked through Razorpay, PhonePe and Paytm**, step by
+  step, including which keys to paste into a "Payment Gateway" tab — a tab whose
+  code §13 removed. Three sets of instructions telling a Pakistani clinic to
+  sign up for processors that will not onboard them, into a screen that no
+  longer exists. Replaced with one honest section: no processor is integrated,
+  here is what to choose between, and nothing at the desk depends on it.
+
+The import aliases keep `UPI` and `NEFT`/`RTGS` — an import from an Indian
+system still carries those rows, and they now map onto `WALLET` and
+`BANK_TRANSFER`. `JazzCash`, `Easypaisa`, `SadaPay`, `IBFT` and `Raast` were
+added alongside.
+
+### 18.2 The send window, and three gateways that cannot deliver
+
+`sms.service.ts` refused to send outside **9am–9pm IST**, computed by adding
+five and a half hours to UTC. That is India's TRAI restriction, hardcoded, and
+on a Pakistani clinic it is wrong twice over: the country has no such statutory
+window, and the offset is half an hour out — so a message at 20:45 in Karachi
+was refused as "past 9pm", and one at 09:15 was refused as "before 9am".
+
+`lib/send-window.ts` replaces it with the clinic's own window, in the clinic's
+own timezone (`Hospital.timezone`, which already existed and already defaulted
+to `Asia/Karachi`). The default is the same 09:00–21:00, because that is a
+reasonable thing to want; what changed is that it is now the clinic's to move,
+through two settings keys.
+
+Details that are deliberate:
+
+- **`Intl`, not arithmetic on an offset.** An offset has to be kept in step by
+  hand, which is how the original got Pakistan half an hour wrong, and daylight
+  saving makes one wrong twice a year besides.
+- **Half-open at the end**, so a window ending 21:00 permits 20:59 and refuses
+  21:00 — "nine in the evening" meaning what a person means by it.
+- **A window that wraps past midnight is read as wrapping**, not as empty. No
+  clinic is likely to want one, but reading it as empty would silently stop
+  every message instead of doing the obvious thing.
+- **Equal bounds mean no restriction**, which is how a clinic turns the window
+  off — rather than by a checkbox elsewhere that does the same thing and can
+  disagree with this one.
+- **An unparseable bound falls back to the default.** A typo in a settings field
+  should not take down every reminder the clinic sends.
+- **A scheduled message is not judged by the hour it was queued.** "Is this an
+  acceptable time to make a phone buzz" only means anything at the moment of
+  sending.
+
+**MSG91, TextLocal and Fast2SMS are gone.** All three are Indian aggregators
+requiring a sender registered under TRAI's DLT scheme, which a Pakistani clinic
+cannot obtain — so three of the four options on the settings screen were three
+ways to have messages silently fail. Twilio, which delivers worldwide, is what
+remains, and adding a local aggregator is now one method on the service class
+plus a value in `SMS_GATEWAYS`.
+
+### 18.3 What is genuinely still yours to decide
+
+- **Which payment processor.** Safepay, PayFast, or a bank merchant facility.
+  The checkout has to be written against whichever one you sign up with, and
+  that needs your merchant account, not my guess. Nothing at the desk is blocked
+  — invoices, payments, refunds and the daily closing all work without one.
+- **Whether to keep Twilio or add a local SMS aggregator.** Twilio works today
+  and costs more per message than a local provider would.
+- **The discount approval threshold**, currently Rs 1,000 — a placeholder, and
+  §7.4 says so.
+- **`PurchaseOrder` still has no creation route.** §5.7 requires purchase and
+  receipt; the tables are there and nothing writes to them. This is an unbuilt
+  requirement rather than an open question, and it is the next thing worth
+  building.

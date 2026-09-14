@@ -589,7 +589,6 @@ async function getDailyCollectionReport(startDate: Date, endDate: Date, hospital
       date: string
       cash: number
       card: number
-      upi: number
       bankTransfer: number
       cheque: number
       insurance: number
@@ -607,7 +606,6 @@ async function getDailyCollectionReport(startDate: Date, endDate: Date, hospital
         date: dateKey,
         cash: 0,
         card: 0,
-        upi: 0,
         bankTransfer: 0,
         cheque: 0,
         insurance: 0,
@@ -628,9 +626,6 @@ async function getDailyCollectionReport(startDate: Date, endDate: Date, hospital
         break
       case 'CARD':
         dailyCollection[dateKey].card += amount
-        break
-      case 'UPI':
-        dailyCollection[dateKey].upi += amount
         break
       case 'BANK_TRANSFER':
         dailyCollection[dateKey].bankTransfer += amount

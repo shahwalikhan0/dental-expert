@@ -37,6 +37,7 @@ import { GET, POST } from '@/app/api/cashier-sessions/route'
 import { POST as CLOSE } from '@/app/api/cashier-sessions/[id]/close/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { PAYMENT_METHODS } from '@/lib/cashier'
 
 function signedInAs(role: string, userId = 'u1') {
   vi.mocked(requireAuthAndRole).mockResolvedValue({
@@ -215,7 +216,7 @@ describe('POST /api/cashier-sessions/[id]/close — the variance record', () => 
     )
 
     const rows = vi.mocked(prisma.cashierSessionCount.createMany).mock.calls[0][0].data as any[]
-    expect(rows).toHaveLength(8) // one per payment method
+    expect(rows).toHaveLength(PAYMENT_METHODS.length) // one per payment method
     expect(rows.find((r) => r.paymentMethod === 'CASH')).toMatchObject({
       expectedAmount: 6000,
       countedAmount: 6000,

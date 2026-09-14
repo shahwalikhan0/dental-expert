@@ -93,7 +93,7 @@ export default function ClinicSettingsPage() {
     bankName: '',
     bankAccountNo: '',
     bankIban: '',
-    upiId: '',
+    mobileWalletId: '',
   })
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function ClinicSettingsPage() {
           bankName: result.data.bankName || '',
           bankAccountNo: result.data.bankAccountNo || '',
           bankIban: result.data.bankIban || '',
-          upiId: result.data.upiId || '',
+          mobileWalletId: result.data.mobileWalletId || '',
         })
       }
     } catch (error: any) {
@@ -598,17 +598,17 @@ export default function ClinicSettingsPage() {
                   id="bankIban"
                   value={formData.bankIban}
                   onChange={(e) => handleChange('bankIban', e.target.value)}
-                  placeholder="SBIN0001234"
+                  placeholder="PK36SCBL0000001123456702"
                 />
               </div>
 
               <div>
-                <Label htmlFor="upiId">UPI ID</Label>
+                <Label htmlFor="mobileWalletId">Mobile Wallet</Label>
                 <Input
-                  id="upiId"
-                  value={formData.upiId}
-                  onChange={(e) => handleChange('upiId', e.target.value)}
-                  placeholder="clinic@upi"
+                  id="mobileWalletId"
+                  value={formData.mobileWalletId}
+                  onChange={(e) => handleChange('mobileWalletId', e.target.value)}
+                  placeholder="JazzCash or Easypaisa number"
                 />
               </div>
             </div>

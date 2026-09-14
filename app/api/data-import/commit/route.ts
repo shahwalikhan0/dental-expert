@@ -763,7 +763,6 @@ async function importPayments(
           transactionId: row.transactionId || undefined,
           bankName: row.bankName || undefined,
           chequeNumber: row.chequeNumber || undefined,
-          upiId: row.upiId || undefined,
           status: row.status || 'COMPLETED',
           notes: row.notes || undefined,
         },

@@ -112,7 +112,7 @@ export default function FinancialReportsPage() {
       date: string
       cash: number
       card: number
-      upi: number
+      wallet: number
       bankTransfer: number
       total: number
       count: number
@@ -664,7 +664,12 @@ export default function FinancialReportsPage() {
                         Card
                       </div>
                     </TableHead>
-                    <TableHead className="text-right">UPI</TableHead>
+                    {/*
+                      Was "UPI", which is India's rail — the column was always
+                      zero. The wallet total was already being computed by the
+                      report and thrown away for want of a column to put it in.
+                    */}
+                    <TableHead className="text-right">Mobile Wallet</TableHead>
                     <TableHead className="text-right">Bank Transfer</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-center">Count</TableHead>
@@ -709,7 +714,7 @@ export default function FinancialReportsPage() {
                         <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(day.cash)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(day.card)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(day.upi)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(day.wallet)}</TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(day.bankTransfer)}
                         </TableCell>

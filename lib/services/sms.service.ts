@@ -1,15 +1,36 @@
-// SMS Service for Indian SMS Gateways
-// Supports: MSG91, TextLocal, Fast2SMS, Twilio India
-
+/**
+ * Sending an SMS.
+ *
+ * This shipped supporting four gateways: MSG91, TextLocal, Fast2SMS and Twilio.
+ * The first three are Indian aggregators. None of them will deliver to a
+ * Pakistani number — they require an Indian sender registered under TRAI's DLT
+ * scheme, which a Pakistani clinic cannot obtain — so three of the four options
+ * on the settings screen were three ways to have messages silently fail. They
+ * are gone; Twilio, which delivers worldwide, is what remains.
+ *
+ * Adding a local aggregator is one method on this class plus a value in
+ * `SMSGateway`. That is deliberately the whole extension point.
+ */
 import prisma from '@/lib/prisma'
 import {
   communicationPreferences,
   mayContact,
   type MessageKind,
 } from '@/lib/communication-preferences'
+import {
+  DEFAULT_SEND_WINDOW,
+  SEND_WINDOW_END_KEY,
+  SEND_WINDOW_START_KEY,
+  describeSendWindow,
+  isWithinSendWindow,
+} from '@/lib/send-window'
+
+export const SMS_GATEWAYS = ['TWILIO'] as const
+
+export type SMSGateway = (typeof SMS_GATEWAYS)[number]
 
 export interface SMSConfig {
-  gateway: 'MSG91' | 'TEXTLOCAL' | 'FAST2SMS' | 'TWILIO'
+  gateway: SMSGateway
   apiKey: string
   senderId: string
   route?: string
@@ -46,7 +67,7 @@ class SMSService {
     }
 
     this.config = {
-      gateway: (settings.find((s) => s.key === 'sms.gateway')?.value || 'MSG91') as any,
+      gateway: (settings.find((s) => s.key === 'sms.gateway')?.value || 'TWILIO') as SMSGateway,
       apiKey: settings.find((s) => s.key === 'sms.apiKey')?.value || '',
       senderId: settings.find((s) => s.key === 'sms.senderId')?.value || '',
       route: settings.find((s) => s.key === 'sms.route')?.value,
@@ -83,9 +104,20 @@ class SMSService {
       if (!decision.allowed) throw new Error(decision.reason)
     }
 
-    // Check time restrictions (9 AM to 9 PM IST)
-    if (!this.isWithinAllowedTime()) {
-      throw new Error('SMS cannot be sent outside 9 AM - 9 PM IST')
+    // Not at an hour that would wake the patient up. The window is the
+    // clinic's own, in the clinic's own timezone — it used to be 9am-9pm IST
+    // hardcoded, which on a Pakistani clinic was half an hour out of step in
+    // both directions.
+    //
+    // A message scheduled for later is not checked here: it is checked when it
+    // is actually sent, which is the only time the question means anything.
+    if (!payload.scheduledFor && payload.hospitalId) {
+      const window = await this.sendWindowFor(payload.hospitalId)
+      if (!isWithinSendWindow(window.timezone, window, new Date())) {
+        throw new Error(
+          `SMS can only be sent between ${describeSendWindow(window)} (${window.timezone})`
+        )
+      }
     }
 
     // Create SMS log entry
@@ -154,112 +186,36 @@ class SMSService {
     }
 
     switch (this.config?.gateway) {
-      case 'MSG91':
-        return this.sendViaMSG91(payload)
-      case 'TEXTLOCAL':
-        return this.sendViaTextLocal(payload)
-      case 'FAST2SMS':
-        return this.sendViaFast2SMS(payload)
       case 'TWILIO':
         return this.sendViaTwilio(payload)
       default:
-        throw new Error('Unsupported SMS gateway')
+        throw new Error(`Unsupported SMS gateway: ${this.config?.gateway}`)
     }
   }
 
-  private async sendViaMSG91(payload: SMSPayload): Promise<{ messageId: string; cost?: number }> {
-    const url = 'https://api.msg91.com/api/v5/flow/'
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        authkey: this.config?.apiKey || '',
-      },
-      body: JSON.stringify({
-        sender: this.config?.senderId,
-        route: this.config?.route || '4',
-        country: '92',
-        sms: [
-          {
-            message: payload.message,
-            to: [this.normalizePhoneNumber(payload.phone)],
-          },
-        ],
+  /**
+   * The clinic's send window, and the timezone to read it in.
+   *
+   * Two settings and one column, in one query each. Falls back to the default
+   * window and to Pakistan's timezone if the clinic row has somehow gone.
+   */
+  private async sendWindowFor(
+    hospitalId: string
+  ): Promise<{ start: string; end: string; timezone: string }> {
+    const [hospital, settings] = await Promise.all([
+      prisma.hospital.findUnique({ where: { id: hospitalId }, select: { timezone: true } }),
+      prisma.setting.findMany({
+        where: { hospitalId, key: { in: [SEND_WINDOW_START_KEY, SEND_WINDOW_END_KEY] } },
+        select: { key: true, value: true },
       }),
-    })
+    ])
 
-    const data = await response.json()
-
-    if (data.type === 'error') {
-      throw new Error(data.message || 'Failed to send SMS via MSG91')
-    }
+    const value = (key: string) => settings.find((s) => s.key === key)?.value
 
     return {
-      messageId: data.requestId || data.message_id || '',
-      cost: data.cost,
-    }
-  }
-
-  private async sendViaTextLocal(
-    payload: SMSPayload
-  ): Promise<{ messageId: string; cost?: number }> {
-    const url = 'https://api.textlocal.in/send/'
-
-    const params = new URLSearchParams({
-      apikey: this.config?.apiKey || '',
-      numbers: this.normalizePhoneNumber(payload.phone),
-      sender: this.config?.senderId || '',
-      message: payload.message,
-    })
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params,
-    })
-
-    const data = await response.json()
-
-    if (data.status !== 'success') {
-      throw new Error(data.errors?.[0]?.message || 'Failed to send SMS via TextLocal')
-    }
-
-    return {
-      messageId: data.messages?.[0]?.id || '',
-      cost: data.cost,
-    }
-  }
-
-  private async sendViaFast2SMS(
-    payload: SMSPayload
-  ): Promise<{ messageId: string; cost?: number }> {
-    const url = 'https://www.fast2sms.com/dev/bulkV2'
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        authorization: this.config?.apiKey || '',
-      },
-      body: JSON.stringify({
-        sender_id: this.config?.senderId,
-        message: payload.message,
-        route: this.config?.route || 'v3',
-        numbers: this.normalizePhoneNumber(payload.phone),
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!data.return || data.status_code !== 200) {
-      throw new Error(data.message || 'Failed to send SMS via Fast2SMS')
-    }
-
-    return {
-      messageId: data.request_id || '',
+      start: value(SEND_WINDOW_START_KEY) || DEFAULT_SEND_WINDOW.start,
+      end: value(SEND_WINDOW_END_KEY) || DEFAULT_SEND_WINDOW.end,
+      timezone: hospital?.timezone || 'Asia/Karachi',
     }
   }
 
@@ -306,16 +262,6 @@ class SMSService {
   private normalizePhoneNumber(phone: string): string {
     // Remove all non-digit characters and return 10-digit number
     return phone.replace(/\D/g, '').slice(-10)
-  }
-
-  private isWithinAllowedTime(): boolean {
-    const now = new Date()
-    const istOffset = 5.5 * 60 * 60 * 1000 // IST is UTC+5:30
-    const istTime = new Date(now.getTime() + istOffset)
-    const hours = istTime.getUTCHours()
-
-    // Allow SMS between 9 AM and 9 PM IST
-    return hours >= 9 && hours < 21
   }
 
   async processTemplate(templateId: string, variables: Record<string, string>): Promise<string> {

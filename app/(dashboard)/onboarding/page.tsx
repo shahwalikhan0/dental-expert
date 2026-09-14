@@ -32,7 +32,7 @@ const onboardingSchema = z.object({
   taxRegistrationNo: z.string().optional(),
   registrationNo: z.string().optional(),
   workingHours: z.string().optional(),
-  upiId: z.string().optional(),
+  mobileWalletId: z.string().optional(),
   bankName: z.string().optional(),
   bankAccountNo: z.string().optional(),
   bankIban: z.string().optional(),
@@ -339,8 +339,12 @@ export default function OnboardingPage() {
                   </p>
 
                   <div className="space-y-2">
-                    <Label htmlFor="upiId">UPI ID</Label>
-                    <Input id="upiId" placeholder="clinic@upi" {...register('upiId')} />
+                    <Label htmlFor="mobileWalletId">Mobile Wallet</Label>
+                    <Input
+                      id="mobileWalletId"
+                      placeholder="JazzCash or Easypaisa number"
+                      {...register('mobileWalletId')}
+                    />
                   </div>
 
                   <div className="border-t pt-4 mt-4">
@@ -367,7 +371,7 @@ export default function OnboardingPage() {
                           <Label htmlFor="bankIban">IBAN</Label>
                           <Input
                             id="bankIban"
-                            placeholder="SBIN0001234"
+                            placeholder="PK36SCBL0000001123456702"
                             {...register('bankIban')}
                           />
                         </div>

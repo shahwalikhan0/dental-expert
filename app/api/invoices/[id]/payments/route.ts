@@ -67,7 +67,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       bankName,
       chequeNumber,
       chequeDate,
-      upiId,
       notes,
     } = body
 
@@ -133,7 +132,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         bankName,
         chequeNumber,
         chequeDate: chequeDate ? new Date(chequeDate) : null,
-        upiId,
         notes,
         cashierSessionId: openSession?.id ?? null,
         recordedById: user?.id ?? null,

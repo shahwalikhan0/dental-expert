@@ -71,7 +71,10 @@ model Hospital {
   // accounts are identified by a 24-character IBAN (PK + 2 check digits + 4
   // bank code + 16 account number).
   bankIban            String?
-  upiId               String?
+  /// A mobile-money number to print on an invoice — JazzCash or Easypaisa.
+  /// Was `upiId`, which is India's rail and has no Pakistani equivalent that
+  /// the bank fields above do not already cover.
+  mobileWalletId      String?
 
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -1249,11 +1252,13 @@ model Payment {
   paymentMethod   PaymentMethod
   paymentDate     DateTime      @default(now())
 
+  /// The reference the payer or the bank gave: a wallet transaction id, an
+  /// IBFT reference, a card authorisation code. Was duplicated by a separate
+  /// `upiId` column that recorded the same kind of thing for one rail only.
   transactionId   String?
   bankName        String?
   chequeNumber    String?
   chequeDate      DateTime?
-  upiId           String?
 
   notes           String?
   status          PaymentStatus @default(COMPLETED)
@@ -1298,14 +1303,24 @@ enum InvoiceStatus {
   REFUNDED
 }
 
+/// How money reached the clinic.
+///
+/// `UPI` is gone. It is India's instant-payment rail, and no Pakistani clinic
+/// can take one — while the two things a Pakistani patient actually pays with
+/// already had values here: a mobile wallet (JazzCash, Easypaisa, SadaPay) is
+/// `WALLET`, and Raast or an interbank transfer is `BANK_TRANSFER`. Keeping it
+/// meant a payment method on the till screen that nobody could ever select
+/// honestly, and a line on every daily reconciliation that was always zero.
 enum PaymentMethod {
   CASH
   CARD
-  UPI
   BANK_TRANSFER
   CHEQUE
   INSURANCE
+  /// A mobile-money wallet: JazzCash, Easypaisa, SadaPay.
   WALLET
+  /// Taken through a payment gateway on the clinic's own booking pages. No
+  /// processor is integrated yet — see CHANGES.md §11.1.
   ONLINE
 }
 

@@ -21,7 +21,7 @@ const onboardingSchema = z.object({
   workingHours: z.string().optional(), // JSON string
 
   // Step 4: Payment Details
-  upiId: z.string().optional(),
+  mobileWalletId: z.string().optional(),
   bankName: z.string().optional(),
   bankAccountNo: z.string().optional(),
   bankIban: z.string().optional(),
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
         taxRegistrationNo: data.taxRegistrationNo,
         registrationNo: data.registrationNo,
         workingHours: data.workingHours,
-        upiId: data.upiId,
+        mobileWalletId: data.mobileWalletId,
         bankName: data.bankName,
         bankAccountNo: data.bankAccountNo,
         bankIban: data.bankIban,
@@ -124,7 +124,7 @@ export async function GET() {
         taxRegistrationNo: true,
         registrationNo: true,
         workingHours: true,
-        upiId: true,
+        mobileWalletId: true,
         bankName: true,
         bankAccountNo: true,
         bankIban: true,

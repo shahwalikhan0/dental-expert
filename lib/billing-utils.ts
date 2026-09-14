@@ -80,15 +80,11 @@ export const paymentMethodConfig: Record<
     icon: 'CreditCard',
     description: 'Debit/Credit card',
   },
-  UPI: {
-    label: 'UPI',
-    icon: 'Smartphone',
-    description: 'UPI payment (GPay, PhonePe, etc.)',
-  },
   BANK_TRANSFER: {
     label: 'Bank Transfer',
     icon: 'Building2',
-    description: 'NEFT/RTGS/IMPS',
+    // Was "NEFT/RTGS/IMPS" — India's three interbank rails.
+    description: 'Raast or interbank transfer',
   },
   CHEQUE: {
     label: 'Cheque',
@@ -101,9 +97,9 @@ export const paymentMethodConfig: Record<
     description: 'Insurance claim payment',
   },
   WALLET: {
-    label: 'Wallet',
-    icon: 'Wallet',
-    description: 'Digital wallet',
+    label: 'Mobile Wallet',
+    icon: 'Smartphone',
+    description: 'JazzCash, Easypaisa, SadaPay',
   },
   ONLINE: {
     label: 'Online',
@@ -488,7 +484,6 @@ export function getDueDays(dueDate: Date | string | null): {
 export const paymentMethodIcons = {
   CASH: 'Banknote',
   CARD: 'CreditCard',
-  UPI: 'Smartphone',
   BANK_TRANSFER: 'Building2',
   CHEQUE: 'FileText',
   INSURANCE: 'Shield',

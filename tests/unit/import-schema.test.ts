@@ -109,7 +109,12 @@ describe('Enum Aliases', () => {
     expect(PAYMENT_METHOD_ALIASES['Cash']).toBe('CASH')
     expect(PAYMENT_METHOD_ALIASES['Credit Card']).toBe('CARD')
     expect(PAYMENT_METHOD_ALIASES['NEFT']).toBe('BANK_TRANSFER')
-    expect(PAYMENT_METHOD_ALIASES['upi']).toBe('UPI')
+    // An import from an Indian system still carries UPI rows. It is a phone
+    // payment, so it lands in WALLET — which is where a Pakistani clinic's
+    // phone payments live, and the only value the enum still has for one.
+    expect(PAYMENT_METHOD_ALIASES['upi']).toBe('WALLET')
+    expect(PAYMENT_METHOD_ALIASES['JazzCash']).toBe('WALLET')
+    expect(PAYMENT_METHOD_ALIASES['Raast']).toBe('BANK_TRANSFER')
   })
 })
 
