@@ -1747,6 +1747,14 @@ ways to have messages silently fail. Twilio, which delivers worldwide, is what
 remains, and adding a local aggregator is now one method on the service class
 plus a value in `SMS_GATEWAYS`.
 
+And the one that did work could not be configured. `sendViaTwilio` reads the
+Account SID from `sms.authKey` — a key **nothing ever wrote**. The settings
+route saved `gateway`, `apiKey`, `senderId` and `route`, and the form offered
+no field for the SID at all, so the only gateway that delivers to Pakistani
+numbers had no way to be set up through the interface. The form now asks for
+Account SID, Auth Token and From number, and has dropped `route`, which only the
+three removed gateways used.
+
 ### 18.3 What is genuinely still yours to decide
 
 - **Which payment processor.** Safepay, PayFast, or a bank merchant facility.

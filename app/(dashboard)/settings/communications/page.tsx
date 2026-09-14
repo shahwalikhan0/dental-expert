@@ -24,10 +24,16 @@ export default function CommunicationSettingsPage() {
   const [loadingSettings, setLoadingSettings] = useState(true)
 
   // SMS Settings
-  const [smsGateway, setSmsGateway] = useState('MSG91')
+  // TWILIO is the only gateway that delivers to Pakistani numbers. MSG91,
+  // TextLocal and Fast2SMS were the other three options here; all require a
+  // sender registered under India's DLT scheme, which a Pakistani clinic cannot
+  // obtain — so three of the four choices were three ways to fail silently.
+  const [smsGateway] = useState('TWILIO')
   const [smsApiKey, setSmsApiKey] = useState('')
+  const [smsAuthKey, setSmsAuthKey] = useState('')
   const [smsSenderId, setSmsSenderId] = useState('')
-  const [smsRoute, setSmsRoute] = useState('4')
+  const [sendWindowStart, setSendWindowStart] = useState('09:00')
+  const [sendWindowEnd, setSendWindowEnd] = useState('21:00')
   const [smsEnabled, setSmsEnabled] = useState(true)
 
   // Email Settings
@@ -68,10 +74,11 @@ export default function CommunicationSettingsPage() {
 
       // Load SMS settings
       if (data.sms) {
-        setSmsGateway(data.sms.gateway || 'MSG91')
         setSmsApiKey(data.sms.apiKey || '')
+        setSmsAuthKey(data.sms.authKey || '')
         setSmsSenderId(data.sms.senderId || '')
-        setSmsRoute(data.sms.route || '4')
+        setSendWindowStart(data.sms.sendWindowStart || '09:00')
+        setSendWindowEnd(data.sms.sendWindowEnd || '21:00')
         setSmsEnabled(data.sms.enabled !== 'false' && data.sms.enabled !== false)
       }
 
@@ -114,8 +121,10 @@ export default function CommunicationSettingsPage() {
       const settings = {
         gateway: smsGateway,
         apiKey: smsApiKey,
+        authKey: smsAuthKey,
         senderId: smsSenderId,
-        route: smsRoute,
+        sendWindowStart,
+        sendWindowEnd,
         enabled: smsEnabled,
       }
 
@@ -364,53 +373,68 @@ export default function CommunicationSettingsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="sms-gateway">SMS Gateway</Label>
-                  <Select value={smsGateway} onValueChange={setSmsGateway}>
-                    <SelectTrigger id="sms-gateway">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MSG91">MSG91</SelectItem>
-                      <SelectItem value="TEXTLOCAL">TextLocal</SelectItem>
-                      <SelectItem value="FAST2SMS">Fast2SMS</SelectItem>
-                      <SelectItem value="TWILIO">Twilio India</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="sms-sender-id">Sender ID</Label>
+                  <Label htmlFor="sms-sender-id">From number</Label>
                   <Input
                     id="sms-sender-id"
-                    placeholder="DENTAL"
+                    placeholder="+923001234567"
                     value={smsSenderId}
                     onChange={(e) => setSmsSenderId(e.target.value)}
                   />
-                  <p className="text-xs text-muted-foreground">Approved sender ID from gateway</p>
+                  <p className="text-muted-foreground text-xs">
+                    The Twilio number messages are sent from, in full international form
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="sms-api-key">API Key / Auth Key</Label>
+                  <Label htmlFor="sms-auth-key">Account SID</Label>
+                  <Input
+                    id="sms-auth-key"
+                    placeholder="AC…"
+                    value={smsAuthKey}
+                    onChange={(e) => setSmsAuthKey(e.target.value)}
+                  />
+                  <p className="text-muted-foreground text-xs">Twilio Console → Account Info</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="sms-api-key">Auth Token</Label>
                   <Input
                     id="sms-api-key"
                     type="password"
-                    placeholder="Enter your API key"
+                    placeholder="Enter your auth token"
                     value={smsApiKey}
                     onChange={(e) => setSmsApiKey(e.target.value)}
                   />
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="sms-route">Route (for MSG91/TextLocal)</Label>
-                  <Input
-                    id="sms-route"
-                    placeholder="4"
-                    value={smsRoute}
-                    onChange={(e) => setSmsRoute(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Route 4 = Transactional, Route 1 = Promotional
-                  </p>
+              <Separator />
+
+              <div>
+                <h3 className="mb-1 text-lg font-semibold">When messages may go out</h3>
+                <p className="text-muted-foreground mb-4 text-sm">
+                  Read in the clinic&apos;s own timezone. Set both to the same time to send at any
+                  hour.
+                </p>
+                <div className="grid max-w-md grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sms-window-start">From</Label>
+                    <Input
+                      id="sms-window-start"
+                      type="time"
+                      value={sendWindowStart}
+                      onChange={(e) => setSendWindowStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sms-window-end">Until</Label>
+                    <Input
+                      id="sms-window-end"
+                      type="time"
+                      value={sendWindowEnd}
+                      onChange={(e) => setSendWindowEnd(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 

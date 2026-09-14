@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { DEFAULT_SEND_WINDOW, SEND_WINDOW_END_KEY, SEND_WINDOW_START_KEY } from '@/lib/send-window'
 import { requirePermission } from '@/lib/api-helpers'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
@@ -107,11 +108,24 @@ export async function POST(request: NextRequest) {
 
     if (type === 'sms') {
       settingsArray.push(
-        { key: 'sms.gateway', value: settings.gateway || '', category: 'sms' },
+        { key: 'sms.gateway', value: settings.gateway || 'TWILIO', category: 'sms' },
         { key: 'sms.apiKey', value: settings.apiKey || '', category: 'sms' },
+        // Twilio's Account SID. The one gateway that delivers to Pakistani
+        // numbers needs two credentials, and only one of them was ever
+        // written — so Twilio could not in fact be configured at all.
+        { key: 'sms.authKey', value: settings.authKey || '', category: 'sms' },
         { key: 'sms.senderId', value: settings.senderId || '', category: 'sms' },
-        { key: 'sms.route', value: settings.route || '4', category: 'sms' },
-        { key: 'sms.enabled', value: String(settings.enabled ?? true), category: 'sms' }
+        { key: 'sms.enabled', value: String(settings.enabled ?? true), category: 'sms' },
+        {
+          key: SEND_WINDOW_START_KEY,
+          value: settings.sendWindowStart || DEFAULT_SEND_WINDOW.start,
+          category: 'sms',
+        },
+        {
+          key: SEND_WINDOW_END_KEY,
+          value: settings.sendWindowEnd || DEFAULT_SEND_WINDOW.end,
+          category: 'sms',
+        }
       )
     } else if (type === 'reviews') {
       settingsArray.push(
