@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { reconcileStockAlerts } from '@/lib/stock-alerts'
 import { Prisma, StockAlertType, StockTransactionType } from '@prisma/client'
 
 function stockStatus(currentStock: number, minimumStock: number, reorderLevel: number) {
@@ -175,24 +176,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     await prisma.inventoryItem.update({ where: { id }, data })
 
-    // Raise a stock alert if the new minimum puts the item at or below it.
-    const updatedMinStock = body.minimumStock ?? existing.minimumStock
-    const currentStock = existing.currentStock
-
-    if (currentStock <= updatedMinStock) {
-      const alertType = currentStock <= 0 ? StockAlertType.OUT_OF_STOCK : StockAlertType.LOW_STOCK
-
-      const openAlert = await prisma.stockAlert.findFirst({
-        where: { itemId: id, alertType, isAcknowledged: false },
-        select: { id: true },
-      })
-
-      if (!openAlert) {
-        await prisma.stockAlert.create({
-          data: { hospitalId, itemId: id, alertType },
-        })
-      }
-    }
+    // Changing the minimum can raise an alert — and, now, clear one. This used
+    // only to raise: lowering an item's minimum back down left the LOW_STOCK
+    // alert standing over a full shelf, and the only way to be rid of it was to
+    // acknowledge something that was no longer true.
+    await reconcileStockAlerts(prisma, {
+      hospitalId,
+      itemId: id,
+      currentStock: existing.currentStock,
+      minimumStock: body.minimumStock ?? existing.minimumStock,
+    })
 
     return NextResponse.json({ success: true, message: 'Inventory item updated successfully' })
   } catch (error: any) {

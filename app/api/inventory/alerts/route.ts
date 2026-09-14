@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const [alerts, unacknowledged] = await Promise.all([
       prisma.stockAlert.findMany({
         where,
-        orderBy: [{ alertDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: { createdAt: 'desc' },
         include: {
           item: {
             select: {

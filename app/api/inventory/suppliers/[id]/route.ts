@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { Prisma, PurchaseOrderStatus, SupplierStatus } from '@prisma/client'
+import { Prisma, PurchaseOrderStatus, VendorStatus } from '@prisma/client'
 
-const SUPPLIER_STATUSES = Object.values(SupplierStatus) as string[]
+const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
 /** Accepts the legacy lowercase status values as well as the enum casing. */
-function parseStatus(value: unknown): SupplierStatus | null {
+function parseStatus(value: unknown): VendorStatus | null {
   if (typeof value !== 'string') return null
   const upper = value.toUpperCase()
-  return SUPPLIER_STATUSES.includes(upper) ? (upper as SupplierStatus) : null
+  return VENDOR_STATUSES.includes(upper) ? (upper as VendorStatus) : null
 }
 
 // Orders that are placed but not yet fully received.
@@ -31,8 +31,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
 
-    const supplier = await prisma.supplier.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    // `kind` on every lookup. Suppliers and laboratories share one table, and
+    // without it a laboratory's id would open on the suppliers screen.
+    const supplier = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'SUPPLIER', deletedAt: null },
     })
 
     if (!supplier) {
@@ -100,8 +102,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.supplier.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    const existing = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'SUPPLIER', deletedAt: null },
       select: { id: true, code: true },
     })
 
@@ -110,8 +112,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (body.code && body.code !== existing.code) {
-      const duplicate = await prisma.supplier.findFirst({
-        where: { code: body.code, hospitalId, id: { not: id }, deletedAt: null },
+      const duplicate = await prisma.vendor.findFirst({
+        where: { code: body.code, hospitalId, kind: 'SUPPLIER', id: { not: id }, deletedAt: null },
         select: { id: true },
       })
 
@@ -123,7 +125,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // COALESCE in the old SQL meant "leave alone when the field is absent",
     // while the nullable columns were always overwritten. Prisma gets the same
     // result by simply omitting undefined keys.
-    const data: Prisma.SupplierUpdateInput = {
+    const data: Prisma.VendorUpdateInput = {
       contactPerson: body.contactPerson ?? null,
       email: body.email ?? null,
       alternatePhone: body.alternatePhone ?? null,
@@ -146,7 +148,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const status = parseStatus(body.status)
     if (status) data.status = status
 
-    await prisma.supplier.update({ where: { id }, data })
+    await prisma.vendor.update({ where: { id }, data })
 
     return NextResponse.json({ success: true, message: 'Supplier updated successfully' })
   } catch (error: any) {
@@ -172,8 +174,8 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const existing = await prisma.supplier.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    const existing = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'SUPPLIER', deletedAt: null },
       select: { id: true },
     })
 
@@ -189,12 +191,14 @@ export async function DELETE(
     ])
 
     if (purchaseOrderCount > 0 || itemCount > 0) {
-      await prisma.supplier.update({
+      // One lifecycle field now. This used to set `status` and `isActive`
+      // together, which is exactly the pair that could come apart.
+      await prisma.vendor.update({
         where: { id },
-        data: { deletedAt: new Date(), status: SupplierStatus.INACTIVE, isActive: false },
+        data: { deletedAt: new Date(), status: VendorStatus.INACTIVE },
       })
     } else {
-      await prisma.supplier.delete({ where: { id } })
+      await prisma.vendor.delete({ where: { id } })
     }
 
     return NextResponse.json({ success: true, message: 'Supplier deleted successfully' })

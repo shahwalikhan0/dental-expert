@@ -1527,20 +1527,119 @@ which allergy.
 - `InventoryItem.hsnCode` → `taxCode`. HSN is India's GST term; the value is
   still good, since Pakistan's customs tariff uses the same HS basis.
 
-### 16.6 What is still open from this pass
+### 16.6 What was still open from this pass
 
-- **`Supplier` and `LabVendor` are still two tables** with twenty-seven columns
-  in common — code, name, contact, address, tax identifiers, bank details,
-  payment terms, rating, status. They differ in three fields each. Merging them
-  into one `Vendor` with a `kind` is the next obvious reduction, and it touches
-  about fourteen files.
-- **`StockAlert` is a materialised query.** Every row in it is derivable from
-  `InventoryItem.currentStock` and `InventoryBatch.expiryDate`.
-- **`Supplier.isActive` duplicates `Supplier.status`**, and the schema comment
-  admits it mirrors `status != BLOCKED/INACTIVE`. Same on `LabVendor`.
+The first three were done in §17. The rest stand:
+
+- ~~`Supplier` and `LabVendor` are still two tables~~ — merged, §17.1.
+- ~~`StockAlert` is a materialised query~~ — **this was wrong, and §17.2 says
+  why.** The _existence_ of an alert is derivable; the acknowledgement on it is
+  not, and that is the part the table is there for.
+- ~~`Supplier.isActive` duplicates `Supplier.status`~~ — gone, §17.1.
 - **`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay** pending
   your decision on a Pakistani rail — §11.1's open question. Removing them
   before there is something to replace them with would leave the billing screens
   with a gap.
 - **`sms.service.ts` still enforces a 9am–9pm _IST_ send window** and still
   names MSG91/TextLocal/Fast2SMS. Part of the same §11.1 decision.
+
+---
+
+## 17. Suppliers and laboratories, and one alert rule
+
+48 tables → 47, and the last of the duplicated-table cases.
+
+### 17.1 `Supplier` + `LabVendor` → `Vendor`
+
+Twenty-seven columns in common — code, name, contact person, address, both tax
+identifiers, bank details, payment terms, credit limit, rating, status, soft
+delete. They differed in two fields, `specializations` and `avgTurnaround`, both
+of which only a laboratory uses.
+
+A dental laboratory _is_ a supplier — of crowns rather than composite. What
+actually differs is what the clinic sends them, and that lives on `LabOrder`.
+
+Every change to how the clinic records a business contact had to be made twice,
+and one of the two was always the one that got forgotten. Three examples, all
+found by doing this:
+
+- **`LabVendor` never got a uniqueness constraint on its code.** `Supplier` has
+  `@@unique([hospitalId, code])`; the lab table had none, so two laboratories
+  could quietly share one. The new index is `(hospitalId, kind, code)`, which
+  fixes that _and_ lets a supplier and a laboratory each be "V001" without this
+  migration renaming one of them.
+- **`LabVendor.deletedAt` was never filtered on.** The column existed; no query
+  used it. A deleted laboratory stayed on the list for ever.
+- **The laboratories screen filtered on `isActive`**, so "inactive" and
+  "blocked" were the same query — the screen could not tell a laboratory that
+  had simply lapsed from one the clinic had refused to use again.
+
+`isActive` is gone from both. Each table carried it _and_ `status`, and the
+schema comment on `isActive` admitted it merely mirrored
+`status != BLOCKED/INACTIVE` — two columns that could disagree, with nothing
+deciding which won. The migration takes the more restrictive of the two where
+they do: a row flagged inactive is not silently reopened.
+
+**Every id is carried across unchanged.** Both tables used `cuid()`, so their id
+spaces cannot collide, and the six foreign keys pointing at them only had to be
+repointed — no row anywhere was rewritten. The columns keep their names:
+`InventoryBatch.supplierId` and `LabOrder.labVendorId` both reference `Vendor`
+now, and each name still says which part the vendor plays in that row, which is
+more than `vendorId` twice over would have said.
+
+The one thing that can now go wrong is a query that forgets `kind`: forget it on
+the suppliers screen and the clinic's laboratories appear among its materials
+suppliers; forget it on a lab order and a case can be addressed to a glove
+wholesaler. Every such query is asserted in `tests/api/vendors.test.ts`.
+
+Two more India leftovers went with it: the laboratories page was still reading
+and writing `gstin` and `pan` — India's GST number and PAN — which the schema
+renamed in §5. The route destructured `taxRegistrationNo` and `nationalTaxNo`,
+so whatever anybody typed into those two fields had been silently discarded ever
+since.
+
+### 17.2 `StockAlert` stays — §16.6 was wrong about it
+
+§16.6 called it "a materialised query" whose every row is derivable from
+`currentStock` and `expiryDate`. The _existence_ of an alert is. The
+acknowledgement is not: who saw it, when, and what they wrote is not a function
+of stock levels, and a clinic that has already ordered more gloves needs the
+alert to stop shouting **before** the stock level changes. Deriving the list
+would have thrown that away.
+
+What was actually wrong was the logic around it, which existed three times — in
+the stock-movement route, in the item update route, and in the seed — as three
+hand-written copies of "find an open alert of this type, create one if there
+isn't". They had drifted:
+
+- **Only the movement route ever cleared an alert.** Raising an item's minimum
+  stock and then lowering it again left a LOW_STOCK alert standing over a full
+  shelf, and the only way to be rid of it was to acknowledge something that was
+  no longer true.
+- **Going from empty to merely low left both alerts showing**, because nothing
+  removed the OUT_OF_STOCK one.
+
+`lib/stock-alerts.ts` is now the single rule. It raises the one alert the level
+warrants, clears the shortage alerts that no longer apply, and never touches an
+acknowledged one — that is a record that somebody dealt with it, and deleting it
+would erase the evidence along with the noise. Expiry alerts are left alone;
+they are not about the stock level.
+
+Two columns went with it. `alertDate` defaulted to `now()` beside `createdAt`,
+which also defaults to `now()`, and nothing ever set either to anything else;
+`updatedAt` said only when the row was acknowledged, which `acknowledgedAt`
+already records.
+
+### 17.3 Where the schema has got to
+
+|                                        | Tables | Enums  |
+| -------------------------------------- | ------ | ------ |
+| Forked from `abinauv/dental-erp`       | 87     | 67     |
+| After §13, scoped to the specification | 53     | 44     |
+| After §15, multi-tenant SaaS           | 55     | 47     |
+| After §16, consolidation               | 48     | 45     |
+| After §17                              | **47** | **45** |
+
+Two of those tables did not exist at the fork: `Subscription` and
+`SubscriptionInvoice`, which are what make it a platform rather than one
+practice's installation.

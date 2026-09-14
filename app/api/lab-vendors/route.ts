@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { Prisma, VendorStatus } from '@prisma/client'
+
+const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
+
+/** The screen sends lowercase; the column holds the enum. */
+function parseStatus(value: string): VendorStatus | null {
+  const upper = value.toUpperCase()
+  return VENDOR_STATUSES.includes(upper) ? (upper as VendorStatus) : null
+}
 
 // GET - Fetch all lab vendors
 export async function GET(request: NextRequest) {
@@ -18,8 +27,15 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
-    // Build where clause
-    const where: any = { hospitalId }
+    // Laboratories and suppliers share one `Vendor` table; `kind` is what
+    // separates them. Soft-deleted rows are excluded, which the old query
+    // forgot to do — `LabVendor` had a `deletedAt` column that nothing filtered
+    // on, so a deleted laboratory stayed on the list for ever.
+    const where: Prisma.VendorWhereInput = {
+      hospitalId,
+      kind: 'LAB',
+      deletedAt: null,
+    }
 
     // Add search filter
     if (search) {
@@ -30,16 +46,21 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // Add status filter
+    // Add status filter. One lifecycle field now: `isActive` and `status` both
+    // existed and could disagree, with nothing deciding which won. The old
+    // filter read `isActive`, which meant "inactive" and "blocked" were the
+    // same query and the screen could not tell a lapsed laboratory from one the
+    // clinic had refused to use again.
     if (status !== 'all') {
-      where.isActive = status === 'active'
+      const parsed = parseStatus(status)
+      if (parsed) where.status = parsed
     }
 
     // Get total count
-    const total = await prisma.labVendor.count({ where })
+    const total = await prisma.vendor.count({ where })
 
     // Fetch vendors
-    const vendors = await prisma.labVendor.findMany({
+    const vendors = await prisma.vendor.findMany({
       where,
       orderBy: {
         name: 'asc',
@@ -86,7 +107,7 @@ export async function POST(request: NextRequest) {
       specializations,
       avgTurnaround = 7,
       rating = 0,
-      isActive = true,
+      status = VendorStatus.ACTIVE,
     } = body
 
     // Validation
@@ -95,9 +116,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Create lab vendor
-    const vendor = await prisma.labVendor.create({
+    const vendor = await prisma.vendor.create({
       data: {
         hospitalId,
+        kind: 'LAB',
         name,
         contactPerson: contactPerson || null,
         phone,
@@ -106,7 +128,7 @@ export async function POST(request: NextRequest) {
         specializations: specializations || null,
         avgTurnaround: avgTurnaround || null,
         rating: rating || null,
-        isActive,
+        status,
       },
     })
 

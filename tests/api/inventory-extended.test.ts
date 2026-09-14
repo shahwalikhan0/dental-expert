@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
-import { StockAlertType, SupplierStatus } from '@prisma/client'
+import { StockAlertType, VendorStatus } from '@prisma/client'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -149,8 +149,8 @@ describe('GET /api/inventory/suppliers', () => {
 
   it('returns suppliers with pagination', async () => {
     mockAuth()
-    vi.mocked(prisma.supplier.count).mockResolvedValue(1)
-    vi.mocked(prisma.supplier.findMany).mockResolvedValue([
+    vi.mocked(prisma.vendor.count).mockResolvedValue(1)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([
       {
         id: 's1',
         name: 'Acme Dental',
@@ -173,12 +173,12 @@ describe('GET /api/inventory/suppliers', () => {
 
   it('applies search filter to the where clause', async () => {
     mockAuth()
-    vi.mocked(prisma.supplier.count).mockResolvedValue(0)
-    vi.mocked(prisma.supplier.findMany).mockResolvedValue([])
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
 
     await suppliersGET(makeReq('/api/inventory/suppliers?search=acme'))
 
-    const where = vi.mocked(prisma.supplier.findMany).mock.calls[0][0].where
+    const where = vi.mocked(prisma.vendor.findMany).mock.calls[0][0].where
     expect(where.OR).toEqual([
       { name: { contains: 'acme' } },
       { code: { contains: 'acme' } },
@@ -188,13 +188,13 @@ describe('GET /api/inventory/suppliers', () => {
 
   it('maps the legacy lowercase status filter onto the enum', async () => {
     mockAuth()
-    vi.mocked(prisma.supplier.count).mockResolvedValue(0)
-    vi.mocked(prisma.supplier.findMany).mockResolvedValue([])
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
 
     await suppliersGET(makeReq('/api/inventory/suppliers?status=blocked'))
 
-    const where = vi.mocked(prisma.supplier.findMany).mock.calls[0][0].where
-    expect(where.status).toBe(SupplierStatus.BLOCKED)
+    const where = vi.mocked(prisma.vendor.findMany).mock.calls[0][0].where
+    expect(where.status).toBe(VendorStatus.BLOCKED)
   })
 })
 
@@ -219,7 +219,7 @@ describe('POST /api/inventory/suppliers', () => {
 
   it('returns 409 for duplicate supplier code', async () => {
     mockAuth()
-    vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'existing' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'existing' } as any)
 
     const res = await suppliersPOST(
       makeReq('/api/inventory/suppliers', 'POST', {
@@ -233,8 +233,8 @@ describe('POST /api/inventory/suppliers', () => {
 
   it('creates supplier successfully', async () => {
     mockAuth()
-    vi.mocked(prisma.supplier.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.supplier.create).mockResolvedValue({ id: 'new-id' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.create).mockResolvedValue({ id: 'new-id' } as any)
 
     const res = await suppliersPOST(
       makeReq('/api/inventory/suppliers', 'POST', {
@@ -247,7 +247,7 @@ describe('POST /api/inventory/suppliers', () => {
 
     expect(res.status).toBe(201)
     expect(body.data.id).toBe('new-id')
-    expect(vi.mocked(prisma.supplier.create).mock.calls[0][0].data.hospitalId).toBe('h1')
+    expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.hospitalId).toBe('h1')
   })
 })
 

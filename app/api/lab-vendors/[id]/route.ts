@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { LabVendorStatus } from '@prisma/client'
+import { VendorStatus } from '@prisma/client'
 
-const VENDOR_STATUSES = Object.values(LabVendorStatus) as string[]
+const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
 /** Accepts the legacy lowercase status values as well as the enum casing. */
-function parseStatus(value: unknown): LabVendorStatus | null {
+function parseStatus(value: unknown): VendorStatus | null {
   if (typeof value !== 'string') return null
   const upper = value.toUpperCase()
-  return VENDOR_STATUSES.includes(upper) ? (upper as LabVendorStatus) : null
+  return VENDOR_STATUSES.includes(upper) ? (upper as VendorStatus) : null
 }
 
 // GET - Fetch single lab vendor
@@ -23,8 +23,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
 
-    const vendor = await prisma.labVendor.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    // `kind` on every lookup. Laboratories and suppliers share one table, and
+    // without it a supplier's id would open on the laboratories screen.
+    const vendor = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'LAB', deletedAt: null },
     })
 
     if (!vendor) {
@@ -53,8 +55,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.labVendor.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    const existing = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'LAB', deletedAt: null },
       select: { id: true },
     })
 
@@ -90,8 +92,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    const duplicate = await prisma.labVendor.findFirst({
-      where: { code, hospitalId, id: { not: id }, deletedAt: null },
+    const duplicate = await prisma.vendor.findFirst({
+      where: { code, hospitalId, kind: 'LAB', id: { not: id }, deletedAt: null },
       select: { id: true },
     })
 
@@ -99,7 +101,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Vendor code already exists' }, { status: 409 })
     }
 
-    await prisma.labVendor.update({
+    await prisma.vendor.update({
       where: { id },
       data: {
         code,
@@ -148,8 +150,8 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const existing = await prisma.labVendor.findFirst({
-      where: { id, hospitalId, deletedAt: null },
+    const existing = await prisma.vendor.findFirst({
+      where: { id, hospitalId, kind: 'LAB', deletedAt: null },
       select: { id: true },
     })
 
@@ -171,7 +173,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.labVendor.update({
+    await prisma.vendor.update({
       where: { id },
       data: { deletedAt: new Date() },
     })

@@ -7,11 +7,10 @@ import {
   Plan,
   SubscriptionStatus,
   InvoiceStatus,
-  SupplierStatus,
+  VendorStatus,
   InventoryItemType,
   StockTransactionType,
   StockAlertType,
-  LabVendorStatus,
   LabOrderStatus,
   LabOrderPriority,
   LabWorkType,
@@ -19,6 +18,7 @@ import {
   AppointmentType,
 } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { reconcileStockAlerts } from '../lib/stock-alerts'
 
 const prisma = new PrismaClient()
 
@@ -1178,7 +1178,7 @@ async function main() {
       contactPerson: 'Imran Sheikh',
       phone: '3211012345',
       email: 'sales@lahoredental.example',
-      status: SupplierStatus.ACTIVE,
+      status: VendorStatus.ACTIVE,
     },
     {
       code: 'SUP002',
@@ -1186,23 +1186,26 @@ async function main() {
       contactPerson: 'Saima Akhtar',
       phone: '3211067890',
       email: 'orders@northernortho.example',
-      status: SupplierStatus.ACTIVE,
+      status: VendorStatus.ACTIVE,
     },
     {
       code: 'SUP003',
       name: 'Legacy Instruments Co',
       contactPerson: 'Kamran Aziz',
       phone: '3211055555',
-      status: SupplierStatus.BLOCKED,
+      status: VendorStatus.BLOCKED,
     },
   ]
 
   for (const s of suppliers) {
-    await prisma.supplier.upsert({
-      where: { hospitalId_code: { hospitalId: hospital.id, code: s.code } },
+    await prisma.vendor.upsert({
+      where: {
+        hospitalId_kind_code: { hospitalId: hospital.id, kind: 'SUPPLIER', code: s.code },
+      },
       update: {},
       create: {
         hospitalId: hospital.id,
+        kind: 'SUPPLIER',
         city: 'Lahore',
         state: 'Punjab',
         paymentTerms: 'Net 30',
@@ -1212,8 +1215,10 @@ async function main() {
     })
   }
 
-  const primarySupplier = await prisma.supplier.findUnique({
-    where: { hospitalId_code: { hospitalId: hospital.id, code: 'SUP001' } },
+  const primarySupplier = await prisma.vendor.findUnique({
+    where: {
+      hospitalId_kind_code: { hospitalId: hospital.id, kind: 'SUPPLIER', code: 'SUP001' },
+    },
   })
 
   // currentStock is deliberately varied so the stock-status badges, the low
@@ -1353,19 +1358,16 @@ async function main() {
       }
     }
 
-    // Open, unacknowledged alerts matching the two depleted items.
-    for (const [item, alertType] of [
-      [gloves, StockAlertType.LOW_STOCK],
-      [anaesthetic, StockAlertType.OUT_OF_STOCK],
-    ] as const) {
-      const open = await prisma.stockAlert.findFirst({
-        where: { itemId: item.id, alertType, isAcknowledged: false },
+    // Open, unacknowledged alerts matching the two depleted items. Derived from
+    // the stock levels themselves rather than asserted, so the seed cannot
+    // disagree with what the application would have raised.
+    for (const item of [gloves, anaesthetic]) {
+      await reconcileStockAlerts(prisma, {
+        hospitalId: hospital.id,
+        itemId: item.id,
+        currentStock: item.currentStock,
+        minimumStock: item.minimumStock,
       })
-      if (!open) {
-        await prisma.stockAlert.create({
-          data: { hospitalId: hospital.id, itemId: item.id, alertType },
-        })
-      }
     }
   }
 
@@ -1396,24 +1398,25 @@ async function main() {
   ]
 
   for (const v of vendors) {
-    const existing = await prisma.labVendor.findFirst({
-      where: { hospitalId: hospital.id, code: v.code },
+    const existing = await prisma.vendor.findFirst({
+      where: { hospitalId: hospital.id, kind: 'LAB', code: v.code },
     })
     if (!existing) {
-      await prisma.labVendor.create({
+      await prisma.vendor.create({
         data: {
           hospitalId: hospital.id,
+          kind: 'LAB',
           city: 'Lahore',
           state: 'Punjab',
-          status: LabVendorStatus.ACTIVE,
+          status: VendorStatus.ACTIVE,
           ...v,
         },
       })
     }
   }
 
-  const primaryVendor = await prisma.labVendor.findFirst({
-    where: { hospitalId: hospital.id, code: 'LAB001' },
+  const primaryVendor = await prisma.vendor.findFirst({
+    where: { hospitalId: hospital.id, kind: 'LAB', code: 'LAB001' },
   })
 
   const seededPatients = await prisma.patient.findMany({

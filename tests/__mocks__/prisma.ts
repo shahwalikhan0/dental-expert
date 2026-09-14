@@ -288,20 +288,6 @@ const mockPrismaClient = {
     aggregate: vi.fn(),
   },
 
-  // LabVendor
-  labVendor: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-    updateMany: vi.fn(),
-    deleteMany: vi.fn(),
-    aggregate: vi.fn(),
-  },
-
   // Document
   document: {
     findUnique: vi.fn(),
@@ -837,8 +823,8 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // Supplier
-  supplier: {
+  // Vendor — a supplier of materials or a dental laboratory, told apart by `kind`
+  vendor: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
