@@ -432,18 +432,6 @@ describe('Smoke Tests — Pages render without crashing', () => {
     expect(container.innerHTML).toBeTruthy()
   })
 
-  it('AI chat page loads', async () => {
-    const { default: ChatPage } = await import('@/app/(dashboard)/chat/page')
-    const container = await smokeRender(ChatPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
-  it('Patient portal login page loads', async () => {
-    const { default: PortalLoginPage } = await import('@/app/portal/login/page')
-    const container = await smokeRender(PortalLoginPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
   it('Staff page loads', async () => {
     const { default: StaffPage } = await import('@/app/(dashboard)/staff/page')
     const container = await smokeRender(StaffPage)
@@ -483,30 +471,6 @@ describe('Smoke Tests — Pages render without crashing', () => {
   it('Medications page loads', async () => {
     const { default: MedicationsPage } = await import('@/app/(dashboard)/medications/page')
     const container = await smokeRender(MedicationsPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
-  it('CRM page loads', async () => {
-    const { default: CRMPage } = await import('@/app/(dashboard)/crm/page')
-    const container = await smokeRender(CRMPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
-  it('Sterilization page loads', async () => {
-    const { default: SterilizationPage } = await import('@/app/(dashboard)/sterilization/page')
-    const container = await smokeRender(SterilizationPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
-  it('Devices page loads', async () => {
-    const { default: DevicesPage } = await import('@/app/(dashboard)/devices/page')
-    const container = await smokeRender(DevicesPage)
-    expect(container.innerHTML).toBeTruthy()
-  })
-
-  it('Video page loads', async () => {
-    const { default: VideoPage } = await import('@/app/(dashboard)/video/page')
-    const container = await smokeRender(VideoPage)
     expect(container.innerHTML).toBeTruthy()
   })
 })

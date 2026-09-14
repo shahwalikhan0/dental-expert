@@ -40,11 +40,6 @@ vi.mock('@/lib/api-helpers', async () => {
   return helpers
 })
 
-vi.mock('@/lib/patient-auth', () => ({
-  requirePatientAuth: vi.fn(),
-  getAuthenticatedPatient: vi.fn(),
-}))
-
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
 }))
@@ -52,13 +47,8 @@ vi.mock('@/lib/auth', () => ({
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { GET as profileGET, PATCH as profilePATCH } from '@/app/api/settings/profile/route'
-import {
-  GET as portalProfileGET,
-  PATCH as portalProfilePATCH,
-} from '@/app/api/patient-portal/profile/route'
-import { getLocaleForRequest, getLocaleForPatientRequest } from '@/lib/i18n/request'
+import { getLocaleForRequest } from '@/lib/i18n/request'
 import { requireAuthAndRole } from '@/lib/api-helpers'
-import { requirePatientAuth, getAuthenticatedPatient } from '@/lib/patient-auth'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -237,86 +227,6 @@ describe('GET /api/settings/profile', () => {
 // /api/patient-portal/profile
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('/api/patient-portal/profile', () => {
-  it('rejects a caller without a portal session', async () => {
-    requirePatientAuth.mockResolvedValue({
-      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-      patient: null,
-    })
-
-    const res = await portalProfilePATCH(
-      makeReq('/api/patient-portal/profile', 'PATCH', { locale: 'en-US' })
-    )
-
-    expect(res.status).toBe(401)
-    expect(prisma.patient.update).not.toHaveBeenCalled()
-  })
-
-  // The portal is the one authenticated surface where the caller is not staff.
-  it('writes the cookie patient, never an id from the body', async () => {
-    signedInAsPatient()
-    prisma.patient.update.mockResolvedValue({ locale: 'en-US', hospital: { locale: 'en-IN' } })
-
-    await portalProfilePATCH(
-      makeReq('/api/patient-portal/profile', 'PATCH', {
-        locale: 'en-US',
-        id: 'patient-2',
-        patientId: 'patient-2',
-      })
-    )
-
-    expect(prisma.patient.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'patient-1' } })
-    )
-  })
-
-  it('clears the override to null', async () => {
-    signedInAsPatient()
-    prisma.patient.update.mockResolvedValue({ locale: null, hospital: { locale: 'en-IN' } })
-
-    const res = await portalProfilePATCH(
-      makeReq('/api/patient-portal/profile', 'PATCH', { locale: null })
-    )
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.locale).toBeNull()
-    expect(body.effectiveLocale).toBe('en-IN')
-  })
-
-  it('rejects an unsupported locale with 400', async () => {
-    signedInAsPatient()
-
-    const res = await portalProfilePATCH(
-      makeReq('/api/patient-portal/profile', 'PATCH', { locale: 'fr-FR' })
-    )
-
-    expect(res.status).toBe(400)
-    expect(prisma.patient.update).not.toHaveBeenCalled()
-  })
-
-  it('returns the override and the resolved locale', async () => {
-    signedInAsPatient()
-    prisma.patient.findUnique.mockResolvedValue({
-      firstName: 'Ravi',
-      lastName: 'Kumar',
-      locale: 'en-US',
-      hospital: { locale: 'en-IN' },
-    })
-
-    const res = await portalProfileGET(makeReq('/api/patient-portal/profile'))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.locale).toBe('en-US')
-    expect(body.effectiveLocale).toBe('en-US')
-  })
-})
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Request-scoped resolution
-// ═════════════════════════════════════════════════════════════════════════════
-
 describe('getLocaleForRequest', () => {
   it('prefers the staff override over the clinic', async () => {
     auth.mockResolvedValue({ user: STAFF })
@@ -357,20 +267,8 @@ describe('getLocaleForRequest', () => {
     })
   })
 
-  it('falls back to the patient session when there is no staff session', async () => {
-    auth.mockResolvedValue(null)
-    getAuthenticatedPatient.mockResolvedValue(PATIENT)
-    prisma.patient.findUnique.mockResolvedValue({
-      locale: 'en-US',
-      hospital: { locale: 'en-IN' },
-    })
-
-    expect(await getLocaleForRequest()).toBe('en-US')
-  })
-
   it('returns the default for an anonymous request', async () => {
     auth.mockResolvedValue(null)
-    getAuthenticatedPatient.mockResolvedValue(null)
 
     expect(await getLocaleForRequest()).toBe('en-PK')
   })
@@ -397,30 +295,5 @@ describe('getLocaleForRequest', () => {
     })
 
     expect(await getLocaleForRequest()).toBe('en-US')
-  })
-})
-
-describe('getLocaleForPatientRequest', () => {
-  it('does not consult the staff session', async () => {
-    getAuthenticatedPatient.mockResolvedValue(PATIENT)
-    prisma.patient.findUnique.mockResolvedValue({
-      locale: null,
-      hospital: { locale: 'en-US' },
-    })
-
-    expect(await getLocaleForPatientRequest()).toBe('en-US')
-    expect(auth).not.toHaveBeenCalled()
-  })
-
-  it('returns the default when there is no portal cookie', async () => {
-    getAuthenticatedPatient.mockResolvedValue(null)
-
-    expect(await getLocaleForPatientRequest()).toBe('en-PK')
-  })
-
-  it('returns the default rather than throwing when the lookup fails', async () => {
-    getAuthenticatedPatient.mockRejectedValue(new Error('boom'))
-
-    await expect(getLocaleForPatientRequest()).resolves.toBe('en-PK')
   })
 })

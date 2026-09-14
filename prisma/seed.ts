@@ -1618,24 +1618,7 @@ async function main() {
       },
     })
 
-    // Far-future expiry so the link does not rot into an "expired" state and
-    // start failing the suite on some later date.
-    const expiresAt = new Date()
-    expiresAt.setFullYear(expiresAt.getFullYear() + 10)
-
-    await prisma.paymentLink.upsert({
-      where: { token: E2E_PAYMENT_TOKEN },
-      update: { expiresAt, usedAt: null },
-      create: {
-        hospitalId: hospital.id,
-        invoiceId: invoice.id,
-        token: E2E_PAYMENT_TOKEN,
-        amount: 1180,
-        expiresAt,
-      },
-    })
-
-    console.log('Created e2e invoice and payment link')
+    console.log('Created e2e invoice')
   }
 
   console.log('Database seed completed successfully!')

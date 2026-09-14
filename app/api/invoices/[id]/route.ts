@@ -62,7 +62,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             paymentDate: 'desc',
           },
         },
-        insuranceClaim: true,
       },
     })
 

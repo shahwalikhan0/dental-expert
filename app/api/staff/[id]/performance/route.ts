@@ -132,27 +132,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     })
 
-    // Get attendance stats
-    const attendance = await prisma.attendance.findMany({
-      where: {
-        staffId: id,
-        staff: { hospitalId },
-        date: {
-          gte: start,
-          lte: end,
-        },
-      },
-    })
-
-    const attendanceStats = {
-      totalDays: attendance.length,
-      present: attendance.filter((a) => a.status === 'PRESENT').length,
-      absent: attendance.filter((a) => a.status === 'ABSENT').length,
-      late: attendance.filter((a) => a.status === 'LATE').length,
-      halfDay: attendance.filter((a) => a.status === 'HALF_DAY').length,
-      onLeave: attendance.filter((a) => a.status === 'ON_LEAVE').length,
-    }
-
     // Get prescriptions count
     const prescriptionsCount = await prisma.prescription.count({
       where: {
@@ -192,7 +171,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
       patientsTreated: uniquePatients.length,
       prescriptionsWritten: prescriptionsCount,
-      attendance: attendanceStats,
     })
   } catch (error) {
     console.error('Error fetching performance:', error)

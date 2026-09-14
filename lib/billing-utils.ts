@@ -1,12 +1,6 @@
 // Billing & Financial Management Utilities
 
-import {
-  InvoiceStatus,
-  PaymentMethod,
-  PaymentStatus,
-  InsuranceClaimStatus,
-  DiscountType,
-} from '@prisma/client'
+import { InvoiceStatus, PaymentMethod, PaymentStatus, DiscountType } from '@prisma/client'
 import {
   formatCurrency as baseFormatCurrency,
   formatDate as baseFormatDate,
@@ -156,60 +150,6 @@ export const paymentStatusConfig: Record<
     label: 'Cancelled',
     color: 'text-muted-foreground',
     bgColor: 'bg-muted',
-  },
-}
-
-// Insurance Claim Status Configuration
-export const insuranceClaimStatusConfig: Record<
-  InsuranceClaimStatus,
-  {
-    label: string
-    color: string
-    bgColor: string
-    description: string
-  }
-> = {
-  DRAFT: {
-    label: 'Draft',
-    color: 'text-muted-foreground',
-    bgColor: 'bg-muted',
-    description: 'Claim is being prepared',
-  },
-  SUBMITTED: {
-    label: 'Submitted',
-    color: 'text-blue-700',
-    bgColor: 'bg-blue-100',
-    description: 'Claim submitted to insurer',
-  },
-  UNDER_REVIEW: {
-    label: 'Under Review',
-    color: 'text-yellow-700',
-    bgColor: 'bg-yellow-100',
-    description: 'Insurer is reviewing the claim',
-  },
-  APPROVED: {
-    label: 'Approved',
-    color: 'text-green-700',
-    bgColor: 'bg-green-100',
-    description: 'Claim approved by insurer',
-  },
-  PARTIALLY_APPROVED: {
-    label: 'Partially Approved',
-    color: 'text-orange-700',
-    bgColor: 'bg-orange-100',
-    description: 'Claim partially approved',
-  },
-  REJECTED: {
-    label: 'Rejected',
-    color: 'text-red-700',
-    bgColor: 'bg-red-100',
-    description: 'Claim rejected by insurer',
-  },
-  SETTLED: {
-    label: 'Settled',
-    color: 'text-emerald-700',
-    bgColor: 'bg-emerald-100',
-    description: 'Payment received from insurer',
   },
 }
 

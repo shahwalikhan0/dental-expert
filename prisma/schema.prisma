@@ -91,7 +91,6 @@ model Hospital {
   medications         Medication[]
   invoices            Invoice[]
   payments            Payment[]
-  insuranceClaims     InsuranceClaim[]
   inventoryCategories InventoryCategory[]
   inventoryItems      InventoryItem[]
   inventoryBatches    InventoryBatch[]
@@ -109,40 +108,14 @@ model Hospital {
   communicationTemplates CommunicationTemplate[]
   smsLogs             SMSLog[]
   emailLogs           EmailLog[]
-  surveys             Survey[]
   bulkCommunications  BulkCommunication[]
-  marketingAutomations MarketingAutomation[]
   staffInvites        StaffInvite[]
-  subscription        Subscription?
-  attendance          Attendance[]
   staffShifts         StaffShift[]
-  leaves              Leave[]
-  aiConversations     AIConversation[]
-  aiSkillExecutions   AISkillExecution[]
-  aiInsights          AIInsight[]
-  patientRiskScores   PatientRiskScore[]
   patientPortalEnabled Boolean   @default(false)
 
-  paymentGatewayConfig PaymentGatewayConfig?
-  paymentLinks        PaymentLink[]
-  patientOTPs         PatientOTP[]
   formTemplates       FormTemplate[]
   formSubmissions     FormSubmission[]
-  insuranceProviders  InsuranceProviderMaster[]
-  patientInsurances   PatientInsurance[]
-  preAuthorizations   PreAuthorization[]
-  membershipPlans     MembershipPlan[]
-  patientMemberships  PatientMembership[]
-  referrals           Referral[]
-  loyaltyTransactions LoyaltyTransaction[]
-  calendarIntegrations CalendarIntegration[]
   waitlistEntries     Waitlist[]
-  paymentPlans        PaymentPlan[]
-  videoConsultations  VideoConsultation[]
-  instruments         Instrument[]
-  sterilizationLogs   SterilizationLog[]
-  devices             Device[]
-  pushDevices         PushDevice[]
   dataImportJobs      DataImportJob[]
 
   @@index([slug])
@@ -158,55 +131,6 @@ enum Plan {
 }
 
 // ==================== SUBSCRIPTION & BILLING ====================
-
-model Subscription {
-  id                     String             @id @default(cuid())
-  hospitalId             String             @unique
-  plan                   Plan
-  status                 SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart     DateTime
-  currentPeriodEnd       DateTime
-  cancelledAt            DateTime?
-  paymentProvider        String?
-  externalSubscriptionId String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-
-  hospital               Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  payments               SubscriptionPayment[]
-}
-
-model SubscriptionPayment {
-  id                String                    @id @default(cuid())
-  subscriptionId    String
-  amount            Decimal                   @db.Decimal(10, 2)
-  currency          String                    @default("PKR")
-  status            SubscriptionPaymentStatus @default(PENDING)
-  paymentMethod     String?
-  externalPaymentId String?
-  invoiceUrl        String?
-  paidAt            DateTime?
-  createdAt         DateTime                  @default(now())
-
-  subscription      Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@index([subscriptionId])
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  PAST_DUE
-  CANCELLED
-  EXPIRED
-  TRIALING
-}
-
-enum SubscriptionPaymentStatus {
-  PENDING
-  SUCCESS
-  FAILED
-  REFUNDED
-}
 
 // ==================== AUTHENTICATION & USERS ====================
 
@@ -246,11 +170,6 @@ model User {
   staff           Staff?
   auditLogs       AuditLog[]
   notifications   Notification[]
-  sessions        Session[]
-  accounts        Account[]
-  aiConversations AIConversation[]
-  calendarIntegrations CalendarIntegration[]
-  pushDevices     PushDevice[]
   dataImportJobs  DataImportJob[]
   acknowledgedStockAlerts StockAlert[]
   labOrderStatusChanges   LabOrderHistory[]
@@ -268,41 +187,6 @@ model User {
   @@index([email])
   @@index([role])
   @@index([hospitalId])
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
 }
 
 // The seven roles of specification §4, plus LAB_TECH for the dental-laboratory
@@ -401,10 +285,7 @@ model Staff {
   appointments    Appointment[] @relation("DoctorAppointments")
   treatments      Treatment[]
   prescriptions   Prescription[]
-  attendance      Attendance[]
   shifts          StaffShift[]
-  leaves          Leave[]
-  videoConsultations VideoConsultation[] @relation("DoctorVideoConsultations")
 
   @@unique([hospitalId, employeeId])
   // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
@@ -412,25 +293,6 @@ model Staff {
   @@unique([hospitalId, cnic])
   @@index([hospitalId])
   @@index([phone])
-}
-
-model Attendance {
-  id          String           @id @default(cuid())
-  hospitalId  String
-  staffId     String
-  date        DateTime         @db.Date
-  clockIn     DateTime?
-  clockOut    DateTime?
-  status      AttendanceStatus @default(PRESENT)
-  notes       String?
-  createdAt   DateTime         @default(now())
-
-  hospital    Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  staff       Staff            @relation(fields: [staffId], references: [id])
-
-  @@unique([staffId, date])
-  @@index([hospitalId])
-  @@index([date])
 }
 
 model StaffShift {
@@ -447,51 +309,6 @@ model StaffShift {
 
   @@unique([staffId, dayOfWeek])
   @@index([hospitalId])
-}
-
-model Leave {
-  id          String      @id @default(cuid())
-  hospitalId  String
-  staffId     String
-  leaveType   LeaveType
-  startDate   DateTime    @db.Date
-  endDate     DateTime    @db.Date
-  reason      String?
-  status      LeaveStatus @default(PENDING)
-  approvedBy  String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  hospital    Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  staff       Staff       @relation(fields: [staffId], references: [id])
-
-  @@index([hospitalId])
-  @@index([staffId])
-  @@index([startDate, endDate])
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  HALF_DAY
-  LATE
-  ON_LEAVE
-}
-
-enum LeaveType {
-  CASUAL
-  SICK
-  EARNED
-  UNPAID
-  MATERNITY
-  PATERNITY
-}
-
-enum LeaveStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
 }
 
 // ==================== PATIENT MANAGEMENT ====================
@@ -548,13 +365,6 @@ model Patient {
   invoices        Invoice[]
   documents       Document[]
   labOrders       LabOrder[]
-  riskScores      PatientRiskScore[]
-  insurancePolicies PatientInsurance[]
-  insuranceClaims InsuranceClaim[]
-  preAuthorizations PreAuthorization[]
-  memberships     PatientMembership[]
-  paymentPlans    PaymentPlan[]
-  videoConsultations VideoConsultation[]
 
   @@unique([hospitalId, patientId])
   // FR-002 duplicate prevention. A CNIC identifies one person, so two patient
@@ -671,8 +481,6 @@ model Appointment {
   cancelledAt     DateTime?
   cancellationReason String?
 
-  isVirtual       Boolean           @default(false)
-  videoConsultationId String?
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -683,7 +491,6 @@ model Appointment {
   chair           Chair?            @relation(fields: [chairId], references: [id], onDelete: SetNull)
   treatments      Treatment[]
   reminders       AppointmentReminder[]
-  videoConsultation VideoConsultation?
 
   @@unique([hospitalId, appointmentNo])
   @@index([hospitalId])
@@ -1178,7 +985,6 @@ model Invoice {
   status          InvoiceStatus @default(DRAFT)
   dueDate         DateTime?
 
-  insuranceClaimId String?
   insuranceAmount Decimal?      @db.Decimal(10, 2)
 
   notes           String?       @db.Text
@@ -1191,9 +997,6 @@ model Invoice {
   patient         Patient       @relation(fields: [patientId], references: [id])
   items           InvoiceItem[]
   payments        Payment[]
-  paymentLinks    PaymentLink[]
-  paymentPlans    PaymentPlan[]
-  insuranceClaim  InsuranceClaim? @relation(fields: [insuranceClaimId], references: [id])
   discountRequestedBy User?     @relation("DiscountsRequested", fields: [discountRequestedById], references: [id])
   discountApprovedBy  User?     @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
 
@@ -1383,46 +1186,6 @@ model Payment {
   @@index([cashierSessionId])
 }
 
-model InsuranceClaim {
-  id              String               @id @default(cuid())
-  hospitalId      String
-  claimNumber     String
-  patientId       String
-  insuranceProvider String
-  policyNumber    String
-
-  claimAmount     Decimal              @db.Decimal(10, 2)
-  approvedAmount  Decimal?             @db.Decimal(10, 2)
-  settledAmount   Decimal?             @db.Decimal(10, 2)
-
-  status          InsuranceClaimStatus @default(SUBMITTED)
-  submittedDate   DateTime             @default(now())
-  approvedDate    DateTime?
-  settledDate     DateTime?
-  rejectionReason String?
-
-  denialCode      String?
-  appealDeadline  DateTime?
-  appealStatus    String?
-  appealDate      DateTime?
-  appealNotes     String?              @db.Text
-
-  documents       String?              @db.Text
-  notes           String?              @db.Text
-
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-
-  hospital        Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient              @relation(fields: [patientId], references: [id])
-  invoices        Invoice[]
-
-  @@unique([hospitalId, claimNumber])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-}
-
 enum DiscountType {
   PERCENTAGE
   FIXED
@@ -1449,12 +1212,6 @@ enum PaymentMethod {
   ONLINE
 }
 
-enum PaymentProvider {
-  RAZORPAY
-  PHONEPE
-  PAYTM
-}
-
 enum PaymentStatus {
   PENDING
   COMPLETED
@@ -1467,161 +1224,9 @@ enum PaymentStatus {
   CANCELLED
 }
 
-enum InsuranceClaimStatus {
-  DRAFT
-  SUBMITTED
-  UNDER_REVIEW
-  APPROVED
-  PARTIALLY_APPROVED
-  REJECTED
-  SETTLED
-}
-
 // ==================== INSURANCE MANAGEMENT ====================
 
-model InsuranceProviderMaster {
-  id              String   @id @default(cuid())
-  hospitalId      String
-  name            String
-  code            String?
-  contactPhone    String?
-  contactEmail    String?
-  website         String?
-  claimSubmissionUrl String?
-  portalUsername   String?
-  portalPassword  String?  @db.Text
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  policies        PatientInsurance[]
-
-  @@unique([hospitalId, name])
-  @@index([hospitalId])
-}
-
-model PatientInsurance {
-  id                  String    @id @default(cuid())
-  hospitalId          String
-  patientId           String
-  providerId          String
-  policyNumber        String
-  groupNumber         String?
-  memberId            String
-  subscriberName      String
-  subscriberRelation  String    @default("Self")
-  effectiveDate       DateTime
-  expiryDate          DateTime?
-  coverageType        String?
-  annualMaximum       Decimal?  @db.Decimal(10, 2)
-  usedAmount          Decimal?  @db.Decimal(10, 2)
-  remainingAmount     Decimal?  @db.Decimal(10, 2)
-  deductible          Decimal?  @db.Decimal(10, 2)
-  deductibleMet       Boolean   @default(false)
-  copayPercentage     Decimal?  @db.Decimal(5, 2)
-  isActive            Boolean   @default(true)
-  lastVerifiedAt      DateTime?
-  verificationStatus  String?
-
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  hospital            Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient             Patient   @relation(fields: [patientId], references: [id])
-  provider            InsuranceProviderMaster @relation(fields: [providerId], references: [id])
-  preAuthorizations   PreAuthorization[]
-
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([providerId])
-}
-
-model PreAuthorization {
-  id              String   @id @default(cuid())
-  hospitalId      String
-  patientId       String
-  insurancePolicyId String
-  treatmentPlanId String?
-
-  authNumber      String?
-  requestDate     DateTime @default(now())
-  procedures      Json
-  estimatedCost   Decimal  @db.Decimal(10, 2)
-  status          PreAuthStatus @default(PENDING)
-  approvedAmount  Decimal? @db.Decimal(10, 2)
-  approvedDate    DateTime?
-  expiryDate      DateTime?
-  denialReason    String?
-  notes           String?  @db.Text
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient  @relation(fields: [patientId], references: [id])
-  policy          PatientInsurance @relation(fields: [insurancePolicyId], references: [id])
-
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-}
-
-enum PreAuthStatus {
-  PENDING
-  SUBMITTED
-  APPROVED
-  DENIED
-  EXPIRED
-}
-
 // ==================== PAYMENT GATEWAY ====================
-
-model PaymentGatewayConfig {
-  id              String          @id @default(cuid())
-  hospitalId      String          @unique
-  provider        PaymentProvider
-  isEnabled       Boolean         @default(false)
-  isLiveMode      Boolean         @default(false)
-
-  // Razorpay
-  razorpayKeyId       String?
-  razorpayKeySecret   String?     // Encrypted at rest
-
-  // PhonePe
-  phonepeMerchantId   String?
-  phonepeSaltKey      String?     // Encrypted at rest
-  phonepeSaltIndex    String?
-
-  // Paytm
-  paytmMid            String?
-  paytmMerchantKey    String?     // Encrypted at rest
-  paytmWebsite        String?     // WEBSTAGING or DEFAULT
-
-  webhookSecret       String?     // For verifying incoming webhooks
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
-
-  hospital            Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-}
-
-model PaymentLink {
-  id            String    @id @default(cuid())
-  hospitalId    String
-  invoiceId     String
-  token         String    @unique
-  amount        Decimal   @db.Decimal(10, 2)
-  expiresAt     DateTime
-  usedAt        DateTime?
-  createdAt     DateTime  @default(now())
-
-  hospital      Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
-
-  @@index([hospitalId])
-  @@index([token])
-  @@index([invoiceId])
-}
 
 // ==================== INVENTORY MANAGEMENT ====================
 
@@ -2414,58 +2019,6 @@ model PatientCommunicationPreference {
   @@index([patientId])
 }
 
-model Survey {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  title           String
-  description     String?       @db.Text
-
-  surveyType      SurveyType    @default(SATISFACTION)
-  isAnonymous     Boolean       @default(false)
-
-  questions       String        @db.Text
-
-  isActive        Boolean       @default(true)
-  validFrom       DateTime      @default(now())
-  validUntil      DateTime?
-
-  triggerType     SurveyTrigger?
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  responses       SurveyResponse[]
-
-  @@index([hospitalId])
-  @@index([isActive])
-  @@index([surveyType])
-}
-
-model SurveyResponse {
-  id              String        @id @default(cuid())
-  surveyId        String
-  patientId       String?
-
-  answers         String        @db.Text
-  rating          Int?
-  sentiment       String?
-
-  isComplete      Boolean       @default(false)
-
-  ipAddress       String?
-  userAgent       String?
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  survey          Survey        @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-
-  @@index([surveyId])
-  @@index([patientId])
-  @@index([createdAt])
-}
-
 model BulkCommunication {
   id              String              @id @default(cuid())
   hospitalId      String
@@ -2528,21 +2081,6 @@ enum MessageStatus {
   CANCELLED
 }
 
-enum SurveyType {
-  SATISFACTION
-  NPS
-  FEEDBACK
-  TESTIMONIAL
-  SERVICE_QUALITY
-}
-
-enum SurveyTrigger {
-  POST_APPOINTMENT
-  POST_TREATMENT
-  MONTHLY
-  MANUAL
-}
-
 enum BulkCommStatus {
   DRAFT
   SCHEDULED
@@ -2553,115 +2091,6 @@ enum BulkCommStatus {
 }
 
 // ==================== AI FEATURES ====================
-
-enum AISessionType {
-  CHAT
-  COMMAND
-  ANALYSIS
-  QUERY
-}
-
-enum AIExecutionStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-}
-
-enum AIInsightCategory {
-  REVENUE
-  CLINICAL
-  OPERATIONAL
-  PATIENT
-  STAFFING
-  INVENTORY
-}
-
-enum InsightSeverity {
-  INFO
-  WARNING
-  CRITICAL
-}
-
-model AIConversation {
-  id          String        @id @default(cuid())
-  hospitalId  String
-  userId     String
-  sessionType AISessionType
-  messages    Json
-  context     Json
-  resolved    Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
-  hospital    Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([userId])
-  @@index([createdAt])
-}
-
-model AISkillExecution {
-  id         String            @id @default(cuid())
-  hospitalId String
-  userId    String?
-  skill      String
-  input      Json
-  output     Json?
-  status     AIExecutionStatus @default(PENDING)
-  duration   Int?
-  tokensUsed Int?
-  cost       Decimal?          @db.Decimal(10, 6)
-  error      String?
-  createdAt  DateTime          @default(now())
-
-  hospital   Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([skill])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model AIInsight {
-  id          String            @id @default(cuid())
-  hospitalId  String
-  category    AIInsightCategory
-  severity    InsightSeverity
-  title       String
-  description String            @db.Text
-  data        Json?
-  dismissed   Boolean           @default(false)
-  actionTaken Boolean           @default(false)
-  createdAt   DateTime          @default(now())
-  expiresAt   DateTime?
-
-  hospital    Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([category])
-  @@index([severity])
-  @@index([dismissed])
-  @@index([createdAt])
-}
-
-model PatientRiskScore {
-  id                String   @id @default(cuid())
-  patientId         String
-  hospitalId        String
-  overallScore      Int
-  factors           Json
-  contraindications Json?
-  calculatedAt      DateTime @default(now())
-
-  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  hospital          Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([patientId])
-  @@index([hospitalId])
-  @@index([calculatedAt])
-}
 
 // ==================== INTAKE FORMS & CONSENT ====================
 
@@ -2729,139 +2158,9 @@ enum FormSubmissionStatus {
 
 // ==================== PATIENT PORTAL ====================
 
-model PatientOTP {
-  id          String   @id @default(cuid())
-  hospitalId  String
-  phone       String
-  otp         String
-  expiresAt   DateTime
-  verified    Boolean  @default(false)
-  attempts    Int      @default(0)
-  createdAt   DateTime @default(now())
-
-  hospital    Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([phone, hospitalId])
-  @@index([expiresAt])
-}
-
 // ==================== CRM, LOYALTY & REFERRALS ====================
 
-model MembershipPlan {
-  id            String   @id @default(cuid())
-  hospitalId    String
-  name          String
-  description   String?  @db.Text
-  price         Decimal  @db.Decimal(10, 2)
-  duration      Int      // months
-  benefits      Json     // Array of { procedureId?, category?, discountPercent, description }
-  maxMembers    Int?     // family plan limit
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  memberships   PatientMembership[]
-
-  @@index([hospitalId])
-}
-
-model PatientMembership {
-  id            String   @id @default(cuid())
-  hospitalId    String
-  patientId     String
-  planId        String
-  startDate     DateTime
-  endDate       DateTime
-  status        MembershipStatus @default(ACTIVE)
-  paymentId     String?
-  autoRenew     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient       Patient  @relation(fields: [patientId], references: [id])
-  plan          MembershipPlan @relation(fields: [planId], references: [id])
-
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-}
-
-model Referral {
-  id                String   @id @default(cuid())
-  hospitalId        String
-  referrerPatientId String
-  referredPatientId String?
-  referredName      String
-  referredPhone     String
-  referralCode      String   @unique
-  status            ReferralStatus @default(PENDING)
-  rewardType        String?  // DISCOUNT / CREDIT / POINTS
-  rewardValue       Decimal? @db.Decimal(10, 2)
-  rewardGiven       Boolean  @default(false)
-  rewardGivenAt     DateTime?
-  convertedAt       DateTime?
-  createdAt         DateTime @default(now())
-
-  hospital          Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([referrerPatientId])
-  @@index([referralCode])
-}
-
-model LoyaltyTransaction {
-  id            String   @id @default(cuid())
-  hospitalId    String
-  patientId     String
-  points        Int      // positive = earned, negative = redeemed
-  type          String   // VISIT, REFERRAL, TREATMENT, REDEMPTION, BIRTHDAY, SIGNUP
-  description   String
-  referenceId   String?  // appointmentId, referralId, etc.
-  createdAt     DateTime @default(now())
-
-  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([patientId])
-}
-
-enum MembershipStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
-  SUSPENDED
-}
-
-enum ReferralStatus {
-  PENDING
-  CONVERTED
-  EXPIRED
-  REWARDED
-}
-
 // ==================== CALENDAR SYNC & SMART SCHEDULING (Phase 7) ====================
-
-model CalendarIntegration {
-  id             String   @id @default(cuid())
-  hospitalId     String
-  userId         String
-  provider       String   // GOOGLE / OUTLOOK
-  accessToken    String   @db.Text
-  refreshToken   String   @db.Text
-  calendarId     String?
-  syncEnabled    Boolean  @default(true)
-  lastSyncAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  hospital       Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user           User     @relation(fields: [userId], references: [id])
-
-  @@unique([userId, provider])
-  @@index([hospitalId])
-}
 
 model Waitlist {
   id             String         @id @default(cuid())
@@ -2893,271 +2192,15 @@ enum WaitlistStatus {
 
 // ==================== PAYMENT PLANS & REVENUE CYCLE (Phase 8) ====================
 
-model PaymentPlan {
-  id              String            @id @default(cuid())
-  hospitalId      String
-  invoiceId       String
-  patientId       String
-  totalAmount     Decimal           @db.Decimal(10, 2)
-  downPayment     Decimal           @default(0) @db.Decimal(10, 2)
-  installments    Int
-  frequency       PlanFrequency     @default(MONTHLY)
-  interestRate    Decimal           @default(0) @db.Decimal(5, 2)
-  status          PaymentPlanStatus @default(ACTIVE)
-  startDate       DateTime
-  nextDueDate     DateTime?
-  notes           String?           @db.Text
-  createdBy       String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  invoice         Invoice           @relation(fields: [invoiceId], references: [id])
-  patient         Patient           @relation(fields: [patientId], references: [id])
-  schedules       PaymentPlanSchedule[]
-
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([invoiceId])
-  @@index([status])
-  @@index([nextDueDate])
-}
-
-model PaymentPlanSchedule {
-  id              String            @id @default(cuid())
-  planId          String
-  installmentNo   Int
-  amount          Decimal           @db.Decimal(10, 2)
-  dueDate         DateTime
-  paidDate        DateTime?
-  paidAmount      Decimal?          @db.Decimal(10, 2)
-  paymentId       String?
-  status          InstallmentStatus @default(PENDING)
-
-  plan            PaymentPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
-
-  @@index([planId])
-  @@index([dueDate])
-  @@index([status])
-}
-
-enum PlanFrequency {
-  WEEKLY
-  BIWEEKLY
-  MONTHLY
-}
-
-enum PaymentPlanStatus {
-  ACTIVE
-  COMPLETED
-  DEFAULTED
-  CANCELLED
-}
-
-enum InstallmentStatus {
-  PENDING
-  PAID
-  OVERDUE
-  WAIVED
-}
-
 // ==================== VIDEO CONSULTATION ====================
-
-model VideoConsultation {
-  id              String             @id @default(cuid())
-  hospitalId      String
-  appointmentId   String?            @unique
-  patientId       String
-  doctorId        String
-  roomUrl         String
-  roomName        String
-  status          ConsultationStatus @default(SCHEDULED)
-  scheduledAt     DateTime
-  startedAt       DateTime?
-  endedAt         DateTime?
-  duration        Int?
-  notes           String?            @db.Text
-  recordingUrl    String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  hospital        Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  appointment     Appointment?       @relation(fields: [appointmentId], references: [id])
-  patient         Patient            @relation(fields: [patientId], references: [id])
-  doctor          Staff              @relation("DoctorVideoConsultations", fields: [doctorId], references: [id])
-
-  @@index([hospitalId])
-  @@index([doctorId])
-  @@index([patientId])
-  @@index([status])
-  @@index([scheduledAt])
-}
-
-enum ConsultationStatus {
-  SCHEDULED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  NO_SHOW
-}
 
 // ─── Phase 11: Marketing Automation ───────────────────────────────
 
-model MarketingAutomation {
-  id          String   @id @default(cuid())
-  hospitalId  String
-  name        String
-  trigger     Json     // { type, params } — e.g. { type: "NO_VISIT", params: { days: 180 } }
-  action      Json     // { type, params } — e.g. { type: "SEND_SMS", params: { templateId: "..." } }
-  isActive    Boolean  @default(true)
-  lastRunAt   DateTime?
-  runCount    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  hospital    Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([isActive])
-}
-
 // ─── Phase 13: Sterilization & Instrument Tracking ────────────────
-
-model Instrument {
-  id                    String           @id @default(cuid())
-  hospitalId            String
-  name                  String
-  category              String
-  serialNumber          String?
-  rfidTag               String?
-  status                InstrumentStatus @default(AVAILABLE)
-  location              String?
-  lastSterilizedAt      DateTime?
-  sterilizationCycleCount Int            @default(0)
-  maxCycles             Int?
-  purchaseDate          DateTime?
-  warrantyDate          DateTime?
-  notes                 String?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-
-  hospital              Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  sterilizationLogs     SterilizationLog[]
-
-  @@index([hospitalId])
-  @@index([status])
-  @@index([rfidTag])
-}
-
-model SterilizationLog {
-  id                  String              @id @default(cuid())
-  hospitalId          String
-  instrumentId        String
-  cycleNumber         Int
-  method              String              // AUTOCLAVE, CHEMICAL, DRY_HEAT, UV
-  machineId           String?
-  temperature         Decimal?            @db.Decimal(5, 1)
-  pressure            Decimal?            @db.Decimal(5, 2)
-  duration            Int?                // minutes
-  operatorId          String
-  result              SterilizationResult @default(PASS)
-  biologicalIndicator Boolean             @default(false)
-  chemicalIndicator   Boolean             @default(false)
-  notes               String?
-  startedAt           DateTime
-  completedAt         DateTime?
-  createdAt           DateTime            @default(now())
-
-  hospital            Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  instrument          Instrument          @relation(fields: [instrumentId], references: [id])
-
-  @@index([hospitalId])
-  @@index([instrumentId])
-  @@index([startedAt])
-}
-
-enum InstrumentStatus {
-  AVAILABLE
-  IN_USE
-  STERILIZING
-  CONTAMINATED
-  MAINTENANCE
-  RETIRED
-}
-
-enum SterilizationResult {
-  PASS
-  FAIL
-  PENDING
-}
 
 // ==================== IoT / SMART DEVICES ====================
 
-model Device {
-  id            String   @id @default(cuid())
-  hospitalId    String
-  name          String
-  type          String   // DENTAL_CHAIR, PULSE_OXIMETER, BP_MONITOR, AUTOCLAVE, XRAY, COMPRESSOR
-  serialNumber  String?
-  location      String?  // e.g. "Operatory 1", "Sterilization Room"
-  status        DeviceStatus @default(OFFLINE)
-  lastPingAt    DateTime?
-  ipAddress     String?
-  firmwareVersion String?
-  metadata      Json?    // Arbitrary device-specific config
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  dataLogs      DeviceDataLog[]
-
-  @@index([hospitalId])
-  @@index([status])
-  @@index([type])
-}
-
-model DeviceDataLog {
-  id        String   @id @default(cuid())
-  deviceId  String
-  data      Json     // { heartRate: 72, bp: "120/80", spo2: 98, temperature: 36.5, ... }
-  eventType String?  // READING, ALERT, STATUS_CHANGE, ERROR
-  timestamp DateTime @default(now())
-
-  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@index([deviceId])
-  @@index([timestamp])
-  @@index([eventType])
-}
-
-enum DeviceStatus {
-  ONLINE
-  OFFLINE
-  ERROR
-  MAINTENANCE
-}
-
 // ==================== PUSH NOTIFICATIONS (Mobile App) ====================
-
-model PushDevice {
-  id         String   @id @default(cuid())
-  token      String   @unique
-  platform   String   // "ios", "android", "web"
-  deviceName String?
-  isActive   Boolean  @default(true)
-
-  userId     String
-  hospitalId String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([userId])
-  @@index([hospitalId])
-  @@index([isActive])
-}
 
 // ==================== DATA IMPORT / ERP MIGRATION ====================
 

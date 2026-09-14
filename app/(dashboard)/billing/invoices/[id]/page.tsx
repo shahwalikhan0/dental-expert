@@ -66,7 +66,6 @@ import {
   getDueDays,
   numberToWords,
 } from '@/lib/billing-utils'
-import { PaymentCheckout } from '@/components/billing/payment-checkout'
 
 interface Invoice {
   id: string
@@ -345,19 +344,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             Print
           </Button>
           {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-            <>
-              <PaymentCheckout
-                invoiceId={invoice.id}
-                amount={Number(invoice.balanceAmount)}
-                invoiceNo={invoice.invoiceNo}
-                patientName={`${invoice.patient.firstName} ${invoice.patient.lastName}`}
-                onSuccess={fetchInvoice}
-              />
-              <Button onClick={() => setPaymentDialogOpen(true)}>
-                <CreditCard className="h-4 w-4 mr-2" />
-                Record Payment
-              </Button>
-            </>
+            <Button onClick={() => setPaymentDialogOpen(true)}>
+              <CreditCard className="h-4 w-4 mr-2" />
+              Record Payment
+            </Button>
           )}
         </div>
       </div>

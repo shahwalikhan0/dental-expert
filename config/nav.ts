@@ -64,11 +64,6 @@ export const navigation: NavSection[] = [
     title: 'Overview',
     items: [
       {
-        title: 'AI Chat',
-        href: '/chat',
-        icon: BotMessageSquare,
-      },
-      {
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
@@ -99,11 +94,6 @@ export const navigation: NavSection[] = [
             icon: Clock,
           },
         ],
-      },
-      {
-        title: 'Video Consults',
-        href: '/video',
-        icon: Video,
       },
       {
         title: 'Treatments',
@@ -146,66 +136,9 @@ export const navigation: NavSection[] = [
             icon: CreditCard,
           },
           {
-            title: 'Payment Plans',
-            href: '/billing/payment-plans',
-            icon: CalendarClock,
-          },
-          {
-            title: 'Insurance Claims',
-            href: '/billing/insurance',
-            icon: Shield,
-          },
-          {
-            title: 'Pre-Authorizations',
-            href: '/billing/insurance/pre-auth',
-            icon: FileCheck,
-          },
-          {
-            title: 'Insurance Providers',
-            href: '/billing/insurance/providers',
-            icon: Building2,
-          },
-          {
             title: 'Financial Reports',
             href: '/billing/reports',
             icon: TrendingUp,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Engagement',
-    items: [
-      {
-        title: 'CRM',
-        href: '/crm',
-        icon: Heart,
-        subItems: [
-          {
-            title: 'Dashboard',
-            href: '/crm',
-            icon: Heart,
-          },
-          {
-            title: 'Memberships',
-            href: '/crm/memberships',
-            icon: Crown,
-          },
-          {
-            title: 'Loyalty',
-            href: '/crm/loyalty',
-            icon: Gift,
-          },
-          {
-            title: 'Referrals',
-            href: '/crm/referrals',
-            icon: Share2,
-          },
-          {
-            title: 'Segments',
-            href: '/crm/segments',
-            icon: Users,
           },
         ],
       },
@@ -218,38 +151,6 @@ export const navigation: NavSection[] = [
         title: 'Inventory',
         href: '/inventory',
         icon: Package,
-      },
-      {
-        title: 'Sterilization',
-        href: '/sterilization',
-        icon: Shield,
-        subItems: [
-          {
-            title: 'Dashboard',
-            href: '/sterilization',
-            icon: Shield,
-          },
-          {
-            title: 'Instruments',
-            href: '/sterilization/instruments',
-            icon: Package,
-          },
-          {
-            title: 'Cycle Logs',
-            href: '/sterilization/logs',
-            icon: ClipboardList,
-          },
-          {
-            title: 'Compliance',
-            href: '/sterilization/reports',
-            icon: BarChart3,
-          },
-        ],
-      },
-      {
-        title: 'Devices',
-        href: '/devices',
-        icon: Cpu,
       },
       {
         title: 'Lab Orders',
@@ -270,16 +171,6 @@ export const navigation: NavSection[] = [
             title: 'Analytics',
             href: '/communications/analytics',
             icon: BarChart3,
-          },
-          {
-            title: 'Automations',
-            href: '/communications/automations',
-            icon: Zap,
-          },
-          {
-            title: 'Feedback',
-            href: '/communications/feedback',
-            icon: Star,
           },
         ],
       },
@@ -302,16 +193,6 @@ export const navigation: NavSection[] = [
             title: 'Invites',
             href: '/staff/invites',
             icon: UserCog,
-          },
-          {
-            title: 'Attendance',
-            href: '/staff/attendance',
-            icon: Calendar,
-          },
-          {
-            title: 'Leaves',
-            href: '/staff/leaves',
-            icon: Calendar,
           },
         ],
       },
@@ -348,19 +229,9 @@ export const navigation: NavSection[] = [
             icon: BookOpen,
           },
           {
-            title: 'AI Features',
-            href: '/settings/ai',
-            icon: Sparkles,
-          },
-          {
             title: 'Forms',
             href: '/settings/forms',
             icon: ClipboardCheck,
-          },
-          {
-            title: 'Integrations',
-            href: '/settings/integrations',
-            icon: Link2,
           },
           {
             title: 'Pricing Advisor',

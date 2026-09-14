@@ -119,14 +119,6 @@ export async function GET(request: NextRequest) {
               paymentDate: 'desc',
             },
           },
-          insuranceClaim: {
-            select: {
-              id: true,
-              claimNumber: true,
-              status: true,
-              approvedAmount: true,
-            },
-          },
           _count: {
             select: {
               payments: true,

@@ -1,7 +1,6 @@
 import { getRequestConfig } from 'next-intl/server'
 
 import { auth } from '@/lib/auth'
-import { getAuthenticatedPatient } from '@/lib/patient-auth'
 import { prisma } from '@/lib/prisma'
 import { defaultLocale, getLocaleDefaults, resolveLocaleCascade, type Locale } from './config'
 
@@ -46,58 +45,23 @@ async function resolveStaffLocale(): Promise<Locale | null> {
 }
 
 /**
- * Patient locale, or `null` when there is no patient session.
- *
- * The portal needs its own path: `auth()` is staff-only, and patients
- * authenticate through the OTP cookie in `lib/patient-auth.ts`. The extra
- * lookup is a primary-key read on a page render, which is worth paying to
- * reuse the token verification and the is-still-active check rather than
- * duplicating them here.
- */
-async function resolvePatientLocale(): Promise<Locale | null> {
-  const authenticated = await getAuthenticatedPatient()
-  if (!authenticated) return null
-
-  const patient = await prisma.patient.findUnique({
-    where: { id: authenticated.id },
-    select: { locale: true, hospital: { select: { locale: true } } },
-  })
-  if (!patient) return null
-
-  return resolveLocaleCascade(patient.locale, patient.hospital?.locale)
-}
-
-/**
  * The locale for the current request, whoever is making it.
  *
- * Staff first, then patient — a browser can hold both cookies at once (a
- * receptionist checking the portal), and the staff session is the more
- * specific context in that case. Anonymous requests get the default; public
- * pages that know which clinic they belong to should call
- * `resolvePublicLocale` from ./config instead — it is pure, so importing it
- * does not drag next-auth into a page that has no session to read.
+ * Anonymous requests get the default; public pages that know which clinic they
+ * belong to should call `resolvePublicLocale` from ./config instead — it is
+ * pure, so importing it does not drag next-auth into a page that has no
+ * session to read.
+ *
+ * There used to be a patient branch here for the portal. The portal is gone
+ * (it is a §16 future enhancement, not part of this release), and with it the
+ * only caller that was not staff.
  */
 export async function getLocaleForRequest(): Promise<Locale> {
   try {
     const staff = await resolveStaffLocale()
     if (staff) return staff
 
-    const patient = await resolvePatientLocale()
-    if (patient) return patient
-
     return defaultLocale
-  } catch {
-    return defaultLocale
-  }
-}
-
-/**
- * Portal-only resolver, for code that already knows it is on a patient
- * surface and should not pay for an `auth()` call that cannot succeed.
- */
-export async function getLocaleForPatientRequest(): Promise<Locale> {
-  try {
-    return (await resolvePatientLocale()) ?? defaultLocale
   } catch {
     return defaultLocale
   }

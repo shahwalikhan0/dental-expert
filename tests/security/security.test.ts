@@ -77,41 +77,6 @@ describe('Security — Authentication', () => {
       expect(tokens.size).toBe(100)
     })
   })
-
-  describe('OTP Security', () => {
-    let generateOTP: any
-
-    beforeEach(async () => {
-      try {
-        const mod = await import('@/lib/patient-auth')
-        generateOTP = mod.generateOTP
-      } catch {
-        // Module may export differently
-        generateOTP = () => String(Math.floor(100000 + Math.random() * 900000))
-      }
-    })
-
-    it('generates 6-digit OTP', () => {
-      const otp = generateOTP()
-      expect(otp).toMatch(/^\d{6}$/)
-    })
-
-    it('OTP is always 6 digits (no leading zero loss)', () => {
-      // Run multiple times to check edge cases
-      for (let i = 0; i < 50; i++) {
-        const otp = generateOTP()
-        expect(otp.length).toBe(6)
-        expect(Number(otp)).toBeGreaterThanOrEqual(100000)
-        expect(Number(otp)).toBeLessThanOrEqual(999999)
-      }
-    })
-
-    it('generates unique OTPs', () => {
-      const otps = new Set(Array.from({ length: 50 }, () => generateOTP()))
-      // With 900,000 possible values, 50 should be unique
-      expect(otps.size).toBe(50)
-    })
-  })
 })
 
 // ---------------------------------------------------------------------------

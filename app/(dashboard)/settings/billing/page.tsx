@@ -16,7 +16,6 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Receipt, Save } from 'lucide-react'
-import { GatewaySettings } from '@/components/billing/gateway-settings'
 
 export default function BillingSettingsPage() {
   const { toast } = useToast()
@@ -147,7 +146,6 @@ export default function BillingSettingsPage() {
 
       <div className="space-y-6">
         {/* Payment Gateway */}
-        <GatewaySettings />
 
         {/* Tax Configuration */}
         <Card>

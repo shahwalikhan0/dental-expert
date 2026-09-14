@@ -1119,7 +1119,66 @@ them.
 
 ---
 
-## 13. Pulling from upstream
+## 13. Scoping the schema back to the specification: 87 tables → 53
+
+### 13.1 Why there were 87
+
+The upstream project is an Indian dental **SaaS**; this installation is a single
+clinic. Most of the excess was not dental at all — it was the machinery a
+software vendor needs (subscription billing, marketing automation, loyalty
+programmes) plus features nobody asked for.
+
+The specification settles almost every case on its own: §3 names what is out of
+scope, §5 lists the eleven modules that are in, and §16 lists what is wanted
+later.
+
+### 13.2 What was removed, and on whose authority
+
+| Group                   | Tables | Basis                                                                                                                                                                                                                                                                     |
+| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unreachable code        | 5      | `Account`, `Session`, `VerificationToken` are NextAuth adapter tables — no adapter is configured and the session strategy is JWT, so nothing could read or write them. `Subscription`/`SubscriptionPayment` bill a clinic for the software; this clinic owns its install. |
+| HR                      | 2      | §3: "Full payroll, attendance, or enterprise HR management beyond basic user/staff profiles"                                                                                                                                                                              |
+| Absent from the spec    | 14     | loyalty points, membership plans, a referral _programme_, marketing automation, patient surveys, a sterilisation register, IoT telemetry, tele-dentistry, mobile push, Google Calendar sync                                                                               |
+| §16 future enhancements | 9      | patient portal, insurance, AI-assisted admin                                                                                                                                                                                                                              |
+| Online payment          | 4      | Razorpay, PhonePe and Paytm onboard Indian merchants only — none of it worked here, and a Pakistani processor needs a different shape                                                                                                                                     |
+
+Note on the referral programme: §5.1 asks for a referral **source**, which is
+`Patient.referredBy` and stays. What went was a multi-table referral scheme with
+rewards and statuses.
+
+The §16 features were dropped rather than carried. When the patient portal or
+insurance is built it should be designed against this clinic's requirements, not
+inherited from an Indian SaaS's shape — and an unused table is not a head start,
+it is a thing that has to be understood by everyone who reads the schema.
+
+### 13.3 What that removed besides tables
+
+34 tables, 23 enums, 3 columns on surviving tables (`Appointment.isVirtual`,
+`Appointment.videoConsultationId`, `Invoice.insuranceClaimId`), 92 API route
+files, 20 pages, 13 navigation entries and 48 test files.
+
+Some of it had to be unpicked rather than deleted: the appointment route created
+a video consultation, staff performance reported attendance, billing reports
+aggregated insurance claims, the communication triggers gated review requests on
+survey sentiment, and the locale resolver had a patient-portal branch.
+
+### 13.4 A gap the count exposed
+
+`PurchaseOrder` and `PurchaseOrderItem` have **no route that creates them** —
+only a count read on the suppliers screen. §5.7 requires "purchase/receipt", so
+these stay: they are an unbuilt requirement, not dead weight.
+
+### 13.5 Still SaaS-shaped
+
+`Hospital.plan`, `patientLimit`, `staffLimit` and `storageLimitMb`, with the
+`Plan` enum and the `checkPatientLimit`/`checkStaffLimit` helpers, cap how much
+a clinic may store on its own server. They are left because they are load-
+bearing in the patient and staff create routes, but they are the same SaaS
+residue as the subscription tables and should go the same way.
+
+---
+
+## 14. Pulling from upstream
 
 Upstream remains configured as the `upstream` remote. Before merging anything:
 

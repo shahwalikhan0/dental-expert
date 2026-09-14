@@ -82,10 +82,6 @@ describe('Billing Reports & Unbilled Treatments API', () => {
         _sum: { amount: 40000 },
         _count: 18,
       })
-      ;(prisma.insuranceClaim.aggregate as any).mockResolvedValue({
-        _sum: { claimAmount: 15000, settledAmount: 12000 },
-        _count: 3,
-      })
       ;(prisma.payment.groupBy as any).mockResolvedValue([
         { paymentMethod: 'CASH', _sum: { amount: 20000 }, _count: 10 },
         { paymentMethod: 'UPI', _sum: { amount: 20000 }, _count: 8 },
@@ -102,7 +98,6 @@ describe('Billing Reports & Unbilled Treatments API', () => {
       expect(body.summary.totalBilled).toBe(50000)
       expect(body.summary.totalCollected).toBe(40000)
       expect(body.summary.totalOutstanding).toBe(10000)
-      expect(body.summary.insuranceClaimed).toBe(15000)
       expect(body.breakdowns.byPaymentMethod).toHaveLength(2)
       expect(body.breakdowns.byInvoiceStatus).toHaveLength(2)
     })
@@ -218,10 +213,6 @@ describe('Billing Reports & Unbilled Treatments API', () => {
         _count: 0,
       })
       ;(prisma.payment.aggregate as any).mockResolvedValue({ _sum: { amount: 0 }, _count: 0 })
-      ;(prisma.insuranceClaim.aggregate as any).mockResolvedValue({
-        _sum: { claimAmount: 0, settledAmount: 0 },
-        _count: 0,
-      })
       ;(prisma.payment.groupBy as any).mockResolvedValue([])
       ;(prisma.invoice.groupBy as any).mockResolvedValue([])
 

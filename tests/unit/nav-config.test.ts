@@ -35,11 +35,12 @@ describe('navigation config', () => {
     expect(titles).toContain('Administration')
   })
 
-  it('Overview section has Dashboard and AI Chat', () => {
+  // AI Chat used to sit here. The AI layer is a §16 future enhancement and was
+  // removed when the schema was scoped back to the specification.
+  it('Overview section has Dashboard', () => {
     const overview = navigation.find((s) => s.title === 'Overview')!
     const titles = overview.items.map((i) => i.title)
     expect(titles).toContain('Dashboard')
-    expect(titles).toContain('AI Chat')
   })
 
   it('Dashboard has no role restriction', () => {

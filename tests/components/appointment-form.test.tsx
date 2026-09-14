@@ -424,18 +424,6 @@ describe('NewAppointmentPage', () => {
       expect(screen.getByTestId('select-item-URGENT')).toBeInTheDocument()
     })
 
-    it('renders virtual visit toggle', async () => {
-      setupFetchMock()
-      render(<NewAppointmentPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
-      })
-
-      expect(screen.getByText(/Virtual Visit/)).toBeInTheDocument()
-      expect(screen.getByRole('switch')).toBeInTheDocument()
-    })
-
     it('renders chief complaint and notes fields', async () => {
       setupFetchMock()
       render(<NewAppointmentPage />)

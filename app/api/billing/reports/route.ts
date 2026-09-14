@@ -68,7 +68,7 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
     lte: endDate,
   }
 
-  const [invoiceSummary, paymentSummary, outstandingSummary, insuranceSummary] = await Promise.all([
+  const [invoiceSummary, paymentSummary, outstandingSummary] = await Promise.all([
     // Invoice summary
     prisma.invoice.aggregate({
       where: { hospitalId, createdAt: dateFilter },
@@ -92,16 +92,6 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
         status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
       },
       _sum: { balanceAmount: true },
-      _count: true,
-    }),
-    // Insurance summary
-    prisma.insuranceClaim.aggregate({
-      where: {
-        hospitalId,
-        submittedDate: dateFilter,
-        status: { not: 'DRAFT' },
-      },
-      _sum: { claimAmount: true, settledAmount: true },
       _count: true,
     }),
   ])
@@ -136,9 +126,6 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
       paymentCount: paymentSummary._count,
       totalOutstanding: outstandingSummary._sum.balanceAmount || 0,
       outstandingInvoices: outstandingSummary._count,
-      insuranceClaimed: insuranceSummary._sum.claimAmount || 0,
-      insuranceSettled: insuranceSummary._sum.settledAmount || 0,
-      insuranceClaimCount: insuranceSummary._count,
     },
     breakdowns: {
       byPaymentMethod: paymentMethodBreakdown.map((item) => ({

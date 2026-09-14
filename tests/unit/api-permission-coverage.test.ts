@@ -32,9 +32,7 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   // Each is a lookup by a slug that is already public in the booking URL, and
   // none of them lists clinics — there is deliberately no endpoint that does.
   'public/[slug]': 'public, addressed by a slug that is already in the booking URL',
-  'patient-portal': 'patient OTP session cookie, checked by the portal layout',
   cron: 'CRON_SECRET bearer token',
-  webhooks: 'payment-provider signature',
   'track/email/[id]': 'open-tracking pixel; no data returned',
   'auth/[...nextauth]': 'NextAuth itself',
   'auth/mobile-token': 'exchanges credentials for a token; it *is* the login',
@@ -44,11 +42,7 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   notifications: "a user's own notifications, scoped to their own id",
   'settings/profile': "a user's own profile",
   'settings/communications/test': 'sends a test message to the caller',
-  'payments/public-order': 'public payment link, identified by its own token',
-  'payments/public-verify': 'public payment link, identified by its own token',
-  'integrations/google-calendar/callback': 'OAuth redirect, validated by state',
   'communications/triggers': 'CRON_SECRET bearer token',
-  'communications/surveys/[id]/responses': 'patient submits a survey from a link',
 }
 
 function routeFiles(dir: string, acc: string[] = []): string[] {
@@ -76,8 +70,11 @@ const STAFF_ROUTES = ALL.filter((f) => exemption(relative(f)) === null)
 
 describe('API permission coverage', () => {
   it('finds the route files', () => {
-    expect(ALL.length).toBeGreaterThan(150)
-    expect(STAFF_ROUTES.length).toBeGreaterThan(100)
+    // A floor, not a target. It exists to catch the glob silently matching
+    // nothing; it was 150 before the schema was scoped back to the
+    // specification, which removed 34 tables and the routes behind them.
+    expect(ALL.length).toBeGreaterThan(100)
+    expect(STAFF_ROUTES.length).toBeGreaterThan(80)
   })
 
   it('gates every staff route on a capability', () => {
