@@ -130,7 +130,7 @@ export async function GET() {
         bankIban: true,
         bankAccountName: true,
         onboardingCompleted: true,
-        plan: true,
+        subscription: { select: { plan: true, status: true, trialEndsAt: true } },
       },
     })
 

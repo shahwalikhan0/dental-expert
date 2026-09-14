@@ -49,12 +49,14 @@ model Hospital {
   currency            String    @default("PKR")
   timezone            String    @default("Asia/Karachi")
 
-  plan                Plan      @default(FREE)
-  planExpiresAt       DateTime?
-  patientLimit        Int       @default(100)
-  staffLimit          Int       @default(3)
-  storageLimitMb      Int       @default(500)
+  // What this tenant is paying for lives on Subscription, not here. It used to
+  // be five columns on this row — a plan name and three copied-down limits —
+  // which meant raising a plan's allowance left every clinic already signed up
+  // on the old numbers for ever. See lib/plans.ts.
 
+  // Suspension by the platform, as opposed to by billing: fraud, abuse, or a
+  // tenant who asked to be switched off. A lapsed subscription is a separate
+  // state and is read from Subscription.status.
   isActive            Boolean   @default(true)
   onboardingCompleted Boolean   @default(false)
 
@@ -117,12 +119,16 @@ model Hospital {
   formSubmissions     FormSubmission[]
   waitlistEntries     Waitlist[]
   dataImportJobs      DataImportJob[]
+  subscription        Subscription?
 
   @@index([slug])
-  @@index([plan])
   @@index([isActive])
 }
 
+/// The tiers on offer. What each one *allows* is in lib/plans.ts, not here:
+/// an enum value is a name, and pricing and allowances change far more often
+/// than the set of tiers does — a limit in the database would need a migration
+/// every time marketing changed its mind.
 enum Plan {
   FREE
   PROFESSIONAL
@@ -132,12 +138,121 @@ enum Plan {
 
 // ==================== SUBSCRIPTION & BILLING ====================
 
+/// What a tenant is paying for, and until when.
+///
+/// One row per clinic, created with the clinic. Access is judged against
+/// `status` and `currentPeriodEnd` rather than a flag somebody has to remember
+/// to flip: a subscription that has simply run out stops being ACTIVE on its
+/// own, which is the failure mode you want when nobody is watching.
+model Subscription {
+  id                 String             @id @default(cuid())
+  hospitalId         String             @unique
+  plan               Plan               @default(FREE)
+  status             SubscriptionStatus @default(TRIALING)
+
+  /// The window the tenant has paid for. `currentPeriodEnd` is NULL for plans
+  /// that do not expire — Free, and the perpetual Self-Hosted licence.
+  currentPeriodStart DateTime           @default(now())
+  currentPeriodEnd   DateTime?
+  trialEndsAt        DateTime?
+
+  /// Set when a tenant asks to stop. The subscription still runs to the end of
+  /// the period they paid for; cancelling is not the same as expiring, and a
+  /// clinic that has paid until March should not lose its records in January.
+  cancelRequestedAt  DateTime?
+  cancelledAt        DateTime?
+
+  /// Negotiated exceptions to the plan's allowances. NULL — the normal case —
+  /// means "whatever the plan says", so raising a plan's limits raises them for
+  /// everyone on it. A number here is a deal somebody agreed on purpose.
+  patientLimitOverride   Int?
+  staffLimitOverride     Int?
+  storageLimitMbOverride Int?
+
+  /// Free-text note from the platform side: who agreed what, and when.
+  note               String?            @db.Text
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  hospital           Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  invoices           SubscriptionInvoice[]
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+enum SubscriptionStatus {
+  /// Full access, no payment taken yet.
+  TRIALING
+  ACTIVE
+  /// Payment is late. Still working — the clinic's day does not stop because
+  /// an invoice is overdue — but the warning is showing.
+  PAST_DUE
+  /// Switched off by the platform. Staff may still sign in and read and export
+  /// their data; they may not write. Deliberately not deletion: a clinic's
+  /// records are not ours to destroy over an unpaid bill.
+  SUSPENDED
+  CANCELLED
+}
+
+/// What the platform charged a tenant for a period, and whether it was paid.
+///
+/// Distinct from the `Invoice` model, which is a clinic billing its patient.
+/// This is us billing the clinic, and conflating the two would put the
+/// platform's revenue inside each tenant's own financial reports.
+model SubscriptionInvoice {
+  id             String                    @id @default(cuid())
+  subscriptionId String
+  hospitalId     String
+
+  invoiceNo      String                    @unique
+  periodStart    DateTime
+  periodEnd      DateTime
+
+  amount         Decimal                   @db.Decimal(12, 2)
+  currency       String                    @default("PKR")
+
+  status         SubscriptionInvoiceStatus @default(DUE)
+  issuedAt       DateTime                  @default(now())
+  dueAt          DateTime?
+  paidAt         DateTime?
+
+  /// Bank transfer reference, cheque number or processor id — whatever ties
+  /// this row to money that actually arrived.
+  paymentRef     String?
+  note           String?                   @db.Text
+
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([hospitalId])
+  @@index([status])
+  @@index([issuedAt])
+}
+
+enum SubscriptionInvoiceStatus {
+  DUE
+  PAID
+  /// Raised in error, or written off.
+  VOID
+}
+
 // ==================== AUTHENTICATION & USERS ====================
 
 model User {
   id              String    @id @default(cuid())
   hospitalId      String
-  email           String    @unique
+  /// Unique **within a clinic**, not across the platform — see the compound
+  /// index at the bottom of this model. A globally unique address meant a
+  /// dentist who works Tuesdays at one practice and Thursdays at another could
+  /// not have an account at both, and that the second clinic to try got told
+  /// "an account with this email already exists" about a clinic they cannot
+  /// see and have nothing to do with.
+  email           String
   password        String
   name            String
   phone           String?
@@ -153,6 +268,13 @@ model User {
   clinicalRole    Role?
   isActive        Boolean   @default(true)
   isHospitalAdmin Boolean   @default(false)
+  /// Staff of the platform itself, not of any clinic — the people who onboard
+  /// tenants, change plans and suspend accounts. Deliberately a flag on an
+  /// ordinary user rather than a Role: platform administration is orthogonal to
+  /// what someone may do *inside* a clinic, and modelling it as a ninth role
+  /// would have meant every clinic-side permission table growing a column for a
+  /// role that never appears in a clinic.
+  isPlatformAdmin Boolean   @default(false)
   emailVerified   DateTime?
   image           String?
   mustChangePassword Boolean @default(false)
@@ -184,9 +306,11 @@ model User {
   treatmentAddenda        TreatmentAddendum[] @relation("TreatmentAddenda")
   treatmentAmendments     TreatmentRevision[] @relation("TreatmentAmendments")
 
+  @@unique([hospitalId, email])
   @@index([email])
   @@index([role])
   @@index([hospitalId])
+  @@index([isPlatformAdmin])
 }
 
 // The seven roles of specification §4, plus LAB_TECH for the dental-laboratory

@@ -11,6 +11,12 @@ declare module 'next-auth' {
     staffId?: string
     hospitalId: string
     isHospitalAdmin: boolean
+    /**
+     * Staff of the platform, not of a clinic. Orthogonal to `role`, which says
+     * what someone may do *inside* the clinic they belong to.
+     */
+    isPlatformAdmin?: boolean
+    image?: string | null
   }
 
   interface Session {
@@ -23,6 +29,7 @@ declare module 'next-auth' {
       staffId?: string
       hospitalId: string
       isHospitalAdmin: boolean
+      isPlatformAdmin?: boolean
     }
   }
 }

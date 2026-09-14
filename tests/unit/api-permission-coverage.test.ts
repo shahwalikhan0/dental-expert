@@ -32,6 +32,13 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   // Each is a lookup by a slug that is already public in the booking URL, and
   // none of them lists clinics — there is deliberately no endpoint that does.
   'public/[slug]': 'public, addressed by a slug that is already in the booking URL',
+  // Answers nothing without the correct password, writes nothing, and signs
+  // nobody in — it only names the clinics a verified password already opens.
+  'public/login-clinics': 'requires the password it is asked about; read-only',
+  // Platform administration is not a clinic capability and deliberately holds
+  // no Permission: requirePlatformAdmin() re-reads User.isPlatformAdmin from
+  // the database on every call, which is stricter than any capability here.
+  platform: 'requirePlatformAdmin — a database check, not a session claim',
   cron: 'CRON_SECRET bearer token',
   'track/email/[id]': 'open-tracking pixel; no data returned',
   'auth/[...nextauth]': 'NextAuth itself',

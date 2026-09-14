@@ -10,95 +10,111 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Check, Building2, Zap, Crown, Server, ArrowLeft } from 'lucide-react'
+import { PLANS, PLAN_FEATURES, isUnlimited, type PlanFeature } from '@/lib/plans'
 
-const plans = [
-  {
-    id: 'FREE',
-    name: 'Free',
-    price: '0',
-    description: 'Perfect for getting started',
-    icon: Building2,
-    features: [
-      'Up to 100 patients',
-      'Up to 3 staff members',
-      '500 MB storage',
-      'Basic reports',
-      'Email support',
-      'Patient management',
-      'Appointment scheduling',
-      'Basic billing',
-    ],
-    notIncluded: ['Advanced analytics', 'Custom branding', 'API access', 'Priority support'],
-    cta: 'Get Started Free',
-    ctaVariant: 'outline' as const,
-  },
-  {
-    id: 'PROFESSIONAL',
-    name: 'Professional',
-    price: '2,999',
-    description: 'For growing practices',
-    icon: Zap,
-    popular: true,
-    features: [
-      'Unlimited patients',
-      'Unlimited staff',
-      'Unlimited storage',
-      'Advanced analytics',
-      'Priority support',
-      'Custom branding',
-      'API access',
-      'SMS notifications',
-      'Insurance claims management',
-      'Lab order management',
-      'Inventory management',
-      'Multi-location support',
-    ],
-    notIncluded: [],
-    cta: 'Start 14-Day Trial',
-    ctaVariant: 'default' as const,
-  },
-  {
-    id: 'ENTERPRISE',
-    name: 'Enterprise',
-    price: 'Custom',
-    description: 'For large organizations',
-    icon: Crown,
-    features: [
-      'Everything in Professional',
-      'Dedicated account manager',
-      'Custom integrations',
-      'SLA guarantee (99.9% uptime)',
-      'On-premise deployment option',
-      'Advanced security features',
-      'Custom training sessions',
-      'White-label options',
-    ],
-    notIncluded: [],
-    cta: 'Contact Sales',
-    ctaVariant: 'outline' as const,
-  },
-  {
-    id: 'SELF_HOSTED',
-    name: 'Self-Hosted',
-    price: '49,999',
-    priceNote: 'one-time',
-    description: 'Own your data forever',
-    icon: Server,
-    features: [
-      'Full source code access',
-      'Host on your own servers',
-      'No recurring fees',
-      'Unlimited everything',
-      '1 year of updates included',
-      'Installation support',
-      'Documentation & guides',
-      'Community support',
-    ],
-    notIncluded: [],
-    cta: 'Purchase License',
-    ctaVariant: 'outline' as const,
-  },
+/**
+ * The prices and allowances come from lib/plans.ts, which is also what the
+ * application enforces. They used to be typed out here as well, and had drifted
+ * from it — this page was still advertising insurance claims management and a
+ * patient portal, neither of which is built, alongside "multi-location support"
+ * on a plan that had no notion of a location.
+ *
+ * Only the presentation lives here: an icon, the call to action, and the plain
+ * sentences that describe what each capability means to a practice.
+ */
+const FEATURE_LABELS: Record<PlanFeature, string> = {
+  branches: 'Several locations under one account',
+  labModule: 'Dental laboratory case tracking',
+  bulkCommunications: 'Bulk SMS and email campaigns',
+  dataImport: 'Import from your existing system',
+  apiAccess: 'API access for integrations',
+  prioritySupport: 'Priority support',
+}
+
+/** What every plan includes, named once rather than repeated on each card. */
+const CORE_FEATURES = [
+  'Patient records and medical history',
+  'Appointment scheduling with chair and dentist conflict checks',
+  'Clinical notes, charting and treatment plans',
+  'Invoicing, payments and daily cashier reconciliation',
+  'Inventory and suppliers',
+  'Operational and financial reports',
 ]
+
+const PRESENTATION: Record<
+  string,
+  {
+    icon: typeof Building2
+    description: string
+    cta: string
+    ctaVariant: 'default' | 'outline'
+    popular?: boolean
+    priceNote?: string
+  }
+> = {
+  FREE: {
+    icon: Building2,
+    description: 'Perfect for getting started',
+    cta: 'Get Started Free',
+    ctaVariant: 'outline',
+  },
+  PROFESSIONAL: {
+    icon: Zap,
+    description: 'For an established practice',
+    cta: 'Start 14-Day Trial',
+    ctaVariant: 'default',
+    popular: true,
+  },
+  ENTERPRISE: {
+    icon: Crown,
+    description: 'For a group with several locations',
+    cta: 'Contact Sales',
+    ctaVariant: 'outline',
+  },
+  SELF_HOSTED: {
+    icon: Server,
+    description: 'Own your data forever',
+    cta: 'Purchase Licence',
+    ctaVariant: 'outline',
+    priceNote: 'one-time',
+  },
+}
+
+function allowance(count: number, noun: string): string {
+  return isUnlimited(count) ? `Unlimited ${noun}` : `Up to ${count} ${noun}`
+}
+
+const plans = PLANS.map((plan) => {
+  const presentation = PRESENTATION[plan.id]
+  const included = plan.features.map((f) => FEATURE_LABELS[f])
+
+  return {
+    id: plan.id,
+    name: plan.name,
+    price: plan.price === null ? 'Custom' : plan.price.toLocaleString('en-PK'),
+    priceNote: presentation.priceNote,
+    description: presentation.description,
+    icon: presentation.icon,
+    popular: presentation.popular,
+    features: [
+      allowance(plan.entitlements.patients, 'patients'),
+      allowance(plan.entitlements.staff, 'staff members'),
+      isUnlimited(plan.entitlements.storageMb)
+        ? 'Unlimited storage'
+        : `${plan.entitlements.storageMb} MB storage`,
+      ...CORE_FEATURES,
+      ...included,
+    ],
+    // What this plan does not have that a higher one does, worked out rather
+    // than listed — so a feature added to a plan cannot stay in somebody's
+    // "not included" column by accident.
+    notIncluded: PLAN_FEATURES.filter((f) => !plan.features.includes(f)).map(
+      (f) => FEATURE_LABELS[f]
+    ),
+    cta: presentation.cta,
+    ctaVariant: presentation.ctaVariant,
+  }
+})
 
 const faqs = [
   {

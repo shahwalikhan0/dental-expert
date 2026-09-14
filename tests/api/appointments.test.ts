@@ -36,12 +36,6 @@ vi.mock('@/lib/api-helpers', async () => {
   const helpers: any = {
     requireAuthAndRole: vi.fn(),
     requireRole: vi.fn(),
-    PLAN_LIMITS: {
-      FREE: { patientLimit: 100, staffLimit: 3, storageLimitMb: 500 },
-      PROFESSIONAL: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-      ENTERPRISE: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-      SELF_HOSTED: { patientLimit: -1, staffLimit: -1, storageLimitMb: -1 },
-    },
   }
   // Routes gate on capabilities now (lib/rbac). Rather than stub the check
   // away, run the real matrix against whatever role the test put on

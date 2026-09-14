@@ -18,6 +18,8 @@ interface DashboardShellProps {
     role: string
     /** Optional second role; the menu is the union. See lib/rbac.ts. */
     clinicalRole?: string | null
+    /** Staff of the platform, not of this clinic. See lib/platform.ts. */
+    isPlatformAdmin?: boolean
   }
   hospital?: {
     name: string
@@ -39,6 +41,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
               hospitalName={hospital?.name}
               hospitalLogo={hospital?.logo}
               plan={hospital?.plan}
+              isPlatformAdmin={user.isPlatformAdmin}
             />
           </aside>
 
@@ -49,6 +52,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
             hospitalName={hospital?.name}
             hospitalLogo={hospital?.logo}
             plan={hospital?.plan}
+            isPlatformAdmin={user.isPlatformAdmin}
           />
 
           {/* Main content */}

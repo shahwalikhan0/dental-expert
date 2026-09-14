@@ -28,15 +28,29 @@ function LoginForm() {
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
 
   /**
-   * Optional clinic branding via `?clinic=<slug>`.
+   * `?clinic=<slug>` — branding, and now also a tenant hint.
    *
-   * Cosmetic only. The clinic a session belongs to is resolved from the email
-   * address, never from this parameter — so a wrong, missing or hand-edited
-   * slug changes nothing except which name is printed above the form. Failures
-   * are swallowed on purpose: branding must never be able to block a login.
+   * On a platform serving many clinics an email address no longer picks one
+   * out on its own: the same dentist may hold an account at two practices. The
+   * slug, when present, narrows the sign-in to that clinic; when absent the
+   * address is matched across the platform and only the account the password
+   * actually opens is used.
+   *
+   * Nothing here is a security boundary. A hand-edited slug cannot grant access
+   * to a clinic the password does not open — it can only fail to find one.
+   * Branding lookups are swallowed on purpose: a clinic logo must never be able
+   * to block a login.
    */
   const clinicSlug = searchParams.get('clinic')
   const [clinic, setClinic] = useState<{ name: string; logo?: string | null } | null>(null)
+
+  /**
+   * Filled only in the uncommon case where one address and password open
+   * accounts at more than one clinic. Until somebody picks, we cannot know
+   * which day's work they meant to sign in to.
+   */
+  const [clinicChoices, setClinicChoices] = useState<{ slug: string; name: string }[]>([])
+  const [chosenClinic, setChosenClinic] = useState<string>('')
 
   useEffect(() => {
     if (!clinicSlug) return
@@ -65,23 +79,55 @@ function LoginForm() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true)
 
+    // An explicit pick from the clinic list wins over the one in the URL.
+    const clinicHint = chosenClinic || clinicSlug || ''
+
     try {
       const result = await signIn('credentials', {
         email: data.email,
         password: data.password,
+        clinic: clinicHint,
         redirect: false,
       })
 
-      if (result?.error) {
-        toast({
-          variant: 'destructive',
-          title: 'Login failed',
-          description: 'Invalid email or password. Please try again.',
-        })
-      } else {
+      if (!result?.error) {
         router.push(callbackUrl)
         router.refresh()
+        return
       }
+
+      /**
+       * A refusal has two quite different causes, and the credentials provider
+       * cannot tell us which: the password was wrong, or it was right at
+       * several clinics and we were not told which one. Asking is safe — the
+       * endpoint answers nothing without the correct password, so it can only
+       * name clinics this person can already sign in to.
+       */
+      if (!clinicHint) {
+        const choices = await fetch('/api/public/login-clinics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: data.email, password: data.password }),
+        })
+          .then((res) => (res.ok ? res.json() : { clinics: [] }))
+          .catch(() => ({ clinics: [] }))
+
+        if (Array.isArray(choices.clinics) && choices.clinics.length > 1) {
+          setClinicChoices(choices.clinics)
+          setChosenClinic(choices.clinics[0].slug)
+          toast({
+            title: 'Which clinic?',
+            description: 'You have an account at more than one. Choose one and sign in again.',
+          })
+          return
+        }
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Login failed',
+        description: 'Invalid email or password. Please try again.',
+      })
     } catch {
       toast({
         variant: 'destructive',
@@ -142,6 +188,27 @@ function LoginForm() {
               <p className="text-sm text-destructive">{errors.password.message}</p>
             )}
           </div>
+          {clinicChoices.length > 1 && (
+            <div className="space-y-2">
+              <Label htmlFor="clinic">Clinic</Label>
+              <select
+                id="clinic"
+                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                value={chosenClinic}
+                onChange={(e) => setChosenClinic(e.target.value)}
+                disabled={isLoading}
+              >
+                {clinicChoices.map((choice) => (
+                  <option key={choice.slug} value={choice.slug}>
+                    {choice.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                You have an account at more than one clinic on this platform.
+              </p>
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Sign in

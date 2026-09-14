@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { requireRole, generateToken, PLAN_LIMITS } from '@/lib/api-helpers'
+import { requireRole, generateToken } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 // Mock the auth module
@@ -21,32 +21,6 @@ vi.mock('@/lib/prisma', () => ({
     },
   },
 }))
-
-describe('API Helpers - PLAN_LIMITS', () => {
-  it('should have correct FREE plan limits', () => {
-    expect(PLAN_LIMITS.FREE.patientLimit).toBe(100)
-    expect(PLAN_LIMITS.FREE.staffLimit).toBe(3)
-    expect(PLAN_LIMITS.FREE.storageLimitMb).toBe(500)
-  })
-
-  it('should have unlimited PROFESSIONAL plan', () => {
-    expect(PLAN_LIMITS.PROFESSIONAL.patientLimit).toBe(-1)
-    expect(PLAN_LIMITS.PROFESSIONAL.staffLimit).toBe(-1)
-    expect(PLAN_LIMITS.PROFESSIONAL.storageLimitMb).toBe(-1)
-  })
-
-  it('should have unlimited ENTERPRISE plan', () => {
-    expect(PLAN_LIMITS.ENTERPRISE.patientLimit).toBe(-1)
-    expect(PLAN_LIMITS.ENTERPRISE.staffLimit).toBe(-1)
-    expect(PLAN_LIMITS.ENTERPRISE.storageLimitMb).toBe(-1)
-  })
-
-  it('should have unlimited SELF_HOSTED plan', () => {
-    expect(PLAN_LIMITS.SELF_HOSTED.patientLimit).toBe(-1)
-    expect(PLAN_LIMITS.SELF_HOSTED.staffLimit).toBe(-1)
-    expect(PLAN_LIMITS.SELF_HOSTED.storageLimitMb).toBe(-1)
-  })
-})
 
 describe('API Helpers - requireRole', () => {
   it('should return null for allowed roles', () => {
@@ -166,28 +140,5 @@ describe('API Helpers - Token Security', () => {
     const token = generateToken(48)
     expect(token).toHaveLength(48)
     expect(token).toMatch(/^[A-Za-z0-9]+$/)
-  })
-})
-
-describe('API Helpers - Plan Limit Validation', () => {
-  it('FREE plan should have reasonable limits for small clinics', () => {
-    const free = PLAN_LIMITS.FREE
-    expect(free.patientLimit).toBeGreaterThan(0)
-    expect(free.patientLimit).toBeLessThanOrEqual(500) // Reasonable for free tier
-    expect(free.staffLimit).toBeGreaterThan(0)
-    expect(free.staffLimit).toBeLessThanOrEqual(10)
-  })
-
-  it('Paid plans should have higher/unlimited limits', () => {
-    // -1 means unlimited
-    expect(PLAN_LIMITS.PROFESSIONAL.patientLimit).toBe(-1)
-    expect(PLAN_LIMITS.ENTERPRISE.patientLimit).toBe(-1)
-  })
-
-  it('SELF_HOSTED should have no limits', () => {
-    const selfHosted = PLAN_LIMITS.SELF_HOSTED
-    expect(selfHosted.patientLimit).toBe(-1)
-    expect(selfHosted.staffLimit).toBe(-1)
-    expect(selfHosted.storageLimitMb).toBe(-1)
   })
 })

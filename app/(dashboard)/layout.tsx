@@ -18,9 +18,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         where: { id: hospitalId },
         select: {
           name: true,
-          plan: true,
           logo: true,
           onboardingCompleted: true,
+          subscription: { select: { plan: true } },
         },
       })
     : null
@@ -35,12 +35,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     email: session.user.email || '',
     role: session.user.role || 'RECEPTIONIST',
     clinicalRole: session.user.clinicalRole,
+    isPlatformAdmin: session.user.isPlatformAdmin ?? false,
   }
 
   const hospitalInfo = hospital
     ? {
         name: hospital.name,
-        plan: hospital.plan,
+        plan: hospital.subscription?.plan ?? 'FREE',
         logo: hospital.logo,
       }
     : undefined

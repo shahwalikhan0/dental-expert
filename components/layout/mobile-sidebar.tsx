@@ -17,6 +17,8 @@ interface MobileSidebarProps {
   hospitalName?: string
   hospitalLogo?: string | null
   plan?: string
+  /** Staff of the platform, not of this clinic — adds the Platform section. */
+  isPlatformAdmin?: boolean
 }
 
 export function MobileSidebar({
@@ -24,9 +26,10 @@ export function MobileSidebar({
   clinicalRole,
   hospitalName,
   hospitalLogo,
+  isPlatformAdmin,
 }: MobileSidebarProps) {
   const pathname = usePathname()
-  const navigation = getNavigationForRole(role, clinicalRole)
+  const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
   const { mobileOpen, setMobileOpen } = useSidebar()
 
   // Close on route change

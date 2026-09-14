@@ -250,6 +250,25 @@ export const navigation: NavSection[] = [
 ]
 
 /**
+ * Running the platform, as opposed to running a clinic.
+ *
+ * Kept out of `navigation` because it is not gated by a capability: every
+ * clinic has an ADMIN and none of them has any business seeing another
+ * clinic's row. It is appended only for a user whose `isPlatformAdmin` flag is
+ * set, and the pages behind it check the database rather than the session.
+ */
+export const PLATFORM_SECTION: NavSection = {
+  title: 'Platform',
+  items: [
+    {
+      title: 'Clinics',
+      href: '/platform/tenants',
+      icon: Building2,
+    },
+  ],
+}
+
+/**
  * The capability an item needs: its explicit `permission`, else whatever the
  * route map says its href requires, else nothing (visible to any staff user).
  */
@@ -275,12 +294,14 @@ function visible(item: NavItem, holder: RoleHolder): boolean {
  */
 export function getNavigationForRole(
   role: string | RoleHolder,
-  clinicalRole?: string | null
+  clinicalRole?: string | null,
+  options: { isPlatformAdmin?: boolean } = {}
 ): NavSection[] {
   // Accepts a bare role for the common single-role case, or a RoleHolder for
   // someone who also holds a clinical role.
   const holder: RoleHolder = typeof role === 'string' ? { role, clinicalRole } : role
-  return navigation
+  const sections = options.isPlatformAdmin ? [...navigation, PLATFORM_SECTION] : navigation
+  return sections
     .map((section) => ({
       ...section,
       items: section.items

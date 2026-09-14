@@ -71,11 +71,6 @@ vi.mock('@/lib/api-helpers', async () => {
     requireRole: vi.fn(() => true),
     requireAuthAndRole: vi.fn(async () => mockSession),
     getAuthenticatedHospital: vi.fn(async () => ({ hospitalId: 'hosp-1', userId: 'user-1' })),
-    PLAN_LIMITS: {
-      FREE: { patients: 100, staff: 5 },
-      PROFESSIONAL: { patients: 1000, staff: 20 },
-      ENTERPRISE: { patients: -1, staff: -1 },
-    },
     generateToken: vi.fn(() => 'test-token'),
   }
   // Routes gate on capabilities now (lib/rbac). Rather than stub the check

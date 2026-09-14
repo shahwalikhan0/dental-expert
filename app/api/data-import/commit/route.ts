@@ -318,7 +318,9 @@ async function importStaff(
       }
 
       // Check if email already exists
-      const existingUser = await prisma.user.findUnique({ where: { email: row.email } })
+      const existingUser = await prisma.user.findUnique({
+        where: { hospitalId_email: { hospitalId, email: row.email } },
+      })
       if (existingUser) {
         if (skipErrors) {
           errorCount++

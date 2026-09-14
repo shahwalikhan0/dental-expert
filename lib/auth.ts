@@ -1,14 +1,21 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
 import { authConfig } from './auth.config'
-import { prisma } from './prisma'
 import { z } from 'zod'
-import { AUDIT_ACTIONS, recordAudit, requestContext } from './audit'
+import { requestContext } from './audit'
+import { resolveLogin } from './login'
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+  /**
+   * Which clinic to sign in to, when the address alone does not say.
+   *
+   * Empty on the ordinary path. It is filled from `?clinic=<slug>` on the
+   * sign-in page, and from the clinic picker that appears when one address and
+   * password open accounts at more than one clinic.
+   */
+  clinic: z.string().optional(),
 })
 
 export const { auth, signIn, signOut, handlers } = NextAuth({
@@ -20,88 +27,29 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
         if (!validated.success) return null
 
-        const { email, password } = validated.data
-        const context = requestContext(request?.headers as Headers | undefined)
-
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: {
-            staff: true,
-            hospital: true,
-          },
-        })
+        const { email, password, clinic } = validated.data
 
         /**
-         * Spec §10 wants login recorded. Failures are recorded too — a
-         * deactivated account being tried, or a run of wrong passwords, is
-         * exactly what an audit trail is for.
+         * Who this is, and at which clinic, is worked out in lib/login.ts —
+         * shared with the clinic-picker endpoint so the two can never disagree
+         * about which account a password opens.
          *
-         * An unknown email is deliberately *not* recorded: `AuditLog` hangs off
-         * a clinic, and an address that matches no user belongs to no clinic.
-         * Writing those somewhere would also mean an unauthenticated caller
-         * could fill the table at will.
+         * Every outcome other than `ok` is null here. NextAuth's Credentials
+         * provider has no way to return a reason without also deciding how it
+         * is rendered, and an authorisation decision should not be in the
+         * business of writing user-facing copy; the sign-in page asks
+         * /api/public/login-clinics when it needs to tell the two apart.
          */
-        if (!user) return null
-
-        if (!user.isActive) {
-          await recordAudit({
-            hospitalId: user.hospitalId,
-            userId: user.id,
-            action: AUDIT_ACTIONS.LOGIN_FAILED_USER_INACTIVE,
-            entityType: 'User',
-            entityId: user.id,
-            ...context,
-          })
-          return null
-        }
-
-        if (!user.hospital || !user.hospital.isActive) {
-          await recordAudit({
-            hospitalId: user.hospitalId,
-            userId: user.id,
-            action: AUDIT_ACTIONS.LOGIN_FAILED_CLINIC_INACTIVE,
-            entityType: 'User',
-            entityId: user.id,
-            ...context,
-          })
-          return null
-        }
-
-        const passwordMatch = await bcrypt.compare(password, user.password)
-        if (!passwordMatch) {
-          await recordAudit({
-            hospitalId: user.hospitalId,
-            userId: user.id,
-            action: AUDIT_ACTIONS.LOGIN_FAILED_PASSWORD,
-            entityType: 'User',
-            entityId: user.id,
-            ...context,
-          })
-          return null
-        }
-
-        await recordAudit({
-          hospitalId: user.hospitalId,
-          userId: user.id,
-          action: AUDIT_ACTIONS.LOGIN_SUCCESS,
-          entityType: 'User',
-          entityId: user.id,
-          // The role is worth having on the entry: reading the trail later,
-          // "who could do what at the time" is the question being asked.
-          newValues: { role: user.role, clinicalRole: user.clinicalRole },
-          ...context,
+        const outcome = await resolveLogin({
+          email,
+          password,
+          clinicSlug: clinic || null,
+          context: requestContext(request?.headers as Headers | undefined),
         })
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          clinicalRole: user.clinicalRole ?? undefined,
-          staffId: user.staff?.id,
-          hospitalId: user.hospitalId,
-          isHospitalAdmin: user.isHospitalAdmin,
-        }
+        if (outcome.status !== 'ok') return null
+
+        return outcome.identity
       },
     }),
   ],

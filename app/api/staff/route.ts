@@ -179,9 +179,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if email already exists
+    // Within this clinic. The same address may hold an account at another
+    // clinic on the platform — a locum, or a dentist with sessions at two
+    // practices — and that is none of this clinic's business.
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { hospitalId_email: { hospitalId, email } },
     })
 
     if (existingUser) {

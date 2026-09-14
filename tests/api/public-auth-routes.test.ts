@@ -17,10 +17,6 @@ vi.mock('@/lib/api-helpers', async () => {
   const helpers: any = {
     generateUniqueSlug: vi.fn().mockResolvedValue('test-dental-clinic'),
     generateToken: vi.fn().mockReturnValue('mock-verification-token-abc123'),
-    PLAN_LIMITS: {
-      FREE: { patientLimit: 100, staffLimit: 5, storageLimitMb: 500 },
-      PROFESSIONAL: { patientLimit: 1000, staffLimit: 25, storageLimitMb: 5000 },
-    },
   }
   // Routes gate on capabilities now (lib/rbac). Rather than stub the check
   // away, run the real matrix against whatever role the test put on
@@ -119,9 +115,12 @@ describe('POST /api/public/signup', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 409 when email already exists', async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      id: 'u1',
+  // Checked against clinics, not users. A person who already has a staff
+  // account somewhere on the platform may still register their own practice —
+  // and must not be told about a clinic they cannot see.
+  it('returns 409 when a clinic is already registered on that address', async () => {
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
+      id: 'h-existing',
       email: 'admin@testdental.com',
     } as any)
 
@@ -129,11 +128,11 @@ describe('POST /api/public/signup', () => {
     const body = await res.json()
 
     expect(res.status).toBe(409)
-    expect(body.error).toContain('already exists')
+    expect(body.error).toContain('already registered')
   })
 
   it('creates hospital, user, and staff in transaction', async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue(null)
 
     const mockTx = {
       hospital: {
@@ -153,16 +152,14 @@ describe('POST /api/public/signup', () => {
     expect(body.hospitalId).toBe('h1')
     expect(body.emailSent).toBe(true)
 
-    // Verify hospital created with FREE plan
-    expect(mockTx.hospital.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          name: 'Test Dental Clinic',
-          plan: 'FREE',
-          isActive: true,
-        }),
-      })
-    )
+    // A new clinic starts on the free tier, and gets a subscription row from
+    // the moment it exists — "what is this tenant entitled to" is then never a
+    // question anything has to guess the answer to.
+    const created = mockTx.hospital.create.mock.calls[0][0].data
+    expect(created).toMatchObject({ name: 'Test Dental Clinic', isActive: true })
+    expect(created.subscription.create).toMatchObject({ plan: 'FREE' })
+    expect(created).not.toHaveProperty('plan')
+    expect(created).not.toHaveProperty('patientLimit')
 
     // Verify user created with ADMIN role and staff record
     expect(mockTx.user.create).toHaveBeenCalledWith(
@@ -183,7 +180,7 @@ describe('POST /api/public/signup', () => {
   })
 
   it('handles email sending failure gracefully', async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue(null)
     vi.mocked(sendVerificationEmail).mockResolvedValue(false)
 
     const mockTx = {
@@ -202,7 +199,7 @@ describe('POST /api/public/signup', () => {
   })
 
   it('returns 500 on unexpected error', async () => {
-    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('DB down'))
+    vi.mocked(prisma.hospital.findUnique).mockRejectedValue(new Error('DB down'))
 
     const res = await signupPOST(makeReq('/api/public/signup', 'POST', validSignup))
     const body = await res.json()

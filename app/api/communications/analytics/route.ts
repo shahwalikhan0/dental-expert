@@ -159,7 +159,10 @@ export async function GET(req: Request) {
   const templates =
     templateIds.length > 0
       ? await prisma.communicationTemplate.findMany({
-          where: { id: { in: templateIds } },
+          // The ids came from this clinic's own message logs, so hospitalId is
+          // belt and braces — but a tenant filter costs nothing and means this
+          // query cannot become a leak if the ids ever come from elsewhere.
+          where: { hospitalId, id: { in: templateIds } },
           select: { id: true, name: true, category: true },
         })
       : []

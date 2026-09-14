@@ -45,6 +45,7 @@ export const authConfig: NextAuthConfig = {
         token.staffId = user.staffId
         token.hospitalId = user.hospitalId
         token.isHospitalAdmin = user.isHospitalAdmin
+        token.isPlatformAdmin = user.isPlatformAdmin
       }
       return token
     },
@@ -56,6 +57,7 @@ export const authConfig: NextAuthConfig = {
         session.user.staffId = token.staffId as string | undefined
         session.user.hospitalId = token.hospitalId as string
         session.user.isHospitalAdmin = token.isHospitalAdmin as boolean
+        session.user.isPlatformAdmin = token.isPlatformAdmin as boolean | undefined
       }
       return session
     },

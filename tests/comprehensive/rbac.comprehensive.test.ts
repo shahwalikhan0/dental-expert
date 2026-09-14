@@ -21,10 +21,10 @@ vi.mock('@/lib/prisma', () => ({
 
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { planFor } from '@/lib/plans'
 import {
   requireAuthAndRole,
   requireRole,
-  PLAN_LIMITS,
   checkPatientLimit,
   checkStaffLimit,
   generateToken,
@@ -234,39 +234,30 @@ describe('RBAC - Role-Based Access Control', () => {
     })
   })
 
-  describe('Plan Limits', () => {
-    it('should have defined limits for FREE plan', () => {
-      expect(PLAN_LIMITS.FREE).toEqual({
-        patientLimit: 100,
-        staffLimit: 3,
-        storageLimitMb: 500,
-      })
-    })
-
-    it('should have unlimited (-1) limits for PROFESSIONAL plan', () => {
-      expect(PLAN_LIMITS.PROFESSIONAL).toEqual({
-        patientLimit: -1,
-        staffLimit: -1,
-        storageLimitMb: -1,
-      })
-    })
-
-    it('should have unlimited limits for ENTERPRISE plan', () => {
-      expect(PLAN_LIMITS.ENTERPRISE.patientLimit).toBe(-1)
-      expect(PLAN_LIMITS.ENTERPRISE.staffLimit).toBe(-1)
-    })
-
-    it('should have unlimited limits for SELF_HOSTED plan', () => {
-      expect(PLAN_LIMITS.SELF_HOSTED.patientLimit).toBe(-1)
-    })
-  })
-
-  describe('checkPatientLimit Function', () => {
-    it('should return allowed:true when under limit', async () => {
+  describe('Plan entitlements', () => {
+    // Allowances belong to the plan (lib/plans.ts), not to a column copied onto
+    // each clinic — so these mock the subscription the clinic holds.
+    const onPlan = (plan: string, overrides: Record<string, number | null> = {}) =>
       mockPrisma.hospital.findUnique.mockResolvedValue({
         id: mockHospitalId,
-        patientLimit: 100,
+        name: 'Test',
+        slug: 'test',
+        isActive: true,
+        onboardingCompleted: true,
+        subscription: {
+          plan,
+          status: 'ACTIVE',
+          currentPeriodEnd: null,
+          trialEndsAt: null,
+          patientLimitOverride: null,
+          staffLimitOverride: null,
+          storageLimitMbOverride: null,
+          ...overrides,
+        },
       } as any)
+
+    it('gives a free clinic the free tier’s allowance', async () => {
+      onPlan('FREE')
       mockPrisma.patient.count.mockResolvedValue(50)
 
       const result = await checkPatientLimit(mockHospitalId)
@@ -276,62 +267,59 @@ describe('RBAC - Role-Based Access Control', () => {
       expect(result.max).toBe(100)
     })
 
-    it('should return allowed:false when at limit', async () => {
-      mockPrisma.hospital.findUnique.mockResolvedValue({
-        id: mockHospitalId,
-        patientLimit: 100,
-      } as any)
+    it('refuses at the allowance, not one past it', async () => {
+      onPlan('FREE')
       mockPrisma.patient.count.mockResolvedValue(100)
 
-      const result = await checkPatientLimit(mockHospitalId)
-
-      expect(result.allowed).toBe(false)
+      expect((await checkPatientLimit(mockHospitalId)).allowed).toBe(false)
     })
 
-    it('should return allowed:true for unlimited plans (-1)', async () => {
-      mockPrisma.hospital.findUnique.mockResolvedValue({
-        id: mockHospitalId,
-        patientLimit: -1,
-      } as any)
+    it('treats every paid plan as unlimited', async () => {
+      for (const plan of ['PROFESSIONAL', 'ENTERPRISE', 'SELF_HOSTED']) {
+        onPlan(plan)
+        const result = await checkPatientLimit(mockHospitalId)
+        expect(result.allowed, plan).toBe(true)
+        expect(result.max, plan).toBe(-1)
+      }
+    })
+
+    /**
+     * The reason the numbers moved off the clinic's own row. A tenant that
+     * signed up under an older, smaller free tier must pick up the new one
+     * without anybody going round and editing rows.
+     */
+    it('follows the plan when it changes, rather than a copy taken at signup', async () => {
+      onPlan('FREE')
+      mockPrisma.patient.count.mockResolvedValue(150)
+
+      expect((await checkPatientLimit(mockHospitalId)).max).toBe(
+        planFor('FREE').entitlements.patients
+      )
+    })
+
+    it('honours an override agreed with one tenant', async () => {
+      onPlan('FREE', { patientLimitOverride: 250 })
+      mockPrisma.patient.count.mockResolvedValue(150)
 
       const result = await checkPatientLimit(mockHospitalId)
-
       expect(result.allowed).toBe(true)
-      expect(result.max).toBe(-1)
+      expect(result.max).toBe(250)
     })
 
-    it('should return allowed:false for non-existent hospital', async () => {
+    it('refuses for a clinic that does not exist', async () => {
       mockPrisma.hospital.findUnique.mockResolvedValue(null)
 
-      const result = await checkPatientLimit('non-existent')
-
-      expect(result.allowed).toBe(false)
-    })
-  })
-
-  describe('checkStaffLimit Function', () => {
-    it('should return allowed:true when under limit', async () => {
-      mockPrisma.hospital.findUnique.mockResolvedValue({
-        id: mockHospitalId,
-        staffLimit: 10,
-      } as any)
-      mockPrisma.user.count.mockResolvedValue(5)
-
-      const result = await checkStaffLimit(mockHospitalId)
-
-      expect(result.allowed).toBe(true)
+      expect((await checkPatientLimit('non-existent')).allowed).toBe(false)
     })
 
-    it('should return allowed:false when at limit', async () => {
-      mockPrisma.hospital.findUnique.mockResolvedValue({
-        id: mockHospitalId,
-        staffLimit: 3,
-      } as any)
+    it('counts only active staff accounts against the staff allowance', async () => {
+      onPlan('FREE')
       mockPrisma.user.count.mockResolvedValue(3)
 
-      const result = await checkStaffLimit(mockHospitalId)
-
-      expect(result.allowed).toBe(false)
+      expect((await checkStaffLimit(mockHospitalId)).allowed).toBe(false)
+      expect(mockPrisma.user.count).toHaveBeenLastCalledWith({
+        where: { hospitalId: mockHospitalId, isActive: true },
+      })
     })
   })
 

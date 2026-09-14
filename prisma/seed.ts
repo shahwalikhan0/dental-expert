@@ -5,6 +5,7 @@ import {
   BloodGroup,
   ProcedureCategory,
   Plan,
+  SubscriptionStatus,
   InvoiceStatus,
   SupplierStatus,
   InventoryItemType,
@@ -36,7 +37,6 @@ async function main() {
       slug: 'demo-dental-clinic',
       email: 'info@demo-dental.com',
       phone: '3001234500',
-      plan: Plan.PROFESSIONAL,
       isActive: true,
       onboardingCompleted: true,
       address: '12-C, Main Boulevard, Gulberg III',
@@ -57,10 +57,13 @@ async function main() {
         saturday: { open: '09:00', close: '14:00' },
         sunday: { open: null, close: null },
       }),
-      upiId: 'clinic@upi',
-      patientLimit: -1, // Unlimited for PROFESSIONAL
-      staffLimit: -1,
-      storageLimitMb: -1,
+      subscription: {
+        create: {
+          plan: Plan.PROFESSIONAL,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        },
+      },
     },
   })
 
@@ -70,7 +73,7 @@ async function main() {
   const hashedPassword = await bcrypt.hash('Admin@123', 10)
 
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@demo-dental.com' },
+    where: { hospitalId_email: { hospitalId: hospital.id, email: 'admin@demo-dental.com' } },
     update: {},
     create: {
       email: 'admin@demo-dental.com',
@@ -102,7 +105,7 @@ async function main() {
   // Create doctor user
   const doctorPassword = await bcrypt.hash('Doctor@123', 10)
   const doctor = await prisma.user.upsert({
-    where: { email: 'doctor@demo-dental.com' },
+    where: { hospitalId_email: { hospitalId: hospital.id, email: 'doctor@demo-dental.com' } },
     update: {},
     create: {
       email: 'doctor@demo-dental.com',
@@ -137,7 +140,7 @@ async function main() {
   // Create receptionist user
   const receptionistPassword = await bcrypt.hash('Reception@123', 10)
   const receptionist = await prisma.user.upsert({
-    where: { email: 'reception@demo-dental.com' },
+    where: { hospitalId_email: { hospitalId: hospital.id, email: 'reception@demo-dental.com' } },
     update: {},
     create: {
       email: 'reception@demo-dental.com',
@@ -227,7 +230,7 @@ async function main() {
 
   for (const person of otherRoles) {
     const created = await prisma.user.upsert({
-      where: { email: person.email },
+      where: { hospitalId_email: { hospitalId: hospital.id, email: person.email } },
       update: {},
       create: {
         email: person.email,
@@ -1620,6 +1623,122 @@ async function main() {
 
     console.log('Created e2e invoice')
   }
+
+  // ── A second clinic ───────────────────────────────────────────────────────
+  //
+  // This is a platform, not one practice's installation, and a seed with a
+  // single tenant hides every bug that only shows up when there are two: a
+  // query that forgot its `hospitalId`, a uniqueness constraint that should
+  // have been per-clinic, a login that assumed an address picks out one person.
+  //
+  // Deliberately minimal — two accounts and nothing else. It exists to be the
+  // clinic whose data must never appear in the demo clinic's screens.
+  const secondClinic = await prisma.hospital.upsert({
+    where: { slug: 'city-dental-karachi' },
+    update: {},
+    create: {
+      name: 'City Dental Karachi',
+      slug: 'city-dental-karachi',
+      email: 'info@city-dental.example',
+      phone: '3009876500',
+      isActive: true,
+      onboardingCompleted: true,
+      city: 'Karachi',
+      state: 'Sindh',
+      subscription: {
+        create: { plan: Plan.FREE, status: SubscriptionStatus.ACTIVE },
+      },
+    },
+  })
+
+  await prisma.user.upsert({
+    where: {
+      hospitalId_email: { hospitalId: secondClinic.id, email: 'admin@city-dental.example' },
+    },
+    update: {},
+    create: {
+      email: 'admin@city-dental.example',
+      name: 'Bilal Ahmed',
+      password: await bcrypt.hash('Admin@123', 10),
+      role: Role.ADMIN,
+      phone: '3009876501',
+      hospitalId: secondClinic.id,
+      isHospitalAdmin: true,
+      staff: {
+        create: {
+          employeeId: 'EMP001',
+          firstName: 'Bilal',
+          lastName: 'Ahmed',
+          email: 'admin@city-dental.example',
+          phone: '3009876501',
+          hospitalId: secondClinic.id,
+        },
+      },
+    },
+  })
+
+  /**
+   * The same address at both clinics — a dentist with sessions at each.
+   *
+   * This was impossible while `User.email` was unique across the platform, and
+   * it is the case the sign-in clinic picker exists for: the same password
+   * opens two accounts, so the sign-in page has to ask which one was meant.
+   */
+  const sharedPassword = await bcrypt.hash('Locum@123', 10)
+  for (const [clinicId, employeeId] of [
+    [hospital.id, 'EMP020'],
+    [secondClinic.id, 'EMP002'],
+  ] as const) {
+    await prisma.user.upsert({
+      where: { hospitalId_email: { hospitalId: clinicId, email: 'locum@example.com' } },
+      update: {},
+      create: {
+        email: 'locum@example.com',
+        name: 'Dr. Ayesha Noor',
+        password: sharedPassword,
+        role: Role.DOCTOR,
+        phone: '3005550000',
+        hospitalId: clinicId,
+        staff: {
+          create: {
+            employeeId,
+            firstName: 'Ayesha',
+            lastName: 'Noor',
+            email: 'locum@example.com',
+            phone: '3005550000',
+            hospitalId: clinicId,
+            specialization: 'Endodontics',
+          },
+        },
+      },
+    })
+  }
+
+  console.log('Created second clinic:', secondClinic.name)
+
+  /**
+   * Somebody has to run the platform.
+   *
+   * Not a Role: platform administration is orthogonal to what a person may do
+   * inside a clinic, and modelling it as a ninth role would put a role that
+   * never appears in any clinic into every clinic-side permission table. The
+   * account still belongs to a clinic — its own — because every user does.
+   */
+  await prisma.user.upsert({
+    where: { hospitalId_email: { hospitalId: hospital.id, email: 'platform@example.com' } },
+    update: { isPlatformAdmin: true },
+    create: {
+      email: 'platform@example.com',
+      name: 'Platform Operations',
+      password: await bcrypt.hash('Platform@123', 10),
+      role: Role.ADMIN,
+      phone: '3001112222',
+      hospitalId: hospital.id,
+      isPlatformAdmin: true,
+    },
+  })
+
+  console.log('Created platform administrator: platform@example.com')
 
   console.log('Database seed completed successfully!')
 }

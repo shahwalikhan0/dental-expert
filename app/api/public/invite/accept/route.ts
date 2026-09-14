@@ -64,14 +64,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if email already exists
+    // Only within the clinic that issued the invite. Refusing because the
+    // address holds an account at some *other* clinic would have made it
+    // impossible to invite a dentist who already works elsewhere on the
+    // platform — while telling them a clinic they cannot see exists.
     const existingUser = await prisma.user.findUnique({
-      where: { email: invite.email },
+      where: { hospitalId_email: { hospitalId: invite.hospitalId, email: invite.email } },
     })
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'An account with this email already exists' },
+        { error: 'An account with this email already exists at this clinic' },
         { status: 409 }
       )
     }

@@ -25,6 +25,28 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
+  // Subscription — what a tenant is paying for (lib/tenant.ts)
+  subscription: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+
+  subscriptionInvoice: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+
   // User
   user: {
     findUnique: vi.fn(),

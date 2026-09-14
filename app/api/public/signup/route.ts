@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import { generateUniqueSlug, generateToken, PLAN_LIMITS } from '@/lib/api-helpers'
-import { Plan, Role } from '@prisma/client'
+import { generateUniqueSlug, generateToken } from '@/lib/api-helpers'
+import { initialSubscription } from '@/lib/tenant'
+import { Role } from '@prisma/client'
 import { sendVerificationEmail } from '@/lib/email-helpers'
 
 const signupSchema = z.object({
@@ -28,14 +29,18 @@ export async function POST(request: Request) {
 
     const { hospitalName, adminName, email, phone, password } = validated.data
 
-    // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    // A clinic signing up must not collide with an existing *clinic*. The
+    // address is checked against Hospital, not User: a person may hold a staff
+    // account at one practice and register their own practice later, and the
+    // old global-unique check on User.email refused the second with a message
+    // about an account they could not see.
+    const existingClinic = await prisma.hospital.findUnique({
       where: { email },
     })
 
-    if (existingUser) {
+    if (existingClinic) {
       return NextResponse.json(
-        { error: 'An account with this email already exists' },
+        { error: 'A clinic is already registered with this email address' },
         { status: 409 }
       )
     }
@@ -52,21 +57,20 @@ export async function POST(request: Request) {
 
     // Create hospital and admin user in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create the hospital with FREE plan limits
+      // Create the clinic, its owner, and the subscription, or none of them.
       const hospital = await tx.hospital.create({
         data: {
           name: hospitalName,
           slug,
           email,
           phone,
-          plan: Plan.FREE,
           isActive: true,
           onboardingCompleted: false,
-          patientLimit: PLAN_LIMITS.FREE.patientLimit,
-          staffLimit: PLAN_LIMITS.FREE.staffLimit,
-          storageLimitMb: PLAN_LIMITS.FREE.storageLimitMb,
           emailVerificationToken: verificationToken,
           emailVerificationExpiry: verificationExpiry,
+          // Every tenant gets a subscription row from the moment it exists, so
+          // that "what is this clinic entitled to" never has to be guessed.
+          subscription: { create: initialSubscription('FREE') },
         },
       })
 

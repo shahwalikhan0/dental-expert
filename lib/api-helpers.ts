@@ -1,9 +1,16 @@
+import { randomInt } from 'crypto'
 import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { auth } from './auth'
 import { prisma } from './prisma'
-import { holderCan, type Permission } from './rbac'
+import { holderCan, isReadOnlyPermission, type Permission } from './rbac'
+import {
+  checkPatientEntitlement,
+  checkStaffEntitlement,
+  getTenant,
+  type LimitCheck,
+} from './tenant'
 
 /**
  * Verify a mobile Bearer token (JWT signed with NEXTAUTH_SECRET via jose).
@@ -112,7 +119,42 @@ export async function requirePermission(permission: Permission) {
     }
   }
 
+  const blocked = await tenantWriteBlock(hospitalId, [permission])
+  if (blocked) return { error: blocked, user: null, hospitalId: null, session: null }
+
   return { error: null, user, hospitalId, session: { user } }
+}
+
+/**
+ * Whether the tenant's subscription stands in the way, as a response or null.
+ *
+ * Runs after the role check, not before: a receptionist who was never allowed
+ * to approve a refund should be told they are not allowed, not that their
+ * clinic owes us money.
+ *
+ * This is one indexed lookup on every write request. It is deliberately not
+ * carried in the session token — a token lives eight hours, and a suspension
+ * that takes eight hours to bite is not a suspension.
+ */
+async function tenantWriteBlock(
+  hospitalId: string,
+  permissions: readonly (Permission | string)[]
+): Promise<NextResponse | null> {
+  if (permissions.every(isReadOnlyPermission)) return null
+
+  const tenant = await getTenant(hospitalId)
+  if (!tenant || tenant.writable) return null
+
+  return NextResponse.json(
+    {
+      error: tenant.isActive
+        ? 'This clinic’s subscription is not active. Your records are still here and can be read and exported; adding or changing them needs an active subscription.'
+        : 'This clinic’s account has been suspended.',
+      code: 'SUBSCRIPTION_INACTIVE',
+      status: tenant.status,
+    },
+    { status: 402 }
+  )
 }
 
 /**
@@ -140,6 +182,9 @@ export async function requireAllPermissions(permissions: Permission[]) {
       session: null,
     }
   }
+
+  const blocked = await tenantWriteBlock(hospitalId, permissions)
+  if (blocked) return { error: blocked, user: null, hospitalId: null, session: null }
 
   return { error: null, user, hospitalId, session: { user } }
 }
@@ -175,106 +220,22 @@ export async function requireAuthAndRole(allowedRoles?: string[]) {
 }
 
 /**
- * Plan limits configuration
+ * Plan allowances.
+ *
+ * The numbers themselves are in lib/plans.ts and the per-tenant state is in
+ * lib/tenant.ts; these two wrappers exist so that the twenty-odd call sites
+ * that only want to know "does one more fit" did not all have to change when
+ * the answer stopped being a column on the clinic's own row.
  */
-export const PLAN_LIMITS = {
-  FREE: {
-    patientLimit: 100,
-    staffLimit: 3,
-    storageLimitMb: 500,
-  },
-  PROFESSIONAL: {
-    patientLimit: -1, // Unlimited
-    staffLimit: -1,
-    storageLimitMb: -1,
-  },
-  ENTERPRISE: {
-    patientLimit: -1,
-    staffLimit: -1,
-    storageLimitMb: -1,
-  },
-  SELF_HOSTED: {
-    patientLimit: -1,
-    staffLimit: -1,
-    storageLimitMb: -1,
-  },
+export async function checkPatientLimit(hospitalId: string): Promise<LimitCheck> {
+  return checkPatientEntitlement(hospitalId)
 }
 
-/**
- * Get hospital with plan limits
- */
-export async function getHospitalWithLimits(hospitalId: string) {
-  return prisma.hospital.findUnique({
-    where: { id: hospitalId },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      plan: true,
-      patientLimit: true,
-      staffLimit: true,
-      storageLimitMb: true,
-      isActive: true,
-      onboardingCompleted: true,
-    },
-  })
+export async function checkStaffLimit(hospitalId: string): Promise<LimitCheck> {
+  return checkStaffEntitlement(hospitalId)
 }
 
-/**
- * Check if hospital has reached patient limit
- */
-export async function checkPatientLimit(
-  hospitalId: string
-): Promise<{ allowed: boolean; current: number; max: number }> {
-  const hospital = await getHospitalWithLimits(hospitalId)
-
-  if (!hospital) {
-    return { allowed: false, current: 0, max: 0 }
-  }
-
-  // -1 means unlimited
-  if (hospital.patientLimit === -1) {
-    return { allowed: true, current: 0, max: -1 }
-  }
-
-  const currentPatients = await prisma.patient.count({
-    where: { hospitalId },
-  })
-
-  return {
-    allowed: currentPatients < hospital.patientLimit,
-    current: currentPatients,
-    max: hospital.patientLimit,
-  }
-}
-
-/**
- * Check if hospital has reached staff limit
- */
-export async function checkStaffLimit(
-  hospitalId: string
-): Promise<{ allowed: boolean; current: number; max: number }> {
-  const hospital = await getHospitalWithLimits(hospitalId)
-
-  if (!hospital) {
-    return { allowed: false, current: 0, max: 0 }
-  }
-
-  // -1 means unlimited
-  if (hospital.staffLimit === -1) {
-    return { allowed: true, current: 0, max: -1 }
-  }
-
-  const currentStaff = await prisma.user.count({
-    where: { hospitalId, isActive: true },
-  })
-
-  return {
-    allowed: currentStaff < hospital.staffLimit,
-    current: currentStaff,
-    max: hospital.staffLimit,
-  }
-}
+export { getTenant } from './tenant'
 
 /**
  * Generate a unique slug from hospital name
@@ -297,13 +258,24 @@ export async function generateUniqueSlug(name: string): Promise<string> {
 }
 
 /**
- * Generate a random token for email verification or password reset
+ * A random token for email verification, password reset or a staff invite.
+ *
+ * `crypto.randomInt`, not `Math.random`. These tokens are the only thing
+ * standing between a link in an inbox and an account, and `Math.random` is a
+ * predictable PRNG seeded from the process — observing a handful of issued
+ * tokens narrows the next one to a guessable range. The previous
+ * implementation used it, and the tokens it produced gated email verification
+ * and invite acceptance.
+ *
+ * `randomInt` rather than taking bytes modulo 62: 256 does not divide by 62, so
+ * the first eight letters of the alphabet would come up a little more often
+ * than the rest, and "a little" compounds over every character of the token.
  */
 export function generateToken(length = 32): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   let token = ''
   for (let i = 0; i < length; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length))
+    token += chars.charAt(randomInt(chars.length))
   }
   return token
 }

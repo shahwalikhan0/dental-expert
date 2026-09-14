@@ -101,6 +101,45 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number]
 
 /**
+ * The capabilities that only *look* at data.
+ *
+ * Used by the tenancy layer: a clinic whose subscription has lapsed keeps
+ * every one of these and loses the rest. Locking a practice out of its own
+ * patient records over an unpaid invoice would make the platform a
+ * hostage-taker — and in a jurisdiction with a records-retention duty, an
+ * unlawful one. They can still read, report and export; they cannot write.
+ *
+ * Listed rather than derived from the `:read` suffix, because three of them do
+ * not carry it and one that does is not read-only in the sense that matters:
+ * `reports:export` takes data *out*, which a lapsed tenant must keep being able
+ * to do, and `ai:use` reads nothing but costs the platform money on every call.
+ * A test asserts this list stays exhaustive over PERMISSIONS.
+ */
+export const READ_ONLY_PERMISSIONS = [
+  'patients:read',
+  'clinical:read',
+  'appointments:read',
+  'billing:read',
+  'inventory:read',
+  'lab:read',
+  'reports:operational',
+  'reports:financial',
+  'reports:export',
+  'staff:read',
+  'masters:read',
+  'settings:read',
+  'audit:read',
+  'communications:read',
+] as const satisfies readonly Permission[]
+
+const READ_ONLY = new Set<string>(READ_ONLY_PERMISSIONS)
+
+/** Whether holding this capability lets someone change anything. */
+export function isReadOnlyPermission(permission: Permission | string): boolean {
+  return READ_ONLY.has(permission)
+}
+
+/**
  * Specification §4, expressed as code.
  *
  * Each entry below quotes the spec's own "Typical Access" and "Restricted From"

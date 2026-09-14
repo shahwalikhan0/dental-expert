@@ -371,27 +371,22 @@ account" — an oracle confirming the email exists and revealing its role.
 Role-based access does not imply role-based _login_. The role is an attribute
 of the account; users do not declare their own attributes at the door.
 
-### 4.2 No tenant lookup before login — there is nothing to disambiguate
+### 4.2 Tenant resolution at login — superseded by §15
 
-`User.email` is `@unique` **globally**, and every user has exactly one
-`hospitalId`. One email resolves to one user in one clinic, deterministically.
-A clinic-search step would ask the operator to disambiguate something the
-system already derives from the email they are about to type.
+**This section described a single-tenant install and no longer holds.** It is
+kept because the reasoning it rejected turned out to be the reasoning that was
+needed, and the shape of the mistake is worth having on the record.
 
-It would also mean publishing an endpoint that lists clinics — an enumeration
-surface exposing every practice on the system, for no gain.
+What it said: `User.email` is `@unique` **globally**, every user has exactly one
+`hospitalId`, so one email resolves to one user in one clinic and a clinic
+picker would ask the operator to disambiguate something already derived. It
+noted the cost — "one email cannot hold accounts at two clinics" — called it
+"the right trade for _a clinic is a single tenant_", and sketched a membership
+model as the migration if that ever stopped being true.
 
-**What this does cost:** one email cannot hold accounts at two clinics. Signup
-and invite-accept both reject a duplicate email. That is the real limit, and it
-is the right trade for "a clinic is a single tenant".
-
-If staff ever need to work across unrelated clinics, the migration is to a
-membership model — one `User`, many `Membership(hospitalId, role)`, login still
-by email, a clinic picker after authentication only for people who belong to
-more than one. It touches the session shape, the JWT, and every
-`requirePermission` (which would read the active membership). Deliberately not
-built: nothing today needs it, and FR-023 multi-branch is about branches within
-one clinic, which `hospitalId` scoping already covers.
+It stopped being true. §15 makes the address unique **within** a clinic and
+resolves the tenant from the password rather than from an index. The membership
+model sketched here was not what got built, and §15.3 says why.
 
 ### 4.3 `User.clinicalRole` — a second role for the owner-dentist
 
@@ -423,9 +418,10 @@ still no refund, no settings, no audit log.
 `/login?clinic=<slug>` renders the clinic's name and logo, backed by a new
 `GET /api/public/[slug]` returning **name and logo and nothing else**.
 
-Cosmetic only, and the code says so in both places: the session is resolved
-from the email, never from this parameter, and a wrong, missing or unreachable
-slug just shows the default form. It is a _lookup_ by a slug already public in
+No longer cosmetic only — §15.3 makes the slug a tenant hint as well as a piece
+of branding — but still not a security boundary: a hand-edited slug can only
+fail to find a clinic, never open one the password does not. A wrong, missing or
+unreachable slug shows the default form. It is a _lookup_ by a slug already public in
 the patient booking URL — not a search, and there is still no endpoint that
 lists clinics. A deactivated clinic 404s identically to a non-existent one, so
 the difference cannot be used to probe which slugs exist.
@@ -1168,13 +1164,25 @@ survey sentiment, and the locale resolver had a patient-portal branch.
 only a count read on the suppliers screen. §5.7 requires "purchase/receipt", so
 these stay: they are an unbuilt requirement, not dead weight.
 
-### 13.5 Still SaaS-shaped
+### 13.5 Still SaaS-shaped — recommendation withdrawn
 
-`Hospital.plan`, `patientLimit`, `staffLimit` and `storageLimitMb`, with the
-`Plan` enum and the `checkPatientLimit`/`checkStaffLimit` helpers, cap how much
-a clinic may store on its own server. They are left because they are load-
-bearing in the patient and staff create routes, but they are the same SaaS
-residue as the subscription tables and should go the same way.
+This section used to argue that `Hospital.plan`, `patientLimit`, `staffLimit`,
+`storageLimitMb`, the `Plan` enum and the `checkPatientLimit` /
+`checkStaffLimit` helpers were "SaaS residue" that "should go the same way" as
+the subscription tables §13.2 dropped.
+
+**That was wrong, and the recommendation is withdrawn.** The product is a
+platform serving many clinics, not one practice's installation, so plan gating
+is load-bearing rather than residual. §15 puts subscriptions back — properly
+this time, with the allowances derived from the plan instead of copied onto
+each clinic's row.
+
+The reasoning that produced the error is worth naming: §13 read the fork as an
+Indian dental SaaS and the requirement as one clinic, and treated every trace of
+the former as something to remove. Most of it was — loyalty schemes, marketing
+automation, IoT telemetry. Subscription billing was not, and the tell was there
+in §13.2's own justification: _"this clinic owns its installation"_ is a claim
+about the business model, not something the specification says.
 
 ---
 
@@ -1193,4 +1201,220 @@ Upstream remains configured as the `upstream` remote. Before merging anything:
    rather than adding it to the exemption list.
 5. **Expect new `roles: [...]` arrays in `config/nav.ts`.** Delete them; the
    route map handles visibility.
-6. Run `npx vitest run` and `npx prisma migrate diff --from-empty` afterwards.
+6. **Expect new queries with no `hospitalId`.** Upstream is single-tenant in
+   practice even where the schema is not.
+   `tests/unit/tenant-isolation.test.ts` will fail on any it brings in — scope
+   the query rather than adding it to the accepted list.
+7. Run `npx vitest run` and `npx prisma migrate diff --from-empty` afterwards.
+
+---
+
+## 15. Multi-tenant SaaS
+
+The product is a platform serving many dental clinics, not one practice's
+installation. Row-level tenancy was already there — every table carries a
+`hospitalId`, every route filters on it — so this section is about the parts
+that were not: what each clinic has bought, what happens when they stop paying,
+how somebody signs in when their address belongs to more than one clinic, and
+who administers the clinics themselves.
+
+### 15.1 Plans: one source of truth instead of three
+
+The allowances existed in three places that could disagree:
+
+1. `PLAN_LIMITS` in `lib/api-helpers.ts`, read at signup;
+2. `patientLimit` / `staffLimit` / `storageLimitMb` **copied onto every
+   `Hospital` row**, read at every write;
+3. the feature bullets hardcoded in `app/(auth)/pricing/page.tsx`, shown to the
+   person deciding whether to buy.
+
+Copy (2) is the one that bites. Raising the free tier from 100 patients to 250
+changes the constant and the marketing page and leaves every clinic that had
+already signed up capped at 100 for ever, with nothing anywhere to say why.
+Copy (3) had already drifted: the pricing page was advertising insurance claims
+management, a patient portal and multi-location support, none of which exists.
+
+`lib/plans.ts` is now the catalogue — price, billing interval, allowances,
+features, trial length — and everything derives from it. The pricing page
+renders from it, the entitlement checks read it, and the "not included" column
+is computed rather than typed, so a feature added to a plan cannot stay in
+somebody's not-included list by accident.
+
+A negotiated exception is still possible, but it has to be written down as one:
+`Subscription.patientLimitOverride` and friends are NULL for everybody except
+the tenants somebody deliberately agreed something else with.
+
+### 15.2 Subscriptions
+
+Two tables, and five columns off `Hospital`:
+
+- **`Subscription`** — one per clinic, created with the clinic. Plan, status,
+  the period paid for, trial end, and the three optional overrides.
+- **`SubscriptionInvoice`** — what the platform charged a tenant for a period
+  and whether it was paid. Deliberately separate from the clinic's own
+  `Invoice`: conflating the two would put the platform's revenue inside each
+  tenant's financial reports.
+
+`Hospital.plan`, `planExpiresAt`, `patientLimit`, `staffLimit` and
+`storageLimitMb` are gone. The migration carries each existing tenant across
+first, and writes an allowance as an override **only where it differs from what
+the plan grants** — so a clinic sitting on the free tier's own 100/3/500 gets
+NULLs and moves with the tier when it changes.
+
+**What suspension does, and does not, do.** A clinic whose subscription has
+lapsed keeps its records and keeps being able to read and export them. What it
+loses is the ability to write. Locking a practice out of its own patient notes
+over an unpaid invoice would make the platform a hostage-taker, and where a
+records-retention duty applies, an unlawful one.
+
+`PAST_DUE` is deliberately still writable. An overdue invoice is a conversation
+with the practice manager, not a reason to stop a receptionist checking in the
+patient standing in front of her. Suspension is the lever for a tenant who will
+not pay, and a person pulls it.
+
+The check sits in `requirePermission`, **after** the capability check. A
+receptionist who was never allowed to approve a refund is told they are not
+allowed — not that their clinic owes us money. It costs one indexed lookup per
+write request; the state is deliberately not carried in the session token,
+because a token lives eight hours and a suspension that takes eight hours to
+bite is not a suspension.
+
+`lib/rbac.ts` gained `READ_ONLY_PERMISSIONS`, written out rather than derived
+from the `:read` suffix — `reports:export` carries no suffix and must keep
+working for a lapsed tenant, and `ai:use` reads nothing but costs the platform
+money on every call.
+
+### 15.3 One email, two clinics
+
+`User.email` was unique across the entire platform. That made the obvious case
+impossible: a dentist with Tuesday sessions at one practice and Thursdays at
+another, a locum, an accountant doing the books for three clinics. Worse, the
+refusal leaked — the second clinic to try was told _"an account with this email
+already exists"_ about a clinic it cannot see and has nothing to do with.
+
+The address is now unique **within** a clinic (`@@unique([hospitalId, email])`),
+and `lib/login.ts` turns an address and a password into at most one account:
+
+1. a clinic slug, if the sign-in page was given one (`?clinic=`), narrows the
+   candidates first;
+2. the password is checked against every remaining candidate, and only the
+   accounts it actually opens survive;
+3. if that leaves exactly one, they are signed in.
+
+Step 2 is what makes step 3 safe to report on. `POST /api/public/login-clinics`
+returns the list of clinics for an ambiguous match, and it answers nothing
+without the correct password — so it can only name clinics the caller could
+already sign in to. It writes nothing and signs nobody in. It is exactly as
+exposed to password guessing as the sign-in endpoint beside it, and no more, but
+it is a second door onto the same lock: whatever rate limiting eventually guards
+`/api/auth` must guard this too.
+
+§4.2 sketched a membership model instead — one `User`, many
+`Membership(hospitalId, role)`. That was not built. It would have touched the
+session shape, the JWT and every `requirePermission`, and it solves a problem
+nobody has: a person working at two clinics has two jobs, two employee numbers,
+two roles and two audit trails, and one row per clinic models that honestly. The
+cost is two passwords to keep in step, which is the person's own business.
+
+Three things came out of this in passing:
+
+- **`auth/mobile-token` had its own copy of the login logic**, which had drifted:
+  it wrote no audit entry at all, so §10's record of who signed in had a hole in
+  it exactly the width of the mobile app. It now calls the same resolver.
+- **`generateToken` used `Math.random`** — a predictable PRNG — for email
+  verification and staff-invite tokens, which are the only thing between a link
+  in an inbox and an account. Now `crypto.randomInt`, which is also unbiased:
+  256 does not divide by 62, so taking bytes modulo the alphabet would have made
+  the first eight letters slightly likelier than the rest.
+- **Signup checked the address against `User`**, so a person who already had a
+  staff account somewhere could not register their own practice. It checks
+  `Hospital` now, which is what it meant.
+
+### 15.4 Who administers the clinics
+
+Somebody has to see every tenant, move one onto another plan, suspend one that
+will not pay and reinstate it when they do. None of that is a clinic-side
+capability: every clinic has an ADMIN and none of them has any business seeing
+another clinic's row.
+
+So platform access is `User.isPlatformAdmin` — not a Role, not a Permission.
+Modelling it as a ninth role would have put a role that never appears in any
+clinic into every clinic-side permission table.
+
+`requirePlatformAdmin()` re-reads the flag **from the database on every
+request** rather than trusting the session claim, for the same reason the
+subscription state is not in the token. It returns **404, not 403**: telling a
+clinic's administrator that a platform console exists behind this URL invites
+them to go looking for a way in.
+
+`GET /api/platform/tenants` is the only endpoint in the application that reads
+across clinics. It returns operational facts — name, plan, subscription state,
+patient and staff counts against the allowance — and nothing from inside
+anybody's records. `PATCH /api/platform/tenants/[id]` changes plan, status,
+overrides and platform-level access, and writes every change to **that clinic's
+own audit log**: a practice whose plan was changed is entitled to see that it
+happened and at whose hand.
+
+### 15.5 Isolation, checked rather than assumed
+
+Tenant isolation is enforced by nothing but discipline — one `findMany` that
+forgets its `hospitalId` and a clinic sees another clinic's patients. No type
+checker catches that (`where: { id }` is perfectly well-typed) and a reviewer
+will not either, because the missing thing is absent rather than wrong.
+
+`tests/unit/tenant-isolation.test.ts` reads every route file and checks what
+each query on a tenant-scoped model is filtered by, accepting three patterns:
+`hospitalId` in the filter (directly or through a `where` built earlier), a
+fetch-then-compare (`if (row.hospitalId !== hospitalId) 404`), or an earlier
+scoped query on the same model in the same handler.
+
+Twenty-three queries are left over and listed with a reason. Nearly all are the
+same shape — a parent row was already fetched _with_ the clinic filter and the
+query reads its children by the parent's id — and the genuinely cross-clinic one
+is the reminder cron, which authenticates on `CRON_SECRET` and no clinic can
+call. The list is the point: it is short, each entry is one line, and a new
+entry appearing means somebody wrote an unscoped query.
+
+One real (if minor) gap was closed on the way: `communications/analytics` looked
+up templates by id alone. The ids came from that clinic's own message logs so it
+was not a live leak, but a tenant filter costs nothing.
+
+### 15.6 What the seed now proves
+
+A seed with one tenant hides every bug that only appears when there are two. It
+now creates:
+
+- **City Dental Karachi**, a second clinic on the free tier — deliberately
+  minimal, two accounts and nothing else. It exists to be the clinic whose data
+  must never show up in the demo clinic's screens.
+- **`locum@example.com`**, the same address at both clinics with the same
+  password — the case that was impossible before, and the one the sign-in clinic
+  picker exists for.
+- **`platform@example.com`** (`Platform@123`), a platform administrator.
+
+Probed live after `migrate reset` and `db seed`:
+
+```
+admin@demo-dental.com                      -> ok        PROFESSIONAL clinic
+admin@city-dental.example                  -> ok        FREE clinic
+locum@example.com                          -> ambiguous city-dental-karachi, demo-dental-clinic
+locum@example.com  clinic=city-dental      -> ok        DOCTOR at the second clinic
+locum@example.com  (wrong password)        -> invalid
+demo-dental-clinic  plan=PROFESSIONAL status=ACTIVE writable=true patients<=unlimited
+city-dental-karachi plan=FREE         status=ACTIVE writable=true patients<=100
+```
+
+### 15.7 Still open
+
+- **No self-service upgrade.** A clinic cannot change its own plan; a platform
+  administrator does it. That is deliberate until there is a payment processor —
+  §11.1's open question, and the Pakistani processor decision blocks both.
+- **`SubscriptionInvoice` has no route.** The table records what a tenant was
+  charged; nothing writes to it yet. Billing runs are a decision about how you
+  want to invoice, not something to guess at.
+- **No rate limiting on either sign-in door.** Pre-existing for `/api/auth`, and
+  `login-clinics` inherits it. Worth fixing before the platform is public.
+- **A branch model for §16's multi-branch clinics is not built.** The
+  `branches` plan feature exists in the catalogue and gates nothing yet;
+  tenant-per-clinic covers a group practice that wants its locations separate,
+  and one tenant with several locations needs a `Branch` table under `Hospital`.

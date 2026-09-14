@@ -17,11 +17,20 @@ interface SidebarProps {
   hospitalName?: string
   hospitalLogo?: string | null
   plan?: string
+  /** Staff of the platform, not of this clinic — adds the Platform section. */
+  isPlatformAdmin?: boolean
 }
 
-export function Sidebar({ role, clinicalRole, hospitalName, hospitalLogo, plan }: SidebarProps) {
+export function Sidebar({
+  role,
+  clinicalRole,
+  hospitalName,
+  hospitalLogo,
+  plan,
+  isPlatformAdmin,
+}: SidebarProps) {
   const pathname = usePathname()
-  const navigation = getNavigationForRole(role, clinicalRole)
+  const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
   const { isCollapsed, toggleSidebar } = useSidebar()
 
   return (
