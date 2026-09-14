@@ -101,11 +101,15 @@ describe('GET /api/inventory/categories', () => {
     expect(res.status).toBe(401)
   })
 
+  // The categories are the distinct labels on the items, not a table.
+  // `InventoryCategory` was eleven columns and a self-referencing hierarchy in
+  // support of a free-text field on a form — with no screen to create, rename
+  // or nest one.
   it('returns categories with item counts', async () => {
     mockAuth()
-    vi.mocked(prisma.inventoryCategory.findMany).mockResolvedValue([
-      { id: 'c1', name: 'Dental Materials', _count: { items: 15 } },
-      { id: 'c2', name: 'Equipment', _count: { items: 8 } },
+    vi.mocked(prisma.inventoryItem.groupBy).mockResolvedValue([
+      { category: 'Dental Materials', _count: { _all: 15 } },
+      { category: 'Equipment', _count: { _all: 8 } },
     ] as any)
 
     const res = await categoriesGET(makeReq('/api/inventory/categories'))
@@ -120,7 +124,7 @@ describe('GET /api/inventory/categories', () => {
 
   it('returns empty array when no categories', async () => {
     mockAuth()
-    vi.mocked(prisma.inventoryCategory.findMany).mockResolvedValue([])
+    vi.mocked(prisma.inventoryItem.groupBy).mockResolvedValue([] as any)
 
     const res = await categoriesGET(makeReq('/api/inventory/categories'))
     const body = await res.json()
@@ -444,7 +448,7 @@ describe('GET /api/inventory/alerts', () => {
           currentStock: 2,
           minimumStock: 5,
           unit: 'box',
-          category: { name: 'Materials' },
+          category: 'Materials',
         },
         acknowledgedByUser: null,
       },

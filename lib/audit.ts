@@ -31,6 +31,10 @@ export const AUDIT_ACTIONS = {
   LOGIN_FAILED_USER_INACTIVE: 'login.failed.user_inactive',
   LOGIN_FAILED_CLINIC_INACTIVE: 'login.failed.clinic_inactive',
 
+  /// A lab case moving through the laboratory (§5.8). Was its own
+  /// `LabOrderHistory` table recording exactly this and nothing else.
+  LAB_ORDER_STATUS_CHANGED: 'lab_order.status_changed',
+
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
   SECURITY_UPDATED: 'settings.security.updated',

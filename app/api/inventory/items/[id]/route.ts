@@ -23,7 +23,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const item = await prisma.inventoryItem.findFirst({
       where: { id, hospitalId, deletedAt: null },
       include: {
-        category: { select: { name: true } },
         preferredSupplier: { select: { name: true, phone: true, email: true } },
       },
     })
@@ -80,13 +79,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       : []
     const performerNames = new Map(performers.map((u) => [u.id, u.name]))
 
-    const { category, preferredSupplier, ...rest } = item
+    const { preferredSupplier, ...rest } = item
 
     return NextResponse.json({
       success: true,
       data: {
         ...rest,
-        categoryName: category?.name ?? null,
+        categoryName: item.category,
         supplierName: preferredSupplier?.name ?? null,
         supplierPhone: preferredSupplier?.phone ?? null,
         supplierEmail: preferredSupplier?.email ?? null,
@@ -150,7 +149,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const data: Prisma.InventoryItemUpdateInput = {
       description: body.description ?? null,
       maximumStock: body.maximumStock ?? null,
-      hsnCode: body.hsnCode ?? null,
+      taxCode: body.taxCode ?? null,
       storageLocation: body.storageLocation ?? null,
       imageUrl: body.imageUrl ?? null,
       notes: body.notes ?? null,
@@ -169,7 +168,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.batchTracking != null) data.batchTracking = body.batchTracking
     if (body.isActive != null) data.isActive = body.isActive
 
-    data.category = body.categoryId ? { connect: { id: body.categoryId } } : { disconnect: true }
+    data.category = body.category || null
     data.preferredSupplier = body.preferredSupplierId
       ? { connect: { id: body.preferredSupplierId } }
       : { disconnect: true }

@@ -2,6 +2,11 @@
 // Supports: MSG91, TextLocal, Fast2SMS, Twilio India
 
 import prisma from '@/lib/prisma'
+import {
+  communicationPreferences,
+  mayContact,
+  type MessageKind,
+} from '@/lib/communication-preferences'
 
 export interface SMSConfig {
   gateway: 'MSG91' | 'TEXTLOCAL' | 'FAST2SMS' | 'TWILIO'
@@ -18,6 +23,11 @@ export interface SMSPayload {
   patientId?: string
   templateId?: string
   scheduledFor?: Date
+  /** What the message is for, so the patient can refuse this kind alone. */
+  kind?: MessageKind
+  /** The record this message is about — an appointment, an invoice. */
+  relatedType?: string
+  relatedId?: string
 }
 
 class SMSService {
@@ -54,19 +64,23 @@ class SMSService {
       throw new Error('Invalid phone number format')
     }
 
-    // Check DND registry if patient is provided
+    // Check the patient's preferences, with defaults for the patients who have
+    // never expressed one — which is almost all of them. The previous version
+    // read a table nothing ever wrote to, so `!preference?.smsEnabled` was true
+    // for every patient in the database and every patient-addressed SMS was
+    // refused on the strength of a preference nobody had given.
     if (payload.patientId) {
-      const preference = await prisma.patientCommunicationPreference.findUnique({
-        where: { patientId: payload.patientId },
+      const patient = await prisma.patient.findUnique({
+        where: { id: payload.patientId },
+        select: { communicationPrefs: true },
       })
 
-      if (preference?.dndRegistered) {
-        throw new Error('Patient is on DND registry')
-      }
-
-      if (!preference?.smsEnabled) {
-        throw new Error('Patient has disabled SMS communication')
-      }
+      const decision = mayContact(
+        communicationPreferences(patient?.communicationPrefs),
+        'SMS',
+        payload.kind
+      )
+      if (!decision.allowed) throw new Error(decision.reason)
     }
 
     // Check time restrictions (9 AM to 9 PM IST)
@@ -75,16 +89,19 @@ class SMSService {
     }
 
     // Create SMS log entry
-    const smsLog = await prisma.sMSLog.create({
+    const smsLog = await prisma.messageLog.create({
       data: {
         hospitalId: payload.hospitalId || '',
+        channel: 'SMS',
         patientId: payload.patientId || null,
-        phone: payload.phone,
-        message: payload.message,
+        recipient: payload.phone,
+        body: payload.message,
         templateId: payload.templateId || null,
+        relatedType: payload.relatedType ?? null,
+        relatedId: payload.relatedId ?? null,
         scheduledFor: payload.scheduledFor,
         status: payload.scheduledFor ? 'PENDING' : 'QUEUED',
-        gateway: this.config?.gateway,
+        provider: this.config?.gateway,
       },
     })
 
@@ -99,12 +116,12 @@ class SMSService {
       const result = await this.sendViaGateway(payload)
 
       // Update SMS log
-      await prisma.sMSLog.update({
+      await prisma.messageLog.update({
         where: { id: smsLog.id },
         data: {
           status: 'SENT',
           sentAt: new Date(),
-          messageId: result.messageId,
+          providerRef: result.messageId,
           cost: result.cost,
         },
       })
@@ -112,7 +129,7 @@ class SMSService {
       return smsLog.id
     } catch (error: any) {
       // Update SMS log with error
-      await prisma.sMSLog.update({
+      await prisma.messageLog.update({
         where: { id: smsLog.id },
         data: {
           status: 'FAILED',
@@ -321,7 +338,7 @@ class SMSService {
   }
 
   async getDeliveryStatus(smsLogId: string): Promise<string> {
-    const smsLog = await prisma.sMSLog.findUnique({
+    const smsLog = await prisma.messageLog.findUnique({
       where: { id: smsLogId },
     })
 
@@ -344,7 +361,7 @@ class SMSService {
     const where: any = {}
 
     if (filters.patientId) where.patientId = filters.patientId
-    if (filters.phone) where.phone = { contains: filters.phone }
+    if (filters.phone) where.recipient = { contains: filters.phone }
     if (filters.status) where.status = filters.status
     if (filters.from || filters.to) {
       where.createdAt = {}
@@ -352,8 +369,8 @@ class SMSService {
       if (filters.to) where.createdAt.lte = filters.to
     }
 
-    return prisma.sMSLog.findMany({
-      where,
+    return prisma.messageLog.findMany({
+      where: { ...where, channel: 'SMS' },
       include: {
         template: true,
       },

@@ -47,6 +47,31 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
+  // MessageLog — every message the clinic sent, whatever the channel
+  messageLog: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(),
+    aggregate: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+
+  // TreatmentAmendment — addenda and corrections to a signed note
+  treatmentAmendment: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+
   // User
   user: {
     findUnique: vi.fn(),
@@ -154,6 +179,7 @@ const mockPrismaClient = {
     delete: vi.fn(),
     count: vi.fn(),
     aggregate: vi.fn(),
+    groupBy: vi.fn(),
     fields: { reorderLevel: 'reorderLevel' },
     deleteMany: vi.fn(),
     updateMany: vi.fn(),
@@ -189,22 +215,6 @@ const mockPrismaClient = {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // TreatmentAddendum
-  treatmentAddendum: {
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // TreatmentRevision
-  treatmentRevision: {
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
     count: vi.fn(),
   },
 
@@ -323,27 +333,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // SMSLog
-  smsLog: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    count: vi.fn(),
-    groupBy: vi.fn(),
-    aggregate: vi.fn(),
-  },
-
-  // EmailLog
-  emailLog: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    count: vi.fn(),
-    groupBy: vi.fn(),
-  },
-
   // AIConversation
   aIConversation: {
     findUnique: vi.fn(),
@@ -406,17 +395,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // AppointmentReminder
-  appointmentReminder: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
   // TreatmentPlan
   treatmentPlan: {
     findUnique: vi.fn(),
@@ -464,17 +442,6 @@ const mockPrismaClient = {
     delete: vi.fn(),
     count: vi.fn(),
     aggregate: vi.fn(),
-  },
-
-  // InventoryCategory
-  inventoryCategory: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
   },
 
   // Attendance
@@ -906,43 +873,9 @@ const mockPrismaClient = {
     count: vi.fn(),
     groupBy: vi.fn(),
   },
-
-  // LabOrderHistory
-  labOrderHistory: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn(),
-    deleteMany: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // LabOrderDocument
-  labOrderDocument: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn(),
-    deleteMany: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // PatientCommunicationPreference
-  patientCommunicationPreference: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    upsert: vi.fn(),
-    delete: vi.fn(),
-  },
 } as any
 
 // Add lowercase aliases for AI models (cron routes use aiInsight, API routes use aIInsight)
-mockPrismaClient.sMSLog = mockPrismaClient.smsLog
 mockPrismaClient.aiConversation = mockPrismaClient.aIConversation
 mockPrismaClient.aiSkillExecution = mockPrismaClient.aISkillExecution
 mockPrismaClient.aiInsight = mockPrismaClient.aIInsight

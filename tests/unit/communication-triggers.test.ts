@@ -48,12 +48,6 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        appointmentReminders: true,
-        smsEnabled: true,
-        emailEnabled: true,
-      })
-
       ;(prisma.hospital.findUnique as any).mockResolvedValue({
         name: 'Test Clinic',
         phone: '1234567890',
@@ -65,20 +59,32 @@ describe('CommunicationTriggersService', () => {
         subject: 'Reminder',
       })
 
-      ;(prisma.appointmentReminder.create as any).mockResolvedValue({})
-
       await communicationTriggersService.sendAppointmentReminders24Hours()
 
+      // `kind` is what the sender uses to decide whether this patient wants
+      // this sort of message. The trigger no longer decides that itself: it did,
+      // in a second copy of the check that disagreed with the sender's — this
+      // one treated a missing preference row as consent, the sender treated it
+      // as refusal, and no row ever existed.
       expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
-        expect.objectContaining({ phone: '9876543210', patientId: 'pat-1' })
+        expect.objectContaining({
+          phone: '9876543210',
+          patientId: 'pat-1',
+          kind: 'appointmentReminders',
+          relatedType: 'Appointment',
+          relatedId: 'apt-1',
+        })
       )
       expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'john@test.com', patientId: 'pat-1' })
+        expect.objectContaining({
+          to: 'john@test.com',
+          patientId: 'pat-1',
+          kind: 'appointmentReminders',
+        })
       )
-      expect(prisma.appointmentReminder.create).toHaveBeenCalled()
     })
 
-    it('skips patients who disabled appointment reminders', async () => {
+    it('leaves the patient’s own preference to the sender', async () => {
       ;(prisma.appointment.findMany as any).mockResolvedValue([
         {
           id: 'apt-1',
@@ -92,9 +98,9 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        appointmentReminders: false,
-      })
+      // No template configured, so nothing is sent — and nothing here consults
+      // a preference: sendSMS does that, from `kind`.
+      mockTemplateService.getDefaultTemplate.mockResolvedValue(null)
 
       await communicationTriggersService.sendAppointmentReminders24Hours()
 
@@ -123,9 +129,7 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockRejectedValue(
-        new Error('DB error')
-      )
+      ;(prisma.hospital.findUnique as any).mockRejectedValue(new Error('DB error'))
 
       // Should not throw
       await communicationTriggersService.sendAppointmentReminders24Hours()
@@ -149,11 +153,6 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        birthdayWishes: true,
-        smsEnabled: true,
-      })
-
       ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic', phone: '123' })
 
       mockTemplateService.getDefaultTemplate.mockResolvedValue({
@@ -168,7 +167,7 @@ describe('CommunicationTriggersService', () => {
       )
     })
 
-    it('skips patients who disabled birthday wishes', async () => {
+    it('tags a birthday message so the sender can refuse it', async () => {
       const today = new Date()
       const dob = new Date(1990, today.getMonth(), today.getDate())
 
@@ -184,12 +183,14 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        birthdayWishes: false,
-      })
+      ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic', phone: '1' })
+      mockTemplateService.getDefaultTemplate.mockResolvedValue({ id: 't', content: 'Happy day' })
 
       await communicationTriggersService.sendBirthdayWishes()
-      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
+
+      expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'birthdayWishes' })
+      )
     })
 
     it('skips patients whose birthday is not today', async () => {
@@ -229,11 +230,6 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        paymentReminders: true,
-        smsEnabled: true,
-      })
-
       ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic', phone: '123' })
 
       mockTemplateService.getDefaultTemplate.mockResolvedValue({
@@ -248,7 +244,7 @@ describe('CommunicationTriggersService', () => {
       )
     })
 
-    it('skips patients who disabled payment reminders', async () => {
+    it('tags a payment reminder so the sender can refuse it', async () => {
       ;(prisma.invoice.findMany as any).mockResolvedValue([
         {
           id: 'inv-1',
@@ -261,12 +257,18 @@ describe('CommunicationTriggersService', () => {
         },
       ])
 
-      ;(prisma.patientCommunicationPreference.findUnique as any).mockResolvedValue({
-        paymentReminders: false,
-      })
+      ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic', phone: '1' })
+      mockTemplateService.getDefaultTemplate.mockResolvedValue({ id: 't', content: 'Due' })
 
       await communicationTriggersService.sendPaymentReminders()
-      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
+
+      expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'paymentReminders',
+          relatedType: 'Invoice',
+          relatedId: 'inv-1',
+        })
+      )
     })
   })
 

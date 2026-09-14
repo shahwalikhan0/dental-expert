@@ -12,7 +12,7 @@ export default function NewInventoryItemPage() {
   const [formData, setFormData] = useState({
     sku: '',
     name: '',
-    categoryId: '',
+    category: '',
     itemType: 'DENTAL_MATERIAL',
     description: '',
     unit: '',
@@ -22,7 +22,7 @@ export default function NewInventoryItemPage() {
     maximumStock: '',
     purchasePrice: 0,
     sellingPrice: 0,
-    hsnCode: '',
+    taxCode: '',
     taxPercentage: 0,
     preferredSupplierId: '',
     storageLocation: '',
@@ -155,8 +155,8 @@ export default function NewInventoryItemPage() {
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Category</label>
             <select
-              name="categoryId"
-              value={formData.categoryId}
+              name="category"
+              value={formData.category}
               onChange={handleChange}
               className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -293,8 +293,8 @@ export default function NewInventoryItemPage() {
             <label className="block text-sm font-medium text-foreground mb-2">HSN Code</label>
             <input
               type="text"
-              name="hsnCode"
-              value={formData.hsnCode}
+              name="taxCode"
+              value={formData.taxCode}
               onChange={handleChange}
               className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />

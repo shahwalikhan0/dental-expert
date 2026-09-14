@@ -6,27 +6,19 @@ vi.mock('@/lib/prisma', () => {
     setting: {
       findMany: vi.fn(),
     },
-    sMSLog: {
+    messageLog: {
       create: vi.fn(),
       update: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
     },
-    smsLog: {
-      create: vi.fn(),
-      update: vi.fn(),
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-    },
-    patientCommunicationPreference: {
+    patient: {
       findUnique: vi.fn(),
     },
     communicationTemplate: {
       findUnique: vi.fn(),
     },
   }
-  // Alias
-  mock.smsLog = mock.sMSLog
   return { default: mock, prisma: mock }
 })
 
@@ -95,38 +87,69 @@ describe('SMSService - Phone Validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('SMSService - Communication Preferences', () => {
-  it('rejects when patient is on DND registry', async () => {
-    const { smsService } = smsServiceModule
+  const prefs = (communicationPrefs: unknown) =>
+    vi.mocked(prisma.patient.findUnique).mockResolvedValue({ communicationPrefs } as any)
 
-    vi.mocked(prisma.patientCommunicationPreference.findUnique).mockResolvedValue({
-      dndRegistered: true,
-      smsEnabled: true,
-    } as any)
+  it('refuses a patient who has asked not to be contacted', async () => {
+    const { smsService } = smsServiceModule
+    prefs({ doNotContact: true, sms: true })
 
     await expect(
-      smsService.sendSMS({
-        phone: '3001234567',
-        message: 'test',
-        patientId: 'patient-1',
-      })
-    ).rejects.toThrow('DND registry')
+      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+    ).rejects.toThrow('asked not to be contacted')
   })
 
-  it('rejects when patient has disabled SMS', async () => {
+  it('refuses a patient who has turned off SMS', async () => {
     const { smsService } = smsServiceModule
+    prefs({ sms: false })
 
-    vi.mocked(prisma.patientCommunicationPreference.findUnique).mockResolvedValue({
-      dndRegistered: false,
-      smsEnabled: false,
-    } as any)
+    await expect(
+      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+    ).rejects.toThrow('turned off sms')
+  })
+
+  it('refuses one kind of message without refusing the rest', async () => {
+    const { smsService } = smsServiceModule
+    prefs({ promotions: false })
 
     await expect(
       smsService.sendSMS({
         phone: '3001234567',
-        message: 'test',
+        message: 'Half price whitening',
         patientId: 'patient-1',
+        kind: 'promotions',
       })
-    ).rejects.toThrow('disabled SMS')
+    ).rejects.toThrow('promotional messages')
+  })
+
+  /**
+   * The bug this replaced. No patient had a preference row — nothing in the
+   * application ever created one — so `!preference?.smsEnabled` was true for
+   * every patient in the database and every patient-addressed SMS was refused
+   * on the strength of a preference nobody had ever given.
+   */
+  it('sends to a patient who has never expressed a preference', async () => {
+    const { smsService } = smsServiceModule
+    prefs(null)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'sms-1' } as any)
+    vi.mocked(prisma.setting.findMany).mockResolvedValue([])
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-19T06:30:00Z'))
+
+    // Fails at the gateway, which is not configured — but it got that far,
+    // which is the point: the preference check let it through.
+    await expect(
+      smsService.sendSMS({
+        phone: '3001234567',
+        message: 'Your appointment is tomorrow',
+        patientId: 'patient-1',
+        kind: 'appointmentReminders',
+      })
+    ).rejects.toThrow(/gateway|API key/i)
+
+    expect(prisma.messageLog.create).toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
 
@@ -159,7 +182,7 @@ describe('SMSService - Time Restrictions', () => {
     vi.setSystemTime(mockDate)
 
     // Set up to pass phone validation and time check, then fail at initialize
-    vi.mocked(prisma.sMSLog.create).mockResolvedValue({ id: 'sms-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'sms-1' } as any)
     vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
     // Should get past phone validation and time check, fail at initialize
@@ -183,7 +206,7 @@ describe('SMSService - SMS Logging', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-19T06:30:00Z')) // 12 PM IST
 
-    vi.mocked(prisma.sMSLog.create).mockResolvedValue({ id: 'sms-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'sms-1' } as any)
     vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
     try {
@@ -197,11 +220,12 @@ describe('SMSService - SMS Logging', () => {
       // Expected to fail at gateway init
     }
 
-    expect(prisma.sMSLog.create).toHaveBeenCalledWith(
+    expect(prisma.messageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          phone: '3001234567',
-          message: 'Hello',
+          channel: 'SMS',
+          recipient: '3001234567',
+          body: 'Hello',
           hospitalId: 'hosp-1',
           status: 'QUEUED',
         }),
@@ -218,7 +242,7 @@ describe('SMSService - SMS Logging', () => {
     vi.setSystemTime(new Date('2026-02-19T06:30:00Z'))
 
     const futureDate = new Date('2026-03-01T06:30:00Z')
-    vi.mocked(prisma.sMSLog.create).mockResolvedValue({ id: 'sms-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'sms-1' } as any)
 
     const result = await smsService.sendSMS({
       phone: '3001234567',
@@ -227,7 +251,7 @@ describe('SMSService - SMS Logging', () => {
     })
 
     expect(result).toBe('sms-1')
-    expect(prisma.sMSLog.create).toHaveBeenCalledWith(
+    expect(prisma.messageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'PENDING',
@@ -295,7 +319,7 @@ describe('SMSService - getDeliveryStatus', () => {
   it('returns status from SMS log', async () => {
     const { smsService } = smsServiceModule
 
-    vi.mocked(prisma.sMSLog.findUnique).mockResolvedValue({
+    vi.mocked(prisma.messageLog.findUnique).mockResolvedValue({
       id: 'sms-1',
       status: 'SENT',
     } as any)
@@ -307,7 +331,7 @@ describe('SMSService - getDeliveryStatus', () => {
   it('throws for non-existent SMS log', async () => {
     const { smsService } = smsServiceModule
 
-    vi.mocked(prisma.sMSLog.findUnique).mockResolvedValue(null)
+    vi.mocked(prisma.messageLog.findUnique).mockResolvedValue(null)
 
     await expect(smsService.getDeliveryStatus('missing')).rejects.toThrow('SMS log not found')
   })
@@ -321,7 +345,7 @@ describe('SMSService - getSMSHistory', () => {
   it('queries with correct filters', async () => {
     const { smsService } = smsServiceModule
 
-    vi.mocked(prisma.sMSLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
 
     await smsService.getSMSHistory({
       patientId: 'pat-1',
@@ -329,7 +353,7 @@ describe('SMSService - getSMSHistory', () => {
       limit: 50,
     })
 
-    expect(prisma.sMSLog.findMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patientId: 'pat-1',
@@ -344,11 +368,11 @@ describe('SMSService - getSMSHistory', () => {
   it('defaults limit to 100', async () => {
     const { smsService } = smsServiceModule
 
-    vi.mocked(prisma.sMSLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
 
     await smsService.getSMSHistory({})
 
-    expect(prisma.sMSLog.findMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 100,
       })
@@ -358,13 +382,13 @@ describe('SMSService - getSMSHistory', () => {
   it('supports date range filters', async () => {
     const { smsService } = smsServiceModule
 
-    vi.mocked(prisma.sMSLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
     const from = new Date('2026-01-01')
     const to = new Date('2026-01-31')
 
     await smsService.getSMSHistory({ from, to })
 
-    expect(prisma.sMSLog.findMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           createdAt: { gte: from, lte: to },

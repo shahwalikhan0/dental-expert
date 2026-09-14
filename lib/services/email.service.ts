@@ -2,6 +2,11 @@
 // Supports: Hostinger, Gmail SMTP, Custom SMTP
 
 import prisma from '@/lib/prisma'
+import {
+  communicationPreferences,
+  mayContact,
+  type MessageKind,
+} from '@/lib/communication-preferences'
 import nodemailer from 'nodemailer'
 import type { Transporter } from 'nodemailer'
 
@@ -29,6 +34,11 @@ export interface EmailPayload {
   templateId?: string
   attachments?: EmailAttachment[]
   scheduledFor?: Date
+  /** What the message is for, so the patient can refuse this kind alone. */
+  kind?: MessageKind
+  /** The record this message is about — an appointment, an invoice. */
+  relatedType?: string
+  relatedId?: string
 }
 
 export interface EmailAttachment {
@@ -98,36 +108,48 @@ class EmailService {
       throw new Error('Invalid email address')
     }
 
-    // Check patient preferences if patient is provided
+    // Check patient preferences if patient is provided.
+    //
+    // Read through `communicationPreferences`, which supplies the defaults for
+    // a patient who has never expressed one — which is almost all of them. The
+    // previous version read a row that nothing ever created, so
+    // `!preference?.emailEnabled` was true for every patient in the database
+    // and no patient-addressed email was ever sent.
     if (payload.patientId) {
-      const preference = await prisma.patientCommunicationPreference.findUnique({
-        where: { patientId: payload.patientId },
+      const patient = await prisma.patient.findUnique({
+        where: { id: payload.patientId },
+        select: { communicationPrefs: true },
       })
 
-      if (!preference?.emailEnabled) {
-        throw new Error('Patient has disabled email communication')
-      }
+      const decision = mayContact(
+        communicationPreferences(patient?.communicationPrefs),
+        'EMAIL',
+        payload.kind
+      )
+      if (!decision.allowed) throw new Error(decision.reason)
     }
 
-    // Create email log entry
-    const emailLog = await prisma.emailLog.create({
+    const emailLog = await prisma.messageLog.create({
       data: {
         hospitalId: payload.hospitalId || '',
+        channel: 'EMAIL',
         patientId: payload.patientId || null,
-        email: payload.to,
+        recipient: payload.to,
         subject: payload.subject,
         body: payload.body,
         templateId: payload.templateId || null,
+        relatedType: payload.relatedType ?? null,
+        relatedId: payload.relatedId ?? null,
         scheduledFor: payload.scheduledFor,
         status: payload.scheduledFor ? 'PENDING' : 'QUEUED',
-        attachments: payload.attachments
-          ? JSON.stringify(
-              payload.attachments.map((a) => ({
+        metadata: payload.attachments
+          ? {
+              attachments: payload.attachments.map((a) => ({
                 filename: a.filename,
                 contentType: a.contentType,
-              }))
-            )
-          : null,
+              })),
+            }
+          : undefined,
       },
     })
 
@@ -152,19 +174,19 @@ class EmailService {
       })
 
       // Update email log
-      await prisma.emailLog.update({
+      await prisma.messageLog.update({
         where: { id: emailLog.id },
         data: {
           status: 'SENT',
           sentAt: new Date(),
-          messageId: result.messageId,
+          providerRef: result.messageId,
         },
       })
 
       return emailLog.id
     } catch (error: any) {
       // Update email log with error
-      await prisma.emailLog.update({
+      await prisma.messageLog.update({
         where: { id: emailLog.id },
         data: {
           status: 'FAILED',
@@ -233,7 +255,7 @@ class EmailService {
     const where: any = {}
 
     if (filters.patientId) where.patientId = filters.patientId
-    if (filters.email) where.email = { contains: filters.email }
+    if (filters.email) where.recipient = { contains: filters.email }
     if (filters.status) where.status = filters.status
     if (filters.from || filters.to) {
       where.createdAt = {}
@@ -241,8 +263,8 @@ class EmailService {
       if (filters.to) where.createdAt.lte = filters.to
     }
 
-    return prisma.emailLog.findMany({
-      where,
+    return prisma.messageLog.findMany({
+      where: { ...where, channel: 'EMAIL' },
       include: {
         template: true,
       },
@@ -259,7 +281,7 @@ class EmailService {
   }
 
   async trackEmailOpen(emailLogId: string) {
-    await prisma.emailLog.update({
+    await prisma.messageLog.update({
       where: { id: emailLogId },
       data: {
         openedAt: new Date(),

@@ -371,7 +371,7 @@ describe('GET /api/lab-orders/[id]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns the order with history and documents', async () => {
+  it('returns the order with its status trail', async () => {
     mockAuth()
     vi.mocked(prisma.labOrder.findFirst).mockResolvedValue({
       id: 'lo1',
@@ -393,17 +393,23 @@ describe('GET /api/lab-orders/[id]', () => {
         phone: '99',
         email: 'r@x.com',
       },
-      history: [
-        {
-          id: 'h1',
-          statusFrom: LabOrderStatus.CREATED,
-          statusTo: LabOrderStatus.IN_PROGRESS,
-          changedByUser: { name: 'Admin' },
-        },
-      ],
-      documents: [{ id: 'd1', fileName: 'scan.png', uploadedByUser: { name: 'Admin' } }],
     } as any)
     vi.mocked(prisma.user.findUnique).mockResolvedValue({ name: 'Admin' } as any)
+    // The trail comes from the audit log. `LabOrderHistory` recorded who
+    // changed a lab order's status and when — and nothing else, which is what
+    // AuditLog already records for every other kind of change in the system.
+    vi.mocked(prisma.auditLog.findMany).mockResolvedValue([
+      {
+        id: 'h1',
+        createdAt: new Date(),
+        oldValues: JSON.stringify({ status: LabOrderStatus.CREATED }),
+        newValues: JSON.stringify({
+          status: LabOrderStatus.IN_PROGRESS,
+          notes: 'Sent to lab',
+        }),
+        user: { name: 'Admin' },
+      },
+    ] as any)
 
     const res = await labOrderDetailGET(makeReq('/api/lab-orders/lo1'), makeParams('lo1'))
     const body = await res.json()
@@ -412,8 +418,12 @@ describe('GET /api/lab-orders/[id]', () => {
     expect(body.data.vendorName).toBe('Lab A')
     expect(body.data.patientName).toBe('Rahul Sharma')
     expect(body.data.createdByName).toBe('Admin')
-    expect(body.data.history[0].changedByName).toBe('Admin')
-    expect(body.data.documents[0].uploadedByName).toBe('Admin')
+    expect(body.data.history[0]).toMatchObject({
+      statusFrom: LabOrderStatus.CREATED,
+      statusTo: LabOrderStatus.IN_PROGRESS,
+      notes: 'Sent to lab',
+      changedByName: 'Admin',
+    })
   })
 })
 
@@ -469,7 +479,7 @@ describe('PUT /api/lab-orders/[id]', () => {
       status: LabOrderStatus.CREATED,
     } as any)
     vi.mocked(prisma.labOrder.update).mockResolvedValue({ id: 'lo1' } as any)
-    vi.mocked(prisma.labOrderHistory.create).mockResolvedValue({ id: 'h1' } as any)
+    vi.mocked(prisma.auditLog.create).mockResolvedValue({ id: 'h1' } as any)
 
     const res = await labOrderDetailPUT(
       makeReq('/api/lab-orders/lo1', 'PUT', {
@@ -480,17 +490,20 @@ describe('PUT /api/lab-orders/[id]', () => {
     )
     expect(res.status).toBe(200)
 
-    expect(prisma.labOrderHistory.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        labOrderId: 'lo1',
-        statusFrom: LabOrderStatus.CREATED,
-        statusTo: LabOrderStatus.IN_PROGRESS,
-        changedBy: 'u1',
-      }),
+    const entry = vi.mocked(prisma.auditLog.create).mock.calls[0][0].data
+    expect(entry).toMatchObject({
+      action: 'lab_order.status_changed',
+      entityType: 'LabOrder',
+      entityId: 'lo1',
+      userId: 'u1',
+    })
+    expect(JSON.parse(entry.oldValues as string)).toEqual({ status: LabOrderStatus.CREATED })
+    expect(JSON.parse(entry.newValues as string)).toMatchObject({
+      status: LabOrderStatus.IN_PROGRESS,
     })
   })
 
-  it('skips the history row when the status is unchanged', async () => {
+  it('records nothing when the status is unchanged', async () => {
     mockAuth()
     vi.mocked(prisma.labOrder.findFirst).mockResolvedValue({
       id: 'lo1',
@@ -503,7 +516,7 @@ describe('PUT /api/lab-orders/[id]', () => {
       makeParams('lo1')
     )
     expect(res.status).toBe(200)
-    expect(prisma.labOrderHistory.create).not.toHaveBeenCalled()
+    expect(prisma.auditLog.create).not.toHaveBeenCalled()
   })
 })
 

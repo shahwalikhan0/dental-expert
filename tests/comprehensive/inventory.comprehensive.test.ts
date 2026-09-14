@@ -188,13 +188,17 @@ describe('Inventory API - Comprehensive Tests', () => {
     it('should filter by category', async () => {
       mockPrisma.inventoryItem.findMany.mockResolvedValue([])
 
-      const request = new NextRequest('http://localhost/api/inventory/items?category=cat-123')
+      // The label *is* the identifier now — there is no category table to
+      // hold an id.
+      const request = new NextRequest(
+        'http://localhost/api/inventory/items?category=Dental%20Materials'
+      )
       await GET(request)
 
       expect(mockPrisma.inventoryItem.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            categoryId: 'cat-123',
+            category: 'Dental Materials',
           }),
         })
       )

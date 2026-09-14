@@ -9,16 +9,16 @@ const TRACKING_PIXEL = Buffer.from(
 /**
  * GET /api/track/email/[id]
  * Email open tracking pixel. Embedded in outgoing HTML emails as <img src="...">
- * Updates EmailLog.openedAt on first load.
+ * Updates MessageLog.openedAt on first load.
  * No auth required — this is loaded by email clients.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: trackingId } = await params
 
   // Update openedAt in background — don't block the pixel response
-  prisma.emailLog
+  prisma.messageLog
     .updateMany({
-      where: { trackingId, openedAt: null },
+      where: { trackingId, channel: 'EMAIL', openedAt: null },
       data: { openedAt: new Date() },
     })
     .catch(() => {

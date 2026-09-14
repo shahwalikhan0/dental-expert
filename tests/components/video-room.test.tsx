@@ -85,11 +85,9 @@ const mockPatient = {
   email: 'john@test.com',
   gender: 'MALE',
   medicalHistory: {
-    hasAllergies: true,
-    drugAllergies: 'Penicillin',
-    hasDiabetes: true,
-    hasHypertension: false,
-    hasHeartDisease: false,
+    allergies: ['Penicillin'],
+    conditions: ['Diabetes'],
+    isPregnant: false,
   },
 }
 
@@ -181,7 +179,7 @@ describe('VideoRoom', () => {
     it('shows medical alerts', () => {
       render(<VideoRoom {...defaultProps} patient={mockPatient} />)
       expect(screen.getByText('Medical Alerts')).toBeInTheDocument()
-      expect(screen.getByText(/Penicillin/)).toBeInTheDocument()
+      expect(screen.getByText(/Allergy: Penicillin/)).toBeInTheDocument()
       expect(screen.getByText('Diabetes')).toBeInTheDocument()
     })
 

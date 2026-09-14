@@ -45,10 +45,10 @@ export async function GET(request: NextRequest) {
             select: {
               sku: true,
               name: true,
+              category: true,
               currentStock: true,
               minimumStock: true,
               unit: true,
-              category: { select: { name: true } },
             },
           },
           acknowledgedByUser: { select: { name: true } },
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
         currentStock: item.currentStock,
         minimumStock: item.minimumStock,
         unit: item.unit,
-        categoryName: item.category?.name ?? null,
+        categoryName: item.category,
         acknowledgedByName: acknowledgedByUser?.name ?? null,
       })),
       summary: {

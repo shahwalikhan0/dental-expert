@@ -42,8 +42,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
     }
 
-    const addenda = await prisma.treatmentAddendum.findMany({
-      where: { treatmentId: id, hospitalId },
+    // Addenda only. Corrections live in the same table under
+    // `kind: 'CORRECTION'` and are returned with the note itself, where they
+    // sit beside the fields they changed.
+    const addenda = await prisma.treatmentAmendment.findMany({
+      where: { treatmentId: id, hospitalId, kind: 'ADDENDUM' },
       orderBy: { createdAt: 'asc' },
       include: { author: { select: { id: true, name: true } } },
     })
@@ -86,8 +89,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       )
     }
 
-    const addendum = await prisma.treatmentAddendum.create({
-      data: { hospitalId, treatmentId: id, body: data.body, authorId: user.id },
+    const addendum = await prisma.treatmentAmendment.create({
+      data: { hospitalId, treatmentId: id, kind: 'ADDENDUM', body: data.body, authorId: user.id },
       include: { author: { select: { id: true, name: true } } },
     })
 

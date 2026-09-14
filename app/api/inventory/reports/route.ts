@@ -80,11 +80,11 @@ async function getInventorySummary(hospitalId: string) {
       where: { hospitalId, deletedAt: null },
       select: {
         isActive: true,
+        category: true,
         currentStock: true,
         minimumStock: true,
         purchasePrice: true,
         itemType: true,
-        category: { select: { id: true, name: true } },
       },
     }),
     prisma.supplier.count({
@@ -113,9 +113,9 @@ async function getInventorySummary(hospitalId: string) {
     { category: string | null; itemCount: number; categoryValue: number }
   >()
   for (const item of items) {
-    const key = item.category?.id ?? '__uncategorised__'
+    const key = item.category ?? '__uncategorised__'
     const row = byCategory.get(key) ?? {
-      category: item.category?.name ?? null,
+      category: item.category,
       itemCount: 0,
       categoryValue: 0,
     }
@@ -154,12 +154,12 @@ async function getLowStockReport(hospitalId: string) {
       id: true,
       sku: true,
       name: true,
+      category: true,
       currentStock: true,
       minimumStock: true,
       reorderLevel: true,
       unit: true,
       purchasePrice: true,
-      category: { select: { name: true } },
       preferredSupplier: { select: { name: true, phone: true } },
     },
     orderBy: { name: 'asc' },
@@ -169,7 +169,7 @@ async function getLowStockReport(hospitalId: string) {
   // `current_stock <= reorder_point` filter happens here.
   const lowStock = items
     .filter((i) => i.currentStock <= i.reorderLevel)
-    .map(({ category, preferredSupplier, ...item }) => {
+    .map(({ preferredSupplier, ...item }) => {
       let urgency: string
       if (item.currentStock <= 0) urgency = 'out_of_stock'
       else if (item.currentStock <= item.minimumStock) urgency = 'critical'
@@ -177,7 +177,7 @@ async function getLowStockReport(hospitalId: string) {
 
       return {
         ...item,
-        categoryName: category?.name ?? null,
+        categoryName: item.category,
         supplierName: preferredSupplier?.name ?? null,
         supplierPhone: preferredSupplier?.phone ?? null,
         urgency,
@@ -274,18 +274,18 @@ async function getStockValuationReport(hospitalId: string) {
       id: true,
       sku: true,
       name: true,
+      category: true,
       currentStock: true,
       unit: true,
       purchasePrice: true,
       itemType: true,
-      category: { select: { name: true } },
     },
   })
 
   const valuation = items
-    .map(({ category, ...item }) => ({
+    .map((item) => ({
       ...item,
-      categoryName: category?.name ?? null,
+      categoryName: item.category,
       stockValue: item.currentStock * Number(item.purchasePrice),
     }))
     .sort((a, b) => b.stockValue - a.stockValue)
@@ -316,10 +316,10 @@ async function getDeadStockReport(hospitalId: string, searchParams: URLSearchPar
       id: true,
       sku: true,
       name: true,
+      category: true,
       currentStock: true,
       unit: true,
       purchasePrice: true,
-      category: { select: { name: true } },
       stockTransactions: {
         select: { transactionDate: true },
         orderBy: { transactionDate: 'desc' },
@@ -329,11 +329,11 @@ async function getDeadStockReport(hospitalId: string, searchParams: URLSearchPar
   })
 
   const deadStock = items
-    .map(({ category, stockTransactions, ...item }) => {
+    .map(({ stockTransactions, ...item }) => {
       const lastTransactionDate = stockTransactions[0]?.transactionDate ?? null
       return {
         ...item,
-        categoryName: category?.name ?? null,
+        categoryName: item.category,
         lockedValue: item.currentStock * Number(item.purchasePrice),
         lastTransactionDate,
         daysSinceLastMovement: lastTransactionDate ? daysBetween(lastTransactionDate, today) : null,

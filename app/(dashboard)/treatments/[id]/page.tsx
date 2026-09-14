@@ -74,13 +74,13 @@ interface Treatment {
   signedAt: string | null
   amendedAt: string | null
   signedBy: { id: string; name: string } | null
-  addenda?: { id: string; body: string; createdAt: string; author: { name: string } }[]
-  revisions?: {
+  amendments?: {
     id: string
-    reason: string
-    changes: Record<string, { from: unknown; to: unknown }>
+    kind: 'ADDENDUM' | 'CORRECTION'
+    body: string
+    changes: Record<string, { from: unknown; to: unknown }> | null
     createdAt: string
-    amendedBy: { name: string }
+    author: { name: string }
   }[]
   patient: {
     id: string
@@ -560,59 +560,51 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           )}
 
-          {/* Addenda — FR-007's "later amendments" */}
-          {treatment.addenda && treatment.addenda.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Addenda
-                </CardTitle>
-                <CardDescription>Added after the note was signed</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {treatment.addenda.map((addendum) => (
-                  <div key={addendum.id} className="rounded-lg border p-4">
-                    <p className="whitespace-pre-wrap text-sm">{addendum.body}</p>
-                    <p className="text-muted-foreground mt-2 text-xs">
-                      {addendum.author.name} · {formatDateTime(addendum.createdAt)}
-                    </p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Amendment history — what the note said before it was corrected */}
-          {treatment.revisions && treatment.revisions.length > 0 && (
+          {/*
+            FR-007's "later amendments", additions and corrections in one list.
+            They were two cards, which meant reading a signed note in date order
+            required looking at two places and merging them by eye — and the two
+            interleave constantly, because a correction is usually followed by an
+            addendum explaining it.
+          */}
+          {treatment.amendments && treatment.amendments.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <History className="h-5 w-5" />
-                  Amendment History
+                  Since this note was signed
                 </CardTitle>
                 <CardDescription>
-                  What this note said before each correction, and why it was changed
+                  Everything added or corrected after the signature, oldest first
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {treatment.revisions.map((revision) => (
-                  <div key={revision.id} className="rounded-lg border p-4">
-                    <p className="text-sm font-medium">{revision.reason}</p>
-                    <div className="mt-2 space-y-1">
-                      {Object.entries(revision.changes || {}).map(([field, change]) => (
-                        <div key={field} className="text-sm">
-                          <span className="text-muted-foreground">{field}: </span>
-                          <span className="text-red-700 line-through">
-                            {String(change.from ?? '—')}
-                          </span>
-                          <span className="text-muted-foreground"> → </span>
-                          <span className="text-emerald-700">{String(change.to ?? '—')}</span>
-                        </div>
-                      ))}
+                {treatment.amendments.map((amendment) => (
+                  <div key={amendment.id} className="rounded-lg border p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      {amendment.kind === 'CORRECTION' ? (
+                        <Badge variant="destructive">Correction</Badge>
+                      ) : (
+                        <Badge variant="secondary">Addendum</Badge>
+                      )}
                     </div>
+                    <p className="text-sm whitespace-pre-wrap">{amendment.body}</p>
+                    {amendment.changes && (
+                      <div className="mt-2 space-y-1">
+                        {Object.entries(amendment.changes).map(([field, change]) => (
+                          <div key={field} className="text-sm">
+                            <span className="text-muted-foreground">{field}: </span>
+                            <span className="text-red-700 line-through">
+                              {String(change.from ?? '—')}
+                            </span>
+                            <span className="text-muted-foreground"> → </span>
+                            <span className="text-emerald-700">{String(change.to ?? '—')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-muted-foreground mt-2 text-xs">
-                      {revision.amendedBy.name} · {formatDateTime(revision.createdAt)}
+                      {amendment.author.name} · {formatDateTime(amendment.createdAt)}
                     </p>
                   </div>
                 ))}

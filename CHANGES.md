@@ -1418,3 +1418,129 @@ city-dental-karachi plan=FREE         status=ACTIVE writable=true patients<=100
   `branches` plan feature exists in the catalogue and gates nothing yet;
   tenant-per-clinic covers a group practice that wants its locations separate,
   and one tenant with several locations needs a `Branch` table under `Hospital`.
+
+---
+
+## 16. Consolidating the schema: 55 tables → 48
+
+§13 removed tables the specification did not ask for. This one removes tables
+that should never have been tables: the same table written out more than once, a
+table standing in for a column, and a table nothing ever read.
+
+Nine go and two arrive. Every drop is preceded by the `INSERT … SELECT` that
+carries its rows somewhere — `prisma migrate diff` would have emitted a bare
+`DROP TABLE` for each.
+
+### 16.1 Three message logs become one
+
+`SMSLog`, `EmailLog` and `AppointmentReminder` carried the same twenty columns
+three times over. They differed in four fields between them: a subject line only
+email has, a per-message cost only SMS has, and an open-tracking pixel.
+
+Asking "how many messages did we send this patient" meant querying three tables
+and stitching the answers together, and adding WhatsApp would have meant a
+fourth. `MessageLog` has a `channel`, and a `relatedType`/`relatedId` pair so a
+reminder can be traced back to the appointment it was about.
+
+`AppointmentReminder` was the worst of the three: it recorded that a reminder
+had been scheduled and nothing about what it said or whether it arrived, so a
+patient insisting they were never reminded could be shown a row saying SENT and
+no more. It also recorded `reminderType: 'SMS'` whether or not an SMS was what
+went out.
+
+Dropped on the way: `clickedAt`, which was always null because nothing ever
+rewrote links to route through a redirector — the analytics page showed
+"0 clicked of 412" and a 0% click rate, which reads as a campaign nobody engaged
+with rather than a number nobody measures.
+
+### 16.2 A bug the preference table was hiding
+
+`PatientCommunicationPreference` had fifteen columns, sensible defaults on every
+one of them, one row per patient — **and nothing in the application ever created
+a row.** So every patient had no preferences at all, and `SMSService.sendSMS`
+read:
+
+```ts
+if (!preference?.smsEnabled) throw new Error('Patient has disabled SMS communication')
+```
+
+Every patient-addressed SMS in the system was refused, on the strength of a
+preference nobody had ever expressed. The column defaults said `true`; the
+absent row said `undefined`; and `undefined` is not `true`. The email service
+had the same bug in the same shape.
+
+Preferences are one JSON column on the patient now, and the defaults live in
+`lib/communication-preferences.ts` where they can actually apply. Three further
+things fell out:
+
+- **The decision moved into the sender.** `communication-triggers.service.ts`
+  had a second copy of the check that _disagreed_ with the first — it treated a
+  missing row as consent where the sender treated it as refusal. Callers now
+  pass `kind: 'appointmentReminders'` and one place decides.
+- **`doNotContact` overrides everything**, including the reminders a patient's
+  own care depends on. If somebody has asked not to be contacted, that is the
+  answer — not "except for the important ones".
+- `preferredLanguage` is gone: `Patient.locale` already said it.
+
+### 16.3 Medical history: sixteen booleans become three lists
+
+`MedicalHistory` had thirty-four columns — sixteen `hasX` flags, an `xType`
+beside the two or three that had one, and `otherConditions` for everything the
+list did not anticipate. Which was a lot. A patient on warfarin, a transplant
+recipient, anyone on a bisphosphonate: all of them matter more to an extraction
+than several of the conditions that did get a column, and all of them ended up
+as prose in `otherConditions` that no alert ever read.
+
+Three string lists instead — `allergies`, `conditions`, `currentMedications`. A
+condition is still queryable (`conditions has 'Diabetes'`), and it can now
+record something nobody thought of when the schema was written.
+`lib/medical-history.ts` holds the list the form offers, so the common ones stay
+spelled consistently.
+
+The migration builds the lists from the flags, folding each `xType` into its
+label (`Diabetes — Type 2`) and splitting `currentMedications` on newlines only
+— splitting on commas would cut "Warfarin 5mg, alternate days" in half.
+
+This also fixed a live mismatch: the patient detail page already read
+`medicalHistory.allergies`, `.chronicConditions` and `.currentMedications` as
+**arrays**, none of which existed. That panel had never rendered anything.
+The chair-side alerts on the appointment page and in the video room were four
+hardcoded badges; they name what is actually recorded now, so an allergy says
+which allergy.
+
+### 16.4 Tables that were columns, and one nobody read
+
+| Was                                       | Is                       | Why                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `InventoryCategory`                       | `InventoryItem.category` | Eleven columns and a self-referencing hierarchy behind a free-text field. There was no screen to create, rename or nest a category — every clinic had the ones the seed gave it and no way to change them. The categories endpoint returns the distinct labels in use, same response shape.      |
+| `LabOrderHistory`                         | `AuditLog`               | It recorded who changed a lab order's status and when, and nothing else. That is what `AuditLog` records for every other change in the system — and only one of the two showed up on the audit screen.                                                                                           |
+| `LabOrderDocument`                        | —                        | No route, no page, no query. Created by §13 as a home for a legacy table; nothing was ever written to it.                                                                                                                                                                                        |
+| `TreatmentAddendum` + `TreatmentRevision` | `TreatmentAmendment`     | The same row with one field swapped, always read together in one chronological list. Keeping them apart meant every reader of a signed note ran two queries and merge-sorted by date — and the two interleave constantly, because a correction is usually followed by an addendum explaining it. |
+
+### 16.5 Columns for things that are not built
+
+- `Payment.gateway`, `gatewayOrderId`, `gatewayPaymentId`, `gatewayStatus` —
+  written by the Razorpay/PhonePe/Paytm checkout §13 removed. Nothing has read
+  them since.
+- `Invoice.insuranceAmount` — insurance is §16 of the specification, a future
+  enhancement. No code set it or read it.
+- `InventoryItem.hsnCode` → `taxCode`. HSN is India's GST term; the value is
+  still good, since Pakistan's customs tariff uses the same HS basis.
+
+### 16.6 What is still open from this pass
+
+- **`Supplier` and `LabVendor` are still two tables** with twenty-seven columns
+  in common — code, name, contact, address, tax identifiers, bank details,
+  payment terms, rating, status. They differ in three fields each. Merging them
+  into one `Vendor` with a `kind` is the next obvious reduction, and it touches
+  about fourteen files.
+- **`StockAlert` is a materialised query.** Every row in it is derivable from
+  `InventoryItem.currentStock` and `InventoryBatch.expiryDate`.
+- **`Supplier.isActive` duplicates `Supplier.status`**, and the schema comment
+  admits it mirrors `status != BLOCKED/INACTIVE`. Same on `LabVendor`.
+- **`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay** pending
+  your decision on a Pakistani rail — §11.1's open question. Removing them
+  before there is something to replace them with would leave the billing screens
+  with a gap.
+- **`sms.service.ts` still enforces a 9am–9pm _IST_ send window** and still
+  names MSG91/TextLocal/Fast2SMS. Part of the same §11.1 decision.

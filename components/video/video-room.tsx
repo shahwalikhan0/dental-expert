@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
+import { medicalAlerts } from '@/lib/medical-history'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,11 +32,9 @@ interface PatientInfo {
   dateOfBirth?: string | null
   gender?: string | null
   medicalHistory?: {
-    hasAllergies?: boolean
-    drugAllergies?: string | null
-    hasDiabetes?: boolean
-    hasHypertension?: boolean
-    hasHeartDisease?: boolean
+    allergies?: string[]
+    conditions?: string[]
+    isPregnant?: boolean
   } | null
 }
 
@@ -246,30 +245,23 @@ export default function VideoRoom({
                     <div className="font-medium text-xs text-muted-foreground uppercase">
                       Medical Alerts
                     </div>
-                    {patient.medicalHistory.hasAllergies && (
-                      <div className="flex items-center gap-1 text-red-600 text-xs">
+                    {/*
+                      Named from the record rather than from four hardcoded
+                      conditions somebody picked in advance. A patient on
+                      warfarin used to get no alert at all, and the allergy line
+                      only ever showed the drug allergies column.
+                    */}
+                    {medicalAlerts(patient.medicalHistory).map((alert, i) => (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-1 text-xs ${
+                          alert.tone === 'danger' ? 'text-red-600' : 'text-orange-600'
+                        }`}
+                      >
                         <AlertTriangle className="h-3 w-3" />
-                        Allergies: {patient.medicalHistory.drugAllergies || 'Yes'}
+                        {alert.label}
                       </div>
-                    )}
-                    {patient.medicalHistory.hasDiabetes && (
-                      <div className="flex items-center gap-1 text-orange-600 text-xs">
-                        <AlertTriangle className="h-3 w-3" />
-                        Diabetes
-                      </div>
-                    )}
-                    {patient.medicalHistory.hasHypertension && (
-                      <div className="flex items-center gap-1 text-orange-600 text-xs">
-                        <AlertTriangle className="h-3 w-3" />
-                        Hypertension
-                      </div>
-                    )}
-                    {patient.medicalHistory.hasHeartDisease && (
-                      <div className="flex items-center gap-1 text-red-600 text-xs">
-                        <AlertTriangle className="h-3 w-3" />
-                        Heart Disease
-                      </div>
-                    )}
+                    ))}
                   </div>
                 )}
               </CardContent>

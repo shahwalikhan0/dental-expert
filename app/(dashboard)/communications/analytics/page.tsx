@@ -28,7 +28,6 @@ import {
   TrendingDown,
   DollarSign,
   Eye,
-  MousePointerClick,
   Loader2,
   RefreshCw,
   Send,
@@ -54,9 +53,7 @@ interface AnalyticsData {
     sent: number
     failed: number
     opened: number
-    clicked: number
     openRate: number
-    clickRate: number
   }
   dailyTrend: Array<{ date: string; sms: number; email: number }>
   campaigns: Array<{
@@ -231,18 +228,6 @@ export default function CampaignAnalyticsPage() {
                   <div className="text-2xl font-bold">{data.email.openRate}%</div>
                   <p className="text-xs text-muted-foreground">
                     {data.email.opened} opened of {data.email.sent}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Click Rate</CardTitle>
-                  <MousePointerClick className="h-4 w-4 text-purple-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{data.email.clickRate}%</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.email.clicked} clicked of {data.email.sent}
                   </p>
                 </CardContent>
               </Card>

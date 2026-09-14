@@ -42,7 +42,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             procedure: true,
           },
         },
-        reminders: true,
       },
     })
 

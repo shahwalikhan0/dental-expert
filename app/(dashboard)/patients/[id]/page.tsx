@@ -106,9 +106,9 @@ interface Patient {
   emergencyContactRelation?: string
   medicalHistory?: {
     allergies?: string[]
-    chronicConditions?: string[]
+    conditions?: string[]
     currentMedications?: string[]
-    familyHistory?: string
+    familyDentalHistory?: string | null
   }
   appointments: any[]
   treatments: any[]
@@ -640,12 +640,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         </div>
                       )}
-                    {patient.medicalHistory.chronicConditions &&
-                      patient.medicalHistory.chronicConditions.length > 0 && (
+                    {patient.medicalHistory.conditions &&
+                      patient.medicalHistory.conditions.length > 0 && (
                         <div>
-                          <p className="text-sm text-muted-foreground">Chronic Conditions</p>
+                          <p className="text-sm text-muted-foreground">Medical Conditions</p>
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {patient.medicalHistory.chronicConditions.map((condition, i) => (
+                            {patient.medicalHistory.conditions.map((condition, i) => (
                               <Badge key={i} variant="secondary">
                                 {condition}
                               </Badge>

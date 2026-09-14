@@ -26,9 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             gender: true,
             address: true,
             city: true,
-            medicalHistory: {
-              select: { drugAllergies: true, foodAllergies: true, materialAllergies: true },
-            },
+            medicalHistory: { select: { allergies: true } },
           },
         },
         doctor: {

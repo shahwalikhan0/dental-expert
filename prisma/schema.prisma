@@ -83,8 +83,7 @@ model Hospital {
   chairs              Chair[]
   refunds             Refund[]
   cashierSessions     CashierSession[]
-  treatmentAddenda    TreatmentAddendum[]
-  treatmentRevisions  TreatmentRevision[]
+  treatmentAmendments TreatmentAmendment[]
   treatments          Treatment[]
   treatmentPlans      TreatmentPlan[]
   dentalChartEntries  DentalChartEntry[]
@@ -93,7 +92,6 @@ model Hospital {
   medications         Medication[]
   invoices            Invoice[]
   payments            Payment[]
-  inventoryCategories InventoryCategory[]
   inventoryItems      InventoryItem[]
   inventoryBatches    InventoryBatch[]
   stockTransactions   StockTransaction[]
@@ -108,8 +106,7 @@ model Hospital {
   settings            Setting[]
   holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
-  smsLogs             SMSLog[]
-  emailLogs           EmailLog[]
+  messageLogs         MessageLog[]
   bulkCommunications  BulkCommunication[]
   staffInvites        StaffInvite[]
   staffShifts         StaffShift[]
@@ -294,17 +291,14 @@ model User {
   notifications   Notification[]
   dataImportJobs  DataImportJob[]
   acknowledgedStockAlerts StockAlert[]
-  labOrderStatusChanges   LabOrderHistory[]
-  uploadedLabOrderDocuments LabOrderDocument[]
   discountsRequested      Invoice[]        @relation("DiscountsRequested")
   discountsApproved       Invoice[]        @relation("DiscountsApproved")
   refundsAuthorised       Refund[]         @relation("RefundsAuthorised")
   paymentsRecorded        Payment[]        @relation("PaymentsRecorded")
   cashierSessionsOpened   CashierSession[] @relation("CashierSessionsOpened")
   cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
-  treatmentsSigned        Treatment[]         @relation("TreatmentsSigned")
-  treatmentAddenda        TreatmentAddendum[] @relation("TreatmentAddenda")
-  treatmentAmendments     TreatmentRevision[] @relation("TreatmentAmendments")
+  treatmentsSigned        Treatment[]          @relation("TreatmentsSigned")
+  treatmentAmendments     TreatmentAmendment[] @relation("TreatmentAmendments")
 
   @@unique([hospitalId, email])
   @@index([email])
@@ -472,6 +466,15 @@ model Patient {
   // clinic" — same reasoning as User.locale above.
   locale          String?
 
+  /// How this patient wants to be contacted, and about what.
+  ///
+  /// Was a fifteen-column table with one row per patient — except that nothing
+  /// ever created a row, so every patient had no preferences at all, and the
+  /// SMS service read `!preference?.smsEnabled` and refused to send to anybody.
+  /// Defaults now live in lib/communication-preferences.ts and apply to a
+  /// patient who has never expressed one, which is almost all of them.
+  communicationPrefs Json?
+
   aiSummary       Json?
   aiSummaryAt     DateTime?
 
@@ -500,50 +503,55 @@ model Patient {
   @@index([firstName, lastName])
 }
 
+/// What a clinician needs to know before picking up a handpiece.
+///
+/// This was thirty-four columns: sixteen `hasX` booleans, each with an optional
+/// `xType` beside it for the two or three that had one, and a catch-all
+/// `otherConditions` for everything the list did not anticipate. Which was a
+/// lot — a patient on warfarin, a transplant recipient, anyone on a bisphosphonate
+/// — all of whom matter more to a dental procedure than several of the things
+/// that did get a column.
+///
+/// Three lists instead. A condition is still perfectly queryable (`conditions`
+/// `has` 'Diabetes'), and it can now record something nobody thought of when
+/// the schema was written. lib/medical-history.ts holds the list the form
+/// offers, so the common ones stay spelled consistently.
+///
+/// The habits and the dental-specific fields keep their own columns: they are
+/// answers to fixed questions with fixed ranges, not an open list.
 model MedicalHistory {
-  id                String    @id @default(cuid())
-  patientId         String    @unique
+  id                 String    @id @default(cuid())
+  patientId          String    @unique
 
-  hasAllergies      Boolean   @default(false)
-  drugAllergies     String?   @db.Text
-  foodAllergies     String?
-  materialAllergies String?
+  /// Drugs, foods, materials — latex and local anaesthetic belong here as much
+  /// as penicillin does, and separating them into three columns meant a
+  /// clinician had to read three fields to find out what not to use.
+  allergies          String[]
+  /// Ongoing medical conditions, in the clinic's own words.
+  conditions         String[]
+  currentMedications String[]
 
-  hasDiabetes       Boolean   @default(false)
-  diabetesType      String?
-  hasHypertension   Boolean   @default(false)
-  hasHeartDisease   Boolean   @default(false)
-  heartCondition    String?
-  hasBleedingDisorder Boolean @default(false)
-  hasAsthma         Boolean   @default(false)
-  hasThyroid        Boolean   @default(false)
-  thyroidType       String?
-  hasHepatitis      Boolean   @default(false)
-  hepatitisType     String?
-  hasHiv            Boolean   @default(false)
-  hasEpilepsy       Boolean   @default(false)
-  isPregnant        Boolean   @default(false)
-  pregnancyWeeks    Int?
-  otherConditions   String?   @db.Text
+  /// Its own field rather than a condition: it is temporary, it has a number
+  /// attached, and it changes what may be prescribed and radiographed today.
+  isPregnant         Boolean   @default(false)
+  pregnancyWeeks     Int?
 
-  currentMedications String?  @db.Text
-
-  previousDentalWork String?  @db.Text
-  lastDentalVisit   DateTime?
-  dentalAnxietyLevel Int?     @default(0)
-
-  familyDentalHistory String? @db.Text
-
-  smokingStatus     SmokingStatus @default(NEVER)
+  smokingStatus      SmokingStatus      @default(NEVER)
   alcoholConsumption AlcoholConsumption @default(NEVER)
-  tobaccoChewing    Boolean   @default(false)
+  tobaccoChewing     Boolean            @default(false)
 
-  additionalNotes   String?   @db.Text
+  previousDentalWork  String?  @db.Text
+  lastDentalVisit     DateTime?
+  /// 0-10. Drives how much time to allow and whether to offer sedation.
+  dentalAnxietyLevel  Int?     @default(0)
+  familyDentalHistory String?  @db.Text
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  additionalNotes    String?   @db.Text
 
-  patient           Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  patient            Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
 }
 
 enum Gender {
@@ -614,7 +622,6 @@ model Appointment {
   doctor          Staff             @relation("DoctorAppointments", fields: [doctorId], references: [id])
   chair           Chair?            @relation(fields: [chairId], references: [id], onDelete: SetNull)
   treatments      Treatment[]
-  reminders       AppointmentReminder[]
 
   @@unique([hospitalId, appointmentNo])
   @@index([hospitalId])
@@ -648,20 +655,6 @@ model Chair {
   @@index([hospitalId])
 }
 
-model AppointmentReminder {
-  id              String         @id @default(cuid())
-  appointmentId   String
-  reminderType    ReminderType
-  scheduledFor    DateTime
-  sentAt          DateTime?
-  status          ReminderStatus @default(PENDING)
-  createdAt       DateTime       @default(now())
-
-  appointment     Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-
-  @@index([scheduledFor])
-  @@index([status])
-}
 
 enum AppointmentType {
   CONSULTATION
@@ -689,18 +682,7 @@ enum Priority {
   URGENT
 }
 
-enum ReminderType {
-  SMS
-  EMAIL
-  WHATSAPP
-}
 
-enum ReminderStatus {
-  PENDING
-  SENT
-  FAILED
-  CANCELLED
-}
 
 // ==================== DENTAL CHART ====================
 
@@ -925,8 +907,7 @@ model Treatment {
   procedure       Procedure       @relation(fields: [procedureId], references: [id])
   doctor          Staff           @relation(fields: [doctorId], references: [id])
   signedBy        User?           @relation("TreatmentsSigned", fields: [signedById], references: [id])
-  addenda         TreatmentAddendum[]
-  revisions       TreatmentRevision[]
+  amendments      TreatmentAmendment[]
   invoiceItems    InvoiceItem[]
   documents       Document[]
 
@@ -938,55 +919,56 @@ model Treatment {
   @@index([signedById])
 }
 
-/// An addition made to a clinical note after it was signed.
+/// What was said, or corrected, about a clinical note after it was signed.
 ///
-/// The normal way to say something further about a treatment. The signed note
-/// itself is never touched: an addendum is appended, attributed and dated, and
-/// cannot be edited or removed once written. This is what "later amendments"
-/// means in FR-007 for anything that is not a factual correction.
-model TreatmentAddendum {
-  id              String    @id @default(cuid())
+/// FR-007 wants signed notes locked "or version-controlled with audit history
+/// for later amendments". There are two kinds of later amendment and they are
+/// not the same act:
+///
+///  - an **addendum** adds something further. The signed note is not touched.
+///    This is the normal way to say more about a treatment.
+///  - a **correction** fixes a wrong value in a structured field. An addendum
+///    cannot do this: a note recording tooth 26 when the work was on 27 leaves
+///    every report on tooth 26 wrong, and a paragraph saying so does not fix
+///    the data. So a signed note *can* be corrected, by a clinician, with a
+///    reason — and `changes` records what it said beforehand.
+///
+/// They were two tables. They are one because they are the same row with one
+/// field swapped, they are always read together in one chronological list, and
+/// keeping them apart meant every reader of a signed note ran two queries and
+/// merge-sorted the results by date.
+///
+/// Append-only either way: once written, an amendment cannot be edited or
+/// removed. That is the whole point of it.
+model TreatmentAmendment {
+  id              String        @id @default(cuid())
   hospitalId      String
   treatmentId     String
 
-  body            String    @db.Text
+  kind            AmendmentKind
+
+  /// What the clinician wrote. For an addendum this is the addition itself;
+  /// for a correction it is the reason the correction was needed.
+  body            String        @db.Text
+
+  /// Corrections only: `{ field: { from, to } }` for each field changed.
+  changes         Json?
+
   authorId        String
+  createdAt       DateTime      @default(now())
 
-  createdAt       DateTime  @default(now())
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  treatment       Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  author          User      @relation("TreatmentAddenda", fields: [authorId], references: [id])
+  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatment       Treatment     @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  author          User          @relation("TreatmentAmendments", fields: [authorId], references: [id])
 
   @@index([hospitalId])
   @@index([treatmentId])
+  @@index([kind])
 }
 
-/// What a signed clinical note said before it was corrected.
-///
-/// Addenda cover almost everything, but not a wrong value in a structured
-/// field: a note recording tooth 26 when the work was on 27 leaves every report
-/// on tooth 26 wrong, and an addendum saying so does not fix the data. So a
-/// signed note *can* be corrected — by a clinician, with a reason — and this
-/// records what it said beforehand.
-model TreatmentRevision {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  treatmentId     String
-
-  reason          String    @db.Text
-  /// `{ field: { from, to } }` for each field this amendment changed.
-  changes         Json
-  amendedById     String
-
-  createdAt       DateTime  @default(now())
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  treatment       Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  amendedBy       User      @relation("TreatmentAmendments", fields: [amendedById], references: [id])
-
-  @@index([hospitalId])
-  @@index([treatmentId])
+enum AmendmentKind {
+  ADDENDUM
+  CORRECTION
 }
 
 enum TreatmentStatus {
@@ -1108,8 +1090,6 @@ model Invoice {
 
   status          InvoiceStatus @default(DRAFT)
   dueDate         DateTime?
-
-  insuranceAmount Decimal?      @db.Decimal(10, 2)
 
   notes           String?       @db.Text
   termsAndConditions String?    @db.Text
@@ -1288,11 +1268,6 @@ model Payment {
   cashierSessionId String?
   recordedById    String?
 
-  gateway           String?    // razorpay / phonepe / paytm
-  gatewayOrderId    String?    // Provider's order/transaction ID
-  gatewayPaymentId  String?    // Provider's payment ID
-  gatewayStatus     String?    // Provider-reported status
-
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -1306,7 +1281,6 @@ model Payment {
   @@index([hospitalId])
   @@index([invoiceId])
   @@index([paymentDate])
-  @@index([gatewayOrderId])
   @@index([cashierSessionId])
 }
 
@@ -1354,31 +1328,17 @@ enum PaymentStatus {
 
 // ==================== INVENTORY MANAGEMENT ====================
 
-model InventoryCategory {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  name            String
-  description     String?
-  parentId        String?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  parent          InventoryCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children        InventoryCategory[] @relation("CategoryHierarchy")
-  items           InventoryItem[]
-
-  @@unique([hospitalId, name])
-  @@index([hospitalId])
-}
 
 model InventoryItem {
   id              String    @id @default(cuid())
   hospitalId      String
   sku             String
   name            String
-  categoryId      String?
+  /// A label, not a table. `InventoryCategory` was eleven columns and a
+  /// self-referencing hierarchy in support of a free-text field on a form: the
+  /// UI offered no way to create, rename or nest one, so every clinic's
+  /// categories arrived from the seed and stayed there.
+  category        String?
   description     String?   @db.Text
   itemType        InventoryItemType @default(DENTAL_MATERIAL)
   // Single "preferred supplier" pointer used by the item form and the
@@ -1394,7 +1354,9 @@ model InventoryItem {
 
   purchasePrice   Decimal   @db.Decimal(10, 2)
   sellingPrice    Decimal?  @db.Decimal(10, 2)
-  hsnCode         String?
+  /// Customs/tax classification for the item, where the clinic records one.
+  /// Was `hsnCode` — India's GST term for it.
+  taxCode         String?
   taxPercentage   Decimal?  @db.Decimal(5, 2)
 
   imageUrl        String?
@@ -1413,7 +1375,6 @@ model InventoryItem {
   deletedAt       DateTime?
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  category        InventoryCategory? @relation(fields: [categoryId], references: [id])
   preferredSupplier Supplier? @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
   stockTransactions StockTransaction[]
   batches         InventoryBatch[]
@@ -1426,6 +1387,7 @@ model InventoryItem {
   @@index([currentStock])
   @@index([deletedAt])
   @@index([itemType])
+  @@index([category])
   @@index([preferredSupplierId])
 }
 
@@ -1768,8 +1730,6 @@ model LabOrder {
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
   labVendor       LabVendor      @relation(fields: [labVendorId], references: [id])
-  history         LabOrderHistory[]
-  documents       LabOrderDocument[]
 
   @@unique([hospitalId, orderNumber])
   @@index([hospitalId])
@@ -1781,45 +1741,9 @@ model LabOrder {
 
 /// Status-transition audit trail for a lab order. Replaces the legacy
 /// `lab_order_history` table written by app/api/lab-orders/[id]/status.
-model LabOrderHistory {
-  id              String          @id @default(cuid())
-  labOrderId      String
-
-  statusFrom      LabOrderStatus?
-  statusTo        LabOrderStatus
-  changedBy       String?
-  notes           String?         @db.Text
-
-  createdAt       DateTime        @default(now())
-
-  labOrder        LabOrder        @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
-  changedByUser   User?           @relation(fields: [changedBy], references: [id])
-
-  @@index([labOrderId])
-  @@index([createdAt])
-}
 
 /// Files attached to a lab order (scans, prescriptions, shade photos).
 /// Replaces the legacy `lab_order_documents` table.
-model LabOrderDocument {
-  id              String    @id @default(cuid())
-  labOrderId      String
-
-  fileName        String
-  fileUrl         String
-  fileType        String?
-  fileSize        Int?
-  documentType    String?
-  uploadedBy      String?
-
-  createdAt       DateTime  @default(now())
-
-  labOrder        LabOrder  @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
-  uploadedByUser  User?     @relation(fields: [uploadedBy], references: [id])
-
-  @@index([labOrderId])
-  @@index([createdAt])
-}
 
 enum LabWorkType {
   CROWN
@@ -2033,115 +1957,86 @@ model CommunicationTemplate {
   updatedAt       DateTime            @updatedAt
 
   hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  smsLogs         SMSLog[]
-  emailLogs       EmailLog[]
+  messages        MessageLog[]
 
   @@index([hospitalId])
   @@index([category])
   @@index([channel])
 }
 
-model SMSLog {
+
+/// Every message the clinic sent a patient, whatever it went out over.
+///
+/// This was three tables — `SMSLog`, `EmailLog` and `AppointmentReminder` —
+/// carrying the same twenty columns three times over. They differed in four
+/// fields between them and in nothing else: a subject line that only email has,
+/// a per-message cost that only SMS has, and an open-tracking pixel. Reporting
+/// on "how many messages did we send this patient" meant querying three tables
+/// and stitching the results together, and adding WhatsApp would have meant a
+/// fourth.
+///
+/// `AppointmentReminder` in particular recorded that a reminder was scheduled
+/// but not what it said or whether it arrived, so a patient insisting they were
+/// never reminded could be shown a row saying SENT and nothing else.
+model MessageLog {
   id              String        @id @default(cuid())
   hospitalId      String
+  channel         CommunicationChannel
   patientId       String?
-  phone           String
+
+  /// Where it went: a phone number for SMS and WhatsApp, an address for email.
+  recipient       String
+  /// Email only.
+  subject         String?
+  body            String        @db.Text
 
   templateId      String?
-  message         String        @db.Text
 
-  gateway         String?
+  /// What the message was about, so a reminder can be traced back to the
+  /// appointment it was about and a receipt to its invoice.
+  relatedType     String?
+  relatedId       String?
+
   status          MessageStatus @default(PENDING)
-  deliveryStatus  String?
+  /// Which provider carried it — Twilio, an SMTP host, a WhatsApp gateway.
+  provider        String?
+  /// The provider's own id for the message, for chasing a delivery failure.
+  providerRef     String?
 
   scheduledFor    DateTime?
   sentAt          DateTime?
   deliveredAt     DateTime?
-  failedAt        DateTime?
-
-  errorMessage    String?
-  cost            Decimal?      @db.Decimal(10, 4)
-  messageId       String?
-
-  metadata        String?       @db.Text
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  template        CommunicationTemplate? @relation(fields: [templateId], references: [id])
-
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([phone])
-  @@index([status])
-  @@index([sentAt])
-}
-
-model EmailLog {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  patientId       String?
-  email           String
-
-  templateId      String?
-  subject         String
-  body            String        @db.Text
-
-  attachments     String?       @db.Text
-
-  status          MessageStatus @default(PENDING)
-
-  scheduledFor    DateTime?
-  sentAt          DateTime?
+  /// Email only, set by the tracking pixel.
   openedAt        DateTime?
-  clickedAt       DateTime?
   failedAt        DateTime?
 
-  trackingId      String?       @unique  // UUID for open tracking pixel
-
   errorMessage    String?
-  messageId       String?
+  /// SMS only, and per message rather than per batch.
+  cost            Decimal?      @db.Decimal(10, 4)
 
-  metadata        String?       @db.Text
+  /// The token in the tracking pixel's URL. Unique because it is looked up by
+  /// an unauthenticated request.
+  trackingId      String?       @unique
+
+  metadata        Json?
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital        Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   template        CommunicationTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([hospitalId])
   @@index([patientId])
-  @@index([email])
+  @@index([channel])
+  @@index([recipient])
   @@index([status])
   @@index([sentAt])
+  @@index([scheduledFor])
+  @@index([relatedType, relatedId])
 }
 
-model PatientCommunicationPreference {
-  id              String    @id @default(cuid())
-  patientId       String    @unique
 
-  smsEnabled      Boolean   @default(true)
-  emailEnabled    Boolean   @default(true)
-  whatsappEnabled Boolean   @default(false)
-
-  appointmentReminders Boolean @default(true)
-  paymentReminders    Boolean  @default(true)
-  promotionalMessages Boolean  @default(true)
-  birthdayWishes      Boolean  @default(true)
-
-  preferredLanguage   String   @default("en")
-  preferredChannel    CommunicationChannel @default(SMS)
-
-  dndRegistered       Boolean  @default(false)
-  unsubscribedAt      DateTime?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@index([patientId])
-}
 
 model BulkCommunication {
   id              String              @id @default(cuid())

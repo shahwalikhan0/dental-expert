@@ -17,12 +17,12 @@ vi.mock('@/lib/prisma', () => {
       findMany: vi.fn(),
       findFirst: vi.fn(),
     },
-    emailLog: {
+    messageLog: {
       create: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
     },
-    patientCommunicationPreference: {
+    patient: {
       findUnique: vi.fn(),
     },
     communicationTemplate: {
@@ -77,12 +77,12 @@ describe('EmailService - Email Validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('EmailService - Communication Preferences', () => {
-  it('rejects when patient has disabled email', async () => {
-    const { emailService } = emailServiceModule
+  const prefs = (communicationPrefs: unknown) =>
+    vi.mocked(prisma.patient.findUnique).mockResolvedValue({ communicationPrefs } as any)
 
-    vi.mocked(prisma.patientCommunicationPreference.findUnique).mockResolvedValue({
-      emailEnabled: false,
-    } as any)
+  it('refuses a patient who has turned off email', async () => {
+    const { emailService } = emailServiceModule
+    prefs({ email: false })
 
     await expect(
       emailService.sendEmail({
@@ -91,7 +91,32 @@ describe('EmailService - Communication Preferences', () => {
         body: 'Hi',
         patientId: 'pat-1',
       })
-    ).rejects.toThrow('disabled email')
+    ).rejects.toThrow('turned off email')
+  })
+
+  /**
+   * The bug this replaced: nothing ever created a preference row, so
+   * `!preference?.emailEnabled` was true for every patient and no
+   * patient-addressed email was ever sent.
+   */
+  it('sends to a patient who has never expressed a preference', async () => {
+    const { emailService } = emailServiceModule
+    prefs(null)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'email-1' } as any)
+    vi.mocked(prisma.setting.findMany).mockResolvedValue([])
+
+    // Fails at the SMTP configuration, which is not set — but the preference
+    // check let it through, which is what this is about.
+    await expect(
+      emailService.sendEmail({
+        to: 'test@example.com',
+        subject: 'Your appointment',
+        body: 'Tomorrow at 10',
+        patientId: 'pat-1',
+      })
+    ).rejects.toThrow()
+
+    expect(prisma.messageLog.create).toHaveBeenCalled()
   })
 })
 
@@ -106,7 +131,7 @@ describe('EmailService - Email Logging', () => {
     // Must always be in the future — a hardcoded literal turns this into a
     // time bomb that starts sending immediately once the date passes.
     const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    vi.mocked(prisma.emailLog.create).mockResolvedValue({ id: 'email-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'email-1' } as any)
 
     const result = await emailService.sendEmail({
       to: 'test@example.com',
@@ -116,7 +141,7 @@ describe('EmailService - Email Logging', () => {
     })
 
     expect(result).toBe('email-1')
-    expect(prisma.emailLog.create).toHaveBeenCalledWith(
+    expect(prisma.messageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'PENDING',
@@ -129,7 +154,7 @@ describe('EmailService - Email Logging', () => {
   it('creates QUEUED log for immediate email', async () => {
     const { emailService } = emailServiceModule
 
-    vi.mocked(prisma.emailLog.create).mockResolvedValue({ id: 'email-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'email-1' } as any)
     vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
     try {
@@ -142,11 +167,12 @@ describe('EmailService - Email Logging', () => {
       // Expected to fail at SMTP config
     }
 
-    expect(prisma.emailLog.create).toHaveBeenCalledWith(
+    expect(prisma.messageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          channel: 'EMAIL',
           status: 'QUEUED',
-          email: 'test@example.com',
+          recipient: 'test@example.com',
         }),
       })
     )
@@ -161,7 +187,7 @@ describe('EmailService - getEmailHistory', () => {
   it('queries with correct filters', async () => {
     const { emailService } = emailServiceModule
 
-    vi.mocked(prisma.emailLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
 
     await emailService.getEmailHistory({
       patientId: 'pat-1',
@@ -169,7 +195,7 @@ describe('EmailService - getEmailHistory', () => {
       limit: 50,
     })
 
-    expect(prisma.emailLog.findMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patientId: 'pat-1',
@@ -184,23 +210,23 @@ describe('EmailService - getEmailHistory', () => {
   it('defaults limit to 100', async () => {
     const { emailService } = emailServiceModule
 
-    vi.mocked(prisma.emailLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
 
     await emailService.getEmailHistory({})
 
-    expect(prisma.emailLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }))
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }))
   })
 
   it('supports date range filters', async () => {
     const { emailService } = emailServiceModule
 
-    vi.mocked(prisma.emailLog.findMany).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.findMany).mockResolvedValue([])
     const from = new Date('2026-01-01')
     const to = new Date('2026-01-31')
 
     await emailService.getEmailHistory({ from, to })
 
-    expect(prisma.emailLog.findMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           createdAt: { gte: from, lte: to },
@@ -218,11 +244,11 @@ describe('EmailService - trackEmailOpen', () => {
   it('updates email log with openedAt timestamp', async () => {
     const { emailService } = emailServiceModule
 
-    vi.mocked(prisma.emailLog.update).mockResolvedValue({} as any)
+    vi.mocked(prisma.messageLog.update).mockResolvedValue({} as any)
 
     await emailService.trackEmailOpen('email-1')
 
-    expect(prisma.emailLog.update).toHaveBeenCalledWith({
+    expect(prisma.messageLog.update).toHaveBeenCalledWith({
       where: { id: 'email-1' },
       data: { openedAt: expect.any(Date) },
     })
@@ -328,7 +354,7 @@ describe('EmailService - sendWithTemplate', () => {
     } as any)
 
     // Will create email log then fail at SMTP
-    vi.mocked(prisma.emailLog.create).mockResolvedValue({ id: 'email-1' } as any)
+    vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'email-1' } as any)
     vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
     try {
@@ -341,7 +367,7 @@ describe('EmailService - sendWithTemplate', () => {
     }
 
     // Verify template variables were replaced in the call to sendEmail → emailLog.create
-    expect(prisma.emailLog.create).toHaveBeenCalledWith(
+    expect(prisma.messageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           subject: 'Appointment for Rahul',

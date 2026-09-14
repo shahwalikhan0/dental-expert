@@ -94,7 +94,7 @@ const REASON = 'Tooth number recorded as 26, the work was on 27'
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(prisma.treatment.update).mockResolvedValue({ id: 't1' } as never)
-  vi.mocked(prisma.treatmentRevision.create).mockResolvedValue({ id: 'rev-1' } as never)
+  vi.mocked(prisma.treatmentAmendment.create).mockResolvedValue({ id: 'rev-1' } as never)
 })
 
 describe('POST /api/treatments/[id]/sign', () => {
@@ -161,7 +161,7 @@ describe('PUT /api/treatments/[id] — the lock', () => {
 
     expect(res.status).toBe(409)
     expect(prisma.treatment.update).not.toHaveBeenCalled()
-    expect(prisma.treatmentRevision.create).not.toHaveBeenCalled()
+    expect(prisma.treatmentAmendment.create).not.toHaveBeenCalled()
   })
 
   it('refuses an assistant amending a signed note', async () => {
@@ -196,10 +196,11 @@ describe('PUT /api/treatments/[id] — the lock', () => {
     const res = await PUT(send('PUT', { toothNumbers: '27', amendmentReason: REASON }), params)
 
     expect(res.status).toBe(200)
-    expect(vi.mocked(prisma.treatmentRevision.create).mock.calls[0][0].data).toMatchObject({
+    expect(vi.mocked(prisma.treatmentAmendment.create).mock.calls[0][0].data).toMatchObject({
       treatmentId: 't1',
-      reason: REASON,
-      amendedById: 'doc-2',
+      kind: 'CORRECTION',
+      body: REASON,
+      authorId: 'doc-2',
       changes: { toothNumbers: { from: '26', to: '27' } },
     })
   })
@@ -215,7 +216,7 @@ describe('PUT /api/treatments/[id] — the lock', () => {
 
   // The update and the record of it must land together, or a failure between
   // them produces exactly the silent overwrite this prevents.
-  it('writes the amendment and the revision in one transaction', async () => {
+  it('writes the note and the correction in one transaction', async () => {
     signedInAs('DOCTOR')
     vi.mocked(prisma.treatment.findUnique).mockResolvedValue(SIGNED as never)
 
@@ -230,7 +231,7 @@ describe('PUT /api/treatments/[id] — the lock', () => {
 
     const res = await PUT(send('PUT', { cost: 18000 }), params)
     expect(res.status).toBe(200)
-    expect(prisma.treatmentRevision.create).not.toHaveBeenCalled()
+    expect(prisma.treatmentAmendment.create).not.toHaveBeenCalled()
   })
 
   it('does not demand a reason when nothing actually changed', async () => {
@@ -239,7 +240,7 @@ describe('PUT /api/treatments/[id] — the lock', () => {
 
     const res = await PUT(send('PUT', { toothNumbers: '26', diagnosis: SIGNED.diagnosis }), params)
     expect(res.status).toBe(200)
-    expect(prisma.treatmentRevision.create).not.toHaveBeenCalled()
+    expect(prisma.treatmentAmendment.create).not.toHaveBeenCalled()
   })
 
   // Before signing, editing is ordinary work and needs no ceremony.
@@ -252,7 +253,7 @@ describe('PUT /api/treatments/[id] — the lock', () => {
 
     const res = await PUT(send('PUT', { diagnosis: 'Working diagnosis' }), params)
     expect(res.status).toBe(200)
-    expect(prisma.treatmentRevision.create).not.toHaveBeenCalled()
+    expect(prisma.treatmentAmendment.create).not.toHaveBeenCalled()
   })
 })
 
@@ -293,7 +294,7 @@ describe('POST /api/treatments/[id]/complete — another way into the record', (
 
 describe('POST /api/treatments/[id]/addenda', () => {
   beforeEach(() => {
-    vi.mocked(prisma.treatmentAddendum.create).mockResolvedValue({ id: 'a1' } as never)
+    vi.mocked(prisma.treatmentAmendment.create).mockResolvedValue({ id: 'a1' } as never)
   })
 
   it('appends an attributed addendum to a signed note', async () => {
@@ -306,8 +307,9 @@ describe('POST /api/treatments/[id]/addenda', () => {
     )
 
     expect(res.status).toBe(201)
-    expect(vi.mocked(prisma.treatmentAddendum.create).mock.calls[0][0].data).toMatchObject({
+    expect(vi.mocked(prisma.treatmentAmendment.create).mock.calls[0][0].data).toMatchObject({
       treatmentId: 't1',
+      kind: 'ADDENDUM',
       authorId: 'doc-3',
       hospitalId: 'h1',
     })
@@ -320,7 +322,7 @@ describe('POST /api/treatments/[id]/addenda', () => {
     vi.mocked(prisma.treatment.findFirst).mockResolvedValue(UNSIGNED as never)
 
     expect((await ADD_ADDENDUM(send('POST', { body: 'Something' }), params)).status).toBe(400)
-    expect(prisma.treatmentAddendum.create).not.toHaveBeenCalled()
+    expect(prisma.treatmentAmendment.create).not.toHaveBeenCalled()
   })
 
   it('is refused to a non-clinician', async () => {

@@ -82,13 +82,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // FR-007: the note is not complete without who signed it and what has
         // been said or corrected since.
         signedBy: { select: { id: true, name: true } },
-        addenda: {
+        amendments: {
           orderBy: { createdAt: 'asc' },
           include: { author: { select: { id: true, name: true } } },
-        },
-        revisions: {
-          orderBy: { createdAt: 'desc' },
-          include: { amendedBy: { select: { id: true, name: true } } },
         },
       },
     })
@@ -234,21 +230,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       signedBy: { select: { id: true, name: true } },
     }
 
-    // The revision and the update go together: a note changed without the
+    // The correction and the update go together: a note changed without the
     // record of what it used to say is the failure this whole requirement is
     // about, so neither lands without the other.
     const [treatment] = amendsClinicalContent
       ? await prisma.$transaction([
           prisma.treatment.update({ where: { id, hospitalId }, data: updateData, include }),
-          prisma.treatmentRevision.create({
+          prisma.treatmentAmendment.create({
             data: {
               hospitalId,
               treatmentId: id,
-              reason: String(body.amendmentReason).trim(),
+              kind: 'CORRECTION',
+              body: String(body.amendmentReason).trim(),
               // Prisma's Json input type does not accept a plain index
               // signature; the shape is `{ field: { from, to } }`.
               changes: clinicalChanges as unknown as Prisma.InputJsonValue,
-              amendedById: user!.id,
+              authorId: user!.id,
             },
           }),
         ])

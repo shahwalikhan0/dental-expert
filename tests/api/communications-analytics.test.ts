@@ -67,54 +67,49 @@ function makeReq(path: string): Request {
   return new Request(`http://localhost${path}`)
 }
 
-// Helper to set up all the mocks needed for analytics
+/**
+ * Set up the analytics mocks.
+ *
+ * SMS and email are one table now (`MessageLog`, discriminated by `channel`),
+ * so these are sequenced rather than mocked per-model. The route's call order
+ * is fixed and worth writing down, because that is what the `Once` chains below
+ * depend on:
+ *
+ *   count:     SMS total, email total, emails opened
+ *   groupBy:   SMS by status, SMS by day, email by status, email by day,
+ *              top SMS templates, top email templates
+ *   aggregate: SMS cost
+ */
 function mockAllAnalytics() {
-  // SMS mocks
-  vi.mocked(prisma.smsLog.count).mockResolvedValue(100)
-  vi.mocked(prisma.smsLog.groupBy)
+  vi.mocked(prisma.messageLog.count)
+    .mockResolvedValueOnce(100 as never) // SMS total
+    .mockResolvedValueOnce(80 as never) // email total
+    .mockResolvedValueOnce(30 as never) // emails opened
+
+  vi.mocked(prisma.messageLog.groupBy)
     .mockResolvedValueOnce([
-      // smsByStatus
       { status: 'DELIVERED', _count: 70 },
       { status: 'SENT', _count: 10 },
       { status: 'FAILED', _count: 5 },
       { status: 'PENDING', _count: 10 },
       { status: 'QUEUED', _count: 5 },
-    ] as any)
+    ] as never)
     .mockResolvedValueOnce([
-      // smsByDay
       { createdAt: new Date('2026-02-15'), _count: 30 },
       { createdAt: new Date('2026-02-16'), _count: 25 },
-    ] as any)
-  vi.mocked(prisma.smsLog.aggregate).mockResolvedValue({
-    _sum: { cost: { toNumber: () => 250.5 } },
-  } as any)
-
-  // Email mocks
-  vi.mocked(prisma.emailLog.count)
-    .mockResolvedValueOnce(80) // emailStats
-    .mockResolvedValueOnce(30) // emailOpened
-    .mockResolvedValueOnce(10) // emailClicked
-  vi.mocked(prisma.emailLog.groupBy)
+    ] as never)
     .mockResolvedValueOnce([
-      // emailByStatus
       { status: 'SENT', _count: 50 },
       { status: 'DELIVERED', _count: 20 },
       { status: 'FAILED', _count: 10 },
-    ] as any)
-    .mockResolvedValueOnce([
-      // emailByDay
-      { createdAt: new Date('2026-02-15'), _count: 40 },
-    ] as any)
-    .mockResolvedValueOnce([
-      // topEmailTemplates
-      { templateId: 't2', _count: 15 },
-    ] as any)
+    ] as never)
+    .mockResolvedValueOnce([{ createdAt: new Date('2026-02-15'), _count: 40 }] as never)
+    .mockResolvedValueOnce([{ templateId: 't1', _count: 25 }] as never)
+    .mockResolvedValueOnce([{ templateId: 't2', _count: 15 }] as never)
 
-  // SMS template top
-  vi.mocked(prisma.smsLog.groupBy).mockResolvedValueOnce([
-    // topSmsTemplates (3rd call)
-    { templateId: 't1', _count: 25 },
-  ] as any)
+  vi.mocked(prisma.messageLog.aggregate).mockResolvedValue({
+    _sum: { cost: { toNumber: () => 250.5 } },
+  } as never)
 
   // Campaigns
   vi.mocked(prisma.bulkCommunication.findMany).mockResolvedValue([
@@ -132,13 +127,13 @@ function mockAllAnalytics() {
       completedAt: new Date(),
       createdAt: new Date(),
     },
-  ] as any)
+  ] as never)
 
   // Templates
   vi.mocked(prisma.communicationTemplate.findMany).mockResolvedValue([
     { id: 't1', name: 'Appointment Reminder', category: 'APPOINTMENT' },
     { id: 't2', name: 'Welcome Email', category: 'GENERAL' },
-  ] as any)
+  ] as never)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -177,9 +172,11 @@ describe('GET /api/communications/analytics', () => {
     expect(body.email.sent).toBe(70) // SENT + DELIVERED
     expect(body.email.failed).toBe(10)
     expect(body.email.opened).toBe(30)
-    expect(body.email.clicked).toBe(10)
     expect(body.email.openRate).toBeGreaterThan(0)
-    expect(body.email.clickRate).toBeGreaterThan(0)
+    // No click rate: EmailLog.clickedAt existed and was always null, because
+    // nothing rewrote links to route through a redirector. The page showed
+    // "0 clicked of 412", which reads as a campaign nobody engaged with.
+    expect(body.email).not.toHaveProperty('clicked')
 
     // Campaigns
     expect(body.campaigns).toHaveLength(1)
@@ -194,8 +191,8 @@ describe('GET /api/communications/analytics', () => {
 
     await analyticsGET(makeReq('/api/communications/analytics?period=7d'))
 
-    // Verify date filter was applied (smsLog.count should be called with a gte filter)
-    expect(prisma.smsLog.count).toHaveBeenCalledWith(
+    // Verify the date filter was applied
+    expect(prisma.messageLog.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           createdAt: expect.objectContaining({ gte: expect.any(Date) }),
@@ -210,7 +207,7 @@ describe('GET /api/communications/analytics', () => {
 
     await analyticsGET(makeReq('/api/communications/analytics?period=all'))
 
-    expect(prisma.smsLog.count).toHaveBeenCalledWith(
+    expect(prisma.messageLog.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           createdAt: undefined,
@@ -249,11 +246,9 @@ describe('GET /api/communications/analytics', () => {
 
   it('handles zero data gracefully', async () => {
     mockAuth()
-    vi.mocked(prisma.smsLog.count).mockResolvedValue(0)
-    vi.mocked(prisma.smsLog.groupBy).mockResolvedValue([])
-    vi.mocked(prisma.smsLog.aggregate).mockResolvedValue({ _sum: { cost: null } } as any)
-    vi.mocked(prisma.emailLog.count).mockResolvedValue(0)
-    vi.mocked(prisma.emailLog.groupBy).mockResolvedValue([])
+    vi.mocked(prisma.messageLog.count).mockResolvedValue(0 as never)
+    vi.mocked(prisma.messageLog.groupBy).mockResolvedValue([] as never)
+    vi.mocked(prisma.messageLog.aggregate).mockResolvedValue({ _sum: { cost: null } } as never)
     vi.mocked(prisma.bulkCommunication.findMany).mockResolvedValue([])
     vi.mocked(prisma.communicationTemplate.findMany).mockResolvedValue([])
 

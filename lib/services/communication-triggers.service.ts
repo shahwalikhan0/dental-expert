@@ -40,15 +40,11 @@ class CommunicationTriggersService {
 
     for (const appointment of appointments) {
       try {
-        // Check if patient has communication preferences
-        const preferences = await prisma.patientCommunicationPreference.findUnique({
-          where: { patientId: appointment.patientId },
-        })
-
-        if (preferences && !preferences.appointmentReminders) {
-          console.log(`Patient ${appointment.patientId} has disabled appointment reminders`)
-          continue
-        }
+        // Whether this patient wants this message is decided by the sending
+        // service, from `kind` below. It used to be decided here as well, in a
+        // second copy that read the preference row directly — and the two
+        // disagreed: this one treated a missing row as consent, the sender
+        // treated it as refusal, and no row ever existed.
 
         // Get clinic info for variables
         const clinicInfo = await prisma.hospital.findUnique({
@@ -71,8 +67,8 @@ class CommunicationTriggersService {
           clinicPhone: clinicInfo?.phone || '',
         }
 
-        // Send SMS if enabled
-        if (preferences?.smsEnabled !== false && appointment.patient.phone) {
+        // Send SMS if the patient has a number
+        if (appointment.patient.phone) {
           const smsTemplate = await templateService.getDefaultTemplate(
             appointment.hospitalId,
             'APPOINTMENT',
@@ -83,10 +79,14 @@ class CommunicationTriggersService {
             const message = templateService.replaceVariables(smsTemplate.content, variables)
 
             await smsService.sendSMS({
+              hospitalId: appointment.hospitalId,
               phone: appointment.patient.phone,
               message,
               patientId: appointment.patientId,
               templateId: smsTemplate.id,
+              kind: 'appointmentReminders',
+              relatedType: 'Appointment',
+              relatedId: appointment.id,
             })
 
             console.log(
@@ -95,8 +95,8 @@ class CommunicationTriggersService {
           }
         }
 
-        // Send Email if enabled
-        if (preferences?.emailEnabled !== false && appointment.patient.email) {
+        // Send Email if the patient has an address
+        if (appointment.patient.email) {
           const emailTemplate = await templateService.getDefaultTemplate(
             appointment.hospitalId,
             'APPOINTMENT',
@@ -115,8 +115,12 @@ class CommunicationTriggersService {
                 variables
               ),
               body,
+              hospitalId: appointment.hospitalId,
               patientId: appointment.patientId,
               templateId: emailTemplate.id,
+              kind: 'appointmentReminders',
+              relatedType: 'Appointment',
+              relatedId: appointment.id,
             })
 
             console.log(
@@ -125,16 +129,11 @@ class CommunicationTriggersService {
           }
         }
 
-        // Update appointment reminder record
-        await prisma.appointmentReminder.create({
-          data: {
-            appointmentId: appointment.id,
-            reminderType: 'SMS',
-            scheduledFor: new Date(),
-            sentAt: new Date(),
-            status: 'SENT',
-          },
-        })
+        // No separate reminder row is written. `sendSMS` and `sendEmail`
+        // already record one message row each, tagged with this appointment —
+        // which is strictly more than the old AppointmentReminder row said,
+        // since that one recorded a channel of 'SMS' whether or not an SMS was
+        // the thing that went out.
       } catch (error) {
         console.error(`Error sending reminder for appointment ${appointment.appointmentNo}:`, error)
       }
@@ -168,14 +167,6 @@ class CommunicationTriggersService {
 
     for (const patient of birthdayPatients) {
       try {
-        const preferences = await prisma.patientCommunicationPreference.findUnique({
-          where: { patientId: patient.id },
-        })
-
-        if (preferences && !preferences.birthdayWishes) {
-          continue
-        }
-
         const clinicInfo = await prisma.hospital.findUnique({
           where: { id: patient.hospitalId },
           select: { name: true, phone: true },
@@ -187,8 +178,9 @@ class CommunicationTriggersService {
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
         }
 
-        // Send SMS
-        if (preferences?.smsEnabled !== false && patient.phone) {
+        // Send SMS. Whether this patient wants birthday messages is decided by
+        // sendSMS, from `kind`.
+        if (patient.phone) {
           const smsTemplate = await templateService.getDefaultTemplate(
             patient.hospitalId,
             'BIRTHDAY',
@@ -199,10 +191,12 @@ class CommunicationTriggersService {
             const message = templateService.replaceVariables(smsTemplate.content, variables)
 
             await smsService.sendSMS({
+              hospitalId: patient.hospitalId,
               phone: patient.phone,
               message,
               patientId: patient.id,
               templateId: smsTemplate.id,
+              kind: 'birthdayWishes',
             })
           }
         }
@@ -238,14 +232,6 @@ class CommunicationTriggersService {
 
     for (const invoice of overdueInvoices) {
       try {
-        const preferences = await prisma.patientCommunicationPreference.findUnique({
-          where: { patientId: invoice.patientId },
-        })
-
-        if (preferences && !preferences.paymentReminders) {
-          continue
-        }
-
         const clinicInfo = await prisma.hospital.findUnique({
           where: { id: invoice.hospitalId },
           select: { name: true, phone: true },
@@ -262,8 +248,9 @@ class CommunicationTriggersService {
           clinicPhone: clinicInfo?.phone || '',
         }
 
-        // Send SMS
-        if (preferences?.smsEnabled !== false && invoice.patient.phone) {
+        // Send SMS. Whether this patient wants payment reminders is decided by
+        // sendSMS, from `kind`.
+        if (invoice.patient.phone) {
           const smsTemplate = await templateService.getDefaultTemplate(
             invoice.hospitalId,
             'PAYMENT',
@@ -274,10 +261,14 @@ class CommunicationTriggersService {
             const message = templateService.replaceVariables(smsTemplate.content, variables)
 
             await smsService.sendSMS({
+              hospitalId: invoice.hospitalId,
               phone: invoice.patient.phone,
               message,
               patientId: invoice.patientId,
               templateId: smsTemplate.id,
+              kind: 'paymentReminders',
+              relatedType: 'Invoice',
+              relatedId: invoice.id,
             })
           }
         }

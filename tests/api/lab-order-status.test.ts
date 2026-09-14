@@ -83,7 +83,7 @@ describe('Lab Order Status API', () => {
       typeof arg === 'function' ? arg(prisma) : Promise.all(arg)
     )
     prisma.labOrder.update.mockResolvedValue({ id: 'order-1' })
-    prisma.labOrderHistory.create.mockResolvedValue({ id: 'history-1' })
+    prisma.auditLog.create.mockResolvedValue({ id: 'history-1' })
   })
 
   describe('PATCH /api/lab-orders/[id]/status', () => {
@@ -159,7 +159,12 @@ describe('Lab Order Status API', () => {
       expect(res.status).toBe(404)
     })
 
-    it('records a history row with the supplied notes', async () => {
+    /**
+     * The trail is the audit log now. `LabOrderHistory` was a table that
+     * recorded who changed a lab order's status and when — and nothing else,
+     * which is exactly what AuditLog records for every other kind of change.
+     */
+    it('records the change in the audit log with the supplied notes', async () => {
       prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
 
       await statusModule.PATCH(
@@ -167,14 +172,18 @@ describe('Lab Order Status API', () => {
         ctx
       )
 
-      expect(prisma.labOrderHistory.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          labOrderId: 'order-1',
-          statusFrom: LabOrderStatus.CREATED,
-          statusTo: LabOrderStatus.IN_PROGRESS,
-          changedBy: 'user-1',
-          notes: 'Started work on crown',
-        }),
+      const entry = prisma.auditLog.create.mock.calls[0][0].data
+      expect(entry).toMatchObject({
+        hospitalId: 'hospital-1',
+        userId: 'user-1',
+        action: 'lab_order.status_changed',
+        entityType: 'LabOrder',
+        entityId: 'order-1',
+      })
+      expect(JSON.parse(entry.oldValues)).toEqual({ status: LabOrderStatus.CREATED })
+      expect(JSON.parse(entry.newValues)).toEqual({
+        status: LabOrderStatus.IN_PROGRESS,
+        notes: 'Started work on crown',
       })
     })
 
@@ -183,7 +192,8 @@ describe('Lab Order Status API', () => {
 
       await statusModule.PATCH(makeRequest({ status: 'in_progress' }), ctx)
 
-      expect(prisma.labOrderHistory.create.mock.calls[0][0].data.notes).toContain('IN_PROGRESS')
+      const entry = prisma.auditLog.create.mock.calls[0][0].data
+      expect(JSON.parse(entry.newValues).notes).toContain('IN_PROGRESS')
     })
 
     it('returns 401 when not authenticated', async () => {
@@ -210,7 +220,7 @@ describe('Lab Order Status API', () => {
         )
         prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
         prisma.labOrder.update.mockResolvedValue({ id: 'order-1' })
-        prisma.labOrderHistory.create.mockResolvedValue({ id: 'history-1' })
+        prisma.auditLog.create.mockResolvedValue({ id: 'history-1' })
 
         const res = await statusModule.PATCH(makeRequest({ status: status.toLowerCase() }), ctx)
         expect(res.status).toBe(200)

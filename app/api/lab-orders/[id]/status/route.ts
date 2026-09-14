@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { AUDIT_ACTIONS } from '@/lib/audit'
 import { LabOrderStatus, Prisma } from '@prisma/client'
 
 const LAB_ORDER_STATUSES = Object.values(LabOrderStatus) as string[]
@@ -61,13 +62,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     await prisma.$transaction([
       prisma.labOrder.update({ where: { id }, data }),
-      prisma.labOrderHistory.create({
+      // The status trail is the audit log. It used to be `LabOrderHistory`,
+      // a table that recorded who changed a lab order's status and when — and
+      // nothing else, which is precisely what AuditLog already records for
+      // every other kind of change in the system.
+      prisma.auditLog.create({
         data: {
-          labOrderId: id,
-          statusFrom: currentStatus,
-          statusTo: status,
-          changedBy: session?.user?.id ?? null,
-          notes: notes || `Status changed to ${status}`,
+          hospitalId,
+          userId: session?.user?.id ?? null,
+          action: AUDIT_ACTIONS.LAB_ORDER_STATUS_CHANGED,
+          entityType: 'LabOrder',
+          entityId: id,
+          oldValues: JSON.stringify({ status: currentStatus }),
+          newValues: JSON.stringify({ status, notes: notes || `Status changed to ${status}` }),
         },
       }),
     ])

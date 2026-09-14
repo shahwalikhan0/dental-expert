@@ -24,24 +24,28 @@ export async function GET(req: Request) {
 
   const dateFilter = since ? { gte: since } : undefined
 
+  // One table for every channel now, so each of these is the same query with a
+  // different `channel`. It used to be two sets of near-identical queries
+  // against two near-identical tables.
+  const smsWhere = { hospitalId: hospitalId!, channel: 'SMS' as const, createdAt: dateFilter }
+  const emailWhere = { hospitalId: hospitalId!, channel: 'EMAIL' as const, createdAt: dateFilter }
+
   // SMS analytics
   const [smsStats, smsByStatus, smsByDay, smsTotalCost] = await Promise.all([
-    prisma.sMSLog.count({
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
-    }),
-    prisma.sMSLog.groupBy({
+    prisma.messageLog.count({ where: smsWhere }),
+    prisma.messageLog.groupBy({
       by: ['status'],
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
+      where: smsWhere,
       _count: true,
     }),
-    prisma.sMSLog.groupBy({
+    prisma.messageLog.groupBy({
       by: ['createdAt'],
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
+      where: smsWhere,
       _count: true,
       orderBy: { createdAt: 'asc' },
     }),
-    prisma.sMSLog.aggregate({
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
+    prisma.messageLog.aggregate({
+      where: smsWhere,
       _sum: { cost: true },
     }),
   ])
@@ -56,22 +60,21 @@ export async function GET(req: Request) {
   const smsQueued = smsStatusMap['QUEUED'] || 0
   const smsDeliveryRate = smsStats > 0 ? ((smsDelivered + smsSent) / smsStats) * 100 : 0
 
-  // Email analytics
-  const [emailStats, emailByStatus, emailOpened, emailClicked] = await Promise.all([
-    prisma.emailLog.count({
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
-    }),
-    prisma.emailLog.groupBy({
+  // Email analytics.
+  //
+  // No click rate. `EmailLog.clickedAt` existed and was always null: nothing
+  // rewrote links to route through a redirector, so there was nothing to
+  // record a click. The page showed "0 clicked of 412" and a 0% rate, which
+  // reads as a campaign nobody engaged with rather than a number nobody
+  // measures.
+  const [emailStats, emailByStatus, emailOpened] = await Promise.all([
+    prisma.messageLog.count({ where: emailWhere }),
+    prisma.messageLog.groupBy({
       by: ['status'],
-      where: { hospitalId: hospitalId!, createdAt: dateFilter },
+      where: emailWhere,
       _count: true,
     }),
-    prisma.emailLog.count({
-      where: { hospitalId: hospitalId!, createdAt: dateFilter, openedAt: { not: null } },
-    }),
-    prisma.emailLog.count({
-      where: { hospitalId: hospitalId!, createdAt: dateFilter, clickedAt: { not: null } },
-    }),
+    prisma.messageLog.count({ where: { ...emailWhere, openedAt: { not: null } } }),
   ])
 
   const emailStatusMap: Record<string, number> = {}
@@ -80,7 +83,6 @@ export async function GET(req: Request) {
   const emailSent = (emailStatusMap['SENT'] || 0) + (emailStatusMap['DELIVERED'] || 0)
   const emailFailed = emailStatusMap['FAILED'] || 0
   const emailOpenRate = emailSent > 0 ? (emailOpened / emailSent) * 100 : 0
-  const emailClickRate = emailSent > 0 ? (emailClicked / emailSent) * 100 : 0
 
   // Aggregate SMS by day (group by date string)
   const smsDailyMap: Record<string, number> = {}
@@ -90,9 +92,9 @@ export async function GET(req: Request) {
   }
 
   // Email daily trend
-  const emailByDay = await prisma.emailLog.groupBy({
+  const emailByDay = await prisma.messageLog.groupBy({
     by: ['createdAt'],
-    where: { hospitalId: hospitalId!, createdAt: dateFilter },
+    where: emailWhere,
     _count: true,
     orderBy: { createdAt: 'asc' },
   })
@@ -134,17 +136,17 @@ export async function GET(req: Request) {
   })
 
   // Template performance (top 10 by usage)
-  const topSmsTemplates = await prisma.sMSLog.groupBy({
+  const topSmsTemplates = await prisma.messageLog.groupBy({
     by: ['templateId'],
-    where: { hospitalId: hospitalId!, createdAt: dateFilter, templateId: { not: null } },
+    where: { ...smsWhere, templateId: { not: null } },
     _count: true,
     orderBy: { _count: { templateId: 'desc' } },
     take: 10,
   })
 
-  const topEmailTemplates = await prisma.emailLog.groupBy({
+  const topEmailTemplates = await prisma.messageLog.groupBy({
     by: ['templateId'],
-    where: { hospitalId: hospitalId!, createdAt: dateFilter, templateId: { not: null } },
+    where: { ...emailWhere, templateId: { not: null } },
     _count: true,
     orderBy: { _count: { templateId: 'desc' } },
     take: 10,
@@ -185,9 +187,7 @@ export async function GET(req: Request) {
       sent: emailSent,
       failed: emailFailed,
       opened: emailOpened,
-      clicked: emailClicked,
       openRate: Math.round(emailOpenRate * 10) / 10,
-      clickRate: Math.round(emailClickRate * 10) / 10,
     },
     dailyTrend,
     campaigns: campaigns.map((c) => ({

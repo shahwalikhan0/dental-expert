@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    emailLog: {
+    messageLog: {
       updateMany: vi.fn(),
     },
   },
@@ -19,7 +19,7 @@ function createParams(id: string) {
 describe('Email Tracking Pixel — GET /api/track/email/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(prisma.emailLog.updateMany).mockResolvedValue({ count: 1 })
+    vi.mocked(prisma.messageLog.updateMany).mockResolvedValue({ count: 1 })
   })
 
   it('should return a 1x1 transparent PNG pixel', async () => {
@@ -57,8 +57,8 @@ describe('Email Tracking Pixel — GET /api/track/email/[id]', () => {
     // Allow microtask to run (background update)
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(prisma.emailLog.updateMany).toHaveBeenCalledWith({
-      where: { trackingId: 'track-abc', openedAt: null },
+    expect(prisma.messageLog.updateMany).toHaveBeenCalledWith({
+      where: { trackingId: 'track-abc', channel: 'EMAIL', openedAt: null },
       data: { openedAt: expect.any(Date) },
     })
   })
@@ -69,7 +69,7 @@ describe('Email Tracking Pixel — GET /api/track/email/[id]', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(prisma.emailLog.updateMany).toHaveBeenCalledWith(
+    expect(prisma.messageLog.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ openedAt: null }),
       })
@@ -77,7 +77,7 @@ describe('Email Tracking Pixel — GET /api/track/email/[id]', () => {
   })
 
   it('should return pixel even when DB update fails', async () => {
-    vi.mocked(prisma.emailLog.updateMany).mockRejectedValue(new Error('DB error'))
+    vi.mocked(prisma.messageLog.updateMany).mockRejectedValue(new Error('DB error'))
 
     const req = new Request('http://localhost/api/track/email/track-fail')
     const res = await GET(req, createParams('track-fail'))
@@ -120,6 +120,6 @@ describe('Email Tracking Pixel — GET /api/track/email/[id]', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(prisma.emailLog.updateMany).toHaveBeenCalledTimes(3)
+    expect(prisma.messageLog.updateMany).toHaveBeenCalledTimes(3)
   })
 })

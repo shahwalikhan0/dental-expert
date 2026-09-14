@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const search = searchParams.get('search') || ''
-    const categoryId = searchParams.get('category') || ''
+    const category = searchParams.get('category') || ''
     const itemType = searchParams.get('type') || ''
     const status = searchParams.get('status') || 'all'
     const lowStock = searchParams.get('lowStock') === 'true'
@@ -36,9 +36,10 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // Add category filter
-    if (categoryId) {
-      where.categoryId = categoryId
+    // Add category filter. The label is the identifier now — see
+    // app/api/inventory/categories/route.ts.
+    if (category) {
+      where.category = category
     }
 
     // Add item type filter. The inventory page has always rendered this
@@ -51,12 +52,6 @@ export async function GET(request: NextRequest) {
     let items = await prisma.inventoryItem.findMany({
       where,
       include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
         supplierItems: {
           include: {
             supplier: {
@@ -92,7 +87,7 @@ export async function GET(request: NextRequest) {
       return {
         ...item,
         stockStatus,
-        categoryName: item.category?.name || null,
+        categoryName: item.category,
         supplierName: item.supplierItems[0]?.supplier.name || null,
         supplierItems: undefined, // Remove nested data
       }
@@ -142,7 +137,7 @@ export async function POST(request: NextRequest) {
     const {
       sku,
       name,
-      categoryId,
+      category,
       description,
       unit,
       currentStock = 0,
@@ -161,7 +156,7 @@ export async function POST(request: NextRequest) {
       // they were silently discarded on every create.
       itemType,
       preferredSupplierId,
-      hsnCode,
+      taxCode,
       taxPercentage,
       imageUrl,
       notes,
@@ -190,7 +185,7 @@ export async function POST(request: NextRequest) {
         hospitalId,
         sku,
         name,
-        categoryId: categoryId || null,
+        category: category || null,
         description: description || null,
         unit,
         currentStock,
@@ -209,7 +204,7 @@ export async function POST(request: NextRequest) {
           ? { itemType: itemType as InventoryItemType }
           : {}),
         preferredSupplierId: preferredSupplierId || null,
-        hsnCode: hsnCode || null,
+        taxCode: taxCode || null,
         taxPercentage: taxPercentage ?? null,
         imageUrl: imageUrl || null,
         notes: notes || null,

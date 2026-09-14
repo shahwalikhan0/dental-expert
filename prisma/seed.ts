@@ -378,9 +378,12 @@ async function main() {
         hospitalId: hospital.id,
         medicalHistory: {
           create: {
-            hasAllergies: i % 3 === 0,
-            hasDiabetes: i % 4 === 0,
-            hasHypertension: i % 5 === 0,
+            allergies: i % 3 === 0 ? ['Penicillin'] : [],
+            conditions: [
+              ...(i % 4 === 0 ? ['Diabetes'] : []),
+              ...(i % 5 === 0 ? ['Hypertension'] : []),
+            ],
+            currentMedications: i % 4 === 0 ? ['Metformin 500mg'] : [],
             smokingStatus: i % 6 === 0 ? 'FORMER' : 'NEVER',
             alcoholConsumption: i % 4 === 0 ? 'OCCASIONAL' : 'NEVER',
           },
@@ -1161,44 +1164,12 @@ async function main() {
 
   console.log('Created medications database')
 
-  // Create inventory categories
-  const categories = [
-    { name: 'Dental Materials', description: 'Composites, cements, and filling materials' },
-    { name: 'Instruments', description: 'Dental instruments and tools' },
-    { name: 'Consumables', description: 'Disposable items and consumables' },
-    { name: 'Medicines', description: 'Medications and pharmaceuticals' },
-    { name: 'Equipment', description: 'Dental equipment and machines' },
-  ]
-
-  for (const cat of categories) {
-    await prisma.inventoryCategory.upsert({
-      where: {
-        hospitalId_name: {
-          hospitalId: hospital.id,
-          name: cat.name,
-        },
-      },
-      update: {},
-      create: {
-        name: cat.name,
-        description: cat.description,
-        hospitalId: hospital.id,
-      },
-    })
-  }
-
-  console.log('Created inventory categories')
-
   // ── Inventory: suppliers, items, batches, movements, alerts ───────────────
   //
   // The inventory and lab pages used to be seeded with nothing, so their e2e
   // specs could only ever assert an empty state. Everything below exists so
   // those specs can assert real rows: a low-stock item, an out-of-stock item,
   // a batch near expiry, stock movements, and an open alert.
-
-  const materialsCategory = await prisma.inventoryCategory.findFirst({
-    where: { hospitalId: hospital.id, name: 'Dental Materials' },
-  })
 
   const suppliers = [
     {
@@ -1302,7 +1273,7 @@ async function main() {
       update: {},
       create: {
         hospitalId: hospital.id,
-        categoryId: materialsCategory?.id ?? null,
+        category: 'Dental Materials',
         preferredSupplierId: primarySupplier?.id ?? null,
         storageLocation: 'Main Store',
         ...item,
@@ -1489,14 +1460,6 @@ async function main() {
           expectedDate,
           estimatedCost: 6500,
           createdBy: admin.id,
-          history: {
-            create: {
-              statusFrom: null,
-              statusTo: o.status,
-              changedBy: admin.id,
-              notes: 'Seeded lab order',
-            },
-          },
         },
       })
     }

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { medicalAlerts } from '@/lib/medical-history'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -77,12 +78,10 @@ interface Appointment {
     address: string | null
     city: string | null
     medicalHistory: {
-      hasAllergies: boolean
-      drugAllergies: string | null
-      hasDiabetes: boolean
-      hasHypertension: boolean
-      hasHeartDisease: boolean
-      currentMedications: string | null
+      allergies: string[]
+      conditions: string[]
+      currentMedications: string[]
+      isPregnant: boolean
     } | null
   }
   doctor: {
@@ -479,28 +478,27 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <Separator />
                 <div>
                   <h4 className="font-medium mb-2">Medical Alerts</h4>
+                  {/*
+                    Named the alerts rather than four hardcoded badges. Those
+                    badges could only ever show the four conditions somebody
+                    picked in advance — a patient on warfarin got no badge at
+                    all, and their allergy badge said "Allergies" without saying
+                    to what.
+                  */}
                   <div className="flex flex-wrap gap-2">
-                    {appointment.patient.medicalHistory.hasAllergies && (
-                      <Badge variant="destructive">Allergies</Badge>
-                    )}
-                    {appointment.patient.medicalHistory.hasDiabetes && (
-                      <Badge variant="secondary">Diabetes</Badge>
-                    )}
-                    {appointment.patient.medicalHistory.hasHypertension && (
-                      <Badge variant="secondary">Hypertension</Badge>
-                    )}
-                    {appointment.patient.medicalHistory.hasHeartDisease && (
-                      <Badge variant="destructive">Heart Disease</Badge>
-                    )}
+                    {medicalAlerts(appointment.patient.medicalHistory).map((alert, i) => (
+                      <Badge
+                        key={i}
+                        variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}
+                      >
+                        {alert.label}
+                      </Badge>
+                    ))}
                   </div>
-                  {appointment.patient.medicalHistory.drugAllergies && (
-                    <p className="text-sm text-red-600 mt-2">
-                      Drug Allergies: {appointment.patient.medicalHistory.drugAllergies}
-                    </p>
-                  )}
-                  {appointment.patient.medicalHistory.currentMedications && (
+                  {appointment.patient.medicalHistory.currentMedications.length > 0 && (
                     <p className="text-sm text-muted-foreground mt-2">
-                      Current Medications: {appointment.patient.medicalHistory.currentMedications}
+                      Current medications:{' '}
+                      {appointment.patient.medicalHistory.currentMedications.join(', ')}
                     </p>
                   )}
                 </div>

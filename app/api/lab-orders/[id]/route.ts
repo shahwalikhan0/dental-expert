@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { LabOrderStatus, QualityCheckStatus } from '@prisma/client'
+import { AUDIT_ACTIONS } from '@/lib/audit'
 
 // Only orders that have not been sent anywhere yet may be removed.
 const DELETABLE_STATUSES: LabOrderStatus[] = [LabOrderStatus.CREATED, LabOrderStatus.CANCELLED]
@@ -39,14 +40,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             email: true,
           },
         },
-        history: {
-          orderBy: { createdAt: 'desc' },
-          include: { changedByUser: { select: { name: true } } },
-        },
-        documents: {
-          orderBy: { createdAt: 'desc' },
-          include: { uploadedByUser: { select: { name: true } } },
-        },
       },
     })
 
@@ -61,7 +54,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         })
       : null
 
-    const { labVendor, patient, history, documents, ...rest } = order
+    /**
+     * The status trail comes from the audit log now.
+     *
+     * `LabOrderHistory` recorded who changed a lab order's status and when —
+     * which is what `AuditLog` is for, and was the only thing it recorded. Two
+     * places to look for "who changed this" is one too many, and only one of
+     * them was ever shown on the audit screen.
+     */
+    const history = await prisma.auditLog.findMany({
+      where: { hospitalId, entityType: 'LabOrder', entityId: id },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { name: true } } },
+    })
+
+    const { labVendor, patient, ...rest } = order
 
     return NextResponse.json({
       success: true,
@@ -80,14 +87,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         patientPhone: patient.phone,
         patientEmail: patient.email,
         createdByName: createdByUser?.name ?? null,
-        history: history.map(({ changedByUser, ...h }) => ({
-          ...h,
-          changedByName: changedByUser?.name ?? null,
-        })),
-        documents: documents.map(({ uploadedByUser, ...d }) => ({
-          ...d,
-          uploadedByName: uploadedByUser?.name ?? null,
-        })),
+        history: history.map((entry) => {
+          const values = entry.newValues ? JSON.parse(entry.newValues) : {}
+          const previous = entry.oldValues ? JSON.parse(entry.oldValues) : {}
+          return {
+            id: entry.id,
+            createdAt: entry.createdAt,
+            statusFrom: previous.status ?? null,
+            statusTo: values.status ?? null,
+            notes: values.notes ?? null,
+            changedByName: entry.user?.name ?? null,
+          }
+        }),
       },
     })
   } catch (error: any) {
@@ -175,13 +186,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       })
 
       if (status && status !== currentStatus) {
-        await tx.labOrderHistory.create({
+        await tx.auditLog.create({
           data: {
-            labOrderId: id,
-            statusFrom: currentStatus,
-            statusTo: status,
-            changedBy: session?.user?.id ?? null,
-            notes: `Status changed from ${currentStatus} to ${status}`,
+            hospitalId,
+            userId: session?.user?.id ?? null,
+            action: AUDIT_ACTIONS.LAB_ORDER_STATUS_CHANGED,
+            entityType: 'LabOrder',
+            entityId: id,
+            oldValues: JSON.stringify({ status: currentStatus }),
+            newValues: JSON.stringify({
+              status,
+              notes: `Status changed from ${currentStatus} to ${status}`,
+            }),
           },
         })
       }
