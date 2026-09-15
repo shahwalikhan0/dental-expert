@@ -2188,3 +2188,111 @@ that exists. Driven in the browser as well — a row opens the patient, and the
 actions menu opens its menu without the row going anywhere underneath it.
 
 Full suite 3,610 passing; build clean; `eslint` 0 errors.
+
+## 24. Cutting the schema back
+
+Four commits against the study in `Schema Under Load`. **47 → 43 tables, 748 →
+689 columns, 45 → 42 enums**, and no feature lost — every table removed here is
+one nothing has ever written to.
+
+### 24.1 Payroll, and the form that collected it
+
+Spec §3 puts "full payroll, attendance, or enterprise HR management beyond
+basic user/staff profiles" out of scope. The staff form nonetheless asked for a
+**monthly salary, a bank account number and an IBAN**, and stored all three —
+three columns of a clinic's most sensitive employment data, held for a feature
+nobody was going to build. Attendance and leave went in `39fdd2e`; this is the
+rest of it.
+
+Nothing is preserved. There is nowhere to move a salary to, and keeping staff
+bank details "just in case" is the opposite of what dropping the feature is
+for.
+
+`staff:hr` now gates one thing — an individual's performance figures — and says
+so. Its two `ROUTE_PERMISSIONS` entries pointed at `/staff/attendance` and
+`/staff/leaves`, pages that have not existed since `39fdd2e`.
+
+### 24.2 Four tables nothing writes to
+
+Each was found by grepping every Prisma call across `app/`, `lib/`, `tests/`
+and the seed, then looking at what reads them. All four are **empty in a
+freshly seeded database**, which is the whole story.
+
+|                       |                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SupplierItem`        | Read once, through a relation on the inventory list, to fill a "Supplier" column — from a table nothing populates. The list now reads `InventoryItem.preferredSupplier`, which the item form does write, so **that column works for the first time**. |
+| `SubscriptionInvoice` | Nothing issues one. Platform billing has no payment processor, and the tenant console fetched an invoice list that was always empty.                                                                                                                  |
+| `BulkCommunication`   | Read by one analytics query, written by nothing. The bulk-SMS route sends the messages and records no campaign, so "Recent Campaigns" never had a row.                                                                                                |
+| `Notification`        | Listed and marked-as-read by `/api/notifications`, **created by nothing**. The bell in the header has shown zero since the fork.                                                                                                                      |
+
+A bell that never rings is a promise the product does not keep, so the route,
+the tray and the table went together. If in-app notifications are wanted, the
+discount approval in §7 is the obvious first one to raise — it already has an
+approver waiting on it.
+
+### 24.3 Every index leads with the tenant
+
+The largest single finding in the study, and the one that had nothing to do
+with table count. There were **142 single-column indexes and 3 composite ones,
+none of which started with `hospitalId`**. Every list screen asks the same
+shape of question —
+
+```sql
+WHERE "hospitalId" = $1 AND <filter> ORDER BY <column> DESC LIMIT 20
+```
+
+— and Postgres can use one index for that, then filter and sort the rest by
+hand. The rows it filters out are other clinics'.
+
+Measured on 400,001 invoices across 50 tenants, before and after, against the
+real migrated schema:
+
+|                         | Before  | After       |
+| ----------------------- | ------- | ----------- |
+| The page query          | 9.06 ms | **0.67 ms** |
+| The pager's count       | 62.9 ms | **0.70 ms** |
+| Rows read and discarded | 6,737   | **0**       |
+| Buffers touched         | 188     | **23**      |
+
+Every paginated screen runs both, so a list cost about 72 ms of database work
+and now costs 1.4 ms — and the old gap widened linearly with the table.
+
+Ninety-six single-column indexes go and fifty-seven composites replace them
+across 27 models, which is also less to write on every insert. The profile is
+now 36 single-column, 59 composite, 54 of them tenant-leading.
+
+One caveat carried in the migration: these are plain `CREATE INDEX` statements,
+and Prisma runs a migration inside a transaction where `CONCURRENTLY` cannot
+run. On a large production database, apply the creates by hand with
+`CONCURRENTLY` first and then mark the migration applied.
+
+### 24.4 Age is computed, not stored
+
+`Patient.age` was written once at registration and never again — wrong for most
+of the year, and a patient registered at 34 stayed 34 for life. **The analytics
+report already ignored it** and computed age from `dateOfBirth`, which is the
+tell: two places in the application disagreed about how old a patient was, and
+the report was the one that was right.
+
+`lib/age.ts` refuses rather than guessing: no date of birth, an unparseable
+one, or a date in the future all give null, because a blank is the honest
+answer and a negative age is a typo.
+
+The migration backfills before dropping. Some patients were registered with an
+age and no date of birth, and dropping the column would lose the only thing
+known about their age; a birth year is not a birth date, so it records the
+first of July — mid-year, the least wrong single day to pick — and only where
+there is nothing better.
+
+### 24.5 Where this leaves the count
+
+47 → 43 models; 44 tables in the database counting `_prisma_migrations`.
+
+The study's target was 42, and the last one is `StaffInvite` folding into
+`User` together with `StaffShift` and `Holiday` becoming one availability
+table. Both are Tier 2 — real application work rather than a migration — and
+neither removes a column that anything reads.
+
+Below that, the six widest tables barely move, because every remaining
+candidate column is rendered on a form somebody fills in. **Cutting further
+removes features, not fat.**
