@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -85,6 +86,8 @@ export default function WaitlistPage() {
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [entries, setEntries] = useState<WaitlistEntry[]>([])
+  // The route hands back the whole waiting list, so the paging is done here.
+  const paged = usePagedRows(entries)
   const [summary, setSummary] = useState<Summary>({ active: 0, notified: 0, booked: 0 })
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('ACTIVE')
@@ -464,7 +467,7 @@ export default function WaitlistPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.map((entry) => (
+                {paged.rows.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell>
                       <div>
@@ -507,6 +510,14 @@ export default function WaitlistPage() {
               </TableBody>
             </Table>
           )}
+          <GridPagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            noun="waiting patients"
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+          />
         </CardContent>
       </Card>
       {ConfirmDialogComponent}

@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import {
   Table,
@@ -43,12 +44,15 @@ export default function PrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 })
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 })
 
   const fetchPrescriptions = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(pagination.page), limit: '20' })
+      const params = new URLSearchParams({
+        page: String(pagination.page),
+        limit: String(pagination.limit),
+      })
       if (search) params.set('search', search)
 
       const res = await fetch(`/api/prescriptions?${params}`)
@@ -66,7 +70,7 @@ export default function PrescriptionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, pagination.page])
+  }, [search, pagination.page, pagination.limit])
 
   useEffect(() => {
     fetchPrescriptions()
@@ -184,7 +188,11 @@ export default function PrescriptionsPage() {
               </TableHeader>
               <TableBody>
                 {prescriptions.map((rx) => (
-                  <TableRow key={rx.id}>
+                  <ClickableRow
+                    key={rx.id}
+                    href={`/prescriptions/${rx.id}`}
+                    label={`Open prescription ${rx.prescriptionNo}`}
+                  >
                     <TableCell className="font-mono text-sm">{rx.prescriptionNo}</TableCell>
                     <TableCell className="font-medium">
                       {rx.patient.firstName} {rx.patient.lastName}
@@ -236,38 +244,21 @@ export default function PrescriptionsPage() {
                         </Button>
                       </div>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))}
               </TableBody>
             </Table>
           )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="prescriptions"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
-
-      {pagination.pages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page <= 1}
-            onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-          >
-            Previous
-          </Button>
-          <span className="flex items-center text-sm text-muted-foreground px-3">
-            Page {pagination.page} of {pagination.pages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page >= pagination.pages}
-            onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-          >
-            Next
-          </Button>
-        </div>
-      )}
-      {ConfirmDialogComponent}
     </div>
   )
 }

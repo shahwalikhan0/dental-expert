@@ -2117,3 +2117,74 @@ to sign in — arriving as a DENTAL_ASSISTANT whose password nobody at the clini
 knows.
 
 Full suite 3,582 passing; build clean; `eslint` 0 errors.
+
+## 23. Clickable rows, and one pager
+
+Two things every list screen needed and each one had built for itself.
+
+### 23.1 Opening a record took two clicks and a menu
+
+Every grid put **View Details** inside a three-dot menu. Seeing a patient meant
+finding the menu, opening it, reading three items and picking the first — on the
+screen a receptionist uses more than any other. The rows looked clickable,
+because rows highlight on hover, and were not.
+
+`ClickableRow` makes the row open the record. The detail worth stating is the
+one that makes it safe: **a click that lands on a control inside the row belongs
+to that control.** The actions menu, an inline delete, a link to somewhere else —
+a row that swallowed those would be worse than the menu it replaces. Rows are
+also reachable by keyboard, named for a screen reader ("Open Ayesha Khan", not
+"Open row 4"), and take Enter or Space.
+
+Twelve screens now open on a row click: patients, appointments, invoices,
+payments, treatments, treatment plans, prescriptions, staff, form templates,
+purchase orders, and the outstanding invoices on the billing report.
+
+### 23.2 Two grids where View Details was already a 404
+
+**Inventory items and lab cases have no detail page.** Both grids have carried a
+"View Details" that routes to `/inventory/{id}` and `/lab/orders/{id}`, and
+neither page exists — it has been a dead link since the fork.
+
+Their rows are deliberately _not_ clickable. A row that navigates to a page
+which is not there is worse than a row that does nothing, because it looks like
+it worked. `tests/unit/grid-conventions.test.ts` asserts both the destinations
+that exist and these two that do not, so building either detail page will fail
+the test until the row link is added with it.
+
+### 23.3 The pager was copied twelve times, and missing from three screens
+
+Twelve hand-written copies of the same block, drifted the way copies do:
+
+- several were hidden unless there was more than one page, so a short list gave
+  **no total at all** — the one number a person wants from a list;
+- one counted from one on an empty result ("Showing 1 to 0 of 0");
+- most called the records "results" where the screen called them patients;
+- the waitlist, the form templates and the invitations had **no pager**, and
+  rendered however many rows the route returned.
+
+`GridPagination` replaces all twelve. It shows on a single page too — "10
+patients" is an answer — and names the records the way the screen does. Where a
+screen has a page size it can act on, it offers one.
+
+`usePagedRows` is for the three grids whose route hands back the whole list. It
+resets the page when a filter shrinks the result beneath it: filtering a hundred
+rows to three while sitting on page 4 otherwise shows an empty table and no
+explanation.
+
+### 23.4 Deliberately not a generic DataTable
+
+A `<DataTable columns={...} />` would have meant rewriting every screen's cells.
+Those cells are not data — they are avatars, two-line contact blocks, badges
+whose colour means something clinical — and the tables read well precisely
+because each screen writes its own. These are two primitives that drop into the
+existing markup rather than replacing it.
+
+### 23.5 Verified
+
+22 tests on the primitives, 6 more that hold the convention: every list screen
+pages, no screen writes its own pager again, every row destination is a page
+that exists. Driven in the browser as well — a row opens the patient, and the
+actions menu opens its menu without the row going anywhere underneath it.
+
+Full suite 3,610 passing; build clean; `eslint` 0 errors.

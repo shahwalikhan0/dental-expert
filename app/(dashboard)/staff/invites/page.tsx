@@ -32,6 +32,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
@@ -71,6 +72,8 @@ export default function StaffInvitesPage() {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: '' })
+  // The route hands back every invitation, so the paging is done here.
+  const paged = usePagedRows(invites)
 
   const fetchInvites = useCallback(async () => {
     setLoading(true)
@@ -233,7 +236,7 @@ export default function StaffInvitesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invites.map((invite) => (
+                {paged.rows.map((invite) => (
                   <TableRow key={invite.id}>
                     <TableCell className="font-medium">{invite.name}</TableCell>
                     <TableCell>{invite.email}</TableCell>
@@ -280,6 +283,14 @@ export default function StaffInvitesPage() {
               </TableBody>
             </Table>
           )}
+          <GridPagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            noun="invitations"
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+          />
         </CardContent>
       </Card>
 

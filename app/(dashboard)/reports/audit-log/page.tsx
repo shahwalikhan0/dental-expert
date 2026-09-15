@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { GridPagination } from '@/components/ui/data-grid'
 import {
   Select,
   SelectContent,
@@ -15,8 +16,6 @@ import {
 import {
   Activity,
   Search,
-  ChevronLeft,
-  ChevronRight,
   Shield,
   UserCog,
   FileText,
@@ -62,7 +61,7 @@ export default function AuditLogPage() {
   const [logs, setLogs] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+  const [limit, setLimit] = useState(30)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState<string>('all')
@@ -72,7 +71,7 @@ export default function AuditLogPage() {
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '30' })
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (search) params.set('q', search)
       if (actionFilter !== 'all') params.set('action', actionFilter)
       if (entityFilter !== 'all') params.set('entity', entityFilter)
@@ -80,14 +79,13 @@ export default function AuditLogPage() {
       if (!res.ok) throw new Error()
       const data = await res.json()
       setLogs(data.data)
-      setTotalPages(data.pagination.totalPages)
       setTotal(data.pagination.total)
     } catch {
       toast({ title: 'Error', description: 'Failed to load audit logs', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
-  }, [page, search, actionFilter, entityFilter, toast])
+  }, [page, limit, search, actionFilter, entityFilter, toast])
 
   useEffect(() => {
     fetchLogs()
@@ -227,32 +225,18 @@ export default function AuditLogPage() {
         </Card>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
-            >
-              Next <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <GridPagination
+        page={page}
+        pageSize={limit}
+        total={total}
+        noun="entries"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setLimit(size)
+          setPage(1)
+        }}
+        className="rounded-lg border bg-card"
+      />
     </div>
   )
 }

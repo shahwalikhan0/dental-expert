@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 
 interface PurchaseOrderRow {
   id: string
@@ -34,23 +35,29 @@ export default function PurchaseOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 })
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
+        page: String(pagination.page),
+        limit: String(pagination.limit),
         ...(search && { search }),
         ...(statusFilter !== 'all' && { status: statusFilter }),
       })
       const response = await fetch(`/api/inventory/purchase-orders?${params}`)
       const data = await response.json()
-      if (data.success) setOrders(data.data)
+      if (data.success) {
+        setOrders(data.data)
+        setPagination((p) => ({ ...p, total: data.pagination.total }))
+      }
     } catch (error) {
       console.error('Error fetching purchase orders:', error)
     } finally {
       setLoading(false)
     }
-  }, [search, statusFilter])
+  }, [search, statusFilter, pagination.page, pagination.limit])
 
   useEffect(() => {
     fetchOrders()
@@ -139,14 +146,14 @@ export default function PurchaseOrdersPage() {
               </thead>
               <tbody className="bg-background divide-y divide-border">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-muted/50">
+                  <ClickableRow
+                    key={order.id}
+                    href={`/inventory/purchase-orders/${order.id}`}
+                    label={`Open order ${order.orderNumber}`}
+                    className="hover:bg-muted/50"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Link
-                        href={`/inventory/purchase-orders/${order.id}`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {order.orderNumber}
-                      </Link>
+                      {order.orderNumber}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{order.supplier.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
@@ -175,12 +182,21 @@ export default function PurchaseOrdersPage() {
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                  </tr>
+                  </ClickableRow>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        <GridPagination
+          page={pagination.page}
+          pageSize={pagination.limit}
+          total={pagination.total}
+          noun="orders"
+          onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+          onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+        />
       </div>
     </div>
   )

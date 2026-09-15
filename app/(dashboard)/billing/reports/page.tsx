@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClickableRow } from '@/components/ui/data-grid'
 import {
   BarChart3,
   Download,
@@ -381,7 +382,11 @@ export default function FinancialReportsPage() {
                     </TableRow>
                   ) : (
                     outstandingData?.invoices.map((invoice) => (
-                      <TableRow key={invoice.id}>
+                      <ClickableRow
+                        key={invoice.id}
+                        href={`/billing/invoices/${invoice.id}`}
+                        label={`Open invoice ${invoice.invoiceNo}`}
+                      >
                         <TableCell className="font-medium">{invoice.invoiceNo}</TableCell>
                         <TableCell>
                           {invoice.patient.firstName} {invoice.patient.lastName}
@@ -394,7 +399,7 @@ export default function FinancialReportsPage() {
                         <TableCell className="text-right font-medium text-red-600">
                           {formatCurrency(invoice.balanceAmount)}
                         </TableCell>
-                      </TableRow>
+                      </ClickableRow>
                     ))
                   )}
                 </TableBody>

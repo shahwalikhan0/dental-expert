@@ -23,19 +23,8 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Plus,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  User,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  FileText,
-  Phone,
-  Mail,
-} from 'lucide-react'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { Plus, Search, User, MoreHorizontal, Eye, Edit, FileText, Phone, Mail } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -269,7 +258,11 @@ export default function PatientsPage() {
                 </TableRow>
               ) : (
                 patients.map((patient) => (
-                  <TableRow key={patient.id}>
+                  <ClickableRow
+                    key={patient.id}
+                    href={`/patients/${patient.id}`}
+                    label={`Open ${patient.firstName} ${patient.lastName}`}
+                  >
                     <TableCell>
                       <div className="font-medium">{patient.patientId}</div>
                     </TableCell>
@@ -335,45 +328,20 @@ export default function PatientsPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))
               )}
             </TableBody>
           </Table>
 
-          {/* Pagination */}
-          {!loading && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} patients
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="text-sm">
-                  Page {pagination.page} of {pagination.totalPages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="patients"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
     </div>

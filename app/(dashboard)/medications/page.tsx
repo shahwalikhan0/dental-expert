@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { GridPagination } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import {
   Table,
@@ -101,7 +102,7 @@ export default function MedicationsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 })
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 })
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -114,7 +115,7 @@ export default function MedicationsPage() {
     try {
       const params = new URLSearchParams({
         page: String(pagination.page),
-        limit: '50',
+        limit: String(pagination.limit),
         active: 'true',
       })
       if (search) params.set('search', search)
@@ -135,7 +136,7 @@ export default function MedicationsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, categoryFilter, pagination.page])
+  }, [search, categoryFilter, pagination.page, pagination.limit])
 
   const fetchCategories = async () => {
     try {
@@ -356,35 +357,17 @@ export default function MedicationsPage() {
               </TableBody>
             </Table>
           )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="medications"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {pagination.pages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page <= 1}
-            onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-          >
-            Previous
-          </Button>
-          <span className="flex items-center text-sm text-muted-foreground px-3">
-            Page {pagination.page} of {pagination.pages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page >= pagination.pages}
-            onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-          >
-            Next
-          </Button>
-        </div>
-      )}
-
-      {/* Add / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

@@ -24,11 +24,10 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   User,
   Phone,
   MoreHorizontal,
@@ -298,7 +297,11 @@ export default function InvoicesPage() {
                 invoices.map((invoice) => {
                   const dueDays = getDueDays(invoice.dueDate)
                   return (
-                    <TableRow key={invoice.id}>
+                    <ClickableRow
+                      key={invoice.id}
+                      href={`/billing/invoices/${invoice.id}`}
+                      label={`Open invoice ${invoice.invoiceNo}`}
+                    >
                       <TableCell>
                         <div className="font-medium">{invoice.invoiceNo}</div>
                         <div className="text-sm text-muted-foreground">
@@ -408,46 +411,21 @@ export default function InvoicesPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
-                    </TableRow>
+                    </ClickableRow>
                   )
                 })
               )}
             </TableBody>
           </Table>
 
-          {/* Pagination */}
-          {!loading && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} invoices
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="text-sm">
-                  Page {pagination.page} of {pagination.totalPages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="invoices"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
       {ConfirmDialogComponent}

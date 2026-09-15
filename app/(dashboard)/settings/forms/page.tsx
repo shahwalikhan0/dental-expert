@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { ClickableRow, GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import {
   Table,
   TableBody,
@@ -64,6 +65,8 @@ export default function FormsSettingsPage() {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [templates, setTemplates] = useState<FormTemplate[]>([])
   const [loading, setLoading] = useState(true)
+  // The route hands back every template, so the paging is done here.
+  const paged = usePagedRows(templates)
 
   useEffect(() => {
     fetchTemplates()
@@ -174,8 +177,12 @@ export default function FormsSettingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {templates.map((t) => (
-                  <TableRow key={t.id}>
+                {paged.rows.map((t) => (
+                  <ClickableRow
+                    key={t.id}
+                    href={`/settings/forms/${t.id}`}
+                    label={`Open ${t.name}`}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {typeIcons[t.type]}
@@ -230,11 +237,19 @@ export default function FormsSettingsPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))}
               </TableBody>
             </Table>
           )}
+          <GridPagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            noun="templates"
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+          />
         </CardContent>
       </Card>
       {ConfirmDialogComponent}
