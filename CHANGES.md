@@ -956,40 +956,16 @@ that was never built upstream. Nothing below is broken by the changes above.
 These were deliberately left alone. Each needs a choice I should not make on
 the clinic's behalf.
 
-#### Payment gateway — blocks online payment at go-live
+#### Payment gateway, the SMS vendor, and the discount threshold
 
-`lib/payment-gateways/{razorpay,phonepe,paytm}.ts` are the only three
-integrations, and all three onboard Indian merchants only. **No online payment
-works in Pakistan today.** The setup guide now says so plainly rather than
-walking you through configuring one.
+Parked on 2026-09-15 at the clinic's request and written up in
+[`docs/DEFERRED.md`](docs/DEFERRED.md): which payment processor to integrate,
+whether to stay on Twilio or add a local aggregator, and what to set the
+discount approval threshold to. None of the three blocks the desk.
 
-Everything that does not need a gateway already works: cash, card-on-terminal
-and bank transfer all record against an invoice and reconcile through the daily
-closing. What breaks without one is payment links and the pay-online buttons.
-
-Picking a processor is a commercial decision — rates, settlement times, KYC —
-so tell me which one and I will build it. The gateway interface in
-`lib/payment-gateways/types.ts` is the seam to implement against.
-
-#### SMS provider
-
-Three of the four gateways (MSG91, TextLocal, Fast2SMS) are India-only and do
-not deliver to Pakistani numbers. **Twilio is the one that works** and now leads
-the setup guide. If you would rather use a local bulk-SMS provider, that is
-another integration and another vendor choice.
-
-The Indian per-message prices are removed rather than replaced — quoting a
-Pakistani rate I have not verified would be worse than quoting none.
-
-#### `PaymentMethod.UPI` and `Payment.upiId`
-
-UPI is India's instant-payment rail. Pakistan's equivalent is Raast, and mobile
-wallets are usually JazzCash or EasyPaisa — but `WALLET` already exists as a
-method, so what `UPI` should become depends on what the clinic actually accepts
-at the desk. Renaming an enum value is a clean migration once you say which.
-
-Note it currently appears as a countable method in the daily closing, so
-whatever it becomes will show up in the reconciliation.
+`PaymentMethod.UPI` was on this list and is no longer — §18.1 settled it
+without a decision, because `WALLET` and `BANK_TRANSFER` already were the
+Pakistani answer.
 
 #### Per-user data scoping
 
@@ -1005,10 +981,11 @@ appointment, treatment and chart query.
   [`react-advanced-odontogram`](https://www.npmjs.com/package/react-advanced-odontogram)
   (MIT), persisting its JSON into a `jsonb` column. Adding a dependency is a
   decision worth taking deliberately.
-- **Device credentials.** `app/api/devices/data` now requires a staff
-  capability (§3.6), which means IoT devices cannot post to it. They need their
-  own credential — a per-device key checked like the cron secret — before that
-  feature works again.
+- **IoT devices are gone, not broken.** `39fdd2e` removed the devices route
+  and its tables as out of scope (spec §3). The setup guide still walks you
+  through registering one and links to `/devices`, which 404s — one of five
+  dead links left in that guide.
+
 - **`AuditLog` covers logins and configuration (§12), not patient-record
   access.** Spec §10 asks for that too, "where supported". It means a write on
   every patient a clinician opens, so it is worth deciding whether the volume
@@ -1757,15 +1734,104 @@ three removed gateways used.
 
 ### 18.3 What is genuinely still yours to decide
 
-- **Which payment processor.** Safepay, PayFast, or a bank merchant facility.
-  The checkout has to be written against whichever one you sign up with, and
-  that needs your merchant account, not my guess. Nothing at the desk is blocked
-  — invoices, payments, refunds and the daily closing all work without one.
-- **Whether to keep Twilio or add a local SMS aggregator.** Twilio works today
-  and costs more per message than a local provider would.
-- **The discount approval threshold**, currently Rs 1,000 — a placeholder, and
-  §7.4 says so.
-- **`PurchaseOrder` still has no creation route.** §5.7 requires purchase and
-  receipt; the tables are there and nothing writes to them. This is an unbuilt
-  requirement rather than an open question, and it is the next thing worth
-  building.
+Which payment processor, Twilio or a local SMS aggregator, and where to set the
+discount threshold — all three parked at your request and written up in
+[`docs/DEFERRED.md`](docs/DEFERRED.md).
+
+Everything that is _mine_ rather than yours is in §19.
+
+---
+
+## 19. What is left
+
+Surveyed against the specification's FR table on 2026-09-15. Each item below was
+checked in the code, not inferred.
+
+### 19.1 Goods receipt — the one missing chain
+
+`PurchaseOrder`, `PurchaseOrderItem`, `InventoryBatch` and `SupplierItem` all
+exist in the schema. **Nothing writes to any of them.** There is no purchase-order
+route and no purchase-order screen; `InventoryBatch` rows are only ever created
+by the seed, and `SupplierItem` is not read or written anywhere in the
+application.
+
+This is one gap, not four, and it takes three requirements down with it:
+
+|                          |                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| **§5.7 / FR-017**        | Purchase and receipt; "supplier/batch where configured" — there are no batches to trace     |
+| **FR-016**               | Near-expiry and expired alerts need an expiry date, and expiry dates arrive with a delivery |
+| **Supplier detail page** | Already renders total orders, completed and pending business — all permanently zero         |
+
+### 19.2 Expiry alerts are never raised
+
+`StockAlertType` has `EXPIRING_SOON` and `EXPIRED`. `lib/stock-alerts.ts` raises
+only `LOW_STOCK` and `OUT_OF_STOCK`, so **the "Expiring soon" counter on the
+inventory alerts screen is structurally zero** — the same class of bug as the
+UPI column in §18.1.
+
+The inventory _report_ does compute expiring batches live from
+`InventoryBatch.expiryDate`, so the information is reachable; it is the alert
+that never fires. Half of FR-016.
+
+### 19.3 Scheduled messages are queued and never sent
+
+`/api/cron/reminders` writes a `MessageLog` row at `PENDING` with a
+`scheduledFor`, and the comment says "the sender picks them up". **There is no
+sender.** The only two `messageLog.findMany` calls in the codebase are history
+queries for the communications screen. Every reminder the hourly cron has ever
+queued is still sitting at `PENDING`.
+
+FR-019 says "send **or queue**", so the letter is met. In practice no
+appointment reminder goes out unless someone sends it by hand from the
+communications screen.
+
+### 19.4 Staff are created with a password the manager types
+
+`POST /api/staff` takes a `password` field and hashes it. That is the only way
+to add a colleague: **the admin chooses, and therefore knows, every staff
+member's password.**
+
+`StaffInvite` and `/api/public/invite/accept` exist to fix exactly this — the
+invitee sets their own password — and have **no user interface at all**. Nothing
+in `app/(dashboard)` calls `/api/staff-invites`; the setup guide links to
+`/staff/invites`, which does not exist.
+
+It matters more than it looks. FR-021 and §10 rest on the audit log answering
+"who did this", and FR-007 has a dentist signing a clinical note. Neither is
+strong evidence if the practice manager set that dentist's password.
+
+`User.mustChangePassword` is in the schema, is set by the data importer, and is
+**enforced nowhere** — not at sign-in, not in middleware.
+
+### 19.5 Multi-branch (FR-023) is sold and not built
+
+There is no `Branch` model and no location dimension. A tenant is a clinic.
+
+That would be a fair "Should, deferred" — except `lib/plans.ts` lists `branches`
+as a Professional-plan feature and the pricing page advertises it as **"Several
+locations under one account"**. Either build it or stop selling it; a paid plan
+promising a feature that does not exist is the one version of this that is not
+acceptable.
+
+### 19.6 Smaller, verified
+
+- **Five dead links in the setup guide** — `/devices`, `/settings/ai`,
+  `/settings/integrations`, `/staff/invites`, `/video`. All 404. The IoT and
+  video walkthroughs describe features `39fdd2e` removed as out of scope.
+- **`lib/rbac.ts` still maps `/devices`** to a capability for a route that no
+  longer exists. Harmless, but it is a claim the table is making falsely.
+- **Recall reminders.** FR-019 says "appointment/recall". Appointment reminders
+  exist; there is no recall concept anywhere — no six-month check-up, no
+  hygiene recall.
+- **Appointment types and status lists are enums**, so FR-025's "maintain …
+  appointment types and status lists" is not configurable by a user. Chairs,
+  procedures, fees, labs and suppliers all are.
+
+### 19.7 Carried forward from §11
+
+Still true, still open, unchanged by this survey: per-user data scoping ("own
+patients only"), periodontal charting, and audit logging of patient-record
+_access_ as opposed to changes.
+
+---
