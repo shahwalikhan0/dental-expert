@@ -11,6 +11,7 @@ import {
   InventoryItemType,
   StockTransactionType,
   StockAlertType,
+  PurchaseOrderStatus,
   LabOrderStatus,
   LabOrderPriority,
   LabWorkType,
@@ -1368,6 +1369,85 @@ async function main() {
         currentStock: item.currentStock,
         minimumStock: item.minimumStock,
       })
+    }
+  }
+
+  // ── Purchase orders ───────────────────────────────────────────────────────
+  //
+  // One received, one still outstanding. The received order is the one that
+  // explains where BATCH-2026-01 and the composite PURCHASE movement above came
+  // from — before goods receipt existed, batches and purchase movements had no
+  // order behind them because nothing could create one.
+
+  if (composite && gloves && primarySupplier) {
+    const existingOrders = await prisma.purchaseOrder.count({ where: { hospitalId: hospital.id } })
+
+    if (existingOrders === 0) {
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+      const inSevenDays = new Date()
+      inSevenDays.setDate(inSevenDays.getDate() + 7)
+
+      const received = await prisma.purchaseOrder.create({
+        data: {
+          hospitalId: hospital.id,
+          orderNumber: `PO${thirtyDaysAgo.getFullYear()}0001`,
+          supplierId: primarySupplier.id,
+          orderDate: thirtyDaysAgo,
+          receivedDate: thirtyDaysAgo,
+          subtotal: 18000,
+          taxAmount: 0,
+          totalAmount: 18000,
+          status: PurchaseOrderStatus.RECEIVED,
+          items: {
+            create: [
+              {
+                itemId: composite.id,
+                quantity: 40,
+                receivedQty: 40,
+                unitPrice: 450,
+                amount: 18000,
+              },
+            ],
+          },
+        },
+      })
+
+      // Point the composite purchase movement at the order that caused it, so
+      // the order's deliveries list and FR-017's traceability line up.
+      await prisma.stockTransaction.updateMany({
+        where: {
+          hospitalId: hospital.id,
+          itemId: composite.id,
+          type: StockTransactionType.PURCHASE,
+          referenceId: null,
+        },
+        data: { referenceType: 'PurchaseOrder', referenceId: received.id },
+      })
+
+      // Gloves are below their minimum and have an alert standing against them.
+      // This is the order that answers it, and it has not arrived yet.
+      await prisma.purchaseOrder.create({
+        data: {
+          hospitalId: hospital.id,
+          orderNumber: `PO${new Date().getFullYear()}0002`,
+          supplierId: primarySupplier.id,
+          expectedDate: inSevenDays,
+          subtotal: 6400,
+          taxAmount: 0,
+          totalAmount: 6400,
+          status: PurchaseOrderStatus.ORDERED,
+          notes: 'Reorder against the low-stock alert',
+          items: {
+            create: [
+              { itemId: gloves.id, quantity: 20, receivedQty: 0, unitPrice: 320, amount: 6400 },
+            ],
+          },
+        },
+      })
+
+      console.log('Created purchase orders')
     }
   }
 

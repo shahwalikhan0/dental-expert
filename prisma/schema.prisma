@@ -1393,6 +1393,7 @@ model InventoryItem {
   stockTransactions StockTransaction[]
   batches         InventoryBatch[]
   supplierItems   SupplierItem[]
+  purchaseOrderItems PurchaseOrderItem[]
   alerts          StockAlert[]
 
   @@unique([hospitalId, sku])
@@ -1434,6 +1435,7 @@ model InventoryBatch {
   supplier        Vendor?   @relation(fields: [supplierId], references: [id])
   stockTransactions StockTransaction[]
 
+  @@unique([hospitalId, itemId, batchNumber])
   @@index([hospitalId])
   @@index([itemId])
   @@index([expiryDate])
@@ -1647,12 +1649,24 @@ model PurchaseOrderItem {
   createdAt       DateTime      @default(now())
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  /// `itemId` was a bare string with no foreign key, so a line could name an
+  /// item that does not exist and nothing would say so.
+  item            InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([itemId])
 }
 
+/// The states an order actually passes through.
+///
+/// `SUBMITTED` and `APPROVED` are gone. They described an internal approval
+/// chain — raise, submit, have a manager approve, then order — which needs an
+/// approver capability, a queue to approve from and a notification, none of
+/// which existed. A practice manager orders gloves; there is nobody upstairs to
+/// ask. Discounts and refunds are where this project puts approval (FR-013/014),
+/// because there the money leaves against a patient's bill.
 enum PurchaseOrderStatus {
   DRAFT
-  SUBMITTED
-  APPROVED
   ORDERED
   PARTIALLY_RECEIVED
   RECEIVED

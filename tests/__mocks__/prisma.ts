@@ -394,6 +394,7 @@ const mockPrismaClient = {
 
   // InventoryBatch
   inventoryBatch: {
+    upsert: vi.fn(),
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
@@ -845,6 +846,15 @@ const mockPrismaClient = {
     delete: vi.fn(),
     count: vi.fn(),
     aggregate: vi.fn(),
+  },
+
+  // PurchaseOrderItem
+  purchaseOrderItem: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    deleteMany: vi.fn(),
   },
 
   // StockAlert

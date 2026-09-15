@@ -1747,21 +1747,9 @@ Everything that is _mine_ rather than yours is in §19.
 Surveyed against the specification's FR table on 2026-09-15. Each item below was
 checked in the code, not inferred.
 
-### 19.1 Goods receipt — the one missing chain
+### 19.1 Goods receipt — built, §20
 
-`PurchaseOrder`, `PurchaseOrderItem`, `InventoryBatch` and `SupplierItem` all
-exist in the schema. **Nothing writes to any of them.** There is no purchase-order
-route and no purchase-order screen; `InventoryBatch` rows are only ever created
-by the seed, and `SupplierItem` is not read or written anywhere in the
-application.
-
-This is one gap, not four, and it takes three requirements down with it:
-
-|                          |                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------- |
-| **§5.7 / FR-017**        | Purchase and receipt; "supplier/batch where configured" — there are no batches to trace     |
-| **FR-016**               | Near-expiry and expired alerts need an expiry date, and expiry dates arrive with a delivery |
-| **Supplier detail page** | Already renders total orders, completed and pending business — all permanently zero         |
+Was the largest gap on this list. Done.
 
 ### 19.2 Expiry alerts are never raised
 
@@ -1835,3 +1823,122 @@ patients only"), periodontal charting, and audit logging of patient-record
 _access_ as opposed to changes.
 
 ---
+
+## 20. Goods receipt
+
+`PurchaseOrder`, `PurchaseOrderItem`, `InventoryBatch` and `SupplierItem` have
+been in the schema since the fork with **nothing writing to any of them**. There
+was no purchase-order route and no purchase-order screen. Batches existed only
+because the seed made them.
+
+One gap, three requirements:
+
+|            |                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| **§5.7**   | Purchase and receipt — the workflow simply was not there                                       |
+| **FR-017** | "supplier/batch where configured" — there were no batches to trace                             |
+| **FR-016** | Near-expiry and expired alerts need an expiry date, and an expiry date arrives with a delivery |
+
+It also explains a screen that had been lying quietly: the supplier detail page
+renders total orders, completed business and pending business, and all three
+were permanently zero.
+
+### 20.1 What was built
+
+- `lib/purchase-orders.ts` — the arithmetic and the state rules, away from the
+  route, because receipt is the part that has to be right.
+- `GET|POST /api/inventory/purchase-orders`
+- `GET|PATCH|DELETE /api/inventory/purchase-orders/[id]`
+- `POST /api/inventory/purchase-orders/[id]/receive` — the receipt itself
+- `/inventory/purchase-orders`, `/new` and `/[id]`, the last of which is where a
+  delivery is booked in against the order
+
+### 20.2 The status list lost two values
+
+`PurchaseOrderStatus` was DRAFT → SUBMITTED → APPROVED → ORDERED →
+PARTIALLY_RECEIVED → RECEIVED → CANCELLED.
+
+SUBMITTED and APPROVED are gone. They describe an internal approval chain —
+raise, submit, have a manager approve, then order — which needs an approver
+capability, a queue to approve from and a notification, none of which exist. A
+practice manager orders gloves; there is nobody upstairs to ask. This project
+puts approval where money leaves against a patient's bill (FR-013/014), and
+that is a different thing.
+
+Five values now, each of which something can actually reach.
+
+### 20.3 What receipt does, and what it refuses
+
+Everything happens in one transaction. A receipt that raised the stock level but
+failed to record the movement is a discrepancy nobody can explain at the next
+stock take, which is the thing FR-017 exists to prevent.
+
+Per line received: an `InventoryBatch` (created or added to), a
+`StockTransaction` of type PURCHASE carrying the supplier, the order and the
+user, `InventoryItem.currentStock`, `PurchaseOrderItem.receivedQty`, and a pass
+through `reconcileStockAlerts` so a delivery clears the low-stock alert that
+prompted it. Then the order's own status, recomputed from all its lines rather
+than from this receipt alone.
+
+Four refusals, each of which is a decision rather than a validation:
+
+- **More than was ordered.** Keeping `receivedQty` no greater than `quantity` is
+  what makes "outstanding" mean anything, on the order and on the supplier's
+  pending-business figure. A genuine over-delivery is real, and the answer is to
+  amend the order — the error says so rather than leaving the reader guessing.
+- **Receiving against a DRAFT.** Stock arriving against an order nobody placed
+  came from somewhere else, and that is an adjustment with its own reason.
+- **A batch-tracked item with no batch number**, and an **expiry-tracked item
+  with no expiry date**. Both flags are opt-in per item; an item with
+  `expiryTracking` on is one whose expiry somebody decided to track, and letting
+  a delivery of it in without a date is how FR-016 ends up with nothing to
+  alert about.
+- **Cancelling an order goods have arrived against.** Those goods are on the
+  shelf; returning them is a stock adjustment.
+
+### 20.4 Schema
+
+Three structural changes, no table created and no column dropped:
+
+- **`PurchaseOrderItem.itemId` was a bare string** — no foreign key, no index,
+  no relation. A line could name an inventory item that did not exist and
+  nothing would say so, which is also why the model had no `item` to include.
+- **`InventoryBatch` is now unique on `(hospitalId, itemId, batchNumber)`.** A
+  delivery note gets entered twice often enough that it should be an error
+  rather than a second batch with the same number and its own expiry date.
+  Scoped to the clinic too: two clinics buying from the same supplier receive
+  the same batch number, and that is not a conflict.
+- The enum, as above.
+
+### 20.5 Tax is per line
+
+`orderTotals` takes each line's tax from the item's own `taxPercentage` rather
+than applying one rate to the order. A delivery mixes zero-rated gloves with
+taxable equipment, and a single rate would quietly get both wrong. Lines are
+rounded before they are summed, so the total matches what a reader gets by
+adding up the printed line amounts.
+
+### 20.6 Verified
+
+51 tests (25 unit, 26 route), and the chain driven end to end against the live
+database through the running application:
+
+- gloves 6 → 14 on a part delivery of 8, the standing LOW_STOCK alert cleared,
+  the movement carrying its supplier, order and user
+- 21 against an order for 20 refused, with nothing written
+- an expiry-tracked item refused without a batch number, then refused again
+  without an expiry date, then received — `LIG-88`, 50 remaining, expiring
+  2027-03-31, which is the first expiry date this application has ever recorded
+  outside the seed
+- the last 12 received through the screen itself, closing the order
+
+Full suite 3,540 passing; `npm run build` clean; `prisma migrate diff` reports
+no difference; `eslint` 0 errors.
+
+### 20.7 What this unblocks
+
+**§19.2 is now worth doing.** Expiry alerts were never raised, and until now
+there was nothing to raise them about. `lib/stock-alerts.ts` handles shortages;
+`EXPIRING_SOON` and `EXPIRED` still have no code that creates them, and the
+"Expiring soon" counter on the alerts screen is still structurally zero. That is
+a small job on top of this one.

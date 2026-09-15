@@ -12,10 +12,9 @@ function parseStatus(value: unknown): VendorStatus | null {
   return VENDOR_STATUSES.includes(upper) ? (upper as VendorStatus) : null
 }
 
-// Orders that are placed but not yet fully received.
+// Orders that are placed but not yet fully received. A DRAFT is not pending
+// business: the supplier has not been told about it.
 const PENDING_ORDER_STATUSES: PurchaseOrderStatus[] = [
-  PurchaseOrderStatus.SUBMITTED,
-  PurchaseOrderStatus.APPROVED,
   PurchaseOrderStatus.ORDERED,
   PurchaseOrderStatus.PARTIALLY_RECEIVED,
 ]
