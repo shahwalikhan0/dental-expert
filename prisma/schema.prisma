@@ -103,13 +103,11 @@ model Hospital {
   purchaseOrders      PurchaseOrder[]
   labOrders           LabOrder[]
   documents           Document[]
-  notifications       Notification[]
   auditLogs           AuditLog[]
   settings            Setting[]
   holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
   messageLogs         MessageLog[]
-  bulkCommunications  BulkCommunication[]
   staffInvites        StaffInvite[]
   staffShifts         StaffShift[]
   patientPortalEnabled Boolean   @default(false)
@@ -175,7 +173,6 @@ model Subscription {
   updatedAt          DateTime           @updatedAt
 
   hospital           Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  invoices           SubscriptionInvoice[]
 
   @@index([status])
   @@index([currentPeriodEnd])
@@ -193,51 +190,6 @@ enum SubscriptionStatus {
   /// records are not ours to destroy over an unpaid bill.
   SUSPENDED
   CANCELLED
-}
-
-/// What the platform charged a tenant for a period, and whether it was paid.
-///
-/// Distinct from the `Invoice` model, which is a clinic billing its patient.
-/// This is us billing the clinic, and conflating the two would put the
-/// platform's revenue inside each tenant's own financial reports.
-model SubscriptionInvoice {
-  id             String                    @id @default(cuid())
-  subscriptionId String
-  hospitalId     String
-
-  invoiceNo      String                    @unique
-  periodStart    DateTime
-  periodEnd      DateTime
-
-  amount         Decimal                   @db.Decimal(12, 2)
-  currency       String                    @default("PKR")
-
-  status         SubscriptionInvoiceStatus @default(DUE)
-  issuedAt       DateTime                  @default(now())
-  dueAt          DateTime?
-  paidAt         DateTime?
-
-  /// Bank transfer reference, cheque number or processor id — whatever ties
-  /// this row to money that actually arrived.
-  paymentRef     String?
-  note           String?                   @db.Text
-
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-
-  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@index([subscriptionId])
-  @@index([hospitalId])
-  @@index([status])
-  @@index([issuedAt])
-}
-
-enum SubscriptionInvoiceStatus {
-  DUE
-  PAID
-  /// Raised in error, or written off.
-  VOID
 }
 
 // ==================== AUTHENTICATION & USERS ====================
@@ -290,7 +242,6 @@ model User {
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   staff           Staff?
   auditLogs       AuditLog[]
-  notifications   Notification[]
   dataImportJobs  DataImportJob[]
   acknowledgedStockAlerts StockAlert[]
   discountsRequested      Invoice[]        @relation("DiscountsRequested")
@@ -1356,9 +1307,10 @@ model InventoryItem {
   category        String?
   description     String?   @db.Text
   itemType        InventoryItemType @default(DENTAL_MATERIAL)
-  // Single "preferred supplier" pointer used by the item form and the
-  // suppliers list's items-supplied count. Distinct from SupplierItem, which
-  // records every supplier that stocks an item along with their SKU/price.
+  // The supplier this item is normally bought from. `SupplierItem` used to sit
+  // beside it recording every supplier that stocks an item with their own SKU,
+  // price and lead time — a table nothing ever wrote to, which is why the
+  // inventory list's "supplier" column was always empty.
   preferredSupplierId String?
 
   unit            String
@@ -1393,7 +1345,6 @@ model InventoryItem {
   preferredSupplier Vendor?   @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
   stockTransactions StockTransaction[]
   batches         InventoryBatch[]
-  supplierItems   SupplierItem[]
   purchaseOrderItems PurchaseOrderItem[]
   alerts          StockAlert[]
 
@@ -1561,7 +1512,6 @@ model Vendor {
   hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   purchaseOrders    PurchaseOrder[]
   batches           InventoryBatch[]
-  supplierItems     SupplierItem[]
   preferredForItems InventoryItem[]    @relation("PreferredSupplierItems")
   stockTransactions StockTransaction[]
   labOrders         LabOrder[]
@@ -1583,25 +1533,6 @@ enum VendorStatus {
   ACTIVE
   INACTIVE
   BLOCKED
-}
-
-
-model SupplierItem {
-  id              String    @id @default(cuid())
-  supplierId      String
-  itemId          String
-  supplierSku     String?
-  supplierPrice   Decimal   @db.Decimal(10, 2)
-  leadTimeDays    Int?
-  minimumOrderQty Int?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  supplier        Vendor    @relation(fields: [supplierId], references: [id])
-  item            InventoryItem @relation(fields: [itemId], references: [id])
-
-  @@unique([supplierId, itemId])
 }
 
 model PurchaseOrder {
@@ -1865,43 +1796,6 @@ enum DocumentType {
 
 // ==================== NOTIFICATIONS ====================
 
-model Notification {
-  id              String           @id @default(cuid())
-  hospitalId      String
-  userId          String
-
-  title           String
-  message         String           @db.Text
-  type            NotificationType
-
-  isRead          Boolean          @default(false)
-  readAt          DateTime?
-
-  entityType      String?
-  entityId        String?
-
-  createdAt       DateTime         @default(now())
-
-  hospital        Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-}
-
-enum NotificationType {
-  INFO
-  SUCCESS
-  WARNING
-  ERROR
-  APPOINTMENT
-  PAYMENT
-  INVENTORY
-  SYSTEM
-}
-
 // ==================== AUDIT LOGS ====================
 
 model AuditLog {
@@ -2066,43 +1960,6 @@ model MessageLog {
   @@index([relatedType, relatedId])
 }
 
-
-
-model BulkCommunication {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  name            String
-  description     String?
-
-  channel         CommunicationChannel
-  templateId      String?
-
-  filterCriteria  String?             @db.Text
-  recipientCount  Int                 @default(0)
-
-  status          BulkCommStatus      @default(DRAFT)
-
-  scheduledFor    DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-
-  sentCount       Int                 @default(0)
-  failedCount     Int                 @default(0)
-
-  estimatedCost   Decimal?            @db.Decimal(10, 2)
-  actualCost      Decimal?            @db.Decimal(10, 2)
-
-  createdBy       String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([status])
-  @@index([scheduledFor])
-}
-
 enum TemplateCategory {
   APPOINTMENT
   PAYMENT
@@ -2126,15 +1983,6 @@ enum MessageStatus {
   QUEUED
   SENT
   DELIVERED
-  FAILED
-  CANCELLED
-}
-
-enum BulkCommStatus {
-  DRAFT
-  SCHEDULED
-  IN_PROGRESS
-  COMPLETED
   FAILED
   CANCELLED
 }

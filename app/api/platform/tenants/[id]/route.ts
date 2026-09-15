@@ -45,7 +45,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       isActive: true,
       onboardingCompleted: true,
       createdAt: true,
-      subscription: { include: { invoices: { orderBy: { issuedAt: 'desc' }, take: 24 } } },
+      subscription: true,
       _count: { select: { patients: true, users: true, appointments: true } },
     },
   })

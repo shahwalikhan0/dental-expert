@@ -37,16 +37,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  subscriptionInvoice: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
   // MessageLog — every message the clinic sent, whatever the channel
   messageLog: {
     findUnique: vi.fn(),
@@ -365,19 +355,6 @@ const mockPrismaClient = {
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // Notification
-  notification: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    createMany: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
   },
@@ -704,17 +681,6 @@ const mockPrismaClient = {
     update: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // BulkCommunication
-  bulkCommunication: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
     count: vi.fn(),
   },
 

@@ -46,7 +46,6 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   health: 'liveness probe, no data',
   ready: 'readiness probe, no data',
   onboarding: 'gated on isHospitalAdmin, which is stricter than any capability',
-  notifications: "a user's own notifications, scoped to their own id",
   'settings/profile': "a user's own profile",
   'settings/communications/test': 'sends a test message to the caller',
   'communications/triggers': 'CRON_SECRET bearer token',

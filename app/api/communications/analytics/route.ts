@@ -114,27 +114,6 @@ export async function GET(req: Request) {
       email: emailDailyMap[day] || 0,
     }))
 
-  // Campaign (bulk communication) stats
-  const campaigns = await prisma.bulkCommunication.findMany({
-    where: { hospitalId: hospitalId!, createdAt: dateFilter },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
-    select: {
-      id: true,
-      name: true,
-      channel: true,
-      status: true,
-      recipientCount: true,
-      sentCount: true,
-      failedCount: true,
-      estimatedCost: true,
-      actualCost: true,
-      startedAt: true,
-      completedAt: true,
-      createdAt: true,
-    },
-  })
-
   // Template performance (top 10 by usage)
   const topSmsTemplates = await prisma.messageLog.groupBy({
     by: ['templateId'],
@@ -190,11 +169,6 @@ export async function GET(req: Request) {
       openRate: Math.round(emailOpenRate * 10) / 10,
     },
     dailyTrend,
-    campaigns: campaigns.map((c) => ({
-      ...c,
-      estimatedCost: c.estimatedCost?.toNumber() || 0,
-      actualCost: c.actualCost?.toNumber() || 0,
-    })),
     topTemplates: {
       sms: topSmsTemplates.map((t) => ({
         templateId: t.templateId,
