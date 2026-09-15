@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
               unit: true,
             },
           },
+          // Which delivery is going out of date, and when. An expiry alert
+          // that only names the item tells a nurse to go and look.
+          batch: { select: { batchNumber: true, expiryDate: true, remainingQty: true } },
           acknowledgedByUser: { select: { name: true } },
         },
       }),
@@ -66,8 +69,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: alerts.map(({ item, acknowledgedByUser, ...alert }) => ({
+      data: alerts.map(({ item, batch, acknowledgedByUser, ...alert }) => ({
         ...alert,
+        batchNumber: batch?.batchNumber ?? null,
+        expiryDate: batch?.expiryDate ?? null,
+        remainingQty: batch?.remainingQty ?? null,
         sku: item.sku,
         itemName: item.name,
         currentStock: item.currentStock,

@@ -39,6 +39,7 @@ const LIST_SCREENS = [
   'appointments/waitlist/page.tsx',
   'billing/invoices/page.tsx',
   'billing/payments/page.tsx',
+  'inventory/alerts/page.tsx',
   'inventory/page.tsx',
   'inventory/purchase-orders/page.tsx',
   'inventory/suppliers/page.tsx',

@@ -1370,6 +1370,7 @@ model InventoryBatch {
   item            InventoryItem @relation(fields: [itemId], references: [id])
   supplier        Vendor?   @relation(fields: [supplierId], references: [id])
   stockTransactions StockTransaction[]
+  alerts          StockAlert[]
 
   @@unique([hospitalId, itemId, batchNumber])
   @@index([hospitalId, itemId])
@@ -1596,6 +1597,11 @@ model StockAlert {
   id              String         @id @default(cuid())
   hospitalId      String
   itemId          String
+  /// Which delivery, for an expiry alert. A shortage is about the item as a
+  /// whole and carries none; an expiry is always about one batch, because two
+  /// batches of the same composite expire on different days and acknowledging
+  /// one must not silence the other.
+  batchId         String?
 
   alertType       StockAlertType
 
@@ -1609,10 +1615,12 @@ model StockAlert {
 
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  batch           InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
   acknowledgedByUser User?       @relation(fields: [acknowledgedBy], references: [id])
 
   @@index([hospitalId, isAcknowledged, createdAt(sort: Desc)])
   @@index([itemId, alertType, isAcknowledged])
+  @@index([batchId, alertType, isAcknowledged])
 }
 
 enum StockAlertType {

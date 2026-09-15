@@ -235,6 +235,12 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Manage inventory items and stock levels</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/inventory/alerts">
+            <Button variant="outline">
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Alerts
+            </Button>
+          </Link>
           <Link href="/inventory/purchase-orders">
             <Button variant="outline">
               <ShoppingCart className="h-4 w-4 mr-2" />
