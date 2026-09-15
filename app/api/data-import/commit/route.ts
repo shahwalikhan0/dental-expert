@@ -260,7 +260,6 @@ async function importPatients(
           phone: row.phone,
           email: row.email || undefined,
           dateOfBirth: row.dateOfBirth || undefined,
-          age: row.age || undefined,
           gender: row.gender || undefined,
           bloodGroup: row.bloodGroup || undefined,
           address: row.address || undefined,

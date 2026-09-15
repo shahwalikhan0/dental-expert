@@ -389,7 +389,9 @@ model Patient {
   firstName       String
   lastName        String
   dateOfBirth     DateTime?
-  age             Int?
+  /// `age Int?` was here, written once at registration and never again — so it
+  /// was wrong for most of the year, and the analytics report already ignored
+  /// it and computed age from `dateOfBirth`. See lib/age.ts.
   gender          Gender?
   bloodGroup      BloodGroup?
   phone           String

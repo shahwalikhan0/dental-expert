@@ -200,7 +200,6 @@ const PATIENT_FIELDS: FieldDefinition[] = [
   },
   { name: 'email', type: 'string', required: false, description: 'Email address' },
   { name: 'dateOfBirth', type: 'date', required: false, description: 'Date of birth' },
-  { name: 'age', type: 'integer', required: false, description: 'Age in years' },
   {
     name: 'gender',
     type: 'enum',
