@@ -379,7 +379,6 @@ async function importStaff(
             specialization: row.specialization || undefined,
             licenseNumber: row.licenseNumber || undefined,
             joiningDate: row.joiningDate || undefined,
-            salary: row.salary || undefined,
             address: row.address || undefined,
             city: row.city || undefined,
             state: row.state || undefined,

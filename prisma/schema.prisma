@@ -391,9 +391,10 @@ model Staff {
   specialization  String?
   licenseNumber   String?
   joiningDate     DateTime  @default(now())
-  salary          Decimal?  @db.Decimal(10, 2)
-  bankAccountNo   String?
-  bankIban        String?
+  /// Payroll is out of scope — spec §3 excludes "full payroll, attendance, or
+  /// enterprise HR management beyond basic user/staff profiles". `salary`,
+  /// `bankAccountNo` and `bankIban` lived here, and the staff form collected
+  /// them, for a feature nobody was going to build.
   emergencyContact String?
   emergencyPhone  String?
   isActive        Boolean   @default(true)

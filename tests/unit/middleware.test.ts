@@ -175,20 +175,10 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
-  // A dentist can see the staff directory (staff:read) but not salary,
-  // attendance or leave, which sit behind staff:hr on their own routes.
+  // A dentist can see the staff directory (staff:read) but not an individual
+  // member's performance figures, which sit behind staff:hr.
   it('allows DOCTOR to view the /staff directory', () => {
     middleware(makeRequest('/staff', { user: { role: 'DOCTOR' } }))
-    expect(mockNext).toHaveBeenCalled()
-  })
-
-  it('redirects DOCTOR away from /staff/attendance', () => {
-    middleware(makeRequest('/staff/attendance', { user: { role: 'DOCTOR' } }))
-    expect(mockRedirect).toHaveBeenCalled()
-  })
-
-  it('allows CLINIC_MANAGER into /staff/attendance', () => {
-    middleware(makeRequest('/staff/attendance', { user: { role: 'CLINIC_MANAGER' } }))
     expect(mockNext).toHaveBeenCalled()
   })
 

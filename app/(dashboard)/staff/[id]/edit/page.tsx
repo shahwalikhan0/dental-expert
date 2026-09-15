@@ -61,9 +61,6 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     licenseNumber: '',
 
     // Financial
-    salary: '',
-    bankAccountNo: '',
-    bankIban: '',
 
     // Emergency
     emergencyContact: '',
@@ -124,9 +121,6 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         qualification: data.qualification || '',
         specialization: data.specialization || '',
         licenseNumber: data.licenseNumber || '',
-        salary: data.salary ? data.salary.toString() : '',
-        bankAccountNo: data.bankAccountNo || '',
-        bankIban: data.bankIban || '',
         emergencyContact: data.emergencyContact || '',
         emergencyPhone: data.emergencyPhone || '',
         isActive: data.isActive,
@@ -561,37 +555,6 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   value={formData.licenseNumber}
                   onChange={(e) => handleChange('licenseNumber', e.target.value)}
                 />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="salary">Monthly Salary (Rs)</Label>
-                <Input
-                  id="salary"
-                  type="number"
-                  value={formData.salary}
-                  onChange={(e) => handleChange('salary', e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="bankAccountNo">Bank Account No.</Label>
-                  <Input
-                    id="bankAccountNo"
-                    value={formData.bankAccountNo}
-                    onChange={(e) => handleChange('bankAccountNo', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bankIban">IBAN</Label>
-                  <Input
-                    id="bankIban"
-                    value={formData.bankIban}
-                    onChange={(e) => handleChange('bankIban', e.target.value)}
-                  />
-                </div>
               </div>
             </CardContent>
           </Card>

@@ -57,9 +57,6 @@ export default function NewStaffPage() {
     joiningDate: new Date().toISOString().split('T')[0],
 
     // Financial
-    salary: '',
-    bankAccountNo: '',
-    bankIban: '',
 
     // Emergency
     emergencyContact: '',
@@ -444,47 +441,6 @@ export default function NewStaffPage() {
                     type="date"
                     value={formData.joiningDate}
                     onChange={(e) => handleChange('joiningDate', e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Financial Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Financial Details</CardTitle>
-              <CardDescription>Salary and bank account information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="salary">Monthly Salary (Rs)</Label>
-                <Input
-                  id="salary"
-                  type="number"
-                  value={formData.salary}
-                  onChange={(e) => handleChange('salary', e.target.value)}
-                  placeholder="50000"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="bankAccountNo">Bank Account No.</Label>
-                  <Input
-                    id="bankAccountNo"
-                    value={formData.bankAccountNo}
-                    onChange={(e) => handleChange('bankAccountNo', e.target.value)}
-                    placeholder="1234567890"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bankIban">IBAN</Label>
-                  <Input
-                    id="bankIban"
-                    value={formData.bankIban}
-                    onChange={(e) => handleChange('bankIban', e.target.value)}
-                    placeholder="PK36SCBL0000001123456702"
                   />
                 </div>
               </div>

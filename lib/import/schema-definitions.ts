@@ -309,7 +309,6 @@ const STAFF_FIELDS: FieldDefinition[] = [
     description: 'Professional license number',
   },
   { name: 'joiningDate', type: 'date', required: false, description: 'Date of joining' },
-  { name: 'salary', type: 'decimal', required: false, description: 'Monthly salary' },
   { name: 'address', type: 'string', required: false, description: 'Address' },
   { name: 'city', type: 'string', required: false, description: 'City' },
   { name: 'state', type: 'string', required: false, description: 'State' },

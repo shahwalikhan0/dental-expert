@@ -75,7 +75,7 @@ export const PERMISSIONS = [
   // Staff & administration (§5.10)
   'staff:read',
   'staff:write', // create/edit staff, issue invites
-  'staff:hr', // salary, attendance, leave, performance
+  'staff:hr', // performance figures for an individual staff member
 
   // Master data (§5.10, FR-025): the procedure/fee catalogue, medication list,
   // clinic holidays. Split from `settings:read` because almost every role has
@@ -438,8 +438,6 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/devices', 'settings:read'],
   ['/settings/audit', 'audit:read'],
   ['/settings', 'settings:read'],
-  ['/staff/attendance', 'staff:hr'],
-  ['/staff/leaves', 'staff:hr'],
   ['/staff', 'staff:read'],
   ['/inventory', 'inventory:read'],
   ['/billing/reports', 'reports:financial'],

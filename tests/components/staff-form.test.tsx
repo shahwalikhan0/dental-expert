@@ -123,7 +123,6 @@ describe('NewStaffPage', () => {
       expect(screen.getByText('Contact Information')).toBeInTheDocument()
       expect(screen.getByText('Personal Details')).toBeInTheDocument()
       expect(screen.getByText('Professional Details')).toBeInTheDocument()
-      expect(screen.getByText('Financial Details')).toBeInTheDocument()
       expect(screen.getByText('Emergency Contact')).toBeInTheDocument()
     })
 
@@ -186,13 +185,9 @@ describe('NewStaffPage', () => {
       expect(screen.getByPlaceholderText('TN/12345')).toBeInTheDocument()
     })
 
-    it('renders financial fields', () => {
-      render(<NewStaffPage />)
-      expect(screen.getByPlaceholderText('50000')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('1234567890')).toBeInTheDocument()
-      // An IBAN, not an IFSC code — IFSC is India's bank routing identifier.
-      expect(screen.getByPlaceholderText('PK36SCBL0000001123456702')).toBeInTheDocument()
-    })
+    // There is no financial section. Payroll is out of scope (spec §3), and a
+    // form that collects a salary nothing pays is a promise the product does
+    // not keep.
 
     // Pakistan's identity and tax numbers, not India's: a CNIC rather than an
     // Aadhaar number, and an NTN rather than a PAN.
@@ -396,7 +391,6 @@ describe('NewStaffPage', () => {
 
       // Optional fields
       fireEvent.change(screen.getByPlaceholderText('BDS, MDS'), { target: { value: 'BDS' } })
-      fireEvent.change(screen.getByPlaceholderText('50000'), { target: { value: '60000' } })
 
       fireEvent.submit(container.querySelector('form')!)
 
@@ -406,7 +400,6 @@ describe('NewStaffPage', () => {
         expect(callBody.lastName).toBe('Doe')
         expect(callBody.email).toBe('john@test.com')
         expect(callBody.qualification).toBe('BDS')
-        expect(callBody.salary).toBe('60000')
       })
     })
   })
