@@ -31,14 +31,18 @@ export type SMSGateway = (typeof SMS_GATEWAYS)[number]
 
 export interface SMSConfig {
   gateway: SMSGateway
+  /** Twilio's auth token. */
   apiKey: string
+  /** The number messages appear to come from. */
   senderId: string
-  route?: string
+  /** Twilio's account SID. */
   authKey?: string
 }
 
 export interface SMSPayload {
-  hospitalId?: string
+  /// Required: it decides whose gateway credentials carry the message, whose
+  /// send window applies, and which clinic the log row belongs to.
+  hospitalId: string
   phone: string
   message: string
   patientId?: string
@@ -52,31 +56,45 @@ export interface SMSPayload {
 }
 
 class SMSService {
-  private config: SMSConfig | null = null
+  /**
+   * The clinic's own gateway credentials.
+   *
+   * `hospitalId` is required, and that is the point. This used to read
+   * `where: { category: 'sms' }` with no clinic filter and cache the result on
+   * the instance — which, on a multi-tenant install, meant one clinic's message
+   * going out over whichever clinic's Twilio account the query happened to
+   * return first: their account billed, their sender id on the patient's
+   * handset. The service is a module-level singleton, so the cached config
+   * outlived the request that loaded it.
+   *
+   * Nothing is cached now. Credentials are read per send, which is one small
+   * query against a two-column index, and cannot be the wrong clinic's.
+   */
+  async initialize(hospitalId: string): Promise<SMSConfig> {
+    if (!hospitalId) {
+      throw new Error('SMS cannot be sent without a clinic')
+    }
 
-  async initialize() {
-    // Load SMS configuration from settings
     const settings = await prisma.setting.findMany({
-      where: {
-        category: 'sms',
-      },
+      where: { hospitalId, category: 'sms' },
     })
 
     if (settings.length === 0) {
       throw new Error('SMS gateway not configured')
     }
 
-    this.config = {
+    const config: SMSConfig = {
       gateway: (settings.find((s) => s.key === 'sms.gateway')?.value || 'TWILIO') as SMSGateway,
       apiKey: settings.find((s) => s.key === 'sms.apiKey')?.value || '',
       senderId: settings.find((s) => s.key === 'sms.senderId')?.value || '',
-      route: settings.find((s) => s.key === 'sms.route')?.value,
       authKey: settings.find((s) => s.key === 'sms.authKey')?.value,
     }
 
-    if (!this.config.apiKey) {
+    if (!config.apiKey) {
       throw new Error('SMS API key not configured')
     }
+
+    return config
   }
 
   async sendSMS(payload: SMSPayload): Promise<string> {
@@ -111,7 +129,7 @@ class SMSService {
     //
     // A message scheduled for later is not checked here: it is checked when it
     // is actually sent, which is the only time the question means anything.
-    if (!payload.scheduledFor && payload.hospitalId) {
+    if (!payload.scheduledFor) {
       const window = await this.sendWindowFor(payload.hospitalId)
       if (!isWithinSendWindow(window.timezone, window, new Date())) {
         throw new Error(
@@ -123,7 +141,7 @@ class SMSService {
     // Create SMS log entry
     const smsLog = await prisma.messageLog.create({
       data: {
-        hospitalId: payload.hospitalId || '',
+        hospitalId: payload.hospitalId,
         channel: 'SMS',
         patientId: payload.patientId || null,
         recipient: payload.phone,
@@ -133,19 +151,18 @@ class SMSService {
         relatedId: payload.relatedId ?? null,
         scheduledFor: payload.scheduledFor,
         status: payload.scheduledFor ? 'PENDING' : 'QUEUED',
-        provider: this.config?.gateway,
       },
     })
 
-    // If scheduled for later, return
+    // Scheduled for later: it stays PENDING, and the dispatcher in
+    // `lib/services/message-dispatch.ts` picks it up when it falls due.
     if (payload.scheduledFor && payload.scheduledFor > new Date()) {
       return smsLog.id
     }
 
-    // Send SMS immediately
     try {
-      await this.initialize()
-      const result = await this.sendViaGateway(payload)
+      const config = await this.initialize(payload.hospitalId)
+      const result = await this.sendViaGateway(payload, config)
 
       // Update SMS log
       await prisma.messageLog.update({
@@ -153,6 +170,7 @@ class SMSService {
         data: {
           status: 'SENT',
           sentAt: new Date(),
+          provider: config.gateway,
           providerRef: result.messageId,
           cost: result.cost,
         },
@@ -174,22 +192,45 @@ class SMSService {
     }
   }
 
+  /**
+   * Hand one message to the gateway, without writing a log row.
+   *
+   * `sendSMS` creates a `MessageLog` and then sends. The dispatcher already has
+   * a row — the one it is draining — so it needs the second half on its own,
+   * and calling `sendSMS` would log the same message twice.
+   */
+  async deliver(
+    phone: string,
+    message: string,
+    config: SMSConfig
+  ): Promise<{ messageId: string; cost?: number }> {
+    if (!this.isValidPakistanPhoneNumber(phone)) {
+      throw new Error('Invalid phone number format')
+    }
+
+    return this.sendViaGateway({ hospitalId: '', phone, message }, config)
+  }
+
+  /** The clinic's send window and timezone, for callers outside this class. */
+  async sendWindow(hospitalId: string) {
+    return this.sendWindowFor(hospitalId)
+  }
+
   async sendBulkSMS(payloads: SMSPayload[]): Promise<string[]> {
     const results = await Promise.allSettled(payloads.map((payload) => this.sendSMS(payload)))
 
     return results.map((result, index) => (result.status === 'fulfilled' ? result.value : ''))
   }
 
-  private async sendViaGateway(payload: SMSPayload): Promise<{ messageId: string; cost?: number }> {
-    if (!this.config) {
-      await this.initialize()
-    }
-
-    switch (this.config?.gateway) {
+  private async sendViaGateway(
+    payload: SMSPayload,
+    config: SMSConfig
+  ): Promise<{ messageId: string; cost?: number }> {
+    switch (config.gateway) {
       case 'TWILIO':
-        return this.sendViaTwilio(payload)
+        return this.sendViaTwilio(payload, config)
       default:
-        throw new Error(`Unsupported SMS gateway: ${this.config?.gateway}`)
+        throw new Error(`Unsupported SMS gateway: ${config.gateway}`)
     }
   }
 
@@ -219,15 +260,17 @@ class SMSService {
     }
   }
 
-  private async sendViaTwilio(payload: SMSPayload): Promise<{ messageId: string; cost?: number }> {
-    // Twilio implementation
-    const accountSid = this.config?.authKey
-    const authToken = this.config?.apiKey
+  private async sendViaTwilio(
+    payload: SMSPayload,
+    config: SMSConfig
+  ): Promise<{ messageId: string; cost?: number }> {
+    const accountSid = config.authKey
+    const authToken = config.apiKey
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
 
     const params = new URLSearchParams({
       To: '+92' + this.normalizePhoneNumber(payload.phone),
-      From: this.config?.senderId || '',
+      From: config.senderId || '',
       Body: payload.message,
     })
 

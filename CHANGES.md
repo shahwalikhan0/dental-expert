@@ -1762,17 +1762,9 @@ The inventory _report_ does compute expiring batches live from
 `InventoryBatch.expiryDate`, so the information is reachable; it is the alert
 that never fires. Half of FR-016.
 
-### 19.3 Scheduled messages are queued and never sent
+### 19.3 Scheduled messages — built, §21
 
-`/api/cron/reminders` writes a `MessageLog` row at `PENDING` with a
-`scheduledFor`, and the comment says "the sender picks them up". **There is no
-sender.** The only two `messageLog.findMany` calls in the codebase are history
-queries for the communications screen. Every reminder the hourly cron has ever
-queued is still sitting at `PENDING`.
-
-FR-019 says "send **or queue**", so the letter is met. In practice no
-appointment reminder goes out unless someone sends it by hand from the
-communications screen.
+Done, and it was worse than described: two reminder systems, one dead.
 
 ### 19.4 Staff are created with a password the manager types
 
@@ -1942,3 +1934,138 @@ there was nothing to raise them about. `lib/stock-alerts.ts` handles shortages;
 `EXPIRING_SOON` and `EXPIRED` still have no code that creates them, and the
 "Expiring soon" counter on the alerts screen is still structurally zero. That is
 a small job on top of this one.
+
+## 21. The reminder sender
+
+`/api/cron/reminders` wrote a `MessageLog` row at PENDING with a `scheduledFor`,
+and its own comment said "the sender picks them up". **There was no sender.**
+Every reminder the hourly job had ever queued was still sitting at PENDING.
+
+Building it turned up more than a missing function.
+
+### 21.1 There were two reminder systems, and only one sent anything
+
+`communicationTriggersService.sendAppointmentReminders24Hours` — behind
+`/api/communications/triggers` — found tomorrow's appointments, rendered a
+template and sent immediately. So reminders _did_ go out, from a completely
+different code path, while `/api/cron/reminders` queued rows that nothing drained.
+
+They also interfered. The queueing job skipped any appointment that already had
+a reminder row of any kind, and the triggers job left a SENT row against every
+appointment it handled — so the hour-before reminder was suppressed by the
+day-before one for every patient who got one. Two systems reminding the same
+patient about the same appointment, neither aware of the other.
+
+The queue owns appointment reminders now. `/api/cron/reminders` decides when,
+`/api/cron/dispatch` sends, and the triggers job keeps the three that have no
+schedule to respect: birthdays, payment reminders, lab work ready.
+
+Deduplication is keyed on the appointment **and the send time**, so two
+reminders for one appointment are two different messages rather than one
+cancelling the other.
+
+### 21.2 Reminders were scheduled against midnight, not the appointment
+
+`Appointment.scheduledDate` is `@db.Date` — a day, no time — and `scheduledTime`
+is an `HH:MM` string in the clinic's timezone. The job used
+`scheduledDate.getTime() - one hour`.
+
+That is an hour before **midnight on the day of the appointment**. A 15:00
+appointment was reminded about at 23:00 the night before: sixteen hours early,
+and at an hour the clinic's own send window says not to message patients.
+
+The same query filtered `scheduledDate >= now`, which against a midnight value
+means **every appointment later today was skipped entirely** — a job running at
+09:00 never saw the 16:00 list.
+
+`lib/appointment-time.ts` puts the two columns back together against the
+clinic's timezone, via `Intl` rather than a hardcoded offset, correct on both
+sides of a daylight-saving change. Verified live: a 15:00 appointment on 16
+September now queues its reminder for 09:00 UTC, which is 14:00 in Karachi.
+
+`formatCalendarDay` is there for the same class of bug on the way out —
+`format()` from date-fns reads the server's local timezone, so a date column
+renders as the previous day on any host west of Greenwich. A reminder naming
+the wrong day is worse than no reminder.
+
+### 21.3 Credentials belonged to whichever clinic loaded first
+
+Both senders are module-level singletons whose `initialize()` read
+`where: { category: 'sms' }` — **no clinic filter** — and cached the result on
+the instance.
+
+On a multi-tenant install that is one clinic's message going out over another
+clinic's Twilio account: their account billed, their sender id on the patient's
+handset, their SMTP server and reply-to on the email. And because the config was
+cached on a singleton, it outlived the request that loaded it.
+
+`initialize(hospitalId)` is now required and scoped, nothing is cached, and
+`hospitalId` is a required field on both payload types. Making it required found
+two more callers that had never passed one — both of which were writing a log
+row with an empty `hospitalId` and failing on the foreign key before reaching
+the gateway at all:
+
+- **the "send test message" button**, which therefore reported a configuration
+  problem whatever the configuration was;
+- **the lab-work-ready notification**, the one trigger that could never send.
+
+### 21.4 No clinic had any templates
+
+Every automated message ends at `getDefaultTemplate(hospitalId, category,
+channel)`. `communicationTemplate.create` appears once in the codebase, behind
+the template editor. **Nothing created a default template**, so the lookup
+returned null and the message was quietly not sent.
+
+The reminder machinery was complete and inert: it found the appointments,
+decided who to remind, and then found nothing to say.
+
+`lib/default-templates.ts` holds five starter templates — appointment reminder
+by SMS and email, payment reminder, lab work ready, birthday — created at signup
+for every new clinic and by the seed for the demo one. Starter wording, meant to
+be edited. SMS is kept under 160 characters with the longest plausible
+substitutions, so a reminder is one message and not three.
+
+### 21.5 What the dispatcher will not do
+
+- **A clinic outside its send window is skipped, not failed.** Its messages stay
+  PENDING for the next run. Failing them would lose an evening's reminders
+  because the job happened to run at 21:05.
+- **A cancelled, completed or no-show appointment cancels its reminder.**
+  Reminding somebody about an appointment they cancelled is worse than silence.
+- **Consent is re-checked at send time**, per channel and per kind. A patient who
+  opted out after the reminder was queued has opted out of it.
+- **Wording is rendered now, not at queueing time**, so a template edited this
+  afternoon changes the reminder that goes out this evening. What actually went
+  out — body and subject — is written back to the row, which is more than the
+  old `AppointmentReminder` table recorded.
+- **A message that cannot be sent is closed with a reason**, not left PENDING
+  forever. "SMS gateway not configured" on the row is something a clinic can act
+  on.
+
+### 21.6 Verified
+
+62 tests, and the pipeline driven end to end against the live database through
+the running application — including a real reminder rendered from the clinic's
+template and delivered over SMTP to a local sink:
+
+|           |                                                                              |
+| --------- | ---------------------------------------------------------------------------- |
+| Queued    | 15:00 appointment → reminder at 09:00 UTC, one hour before in Karachi        |
+| Sent      | Subject and body rendered from the clinic's template, stored back on the row |
+| Cancelled | Appointment cancelled → `The appointment is cancelled`                       |
+| Cancelled | Patient opted out → `Patient has asked not to be contacted`                  |
+| Deferred  | Outside the send window → left PENDING, nothing sent                         |
+| Failed    | No gateway configured → `SMS gateway not configured`                         |
+
+Full suite 3,570 passing; build clean; `eslint` 0 errors.
+
+### 21.7 Still to do: nothing runs these jobs
+
+**There is no scheduler anywhere in the repository** — no `vercel.json` crons, no
+timer unit, no CI schedule. `/api/cron/reminders`, `/api/cron/dispatch` and
+`/api/communications/triggers` are complete and correct, and on a fresh
+deployment none of them ever runs.
+
+Left deliberately, at your request, with a `TODO` on each of the three routes
+saying so. Whatever ends up calling them must send
+`Authorization: Bearer $CRON_SECRET`.

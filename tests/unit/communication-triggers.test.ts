@@ -27,114 +27,11 @@ describe('CommunicationTriggersService', () => {
     vi.clearAllMocks()
   })
 
-  describe('sendAppointmentReminders24Hours', () => {
-    it("sends SMS and email reminders for tomorrow's appointments", async () => {
-      ;(prisma.appointment.findMany as any).mockResolvedValue([
-        {
-          id: 'apt-1',
-          hospitalId: 'h1',
-          patientId: 'pat-1',
-          appointmentNo: 'APT-001',
-          scheduledDate: new Date('2026-03-04'),
-          scheduledTime: '10:00',
-          chairNumber: 2,
-          patient: {
-            firstName: 'John',
-            lastName: 'Doe',
-            phone: '9876543210',
-            email: 'john@test.com',
-          },
-          doctor: { firstName: 'Alice', lastName: 'Brown', user: {} },
-        },
-      ])
-
-      ;(prisma.hospital.findUnique as any).mockResolvedValue({
-        name: 'Test Clinic',
-        phone: '1234567890',
-      })
-
-      mockTemplateService.getDefaultTemplate.mockResolvedValue({
-        id: 'tmpl-1',
-        content: 'Your appointment is tomorrow',
-        subject: 'Reminder',
-      })
-
-      await communicationTriggersService.sendAppointmentReminders24Hours()
-
-      // `kind` is what the sender uses to decide whether this patient wants
-      // this sort of message. The trigger no longer decides that itself: it did,
-      // in a second copy of the check that disagreed with the sender's — this
-      // one treated a missing preference row as consent, the sender treated it
-      // as refusal, and no row ever existed.
-      expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
-        expect.objectContaining({
-          phone: '9876543210',
-          patientId: 'pat-1',
-          kind: 'appointmentReminders',
-          relatedType: 'Appointment',
-          relatedId: 'apt-1',
-        })
-      )
-      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: 'john@test.com',
-          patientId: 'pat-1',
-          kind: 'appointmentReminders',
-        })
-      )
-    })
-
-    it('leaves the patient’s own preference to the sender', async () => {
-      ;(prisma.appointment.findMany as any).mockResolvedValue([
-        {
-          id: 'apt-1',
-          hospitalId: 'h1',
-          patientId: 'pat-1',
-          appointmentNo: 'APT-001',
-          scheduledDate: new Date('2026-03-04'),
-          scheduledTime: '10:00',
-          patient: { firstName: 'John', lastName: 'Doe', phone: '9876543210' },
-          doctor: { firstName: 'Alice', lastName: 'Brown', user: {} },
-        },
-      ])
-
-      // No template configured, so nothing is sent — and nothing here consults
-      // a preference: sendSMS does that, from `kind`.
-      mockTemplateService.getDefaultTemplate.mockResolvedValue(null)
-
-      await communicationTriggersService.sendAppointmentReminders24Hours()
-
-      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
-      expect(mockEmailService.sendEmail).not.toHaveBeenCalled()
-    })
-
-    it('handles empty appointments gracefully', async () => {
-      ;(prisma.appointment.findMany as any).mockResolvedValue([])
-
-      await communicationTriggersService.sendAppointmentReminders24Hours()
-      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
-    })
-
-    it('continues on error for individual appointment', async () => {
-      ;(prisma.appointment.findMany as any).mockResolvedValue([
-        {
-          id: 'apt-1',
-          hospitalId: 'h1',
-          patientId: 'pat-1',
-          appointmentNo: 'APT-001',
-          scheduledDate: new Date('2026-03-04'),
-          scheduledTime: '10:00',
-          patient: { firstName: 'John', lastName: 'Doe', phone: '9876543210' },
-          doctor: { firstName: 'Alice', lastName: 'Brown', user: {} },
-        },
-      ])
-
-      ;(prisma.hospital.findUnique as any).mockRejectedValue(new Error('DB error'))
-
-      // Should not throw
-      await communicationTriggersService.sendAppointmentReminders24Hours()
-    })
-  })
+  // Appointment reminders used to be tested here. They are not sent from this
+  // service any more: `/api/cron/reminders` queues them and
+  // `/api/cron/dispatch` sends them, which is one system rather than two
+  // reminding the same patient about the same appointment. See
+  // tests/unit/message-dispatch.test.ts.
 
   describe('sendBirthdayWishes', () => {
     it('sends birthday wishes to patients with birthday today', async () => {
@@ -320,11 +217,15 @@ describe('CommunicationTriggersService', () => {
       ;(prisma.hospital.findMany as any).mockResolvedValue([])
 
       await communicationTriggersService.runAllTriggers()
-      // Verify each sub-function's query was called
-      expect(prisma.appointment.findMany).toHaveBeenCalled()
+
       expect(prisma.patient.findMany).toHaveBeenCalled()
       expect(prisma.invoice.findMany).toHaveBeenCalled()
       expect(prisma.labOrder.findMany).toHaveBeenCalled()
+
+      // Not appointments: this job no longer sends appointment reminders, and
+      // a second system sending them alongside the queue is the bug that was
+      // fixed by taking them out.
+      expect(prisma.appointment.findMany).not.toHaveBeenCalled()
     })
   })
 })

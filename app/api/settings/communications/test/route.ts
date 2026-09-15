@@ -32,15 +32,19 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Initialize SMS service with current settings
-        await smsService.initialize()
+        // This clinic's credentials, not whichever clinic's the query returned
+        // first. The test used to send with no clinic at all, which wrote a log
+        // row with an empty hospitalId and failed on the foreign key before it
+        // ever reached the gateway — so the button reported a configuration
+        // problem whatever the configuration was.
+        await smsService.initialize(hospitalId)
 
-        // Send test SMS
         const testMessage =
           testData.message ||
           'This is a test message from DentalERP. Your SMS gateway is configured correctly.'
 
         await smsService.sendSMS({
+          hospitalId,
           phone: testData.phone,
           message: testMessage,
         })
@@ -73,8 +77,7 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Initialize email service with current settings
-        await emailService.initialize()
+        await emailService.initialize(hospitalId)
 
         // Send test email
         const testSubject = testData.subject || 'Test Email from DentalERP'
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
         `
 
         await emailService.sendEmail({
+          hospitalId,
           to: testData.email,
           subject: testSubject,
           body: testBody,

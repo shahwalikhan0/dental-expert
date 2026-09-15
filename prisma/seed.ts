@@ -20,6 +20,7 @@ import {
 } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { reconcileStockAlerts } from '../lib/stock-alerts'
+import { defaultTemplatesFor } from '../lib/default-templates'
 
 const prisma = new PrismaClient()
 
@@ -1449,6 +1450,22 @@ async function main() {
 
       console.log('Created purchase orders')
     }
+  }
+
+  // ── Communication templates ───────────────────────────────────────────────
+  //
+  // Every automated message looks up a default template for its category and
+  // channel. Nothing created one, so the lookup returned null and the message
+  // was quietly not sent. New clinics get these at signup; the demo clinic gets
+  // them here.
+
+  const templateCount = await prisma.communicationTemplate.count({
+    where: { hospitalId: hospital.id },
+  })
+
+  if (templateCount === 0) {
+    await prisma.communicationTemplate.createMany({ data: defaultTemplatesFor(hospital.id) })
+    console.log('Created default communication templates')
   }
 
   console.log('Created suppliers, inventory items, batches, movements and alerts')

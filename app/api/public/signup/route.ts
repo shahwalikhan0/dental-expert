@@ -6,6 +6,7 @@ import { generateUniqueSlug, generateToken } from '@/lib/api-helpers'
 import { initialSubscription } from '@/lib/tenant'
 import { Role } from '@prisma/client'
 import { sendVerificationEmail } from '@/lib/email-helpers'
+import { defaultTemplatesFor } from '@/lib/default-templates'
 
 const signupSchema = z.object({
   hospitalName: z.string().min(2, 'Hospital name must be at least 2 characters'),
@@ -98,11 +99,17 @@ export async function POST(request: Request) {
         },
       })
 
+      // The starter message templates. Without them every automated message
+      // looks up a default template, finds none, and silently does nothing —
+      // which is what happened to every clinic that ever signed up.
+      await tx.communicationTemplate.createMany({ data: defaultTemplatesFor(hospital.id) })
+
       return { hospital, user }
     })
 
     // Send verification email (non-blocking — logs error if SMTP not configured)
     const emailSent = await sendVerificationEmail({
+      hospitalId: result.hospital.id,
       to: email,
       userName: adminName,
       hospitalName,

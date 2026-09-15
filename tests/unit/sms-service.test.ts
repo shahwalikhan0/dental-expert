@@ -51,37 +51,86 @@ describe('SMSService - Phone Validation', () => {
     const { smsService } = smsServiceModule
 
     // Set up minimal mocks - the send should fail at validation before DB calls
-    await expect(smsService.sendSMS({ phone: '12345', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '12345', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects a subscriber number not starting with 3', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '0123456789', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '0123456789', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
 
-    await expect(smsService.sendSMS({ phone: '5123456789', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '5123456789', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects phone with fewer than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '30012', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '30012', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects phone with more than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '30012345670', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '30012345670', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Whose credentials carry the message
+// ---------------------------------------------------------------------------
+
+describe('SMSService - credentials belong to one clinic', () => {
+  /**
+   * `initialize()` used to read `where: { category: 'sms' }` with no clinic
+   * filter, and cache the result on a module-level singleton. On a multi-tenant
+   * install that is one clinic's message going out over another clinic's Twilio
+   * account: their account billed, their sender id on the patient's handset,
+   * and the cached config outliving the request that loaded it.
+   */
+  it('reads only the calling clinic settings', async () => {
+    const { smsService } = smsServiceModule
+    vi.mocked(prisma.setting.findMany).mockResolvedValue([
+      { key: 'sms.apiKey', value: 'token' },
+      { key: 'sms.senderId', value: '+15005550006' },
+      { key: 'sms.authKey', value: 'AC123' },
+    ] as any)
+
+    await smsService.initialize('h1')
+
+    expect(vi.mocked(prisma.setting.findMany).mock.calls[0][0]!.where).toEqual({
+      hospitalId: 'h1',
+      category: 'sms',
+    })
+  })
+
+  it('refuses to load credentials with no clinic', async () => {
+    const { smsService } = smsServiceModule
+
+    await expect(smsService.initialize('')).rejects.toThrow('without a clinic')
+    expect(prisma.setting.findMany).not.toHaveBeenCalled()
+  })
+
+  it('does not cache one clinic credentials for the next', async () => {
+    const { smsService } = smsServiceModule
+    vi.mocked(prisma.setting.findMany)
+      .mockResolvedValueOnce([{ key: 'sms.apiKey', value: 'first' }] as any)
+      .mockResolvedValueOnce([{ key: 'sms.apiKey', value: 'second' }] as any)
+
+    const one = await smsService.initialize('h1')
+    const two = await smsService.initialize('h2')
+
+    expect(one.apiKey).toBe('first')
+    expect(two.apiKey).toBe('second')
   })
 })
 
@@ -98,7 +147,12 @@ describe('SMSService - Communication Preferences', () => {
     prefs({ doNotContact: true, sms: true })
 
     await expect(
-      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+      smsService.sendSMS({
+        hospitalId: 'h1',
+        phone: '3001234567',
+        message: 'test',
+        patientId: 'patient-1',
+      })
     ).rejects.toThrow('asked not to be contacted')
   })
 
@@ -107,7 +161,12 @@ describe('SMSService - Communication Preferences', () => {
     prefs({ sms: false })
 
     await expect(
-      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+      smsService.sendSMS({
+        hospitalId: 'h1',
+        phone: '3001234567',
+        message: 'test',
+        patientId: 'patient-1',
+      })
     ).rejects.toThrow('turned off sms')
   })
 
@@ -117,6 +176,7 @@ describe('SMSService - Communication Preferences', () => {
 
     await expect(
       smsService.sendSMS({
+        hospitalId: 'h1',
         phone: '3001234567',
         message: 'Half price whitening',
         patientId: 'patient-1',
@@ -144,6 +204,7 @@ describe('SMSService - Communication Preferences', () => {
     // which is the point: the preference check let it through.
     await expect(
       smsService.sendSMS({
+        hospitalId: 'h1',
         phone: '3001234567',
         message: 'Your appointment is tomorrow',
         patientId: 'patient-1',

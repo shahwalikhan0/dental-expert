@@ -146,6 +146,10 @@ const ACCEPTED: Record<string, string> = {
   'cron/reminders GET prisma.appointment.findMany':
     'scheduled job; runs for every clinic by design',
   'cron/reminders GET prisma.appointment.groupBy': 'scheduled job; runs for every clinic by design',
+  // Creating the clinic's starter message templates, inside the transaction
+  // that created the clinic. Every row carries the new hospital's own id.
+  'public/signup POST prisma.communicationTemplate.createMany':
+    'writes rows for the clinic being created, in the same transaction',
 }
 
 function routeFiles(dir: string, acc: string[] = []): string[] {
