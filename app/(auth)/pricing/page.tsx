@@ -17,13 +17,13 @@ import { PLANS, PLAN_FEATURES, isUnlimited, type PlanFeature } from '@/lib/plans
  * application enforces. They used to be typed out here as well, and had drifted
  * from it — this page was still advertising insurance claims management and a
  * patient portal, neither of which is built, alongside "multi-location support"
- * on a plan that had no notion of a location.
+ * on a plan that had no notion of a location. The first two went then; the
+ * location one went later, for the same reason.
  *
  * Only the presentation lives here: an icon, the call to action, and the plain
  * sentences that describe what each capability means to a practice.
  */
 const FEATURE_LABELS: Record<PlanFeature, string> = {
-  branches: 'Several locations under one account',
   labModule: 'Dental laboratory case tracking',
   bulkCommunications: 'Bulk SMS and email campaigns',
   dataImport: 'Import from your existing system',
@@ -67,7 +67,7 @@ const PRESENTATION: Record<
   },
   ENTERPRISE: {
     icon: Crown,
-    description: 'For a group with several locations',
+    description: 'For a larger practice on its own terms',
     cta: 'Contact Sales',
     ctaVariant: 'outline',
   },

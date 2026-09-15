@@ -43,7 +43,16 @@ export type Entitlements = {
  * asks "is this person allowed", a plan asks "has this clinic bought it".
  */
 export const PLAN_FEATURES = [
-  'branches', // more than one location under one tenant
+  // `branches` was here — more than one location under one tenant — and the
+  // pricing page sold it as "Several locations under one account". There is no
+  // location in the schema and never has been: a tenant is a clinic. Selling a
+  // feature the database cannot hold is the one version of this that is not
+  // acceptable, so it is off the list until it is built.
+  //
+  // A practice with two sites can run two tenants today and switch between
+  // them at sign-in — `resolveLogin` already handles one person with accounts
+  // at several clinics. What that does not give them is shared patient
+  // records, cross-branch reporting, or one subscription.
   'labModule', // §5.8 dental laboratory coordination
   'bulkCommunications', // campaign sends, as opposed to one-off reminders
   'dataImport', // ERP migration tooling
@@ -104,18 +113,11 @@ export const PLANS: readonly PlanDefinition[] = [
   {
     id: 'ENTERPRISE',
     name: 'Enterprise',
-    blurb: 'For a group practice with several locations.',
+    blurb: 'For a larger practice that needs its own terms.',
     price: null,
     interval: 'CUSTOM',
     entitlements: { patients: UNLIMITED, staff: UNLIMITED, storageMb: UNLIMITED },
-    features: [
-      'branches',
-      'labModule',
-      'bulkCommunications',
-      'dataImport',
-      'apiAccess',
-      'prioritySupport',
-    ],
+    features: ['labModule', 'bulkCommunications', 'dataImport', 'apiAccess', 'prioritySupport'],
     trialDays: 14,
   },
   {

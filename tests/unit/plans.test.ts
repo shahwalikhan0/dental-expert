@@ -64,10 +64,15 @@ describe('the catalogue', () => {
 
   // Several locations under one account is the Enterprise pitch, so it must not
   // quietly appear on a cheaper tier.
-  it('keeps multiple branches to Enterprise', () => {
-    expect(planHasFeature('ENTERPRISE', 'branches')).toBe(true)
-    expect(planHasFeature('PROFESSIONAL', 'branches')).toBe(false)
-    expect(planHasFeature('FREE', 'branches')).toBe(false)
+  it('sells nothing the database cannot hold', () => {
+    // `branches` was a plan feature and a line on the pricing page —
+    // "Several locations under one account" — with no location anywhere in
+    // the schema. A paid plan promising a feature that does not exist is the
+    // one version of this that is not acceptable.
+    expect(PLAN_FEATURES).not.toContain('branches')
+    for (const plan of PLANS) {
+      expect(plan.features).not.toContain('branches')
+    }
   })
 })
 

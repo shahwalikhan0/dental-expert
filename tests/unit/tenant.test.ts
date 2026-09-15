@@ -95,11 +95,11 @@ describe('getTenant', () => {
   it('knows which features the plan bought', async () => {
     clinicOn('ENTERPRISE')
     const enterprise = (await getTenant('h1'))!
-    expect(tenantHasFeature(enterprise, 'branches')).toBe(true)
+    expect(tenantHasFeature(enterprise, 'apiAccess')).toBe(true)
 
     clinicOn('FREE')
     const free = (await getTenant('h1'))!
-    expect(tenantHasFeature(free, 'branches')).toBe(false)
+    expect(tenantHasFeature(free, 'apiAccess')).toBe(false)
   })
 })
 
