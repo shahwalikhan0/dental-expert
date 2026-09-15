@@ -1766,23 +1766,9 @@ that never fires. Half of FR-016.
 
 Done, and it was worse than described: two reminder systems, one dead.
 
-### 19.4 Staff are created with a password the manager types
+### 19.4 Staff passwords — built, §22
 
-`POST /api/staff` takes a `password` field and hashes it. That is the only way
-to add a colleague: **the admin chooses, and therefore knows, every staff
-member's password.**
-
-`StaffInvite` and `/api/public/invite/accept` exist to fix exactly this — the
-invitee sets their own password — and have **no user interface at all**. Nothing
-in `app/(dashboard)` calls `/api/staff-invites`; the setup guide links to
-`/staff/invites`, which does not exist.
-
-It matters more than it looks. FR-021 and §10 rest on the audit log answering
-"who did this", and FR-007 has a dentist signing a clinical note. Neither is
-strong evidence if the practice manager set that dentist's password.
-
-`User.mustChangePassword` is in the schema, is set by the data importer, and is
-**enforced nowhere** — not at sign-in, not in middleware.
+The invite flow has a user interface now.
 
 ### 19.5 Multi-branch (FR-023) is sold and not built
 
@@ -1796,9 +1782,10 @@ acceptable.
 
 ### 19.6 Smaller, verified
 
-- **Five dead links in the setup guide** — `/devices`, `/settings/ai`,
-  `/settings/integrations`, `/staff/invites`, `/video`. All 404. The IoT and
-  video walkthroughs describe features `39fdd2e` removed as out of scope.
+- **Four dead links in the setup guide** — `/devices`, `/settings/ai`,
+  `/settings/integrations`, `/video`. All 404. The IoT and video walkthroughs
+  describe features `39fdd2e` removed as out of scope. (`/staff/invites` was
+  the fifth; §22 built it.)
 - **`lib/rbac.ts` still maps `/devices`** to a capability for a route that no
   longer exists. Harmless, but it is a claim the table is making falsely.
 - **Recall reminders.** FR-019 says "appointment/recall". Appointment reminders
@@ -2069,3 +2056,64 @@ deployment none of them ever runs.
 Left deliberately, at your request, with a `TODO` on each of the three routes
 saying so. Whatever ends up calling them must send
 `Authorization: Bearer $CRON_SECRET`.
+
+## 22. Inviting a colleague
+
+`StaffInvite`, `POST /api/staff-invites`, its resend and cancel routes and
+`/api/public/invite/accept` have all existed since the fork. **Nothing in the
+dashboard called any of them.** The setup guide walked an admin through
+"Staff → Invites tab" and linked to `/staff/invites`, which did not exist.
+
+So the only way to add a colleague was the Staff form, where an admin types a
+password on their behalf — and therefore knows it.
+
+That is not a cosmetic gap. FR-021 and spec §10 rest on the audit log answering
+_who did this_, and FR-007 has a dentist signing a clinical note. Neither is
+strong evidence if the practice manager set that dentist's password.
+
+### 22.1 The screen
+
+`/staff/invites` — the path the setup guide had been pointing at. Lists every
+invitation with its role, status and dates; sends one; resends; cancels.
+
+The reason to prefer it over the Staff form is said on the screen rather than
+left in the documentation, because an admin who does not know it will carry on
+typing passwords for other people.
+
+Three decisions worth naming:
+
+- **A lapsed invitation shows as Expired, not Pending.** The row stays PENDING
+  in the database until somebody uses or cancels it; showing that to an admin
+  invites them to wait for an answer that cannot come, when what they need to do
+  is resend.
+- **An invitation created but not emailed is a warning, not a success.**
+  `emailSent: false` means SMTP is not configured, which is a different problem
+  from the invitation failing — and the one the admin has to fix before anybody
+  receives anything.
+- **The role list comes from `INVITABLE_ROLES`**, so it cannot drift from the
+  roles that can actually be granted. ADMIN is not on it.
+
+### 22.2 Two dead buttons beside it
+
+The staff screen's action bar had **Attendance** and **Leaves**, linking to
+`/staff/attendance` and `/staff/leaves`. Neither page exists: `39fdd2e` removed
+the attendance and leave tables as out of scope (spec §3) and left the buttons
+behind. Two 404s on the busiest staff screen, replaced by the one link that now
+goes somewhere.
+
+### 22.3 The invitation email offered the wrong job
+
+`sendInviteEmail` formatted the role itself — lowercase with the first
+underscore replaced — rather than using `roleLabel` from the capability table.
+An invitation offered a job as a "Dental assistant" where every screen says
+"Dental Assistant", and as a "Doctor" where the clinic calls the role Dentist.
+
+### 22.4 Verified
+
+12 component tests, and the whole loop driven for real against the live
+database: an invitation sent from the screen, the email delivered over SMTP with
+the right role on it, accepted with a password the invitee chose, and then used
+to sign in — arriving as a DENTAL_ASSISTANT whose password nobody at the clinic
+knows.
+
+Full suite 3,582 passing; build clean; `eslint` 0 errors.

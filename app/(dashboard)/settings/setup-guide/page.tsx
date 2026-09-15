@@ -164,11 +164,11 @@ const setupSections: SetupSection[] = [
         title: 'Invite Staff via Email',
         description: 'Send an invitation email so staff can set up their own accounts.',
         steps: [
-          'Go to Staff → Invites tab',
-          'Click "+ Send Invite"',
-          "Enter the staff member's email address and select their role",
-          'Click "Send Invite" — they\'ll receive an email with a signup link',
-          'The invite appears as "Pending" until they accept',
+          'Go to Staff and click Invitations',
+          'Click "Invite someone"',
+          'Enter their name and email address, and choose their role',
+          'Click "Send invitation" — they get an email with a single-use link',
+          'The invitation shows as "Pending" until they accept',
         ],
         tips: [
           'Email invites require your SMTP/email to be configured first (see Email Setup below)',

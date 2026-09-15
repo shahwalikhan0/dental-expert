@@ -34,7 +34,7 @@ import {
   Edit,
   Phone,
   Mail,
-  Calendar,
+  MailPlus,
   BarChart3,
   UserX,
 } from 'lucide-react'
@@ -202,16 +202,14 @@ export default function StaffPage() {
               }))
             }
           />
-          <Link href="/staff/attendance">
+          {/* Attendance and Leaves used to sit here, linking to /staff/attendance
+              and /staff/leaves. Neither page exists — 39fdd2e removed the
+              attendance and leave tables as out of scope (spec §3) and left the
+              two buttons behind, so both were 404s on the busiest staff screen. */}
+          <Link href="/staff/invites">
             <Button variant="outline">
-              <Calendar className="h-4 w-4 mr-2" />
-              Attendance
-            </Button>
-          </Link>
-          <Link href="/staff/leaves">
-            <Button variant="outline">
-              <Calendar className="h-4 w-4 mr-2" />
-              Leaves
+              <MailPlus className="h-4 w-4 mr-2" />
+              Invitations
             </Button>
           </Link>
           <Link href="/staff/new">
