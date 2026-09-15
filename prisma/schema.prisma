@@ -302,10 +302,8 @@ model StaffInvite {
 
   hospital    Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@index([hospitalId])
-  @@index([email])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
   @@index([token])
-  @@index([status])
 }
 
 enum StaffInviteStatus {
@@ -363,8 +361,7 @@ model Staff {
   // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
   // index, so the many staff without one recorded do not collide.
   @@unique([hospitalId, cnic])
-  @@index([hospitalId])
-  @@index([phone])
+  @@index([hospitalId, isActive, lastName])
 }
 
 model StaffShift {
@@ -452,9 +449,10 @@ model Patient {
   // records carrying the same one are the same patient twice. NULLs stay
   // distinct, which matters: children hold a B-Form, not a CNIC.
   @@unique([hospitalId, cnic])
-  @@index([hospitalId])
-  @@index([phone])
-  @@index([firstName, lastName])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, isActive, createdAt(sort: Desc)])
+  @@index([hospitalId, phone])
+  @@index([hospitalId, lastName, firstName])
 }
 
 /// What a clinician needs to know before picking up a handpiece.
@@ -578,12 +576,11 @@ model Appointment {
   treatments      Treatment[]
 
   @@unique([hospitalId, appointmentNo])
-  @@index([hospitalId])
-  @@index([scheduledDate])
-  @@index([patientId])
-  @@index([doctorId])
-  @@index([chairId])
-  @@index([status])
+  @@index([hospitalId, scheduledDate, scheduledTime])
+  @@index([hospitalId, status, scheduledDate])
+  @@index([hospitalId, doctorId, scheduledDate])
+  @@index([hospitalId, patientId, scheduledDate(sort: Desc)])
+  @@index([chairId, scheduledDate])
 }
 
 /// A treatment chair / operatory. FR-025 lists chairs among the master data a
@@ -606,7 +603,7 @@ model Chair {
   appointments    Appointment[]
 
   @@unique([hospitalId, name])
-  @@index([hospitalId])
+  @@index([hospitalId, isActive, sortOrder])
 }
 
 
@@ -666,9 +663,7 @@ model DentalChartEntry {
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([toothNumber])
+  @@index([hospitalId, patientId, toothNumber])
 }
 
 enum ToothCondition {
@@ -720,8 +715,7 @@ model Procedure {
   treatmentPlanItems TreatmentPlanItem[]
 
   @@unique([hospitalId, code])
-  @@index([hospitalId])
-  @@index([category])
+  @@index([hospitalId, isActive, category])
 }
 
 enum ProcedureCategory {
@@ -767,9 +761,8 @@ model TreatmentPlan {
   items           TreatmentPlanItem[]
 
   @@unique([hospitalId, planNumber])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
 }
 
 model TreatmentPlanItem {
@@ -866,11 +859,10 @@ model Treatment {
   documents       Document[]
 
   @@unique([hospitalId, treatmentNo])
-  @@index([hospitalId])
-  @@index([patientId])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, doctorId, createdAt(sort: Desc)])
   @@index([appointmentId])
-  @@index([doctorId])
-  @@index([signedById])
 }
 
 /// What was said, or corrected, about a clinical note after it was signed.
@@ -953,9 +945,9 @@ model Prescription {
   medications     PrescriptionMedication[]
 
   @@unique([hospitalId, prescriptionNo])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([doctorId])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, doctorId])
 }
 
 model PrescriptionMedication {
@@ -1000,8 +992,7 @@ model Medication {
   hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   prescriptionMedications PrescriptionMedication[]
 
-  @@index([hospitalId])
-  @@index([name])
+  @@index([hospitalId, isActive, name])
 }
 
 // ==================== BILLING & FINANCIAL ====================
@@ -1059,10 +1050,8 @@ model Invoice {
   discountApprovedBy  User?     @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
 
   @@unique([hospitalId, invoiceNo])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-  @@index([createdAt])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
 }
 
 /// FR-014 — "Record refund amount, method, reason, authorizer, and link to
@@ -1099,10 +1088,9 @@ model Refund {
   cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
 
   @@unique([hospitalId, refundNo])
-  @@index([hospitalId])
+  @@index([hospitalId, refundedAt(sort: Desc)])
   @@index([paymentId])
   @@index([cashierSessionId])
-  @@index([refundedAt])
 }
 
 /// FR-015 — "Provide daily cashier/payment-method reconciliation and variance
@@ -1136,9 +1124,7 @@ model CashierSession {
   counts          CashierSessionCount[]
 
   @@unique([hospitalId, sessionNo])
-  @@index([hospitalId])
-  @@index([status])
-  @@index([openedAt])
+  @@index([hospitalId, status, openedAt(sort: Desc)])
 }
 
 /// One counted line per payment method on a closed session.
@@ -1234,10 +1220,9 @@ model Payment {
   refunds         Refund[]
 
   @@unique([hospitalId, paymentNo])
-  @@index([hospitalId])
+  @@index([hospitalId, paymentDate(sort: Desc)])
   @@index([invoiceId])
-  @@index([paymentDate])
-  @@index([cashierSessionId])
+  @@index([hospitalId, cashierSessionId])
 }
 
 enum DiscountType {
@@ -1349,13 +1334,10 @@ model InventoryItem {
   alerts          StockAlert[]
 
   @@unique([hospitalId, sku])
-  @@index([hospitalId])
-  @@index([name])
-  @@index([currentStock])
-  @@index([deletedAt])
-  @@index([itemType])
-  @@index([category])
   @@index([preferredSupplierId])
+  @@index([hospitalId, deletedAt, name])
+  @@index([hospitalId, deletedAt, itemType])
+  @@index([hospitalId, deletedAt, category])
 }
 
 enum InventoryItemType {
@@ -1388,9 +1370,8 @@ model InventoryBatch {
   stockTransactions StockTransaction[]
 
   @@unique([hospitalId, itemId, batchNumber])
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([expiryDate])
+  @@index([hospitalId, itemId])
+  @@index([hospitalId, expiryDate])
 }
 
 model StockTransaction {
@@ -1429,13 +1410,11 @@ model StockTransaction {
   batch           InventoryBatch?      @relation(fields: [batchId], references: [id])
   supplier        Vendor?              @relation(fields: [supplierId], references: [id])
 
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([createdAt])
-  @@index([transactionDate])
-  @@index([type])
   @@index([batchId])
   @@index([supplierId])
+  @@index([hospitalId, transactionDate(sort: Desc)])
+  @@index([hospitalId, itemId, transactionDate(sort: Desc)])
+  @@index([hospitalId, type, transactionDate(sort: Desc)])
 }
 
 enum StockTransactionType {
@@ -1517,11 +1496,8 @@ model Vendor {
   labOrders         LabOrder[]
 
   @@unique([hospitalId, kind, code])
-  @@index([hospitalId])
-  @@index([kind])
-  @@index([name])
-  @@index([status])
-  @@index([deletedAt])
+  @@index([hospitalId, kind, deletedAt, name])
+  @@index([hospitalId, kind, status])
 }
 
 enum VendorKind {
@@ -1561,11 +1537,8 @@ model PurchaseOrder {
   items           PurchaseOrderItem[]
 
   @@unique([hospitalId, orderNumber])
-  @@index([hospitalId])
-  @@index([supplierId])
-  @@index([status])
-  @@index([orderDate])
-  @@index([deletedAt])
+  @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
+  @@index([hospitalId, supplierId, orderDate(sort: Desc)])
 }
 
 model PurchaseOrderItem {
@@ -1636,11 +1609,8 @@ model StockAlert {
   item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
   acknowledgedByUser User?       @relation(fields: [acknowledgedBy], references: [id])
 
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([alertType])
-  @@index([isAcknowledged])
-  @@index([createdAt])
+  @@index([hospitalId, isAcknowledged, createdAt(sort: Desc)])
+  @@index([itemId, alertType, isAcknowledged])
 }
 
 enum StockAlertType {
@@ -1693,11 +1663,8 @@ model LabOrder {
   labVendor       Vendor         @relation(fields: [labVendorId], references: [id])
 
   @@unique([hospitalId, orderNumber])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-  @@index([orderDate])
-  @@index([deletedAt])
+  @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
+  @@index([hospitalId, patientId, orderDate(sort: Desc)])
 }
 
 /// Status-transition audit trail for a lab order. Replaces the legacy
@@ -1777,9 +1744,8 @@ model Document {
   patient         Patient      @relation(fields: [patientId], references: [id])
   treatment       Treatment?   @relation(fields: [treatmentId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([documentType])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, documentType])
 }
 
 enum DocumentType {
@@ -1818,10 +1784,10 @@ model AuditLog {
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   user            User?     @relation(fields: [userId], references: [id])
 
-  @@index([hospitalId])
   @@index([entityType, entityId])
-  @@index([userId])
-  @@index([createdAt])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, action, createdAt(sort: Desc)])
+  @@index([hospitalId, userId, createdAt(sort: Desc)])
 }
 
 // ==================== SETTINGS ====================
@@ -1950,14 +1916,11 @@ model MessageLog {
   hospital        Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   template        CommunicationTemplate? @relation(fields: [templateId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([channel])
-  @@index([recipient])
-  @@index([status])
-  @@index([sentAt])
-  @@index([scheduledFor])
   @@index([relatedType, relatedId])
+  @@index([hospitalId, channel, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([status, scheduledFor])
 }
 
 enum TemplateCategory {
@@ -2032,10 +1995,9 @@ model FormSubmission {
   hospital      Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   template      FormTemplate         @relation(fields: [templateId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId])
   @@index([appointmentId])
-  @@index([status])
 }
 
 enum FormType {
@@ -2075,8 +2037,7 @@ model Waitlist {
 
   hospital       Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@index([hospitalId])
-  @@index([status])
+  @@index([hospitalId, status, createdAt])
 }
 
 enum WaitlistStatus {
