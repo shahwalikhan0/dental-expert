@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
+import { ageInYears } from '@/lib/age'
 
 // Generate unique patient ID for the hospital
 async function generatePatientId(hospitalId: string): Promise<string> {
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
           phone: true,
           email: true,
           gender: true,
-          age: true,
+          dateOfBirth: true,
           bloodGroup: true,
           city: true,
         },
@@ -83,7 +84,12 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({
-      patients,
+      // Age is computed, not stored. The column it replaces was written once
+      // at registration and never updated.
+      patients: patients.map(({ dateOfBirth, ...patient }) => ({
+        ...patient,
+        age: ageInYears(dateOfBirth),
+      })),
       pagination: {
         page,
         limit,
@@ -125,7 +131,6 @@ export async function POST(request: NextRequest) {
       firstName,
       lastName,
       dateOfBirth,
-      age,
       gender,
       bloodGroup,
       phone,
@@ -202,7 +207,6 @@ export async function POST(request: NextRequest) {
         firstName,
         lastName,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        age,
         gender,
         bloodGroup,
         phone,

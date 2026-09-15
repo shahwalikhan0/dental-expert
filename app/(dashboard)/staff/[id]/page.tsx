@@ -17,7 +17,6 @@ import {
   Mail,
   MapPin,
   Calendar,
-  CreditCard,
   Shield,
   User,
   Briefcase,
@@ -47,9 +46,6 @@ interface StaffDetail {
   specialization: string | null
   licenseNumber: string | null
   joiningDate: string
-  salary: number | null
-  bankAccountNo: string | null
-  bankIban: string | null
   emergencyContact: string | null
   emergencyPhone: string | null
   isActive: boolean
@@ -142,15 +138,6 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
       month: 'long',
       year: 'numeric',
     })
-  }
-
-  const formatCurrency = (amount: number | null) => {
-    if (amount === null) return '-'
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      maximumFractionDigits: 0,
-    }).format(amount)
   }
 
   if (loading) {
@@ -383,35 +370,6 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                   </>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Financial Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Financial Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Monthly Salary</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(staff.salary ? Number(staff.salary) : null)}
-                  </p>
-                </div>
-                <Separator />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Bank Account No.</p>
-                    <p className="font-medium">{staff.bankAccountNo || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">IBAN</p>
-                    <p className="font-medium">{staff.bankIban || '-'}</p>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </div>

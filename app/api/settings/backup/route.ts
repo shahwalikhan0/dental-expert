@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
           bankName: true,
           bankAccountNo: true,
           bankIban: true,
-          upiId: true,
+          mobileWalletId: true,
         },
       })
       data.holidays = await prisma.holiday.findMany({

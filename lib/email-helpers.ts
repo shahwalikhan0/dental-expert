@@ -5,6 +5,7 @@
  */
 
 import { emailService } from '@/lib/services/email.service'
+import { roleLabel } from '@/lib/rbac'
 
 const APP_NAME = 'DentalERP'
 
@@ -51,6 +52,7 @@ function wrapHTML(content: string): string {
  * Non-blocking — logs errors but does not throw.
  */
 export async function sendInviteEmail(params: {
+  hospitalId: string
   to: string
   inviteeName: string
   hospitalName: string
@@ -58,15 +60,18 @@ export async function sendInviteEmail(params: {
   inviterName: string
   token: string
 }): Promise<boolean> {
-  const { to, inviteeName, hospitalName, role, inviterName, token } = params
+  const { hospitalId, to, inviteeName, hospitalName, role, inviterName, token } = params
   const link = `${baseUrl()}/invite/accept?token=${token}`
-  const roleLabel = role.charAt(0) + role.slice(1).toLowerCase().replace('_', ' ')
+  // The same label the rest of the application shows. This used to lowercase
+  // the enum and replace the first underscore, so an invitation offered a job
+  // as a "Dental assistant" where every screen says "Dental Assistant".
+  const label = roleLabel(role)
 
   const html = wrapHTML(`
     <div class="logo">${APP_NAME}</div>
     <h1>You're invited to join ${hospitalName}</h1>
     <p>Hi ${inviteeName},</p>
-    <p><strong>${inviterName}</strong> has invited you to join <strong>${hospitalName}</strong> as a <strong>${roleLabel}</strong>.</p>
+    <p><strong>${inviterName}</strong> has invited you to join <strong>${hospitalName}</strong> as a <strong>${label}</strong>.</p>
     <p>Click the button below to accept the invitation and create your account:</p>
     <p style="text-align:center; margin: 28px 0;">
       <a href="${link}" class="btn">Accept Invitation</a>
@@ -78,6 +83,7 @@ export async function sendInviteEmail(params: {
 
   try {
     await emailService.sendEmail({
+      hospitalId,
       to,
       subject: `You're invited to join ${hospitalName} on ${APP_NAME}`,
       body: html,
@@ -94,12 +100,13 @@ export async function sendInviteEmail(params: {
  * Non-blocking — logs errors but does not throw.
  */
 export async function sendVerificationEmail(params: {
+  hospitalId: string
   to: string
   userName: string
   hospitalName: string
   token: string
 }): Promise<boolean> {
-  const { to, userName, hospitalName, token } = params
+  const { hospitalId, to, userName, hospitalName, token } = params
   const link = `${baseUrl()}/verify-email?token=${token}`
 
   const html = wrapHTML(`
@@ -117,6 +124,7 @@ export async function sendVerificationEmail(params: {
 
   try {
     await emailService.sendEmail({
+      hospitalId,
       to,
       subject: `Verify your email — ${APP_NAME}`,
       body: html,

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { Prisma, SupplierStatus } from '@prisma/client'
+import { Prisma, VendorStatus } from '@prisma/client'
 
-const SUPPLIER_STATUSES = Object.values(SupplierStatus) as string[]
+const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
 /** Accepts the legacy lowercase status values as well as the enum casing. */
-function parseStatus(value: string): SupplierStatus | null {
+function parseStatus(value: string): VendorStatus | null {
   const upper = value.toUpperCase()
-  return SUPPLIER_STATUSES.includes(upper) ? (upper as SupplierStatus) : null
+  return VENDOR_STATUSES.includes(upper) ? (upper as VendorStatus) : null
 }
 
 // GET - Fetch all suppliers
@@ -27,8 +27,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const skip = (page - 1) * limit
 
-    const where: Prisma.SupplierWhereInput = {
+    // Suppliers and dental laboratories share one `Vendor` table; `kind` is
+    // what separates them. Leaving it out here would list the clinic's
+    // laboratories on its suppliers screen.
+    const where: Prisma.VendorWhereInput = {
       hospitalId,
+      kind: 'SUPPLIER',
       deletedAt: null,
     }
 
@@ -46,8 +50,8 @@ export async function GET(request: NextRequest) {
     }
 
     const [total, suppliers] = await Promise.all([
-      prisma.supplier.count({ where }),
-      prisma.supplier.findMany({
+      prisma.vendor.count({ where }),
+      prisma.vendor.findMany({
         where,
         orderBy: { name: 'asc' },
         skip,
@@ -119,7 +123,7 @@ export async function POST(request: NextRequest) {
       nationalTaxNo,
       paymentTerms = 'Net 30',
       creditLimit = 0,
-      status = SupplierStatus.ACTIVE,
+      status = VendorStatus.ACTIVE,
       rating = 0,
       notes,
     } = body
@@ -131,8 +135,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const existing = await prisma.supplier.findFirst({
-      where: { hospitalId, code, deletedAt: null },
+    const existing = await prisma.vendor.findFirst({
+      where: { hospitalId, kind: 'SUPPLIER', code, deletedAt: null },
       select: { id: true },
     })
 
@@ -140,9 +144,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Supplier code already exists' }, { status: 409 })
     }
 
-    const supplier = await prisma.supplier.create({
+    const supplier = await prisma.vendor.create({
       data: {
         hospitalId,
+        kind: 'SUPPLIER',
         code,
         name,
         contactPerson: contactPerson || null,
@@ -157,7 +162,7 @@ export async function POST(request: NextRequest) {
         nationalTaxNo: nationalTaxNo || null,
         paymentTerms,
         creditLimit,
-        status: parseStatus(String(status)) ?? SupplierStatus.ACTIVE,
+        status: parseStatus(String(status)) ?? VendorStatus.ACTIVE,
         rating,
         notes: notes || null,
       },

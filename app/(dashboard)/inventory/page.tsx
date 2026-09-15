@@ -23,12 +23,11 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GridPagination } from '@/components/ui/data-grid'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   MoreHorizontal,
   Eye,
   Edit,
@@ -236,6 +235,12 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Manage inventory items and stock levels</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/inventory/purchase-orders">
+            <Button variant="outline">
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Purchase Orders
+            </Button>
+          </Link>
           <Link href="/inventory/suppliers">
             <Button variant="outline">
               <Users className="h-4 w-4 mr-2" />
@@ -660,39 +665,14 @@ export default function InventoryPage() {
             </TableBody>
           </Table>
 
-          {/* Pagination */}
-          {!loading && pagination.pages > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} items
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="text-sm">
-                  Page {pagination.page} of {pagination.pages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={pagination.page >= pagination.pages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="items"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
     </div>

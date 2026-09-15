@@ -23,18 +23,17 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   UserCog,
   MoreHorizontal,
   Eye,
   Edit,
   Phone,
   Mail,
-  Calendar,
+  MailPlus,
   BarChart3,
   UserX,
 } from 'lucide-react'
@@ -202,16 +201,14 @@ export default function StaffPage() {
               }))
             }
           />
-          <Link href="/staff/attendance">
+          {/* Attendance and Leaves used to sit here, linking to /staff/attendance
+              and /staff/leaves. Neither page exists — 39fdd2e removed the
+              attendance and leave tables as out of scope (spec §3) and left the
+              two buttons behind, so both were 404s on the busiest staff screen. */}
+          <Link href="/staff/invites">
             <Button variant="outline">
-              <Calendar className="h-4 w-4 mr-2" />
-              Attendance
-            </Button>
-          </Link>
-          <Link href="/staff/leaves">
-            <Button variant="outline">
-              <Calendar className="h-4 w-4 mr-2" />
-              Leaves
+              <MailPlus className="h-4 w-4 mr-2" />
+              Invitations
             </Button>
           </Link>
           <Link href="/staff/new">
@@ -329,7 +326,11 @@ export default function StaffPage() {
                 </TableRow>
               ) : (
                 staff.map((member) => (
-                  <TableRow key={member.id}>
+                  <ClickableRow
+                    key={member.id}
+                    href={`/staff/${member.id}`}
+                    label={`Open ${member.firstName} ${member.lastName}`}
+                  >
                     <TableCell>
                       <div className="font-medium">{member.employeeId}</div>
                     </TableCell>
@@ -415,45 +416,20 @@ export default function StaffPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))
               )}
             </TableBody>
           </Table>
 
-          {/* Pagination */}
-          {!loading && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} staff members
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="text-sm">
-                  Page {pagination.page} of {pagination.totalPages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="staff"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
 

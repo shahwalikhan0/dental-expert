@@ -28,6 +28,7 @@ describe('sendInviteEmail', () => {
     mockSendEmail.mockResolvedValue(undefined)
 
     const result = await sendInviteEmail({
+      hospitalId: 'h1',
       to: 'john@example.com',
       inviteeName: 'John',
       hospitalName: 'Smile Dental',
@@ -44,7 +45,13 @@ describe('sendInviteEmail', () => {
     expect(call.body).toContain('John')
     expect(call.body).toContain('Smile Dental')
     expect(call.body).toContain('Admin User')
-    expect(call.body).toContain('Doctor') // role formatted
+    // The same label the rest of the application shows. It used to be
+    // lowercased with only the first underscore replaced, so an invitation
+    // offered a job as a "Dental assistant" where every screen says
+    // "Dental Assistant" — and DOCTOR read as "Doctor" where the clinic calls
+    // the role Dentist.
+    expect(call.body).toContain('Dentist')
+    expect(call.hospitalId).toBe('h1')
     expect(call.body).toContain('abc123') // token in link
   })
 
@@ -52,6 +59,7 @@ describe('sendInviteEmail', () => {
     mockSendEmail.mockRejectedValue(new Error('SMTP error'))
 
     const result = await sendInviteEmail({
+      hospitalId: 'h1',
       to: 'john@example.com',
       inviteeName: 'John',
       hospitalName: 'Smile Dental',
@@ -67,6 +75,7 @@ describe('sendInviteEmail', () => {
     mockSendEmail.mockResolvedValue(undefined)
 
     await sendInviteEmail({
+      hospitalId: 'h1',
       to: 'jane@example.com',
       inviteeName: 'Jane',
       hospitalName: 'Clinic',
@@ -91,6 +100,7 @@ describe('sendVerificationEmail', () => {
     mockSendEmail.mockResolvedValue(undefined)
 
     const result = await sendVerificationEmail({
+      hospitalId: 'h1',
       to: 'admin@example.com',
       userName: 'Admin',
       hospitalName: 'New Clinic',
@@ -111,6 +121,7 @@ describe('sendVerificationEmail', () => {
     mockSendEmail.mockRejectedValue(new Error('Connection timeout'))
 
     const result = await sendVerificationEmail({
+      hospitalId: 'h1',
       to: 'admin@example.com',
       userName: 'Admin',
       hospitalName: 'New Clinic',
@@ -124,6 +135,7 @@ describe('sendVerificationEmail', () => {
     mockSendEmail.mockResolvedValue(undefined)
 
     await sendVerificationEmail({
+      hospitalId: 'h1',
       to: 'test@test.com',
       userName: 'Test',
       hospitalName: 'Test Clinic',

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { GridPagination } from '@/components/ui/data-grid'
 
 interface Transaction {
   id: number
@@ -312,36 +313,14 @@ export default function TransactionsPage() {
               </table>
             </div>
 
-            {/* Pagination */}
-            <div className="bg-background px-4 py-3 flex items-center justify-between border-t border-border sm:px-6">
-              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm text-foreground">
-                    Showing page <span className="font-medium">{pagination.page}</span> of{' '}
-                    <span className="font-medium">{pagination.pages}</span> ({pagination.total}{' '}
-                    total transactions)
-                  </p>
-                </div>
-                <div>
-                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                    <button
-                      onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                      disabled={pagination.page === 1}
-                      className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-border bg-background text-sm font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                      disabled={pagination.page === pagination.pages}
-                      className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-border bg-background text-sm font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
-                    >
-                      Next
-                    </button>
-                  </nav>
-                </div>
-              </div>
-            </div>
+            <GridPagination
+              page={pagination.page}
+              pageSize={pagination.limit}
+              total={pagination.total}
+              noun="movements"
+              onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+              onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            />
           </>
         )}
       </div>

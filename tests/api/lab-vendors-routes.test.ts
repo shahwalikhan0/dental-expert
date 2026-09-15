@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
-import { LabOrderStatus, LabVendorStatus } from '@prisma/client'
+import { LabOrderStatus, VendorStatus } from '@prisma/client'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -105,11 +105,11 @@ describe('GET /api/lab-vendors', () => {
   it('returns vendors with pagination', async () => {
     mockAuth()
     const mockVendors = [
-      { id: 'v1', name: 'Lab A', phone: '9876543210', isActive: true },
-      { id: 'v2', name: 'Lab B', phone: '9876543211', isActive: true },
+      { id: 'v1', name: 'Lab A', phone: '9876543210', status: 'ACTIVE' },
+      { id: 'v2', name: 'Lab B', phone: '9876543211', status: 'ACTIVE' },
     ]
-    vi.mocked(prisma.labVendor.count).mockResolvedValue(2)
-    vi.mocked(prisma.labVendor.findMany).mockResolvedValue(mockVendors as any)
+    vi.mocked(prisma.vendor.count).mockResolvedValue(2)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue(mockVendors as any)
 
     const res = await vendorsGET(makeReq('/api/lab-vendors'))
     const body = await res.json()
@@ -121,36 +121,74 @@ describe('GET /api/lab-vendors', () => {
 
   it('filters by search term', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.count).mockResolvedValue(0)
-    vi.mocked(prisma.labVendor.findMany).mockResolvedValue([])
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
 
     await vendorsGET(makeReq('/api/lab-vendors?search=dental'))
 
-    const whereArg = vi.mocked(prisma.labVendor.findMany).mock.calls[0][0]?.where
+    const whereArg = vi.mocked(prisma.vendor.findMany).mock.calls[0][0]?.where
     expect(whereArg.OR).toBeDefined()
     expect(whereArg.OR.length).toBe(3)
   })
 
+  /**
+   * Laboratories and suppliers are one table now, told apart by `kind`. Without
+   * that filter the laboratories screen would list the clinic's materials
+   * suppliers, so it is worth asserting rather than assuming.
+   */
+  it('lists only laboratories, and only ones that are not deleted', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
+
+    await vendorsGET(makeReq('/api/lab-vendors'))
+
+    expect(vi.mocked(prisma.vendor.findMany).mock.calls[0][0]?.where).toMatchObject({
+      hospitalId: 'h1',
+      kind: 'LAB',
+      // LabVendor had a `deletedAt` column that nothing ever filtered on, so a
+      // deleted laboratory stayed on the list for ever.
+      deletedAt: null,
+    })
+  })
+
   it('filters by active status', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.count).mockResolvedValue(0)
-    vi.mocked(prisma.labVendor.findMany).mockResolvedValue([])
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
 
     await vendorsGET(makeReq('/api/lab-vendors?status=active'))
 
-    const whereArg = vi.mocked(prisma.labVendor.findMany).mock.calls[0][0]?.where
-    expect(whereArg.isActive).toBe(true)
+    const whereArg = vi.mocked(prisma.vendor.findMany).mock.calls[0][0]?.where
+    expect(whereArg.status).toBe(VendorStatus.ACTIVE)
   })
 
   it('filters by inactive status', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.count).mockResolvedValue(0)
-    vi.mocked(prisma.labVendor.findMany).mockResolvedValue([])
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
 
     await vendorsGET(makeReq('/api/lab-vendors?status=inactive'))
 
-    const whereArg = vi.mocked(prisma.labVendor.findMany).mock.calls[0][0]?.where
-    expect(whereArg.isActive).toBe(false)
+    const whereArg = vi.mocked(prisma.vendor.findMany).mock.calls[0][0]?.where
+    expect(whereArg.status).toBe(VendorStatus.INACTIVE)
+  })
+
+  /**
+   * The old filter read the `isActive` boolean, which made "inactive" and
+   * "blocked" the same query — the screen could not tell a laboratory that had
+   * simply lapsed from one the clinic had refused to use again.
+   */
+  it('tells a blocked laboratory apart from an inactive one', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.count).mockResolvedValue(0)
+    vi.mocked(prisma.vendor.findMany).mockResolvedValue([])
+
+    await vendorsGET(makeReq('/api/lab-vendors?status=blocked'))
+
+    expect(vi.mocked(prisma.vendor.findMany).mock.calls[0][0]?.where.status).toBe(
+      VendorStatus.BLOCKED
+    )
   })
 })
 
@@ -179,7 +217,7 @@ describe('POST /api/lab-vendors', () => {
 
   it('creates a lab vendor', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.create).mockResolvedValue({
+    vi.mocked(prisma.vendor.create).mockResolvedValue({
       id: 'v1',
       name: 'Lab A',
       phone: '9876543210',
@@ -218,7 +256,7 @@ describe('GET /api/lab-vendors/[id]', () => {
 
   it('returns 404 when vendor not found', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
 
     const res = await vendorDetailGET(makeReq('/api/lab-vendors/v1'), makeParams('v1'))
     expect(res.status).toBe(404)
@@ -226,12 +264,12 @@ describe('GET /api/lab-vendors/[id]', () => {
 
   it('returns vendor detail', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({
       id: 'v1',
       code: 'LV001',
       name: 'Lab A',
       phone: '9876543210',
-      status: LabVendorStatus.ACTIVE,
+      status: VendorStatus.ACTIVE,
     } as any)
 
     const res = await vendorDetailGET(makeReq('/api/lab-vendors/v1'), makeParams('v1'))
@@ -252,7 +290,7 @@ describe('PUT /api/lab-vendors/[id]', () => {
 
   it('returns 404 when vendor not found', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
 
     const res = await vendorDetailPUT(
       makeReq('/api/lab-vendors/v1', 'PUT', { code: 'LV001', name: 'X', phone: '1' }),
@@ -263,7 +301,7 @@ describe('PUT /api/lab-vendors/[id]', () => {
 
   it('returns 400 when required fields missing', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
 
     const res = await vendorDetailPUT(
       makeReq('/api/lab-vendors/v1', 'PUT', { name: 'X' }),
@@ -274,7 +312,7 @@ describe('PUT /api/lab-vendors/[id]', () => {
 
   it('returns 409 when the vendor code is a duplicate', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst)
+    vi.mocked(prisma.vendor.findFirst)
       .mockResolvedValueOnce({ id: 'v1' } as any)
       .mockResolvedValueOnce({ id: 'v2' } as any)
 
@@ -287,10 +325,10 @@ describe('PUT /api/lab-vendors/[id]', () => {
 
   it('updates vendor successfully', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst)
+    vi.mocked(prisma.vendor.findFirst)
       .mockResolvedValueOnce({ id: 'v1' } as any)
       .mockResolvedValueOnce(null)
-    vi.mocked(prisma.labVendor.update).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.update).mockResolvedValue({ id: 'v1' } as any)
 
     const res = await vendorDetailPUT(
       makeReq('/api/lab-vendors/v1', 'PUT', {
@@ -304,11 +342,11 @@ describe('PUT /api/lab-vendors/[id]', () => {
     )
     expect(res.status).toBe(200)
 
-    const data = vi.mocked(prisma.labVendor.update).mock.calls[0][0].data
+    const data = vi.mocked(prisma.vendor.update).mock.calls[0][0].data
     expect(data.name).toBe('Updated Lab')
     expect(data.creditLimit).toBe(5000)
     // Legacy lowercase status is accepted and mapped onto the enum.
-    expect(data.status).toBe(LabVendorStatus.BLOCKED)
+    expect(data.status).toBe(VendorStatus.BLOCKED)
   })
 })
 
@@ -321,7 +359,7 @@ describe('DELETE /api/lab-vendors/[id]', () => {
 
   it('returns 404 when vendor not found', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
 
     const res = await vendorDetailDELETE(makeReq('/api/lab-vendors/v1'), makeParams('v1'))
     expect(res.status).toBe(404)
@@ -329,7 +367,7 @@ describe('DELETE /api/lab-vendors/[id]', () => {
 
   it('returns 400 when the vendor still has lab orders', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
     vi.mocked(prisma.labOrder.count).mockResolvedValue(3)
 
     const res = await vendorDetailDELETE(makeReq('/api/lab-vendors/v1'), makeParams('v1'))
@@ -340,13 +378,13 @@ describe('DELETE /api/lab-vendors/[id]', () => {
 
   it('soft deletes the vendor', async () => {
     mockAuth()
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
     vi.mocked(prisma.labOrder.count).mockResolvedValue(0)
-    vi.mocked(prisma.labVendor.update).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.update).mockResolvedValue({ id: 'v1' } as any)
 
     const res = await vendorDetailDELETE(makeReq('/api/lab-vendors/v1'), makeParams('v1'))
     expect(res.status).toBe(200)
-    expect(vi.mocked(prisma.labVendor.update).mock.calls[0][0].data.deletedAt).toBeInstanceOf(Date)
+    expect(vi.mocked(prisma.vendor.update).mock.calls[0][0].data.deletedAt).toBeInstanceOf(Date)
   })
 })
 

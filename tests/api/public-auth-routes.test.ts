@@ -141,6 +141,10 @@ describe('POST /api/public/signup', () => {
       user: {
         create: vi.fn().mockResolvedValue({ id: 'u1', email: 'admin@testdental.com' }),
       },
+      // A new clinic gets the starter message templates. Without them every
+      // automated message looks up a default template, finds none, and does
+      // nothing — which is what happened to every clinic that signed up.
+      communicationTemplate: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
     }
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(mockTx as any))
 
@@ -186,6 +190,7 @@ describe('POST /api/public/signup', () => {
     const mockTx = {
       hospital: { create: vi.fn().mockResolvedValue({ id: 'h1' }) },
       user: { create: vi.fn().mockResolvedValue({ id: 'u1' }) },
+      communicationTemplate: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
     }
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(mockTx as any))
 

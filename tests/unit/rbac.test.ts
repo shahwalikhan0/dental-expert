@@ -286,8 +286,10 @@ describe('permissionForRoute()', () => {
   it('matches the longest prefix, not the first', () => {
     expect(permissionForRoute('/billing/reports')).toBe('reports:financial')
     expect(permissionForRoute('/billing')).toBe('billing:read')
-    expect(permissionForRoute('/staff/attendance')).toBe('staff:hr')
     expect(permissionForRoute('/staff')).toBe('staff:read')
+    // /staff/attendance and /staff/leaves were mapped here for pages that do
+    // not exist — 39fdd2e removed attendance and leave as out of scope.
+    expect(permissionForRoute('/staff/attendance')).toBe('staff:read')
   })
 
   it('matches a nested path under a mapped prefix', () => {

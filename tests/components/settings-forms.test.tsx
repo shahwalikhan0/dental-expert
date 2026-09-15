@@ -109,10 +109,10 @@ const clinicData = (overrides = {}) => ({
     taxRegistrationNo: '3277876543210',
     nationalTaxNo: 'ABCDE1234F',
     workingHours: null,
-    bankName: 'HDFC Bank',
+    bankName: 'Meezan Bank',
     bankAccountNo: '1234567890',
-    bankIban: 'HDFC0001234',
-    upiId: 'clinic@upi',
+    bankIban: 'PK36SCBL0000001123456702',
+    mobileWalletId: '03001234567',
     patientPortalEnabled: false,
     ...overrides,
   },
@@ -260,13 +260,13 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue('HDFC Bank')).toBeInTheDocument()
+        expect(screen.getByDisplayValue('Meezan Bank')).toBeInTheDocument()
       })
       expect(screen.getByDisplayValue('1234567890')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('HDFC0001234')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('PK36SCBL0000001123456702')).toBeInTheDocument()
     })
 
-    it('renders UPI ID field', async () => {
+    it('renders the mobile wallet field', async () => {
       ;(global.fetch as any).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(clinicData()),
@@ -275,7 +275,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue('clinic@upi')).toBeInTheDocument()
+        expect(screen.getByDisplayValue('03001234567')).toBeInTheDocument()
       })
     })
 

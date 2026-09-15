@@ -8,137 +8,16 @@ import { templateService } from './template.service'
 import { addDays, startOfDay, endOfDay, format, subDays } from 'date-fns'
 
 class CommunicationTriggersService {
-  // Send appointment reminders (24 hours before)
-  async sendAppointmentReminders24Hours() {
-    const tomorrow = addDays(new Date(), 1)
-    const tomorrowStart = startOfDay(tomorrow)
-    const tomorrowEnd = endOfDay(tomorrow)
-
-    // Get all appointments scheduled for tomorrow
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        scheduledDate: {
-          gte: tomorrowStart,
-          lte: tomorrowEnd,
-        },
-        status: {
-          in: ['SCHEDULED', 'CONFIRMED'],
-        },
-      },
-      include: {
-        patient: true,
-        doctor: {
-          include: {
-            user: true,
-          },
-        },
-        chair: { select: { name: true } },
-      },
-    })
-
-    console.log(`Found ${appointments.length} appointments for tomorrow`)
-
-    for (const appointment of appointments) {
-      try {
-        // Whether this patient wants this message is decided by the sending
-        // service, from `kind` below. It used to be decided here as well, in a
-        // second copy that read the preference row directly — and the two
-        // disagreed: this one treated a missing row as consent, the sender
-        // treated it as refusal, and no row ever existed.
-
-        // Get clinic info for variables
-        const clinicInfo = await prisma.hospital.findUnique({
-          where: { id: appointment.hospitalId },
-          select: { name: true, phone: true },
-        })
-
-        const variables = {
-          patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
-          firstName: appointment.patient.firstName,
-          appointmentDate: format(appointment.scheduledDate, 'dd-MMM-yyyy'),
-          appointmentTime: appointment.scheduledTime,
-          appointmentNo: appointment.appointmentNo,
-          doctorName: `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`,
-          chair: appointment.chair?.name || 'TBA',
-          // Kept as an alias so templates written against the old variable name
-          // keep rendering; only `chair` is offered in the variable picker.
-          chairNumber: appointment.chair?.name || 'TBA',
-          clinicName: clinicInfo?.name || 'Your Dental Clinic',
-          clinicPhone: clinicInfo?.phone || '',
-        }
-
-        // Send SMS if the patient has a number
-        if (appointment.patient.phone) {
-          const smsTemplate = await templateService.getDefaultTemplate(
-            appointment.hospitalId,
-            'APPOINTMENT',
-            'SMS'
-          )
-
-          if (smsTemplate) {
-            const message = templateService.replaceVariables(smsTemplate.content, variables)
-
-            await smsService.sendSMS({
-              hospitalId: appointment.hospitalId,
-              phone: appointment.patient.phone,
-              message,
-              patientId: appointment.patientId,
-              templateId: smsTemplate.id,
-              kind: 'appointmentReminders',
-              relatedType: 'Appointment',
-              relatedId: appointment.id,
-            })
-
-            console.log(
-              `SMS reminder sent to ${appointment.patient.phone} for appointment ${appointment.appointmentNo}`
-            )
-          }
-        }
-
-        // Send Email if the patient has an address
-        if (appointment.patient.email) {
-          const emailTemplate = await templateService.getDefaultTemplate(
-            appointment.hospitalId,
-            'APPOINTMENT',
-            'EMAIL'
-          )
-
-          if (emailTemplate) {
-            const body = await emailService.generateEmailHTML(
-              templateService.replaceVariables(emailTemplate.content, variables)
-            )
-
-            await emailService.sendEmail({
-              to: appointment.patient.email,
-              subject: templateService.replaceVariables(
-                emailTemplate.subject || 'Appointment Reminder',
-                variables
-              ),
-              body,
-              hospitalId: appointment.hospitalId,
-              patientId: appointment.patientId,
-              templateId: emailTemplate.id,
-              kind: 'appointmentReminders',
-              relatedType: 'Appointment',
-              relatedId: appointment.id,
-            })
-
-            console.log(
-              `Email reminder sent to ${appointment.patient.email} for appointment ${appointment.appointmentNo}`
-            )
-          }
-        }
-
-        // No separate reminder row is written. `sendSMS` and `sendEmail`
-        // already record one message row each, tagged with this appointment —
-        // which is strictly more than the old AppointmentReminder row said,
-        // since that one recorded a channel of 'SMS' whether or not an SMS was
-        // the thing that went out.
-      } catch (error) {
-        console.error(`Error sending reminder for appointment ${appointment.appointmentNo}:`, error)
-      }
-    }
-  }
+  // Appointment reminders are not here any more.
+  //
+  // They were sent from this job, immediately, while `/api/cron/reminders` was
+  // separately queueing reminders for the same appointments that nothing ever
+  // sent. Two systems reminding the same patient about the same appointment,
+  // neither aware of the other, and only one of them working. The queue owns
+  // them now: `/api/cron/reminders` decides when, `/api/cron/dispatch` sends.
+  //
+  // What is left here is the three triggers that have no queue and no schedule
+  // to respect — they fire on the day they are true.
 
   // Send birthday wishes
   async sendBirthdayWishes() {
@@ -320,10 +199,16 @@ class CommunicationTriggersService {
             const message = templateService.replaceVariables(smsTemplate.content, variables)
 
             await smsService.sendSMS({
+              // Absent until now, which meant this one wrote a log row with an
+              // empty hospitalId and failed on the foreign key: the lab-ready
+              // notification was the one trigger that could never send.
+              hospitalId: order.hospitalId,
               phone: order.patient.phone,
               message,
               patientId: order.patientId,
               templateId: smsTemplate.id,
+              relatedType: 'LabOrder',
+              relatedId: order.id,
             })
           }
         }
@@ -350,7 +235,6 @@ class CommunicationTriggersService {
     console.log('Starting communication triggers...')
 
     try {
-      await this.sendAppointmentReminders24Hours()
       await this.sendBirthdayWishes()
       await this.sendPaymentReminders()
       await this.sendLabWorkReadyNotifications()

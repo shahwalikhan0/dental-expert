@@ -111,24 +111,6 @@ function mockAllAnalytics() {
     _sum: { cost: { toNumber: () => 250.5 } },
   } as never)
 
-  // Campaigns
-  vi.mocked(prisma.bulkCommunication.findMany).mockResolvedValue([
-    {
-      id: 'bc1',
-      name: 'Welcome Campaign',
-      channel: 'SMS',
-      status: 'COMPLETED',
-      recipientCount: 50,
-      sentCount: 48,
-      failedCount: 2,
-      estimatedCost: { toNumber: () => 100 },
-      actualCost: { toNumber: () => 96 },
-      startedAt: new Date(),
-      completedAt: new Date(),
-      createdAt: new Date(),
-    },
-  ] as never)
-
   // Templates
   vi.mocked(prisma.communicationTemplate.findMany).mockResolvedValue([
     { id: 't1', name: 'Appointment Reminder', category: 'APPOINTMENT' },
@@ -178,11 +160,10 @@ describe('GET /api/communications/analytics', () => {
     // "0 clicked of 412", which reads as a campaign nobody engaged with.
     expect(body.email).not.toHaveProperty('clicked')
 
-    // Campaigns
-    expect(body.campaigns).toHaveLength(1)
-    expect(body.campaigns[0].name).toBe('Welcome Campaign')
-    expect(body.campaigns[0].estimatedCost).toBe(100)
-    expect(body.campaigns[0].actualCost).toBe(96)
+    // Campaigns were reported here from `BulkCommunication`, a table nothing
+    // ever wrote to — so "Recent Campaigns" never had a row. Dropped with the
+    // table.
+    expect(body).not.toHaveProperty('campaigns')
   })
 
   it('respects period parameter', async () => {
@@ -249,7 +230,6 @@ describe('GET /api/communications/analytics', () => {
     vi.mocked(prisma.messageLog.count).mockResolvedValue(0 as never)
     vi.mocked(prisma.messageLog.groupBy).mockResolvedValue([] as never)
     vi.mocked(prisma.messageLog.aggregate).mockResolvedValue({ _sum: { cost: null } } as never)
-    vi.mocked(prisma.bulkCommunication.findMany).mockResolvedValue([])
     vi.mocked(prisma.communicationTemplate.findMany).mockResolvedValue([])
 
     const res = await analyticsGET(makeReq('/api/communications/analytics'))
@@ -261,6 +241,5 @@ describe('GET /api/communications/analytics', () => {
     expect(body.sms.totalCost).toBe(0)
     expect(body.email.total).toBe(0)
     expect(body.email.openRate).toBe(0)
-    expect(body.campaigns).toHaveLength(0)
   })
 })

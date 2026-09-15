@@ -71,7 +71,10 @@ model Hospital {
   // accounts are identified by a 24-character IBAN (PK + 2 check digits + 4
   // bank code + 16 account number).
   bankIban            String?
-  upiId               String?
+  /// A mobile-money number to print on an invoice — JazzCash or Easypaisa.
+  /// Was `upiId`, which is India's rail and has no Pakistani equivalent that
+  /// the bank fields above do not already cover.
+  mobileWalletId      String?
 
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -96,18 +99,15 @@ model Hospital {
   inventoryBatches    InventoryBatch[]
   stockTransactions   StockTransaction[]
   stockAlerts         StockAlert[]
-  suppliers           Supplier[]
+  vendors             Vendor[]
   purchaseOrders      PurchaseOrder[]
-  labVendors          LabVendor[]
   labOrders           LabOrder[]
   documents           Document[]
-  notifications       Notification[]
   auditLogs           AuditLog[]
   settings            Setting[]
   holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
   messageLogs         MessageLog[]
-  bulkCommunications  BulkCommunication[]
   staffInvites        StaffInvite[]
   staffShifts         StaffShift[]
   patientPortalEnabled Boolean   @default(false)
@@ -173,7 +173,6 @@ model Subscription {
   updatedAt          DateTime           @updatedAt
 
   hospital           Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  invoices           SubscriptionInvoice[]
 
   @@index([status])
   @@index([currentPeriodEnd])
@@ -191,51 +190,6 @@ enum SubscriptionStatus {
   /// records are not ours to destroy over an unpaid bill.
   SUSPENDED
   CANCELLED
-}
-
-/// What the platform charged a tenant for a period, and whether it was paid.
-///
-/// Distinct from the `Invoice` model, which is a clinic billing its patient.
-/// This is us billing the clinic, and conflating the two would put the
-/// platform's revenue inside each tenant's own financial reports.
-model SubscriptionInvoice {
-  id             String                    @id @default(cuid())
-  subscriptionId String
-  hospitalId     String
-
-  invoiceNo      String                    @unique
-  periodStart    DateTime
-  periodEnd      DateTime
-
-  amount         Decimal                   @db.Decimal(12, 2)
-  currency       String                    @default("PKR")
-
-  status         SubscriptionInvoiceStatus @default(DUE)
-  issuedAt       DateTime                  @default(now())
-  dueAt          DateTime?
-  paidAt         DateTime?
-
-  /// Bank transfer reference, cheque number or processor id — whatever ties
-  /// this row to money that actually arrived.
-  paymentRef     String?
-  note           String?                   @db.Text
-
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-
-  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@index([subscriptionId])
-  @@index([hospitalId])
-  @@index([status])
-  @@index([issuedAt])
-}
-
-enum SubscriptionInvoiceStatus {
-  DUE
-  PAID
-  /// Raised in error, or written off.
-  VOID
 }
 
 // ==================== AUTHENTICATION & USERS ====================
@@ -288,7 +242,6 @@ model User {
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   staff           Staff?
   auditLogs       AuditLog[]
-  notifications   Notification[]
   dataImportJobs  DataImportJob[]
   acknowledgedStockAlerts StockAlert[]
   discountsRequested      Invoice[]        @relation("DiscountsRequested")
@@ -349,10 +302,8 @@ model StaffInvite {
 
   hospital    Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@index([hospitalId])
-  @@index([email])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
   @@index([token])
-  @@index([status])
 }
 
 enum StaffInviteStatus {
@@ -389,9 +340,10 @@ model Staff {
   specialization  String?
   licenseNumber   String?
   joiningDate     DateTime  @default(now())
-  salary          Decimal?  @db.Decimal(10, 2)
-  bankAccountNo   String?
-  bankIban        String?
+  /// Payroll is out of scope — spec §3 excludes "full payroll, attendance, or
+  /// enterprise HR management beyond basic user/staff profiles". `salary`,
+  /// `bankAccountNo` and `bankIban` lived here, and the staff form collected
+  /// them, for a feature nobody was going to build.
   emergencyContact String?
   emergencyPhone  String?
   isActive        Boolean   @default(true)
@@ -409,8 +361,7 @@ model Staff {
   // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
   // index, so the many staff without one recorded do not collide.
   @@unique([hospitalId, cnic])
-  @@index([hospitalId])
-  @@index([phone])
+  @@index([hospitalId, isActive, lastName])
 }
 
 model StaffShift {
@@ -438,7 +389,9 @@ model Patient {
   firstName       String
   lastName        String
   dateOfBirth     DateTime?
-  age             Int?
+  /// `age Int?` was here, written once at registration and never again — so it
+  /// was wrong for most of the year, and the analytics report already ignored
+  /// it and computed age from `dateOfBirth`. See lib/age.ts.
   gender          Gender?
   bloodGroup      BloodGroup?
   phone           String
@@ -498,9 +451,10 @@ model Patient {
   // records carrying the same one are the same patient twice. NULLs stay
   // distinct, which matters: children hold a B-Form, not a CNIC.
   @@unique([hospitalId, cnic])
-  @@index([hospitalId])
-  @@index([phone])
-  @@index([firstName, lastName])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, isActive, createdAt(sort: Desc)])
+  @@index([hospitalId, phone])
+  @@index([hospitalId, lastName, firstName])
 }
 
 /// What a clinician needs to know before picking up a handpiece.
@@ -624,12 +578,11 @@ model Appointment {
   treatments      Treatment[]
 
   @@unique([hospitalId, appointmentNo])
-  @@index([hospitalId])
-  @@index([scheduledDate])
-  @@index([patientId])
-  @@index([doctorId])
-  @@index([chairId])
-  @@index([status])
+  @@index([hospitalId, scheduledDate, scheduledTime])
+  @@index([hospitalId, status, scheduledDate])
+  @@index([hospitalId, doctorId, scheduledDate])
+  @@index([hospitalId, patientId, scheduledDate(sort: Desc)])
+  @@index([chairId, scheduledDate])
 }
 
 /// A treatment chair / operatory. FR-025 lists chairs among the master data a
@@ -652,7 +605,7 @@ model Chair {
   appointments    Appointment[]
 
   @@unique([hospitalId, name])
-  @@index([hospitalId])
+  @@index([hospitalId, isActive, sortOrder])
 }
 
 
@@ -712,9 +665,7 @@ model DentalChartEntry {
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([toothNumber])
+  @@index([hospitalId, patientId, toothNumber])
 }
 
 enum ToothCondition {
@@ -766,8 +717,7 @@ model Procedure {
   treatmentPlanItems TreatmentPlanItem[]
 
   @@unique([hospitalId, code])
-  @@index([hospitalId])
-  @@index([category])
+  @@index([hospitalId, isActive, category])
 }
 
 enum ProcedureCategory {
@@ -813,9 +763,8 @@ model TreatmentPlan {
   items           TreatmentPlanItem[]
 
   @@unique([hospitalId, planNumber])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
 }
 
 model TreatmentPlanItem {
@@ -912,11 +861,10 @@ model Treatment {
   documents       Document[]
 
   @@unique([hospitalId, treatmentNo])
-  @@index([hospitalId])
-  @@index([patientId])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, doctorId, createdAt(sort: Desc)])
   @@index([appointmentId])
-  @@index([doctorId])
-  @@index([signedById])
 }
 
 /// What was said, or corrected, about a clinical note after it was signed.
@@ -999,9 +947,9 @@ model Prescription {
   medications     PrescriptionMedication[]
 
   @@unique([hospitalId, prescriptionNo])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([doctorId])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, doctorId])
 }
 
 model PrescriptionMedication {
@@ -1046,8 +994,7 @@ model Medication {
   hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   prescriptionMedications PrescriptionMedication[]
 
-  @@index([hospitalId])
-  @@index([name])
+  @@index([hospitalId, isActive, name])
 }
 
 // ==================== BILLING & FINANCIAL ====================
@@ -1105,10 +1052,8 @@ model Invoice {
   discountApprovedBy  User?     @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
 
   @@unique([hospitalId, invoiceNo])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-  @@index([createdAt])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
 }
 
 /// FR-014 — "Record refund amount, method, reason, authorizer, and link to
@@ -1145,10 +1090,9 @@ model Refund {
   cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
 
   @@unique([hospitalId, refundNo])
-  @@index([hospitalId])
+  @@index([hospitalId, refundedAt(sort: Desc)])
   @@index([paymentId])
   @@index([cashierSessionId])
-  @@index([refundedAt])
 }
 
 /// FR-015 — "Provide daily cashier/payment-method reconciliation and variance
@@ -1182,9 +1126,7 @@ model CashierSession {
   counts          CashierSessionCount[]
 
   @@unique([hospitalId, sessionNo])
-  @@index([hospitalId])
-  @@index([status])
-  @@index([openedAt])
+  @@index([hospitalId, status, openedAt(sort: Desc)])
 }
 
 /// One counted line per payment method on a closed session.
@@ -1250,11 +1192,13 @@ model Payment {
   paymentMethod   PaymentMethod
   paymentDate     DateTime      @default(now())
 
+  /// The reference the payer or the bank gave: a wallet transaction id, an
+  /// IBFT reference, a card authorisation code. Was duplicated by a separate
+  /// `upiId` column that recorded the same kind of thing for one rail only.
   transactionId   String?
   bankName        String?
   chequeNumber    String?
   chequeDate      DateTime?
-  upiId           String?
 
   notes           String?
   status          PaymentStatus @default(COMPLETED)
@@ -1278,10 +1222,9 @@ model Payment {
   refunds         Refund[]
 
   @@unique([hospitalId, paymentNo])
-  @@index([hospitalId])
+  @@index([hospitalId, paymentDate(sort: Desc)])
   @@index([invoiceId])
-  @@index([paymentDate])
-  @@index([cashierSessionId])
+  @@index([hospitalId, cashierSessionId])
 }
 
 enum DiscountType {
@@ -1299,14 +1242,24 @@ enum InvoiceStatus {
   REFUNDED
 }
 
+/// How money reached the clinic.
+///
+/// `UPI` is gone. It is India's instant-payment rail, and no Pakistani clinic
+/// can take one — while the two things a Pakistani patient actually pays with
+/// already had values here: a mobile wallet (JazzCash, Easypaisa, SadaPay) is
+/// `WALLET`, and Raast or an interbank transfer is `BANK_TRANSFER`. Keeping it
+/// meant a payment method on the till screen that nobody could ever select
+/// honestly, and a line on every daily reconciliation that was always zero.
 enum PaymentMethod {
   CASH
   CARD
-  UPI
   BANK_TRANSFER
   CHEQUE
   INSURANCE
+  /// A mobile-money wallet: JazzCash, Easypaisa, SadaPay.
   WALLET
+  /// Taken through a payment gateway on the clinic's own booking pages. No
+  /// processor is integrated yet — see CHANGES.md §11.1.
   ONLINE
 }
 
@@ -1341,9 +1294,10 @@ model InventoryItem {
   category        String?
   description     String?   @db.Text
   itemType        InventoryItemType @default(DENTAL_MATERIAL)
-  // Single "preferred supplier" pointer used by the item form and the
-  // suppliers list's items-supplied count. Distinct from SupplierItem, which
-  // records every supplier that stocks an item along with their SKU/price.
+  // The supplier this item is normally bought from. `SupplierItem` used to sit
+  // beside it recording every supplier that stocks an item with their own SKU,
+  // price and lead time — a table nothing ever wrote to, which is why the
+  // inventory list's "supplier" column was always empty.
   preferredSupplierId String?
 
   unit            String
@@ -1375,20 +1329,17 @@ model InventoryItem {
   deletedAt       DateTime?
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  preferredSupplier Supplier? @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
+  preferredSupplier Vendor?   @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
   stockTransactions StockTransaction[]
   batches         InventoryBatch[]
-  supplierItems   SupplierItem[]
+  purchaseOrderItems PurchaseOrderItem[]
   alerts          StockAlert[]
 
   @@unique([hospitalId, sku])
-  @@index([hospitalId])
-  @@index([name])
-  @@index([currentStock])
-  @@index([deletedAt])
-  @@index([itemType])
-  @@index([category])
   @@index([preferredSupplierId])
+  @@index([hospitalId, deletedAt, name])
+  @@index([hospitalId, deletedAt, itemType])
+  @@index([hospitalId, deletedAt, category])
 }
 
 enum InventoryItemType {
@@ -1417,12 +1368,12 @@ model InventoryBatch {
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   item            InventoryItem @relation(fields: [itemId], references: [id])
-  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  supplier        Vendor?   @relation(fields: [supplierId], references: [id])
   stockTransactions StockTransaction[]
 
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([expiryDate])
+  @@unique([hospitalId, itemId, batchNumber])
+  @@index([hospitalId, itemId])
+  @@index([hospitalId, expiryDate])
 }
 
 model StockTransaction {
@@ -1459,15 +1410,13 @@ model StockTransaction {
   hospital        Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   item            InventoryItem        @relation(fields: [itemId], references: [id])
   batch           InventoryBatch?      @relation(fields: [batchId], references: [id])
-  supplier        Supplier?            @relation(fields: [supplierId], references: [id])
+  supplier        Vendor?              @relation(fields: [supplierId], references: [id])
 
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([createdAt])
-  @@index([transactionDate])
-  @@index([type])
   @@index([batchId])
   @@index([supplierId])
+  @@index([hospitalId, transactionDate(sort: Desc)])
+  @@index([hospitalId, itemId, transactionDate(sort: Desc)])
+  @@index([hospitalId, type, transactionDate(sort: Desc)])
 }
 
 enum StockTransactionType {
@@ -1482,73 +1431,86 @@ enum StockTransactionType {
   CONSUMPTION
 }
 
-model Supplier {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  code            String
-  name            String
-  contactPerson   String?
-  email           String?
-  phone           String
-  alternatePhone  String?
-  address         String?   @db.Text
-  city            String?
-  state           String?
-  postalCode      String?
+/// An organisation the clinic does business with: a supplier of materials, or
+/// a dental laboratory.
+///
+/// These were two tables, `Supplier` and `LabVendor`, with twenty-seven columns
+/// in common — code, name, contact, address, both tax identifiers, bank
+/// details, payment terms, credit limit, rating, status, soft delete. They
+/// differed in two fields, both of which only a laboratory uses. Every change
+/// to how the clinic records a business contact had to be made twice, and one
+/// of the two was always the one that got forgotten: `LabVendor` never received
+/// the `@@unique([hospitalId, code])` that `Supplier` has, so two laboratories
+/// could quietly share a code.
+///
+/// A dental laboratory *is* a supplier — of crowns rather than composite. What
+/// differs is what the clinic sends them, and that is on `LabOrder`, not here.
+model Vendor {
+  id                String       @id @default(cuid())
+  hospitalId        String
+  kind              VendorKind
+
+  /// The clinic's own reference. Optional because laboratories were never
+  /// required to have one; unique per clinic *and kind*, so a supplier and a
+  /// laboratory may both be "V001" without one migration renaming the other.
+  code              String?
+  name              String
+  contactPerson     String?
+  email             String?
+  phone             String
+  alternatePhone    String?
+  address           String?      @db.Text
+  city              String?
+  state             String?
+  postalCode        String?
+
   taxRegistrationNo String?
-  nationalTaxNo   String?
-  bankAccountNo   String?
-  bankIban        String?
-  paymentTerms    String?
-  creditLimit     Decimal?  @db.Decimal(12, 2)
-  notes           String?   @db.Text
-  rating          Int?      @default(0)
-  isActive        Boolean   @default(true)
-  // Three-state lifecycle carried over from the legacy `suppliers.status`
-  // column. isActive is kept for backwards compatibility and mirrors
-  // status != BLOCKED/INACTIVE.
-  status          SupplierStatus @default(ACTIVE)
+  nationalTaxNo     String?
+  bankAccountNo     String?
+  bankIban          String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  paymentTerms      String?
+  creditLimit       Decimal?     @db.Decimal(12, 2)
+  /// 0-5, the clinic's own judgement of them.
+  rating            Int?         @default(0)
+  notes             String?      @db.Text
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  purchaseOrders  PurchaseOrder[]
-  batches         InventoryBatch[]
-  supplierItems   SupplierItem[]
-  preferredForItems InventoryItem[] @relation("PreferredSupplierItems")
+  /// One lifecycle field, not two. Both tables carried an `isActive` boolean
+  /// *and* this enum, and the schema comment on `isActive` admitted it merely
+  /// mirrored `status != BLOCKED/INACTIVE` — two columns that could disagree,
+  /// with nothing deciding which one won.
+  status            VendorStatus @default(ACTIVE)
+
+  /// Laboratories only: the work they take on, and their usual turnaround in
+  /// days. Null on a supplier, and nothing asks a supplier for them.
+  specializations   String?      @db.Text
+  avgTurnaround     Int?
+
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  deletedAt         DateTime?
+
+  hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  purchaseOrders    PurchaseOrder[]
+  batches           InventoryBatch[]
+  preferredForItems InventoryItem[]    @relation("PreferredSupplierItems")
   stockTransactions StockTransaction[]
+  labOrders         LabOrder[]
 
-  @@unique([hospitalId, code])
-  @@index([hospitalId])
-  @@index([name])
-  @@index([status])
-  @@index([deletedAt])
+  @@unique([hospitalId, kind, code])
+  @@index([hospitalId, kind, deletedAt, name])
+  @@index([hospitalId, kind, status])
 }
 
-enum SupplierStatus {
+enum VendorKind {
+  SUPPLIER
+  LAB
+}
+
+enum VendorStatus {
   ACTIVE
   INACTIVE
   BLOCKED
-}
-
-model SupplierItem {
-  id              String    @id @default(cuid())
-  supplierId      String
-  itemId          String
-  supplierSku     String?
-  supplierPrice   Decimal   @db.Decimal(10, 2)
-  leadTimeDays    Int?
-  minimumOrderQty Int?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  supplier        Supplier  @relation(fields: [supplierId], references: [id])
-  item            InventoryItem @relation(fields: [itemId], references: [id])
-
-  @@unique([supplierId, itemId])
 }
 
 model PurchaseOrder {
@@ -1573,15 +1535,12 @@ model PurchaseOrder {
   deletedAt       DateTime?
 
   hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  supplier        Vendor              @relation(fields: [supplierId], references: [id])
   items           PurchaseOrderItem[]
 
   @@unique([hospitalId, orderNumber])
-  @@index([hospitalId])
-  @@index([supplierId])
-  @@index([status])
-  @@index([orderDate])
-  @@index([deletedAt])
+  @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
+  @@index([hospitalId, supplierId, orderDate(sort: Desc)])
 }
 
 model PurchaseOrderItem {
@@ -1597,30 +1556,48 @@ model PurchaseOrderItem {
   createdAt       DateTime      @default(now())
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  /// `itemId` was a bare string with no foreign key, so a line could name an
+  /// item that does not exist and nothing would say so.
+  item            InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([itemId])
 }
 
+/// The states an order actually passes through.
+///
+/// `SUBMITTED` and `APPROVED` are gone. They described an internal approval
+/// chain — raise, submit, have a manager approve, then order — which needs an
+/// approver capability, a queue to approve from and a notification, none of
+/// which existed. A practice manager orders gloves; there is nobody upstairs to
+/// ask. Discounts and refunds are where this project puts approval (FR-013/014),
+/// because there the money leaves against a patient's bill.
 enum PurchaseOrderStatus {
   DRAFT
-  SUBMITTED
-  APPROVED
   ORDERED
   PARTIALLY_RECEIVED
   RECEIVED
   CANCELLED
 }
 
-/// Low-stock / expiry alerts raised against an inventory item.
-/// Replaces the legacy `stock_alerts` table that app/api/inventory/alerts
-/// queried directly; that table was never part of this schema, so the route
-/// only ever worked on machines where the out-of-repo inventory SQL had been
-/// applied by hand.
+/// Low-stock and expiry alerts raised against an inventory item.
+///
+/// The *existence* of an alert is derivable from stock levels, and it is
+/// tempting to compute the list and drop the table. What is not derivable is
+/// the acknowledgement — who saw it, when, and what they wrote — and a clinic
+/// that has already ordered more gloves needs the alert to stop shouting before
+/// the stock level changes. So the row stays; `lib/stock-alerts.ts` keeps it in
+/// step with the stock level, in one place rather than the three hand-written
+/// copies it used to be.
+///
+/// `alertDate` is gone: it defaulted to now() beside `createdAt`, which also
+/// defaults to now(), and nothing ever set either of them to anything else.
 model StockAlert {
   id              String         @id @default(cuid())
   hospitalId      String
   itemId          String
 
   alertType       StockAlertType
-  alertDate       DateTime       @default(now())
 
   isAcknowledged  Boolean        @default(false)
   acknowledgedBy  String?
@@ -1629,17 +1606,13 @@ model StockAlert {
   notes           String?        @db.Text
 
   createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
 
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
   acknowledgedByUser User?       @relation(fields: [acknowledgedBy], references: [id])
 
-  @@index([hospitalId])
-  @@index([itemId])
-  @@index([alertType])
-  @@index([isAcknowledged])
-  @@index([alertDate])
+  @@index([hospitalId, isAcknowledged, createdAt(sort: Desc)])
+  @@index([itemId, alertType, isAcknowledged])
 }
 
 enum StockAlertType {
@@ -1651,47 +1624,7 @@ enum StockAlertType {
 
 // ==================== LAB WORK MANAGEMENT ====================
 
-model LabVendor {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  code            String?
-  name            String
-  contactPerson   String?
-  phone           String
-  alternatePhone  String?
-  email           String?
-  address         String?   @db.Text
-  city            String?
-  state           String?
-  postalCode      String?
-  taxRegistrationNo String?
-  nationalTaxNo   String?
-  specializations String?   @db.Text
-  avgTurnaround   Int?
-  rating          Int?      @default(0)
-  paymentTerms    String?
-  creditLimit     Decimal?  @db.Decimal(12, 2)
-  notes           String?   @db.Text
-  isActive        Boolean   @default(true)
-  status          LabVendorStatus @default(ACTIVE)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  labOrders       LabOrder[]
-
-  @@index([hospitalId])
-  @@index([status])
-  @@index([deletedAt])
-}
-
-enum LabVendorStatus {
-  ACTIVE
-  INACTIVE
-  BLOCKED
-}
 
 model LabOrder {
   id              String         @id @default(cuid())
@@ -1729,14 +1662,11 @@ model LabOrder {
 
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
-  labVendor       LabVendor      @relation(fields: [labVendorId], references: [id])
+  labVendor       Vendor         @relation(fields: [labVendorId], references: [id])
 
   @@unique([hospitalId, orderNumber])
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([status])
-  @@index([orderDate])
-  @@index([deletedAt])
+  @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
+  @@index([hospitalId, patientId, orderDate(sort: Desc)])
 }
 
 /// Status-transition audit trail for a lab order. Replaces the legacy
@@ -1816,9 +1746,8 @@ model Document {
   patient         Patient      @relation(fields: [patientId], references: [id])
   treatment       Treatment?   @relation(fields: [treatmentId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([documentType])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, documentType])
 }
 
 enum DocumentType {
@@ -1834,43 +1763,6 @@ enum DocumentType {
 }
 
 // ==================== NOTIFICATIONS ====================
-
-model Notification {
-  id              String           @id @default(cuid())
-  hospitalId      String
-  userId          String
-
-  title           String
-  message         String           @db.Text
-  type            NotificationType
-
-  isRead          Boolean          @default(false)
-  readAt          DateTime?
-
-  entityType      String?
-  entityId        String?
-
-  createdAt       DateTime         @default(now())
-
-  hospital        Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-}
-
-enum NotificationType {
-  INFO
-  SUCCESS
-  WARNING
-  ERROR
-  APPOINTMENT
-  PAYMENT
-  INVENTORY
-  SYSTEM
-}
 
 // ==================== AUDIT LOGS ====================
 
@@ -1894,10 +1786,10 @@ model AuditLog {
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   user            User?     @relation(fields: [userId], references: [id])
 
-  @@index([hospitalId])
   @@index([entityType, entityId])
-  @@index([userId])
-  @@index([createdAt])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, action, createdAt(sort: Desc)])
+  @@index([hospitalId, userId, createdAt(sort: Desc)])
 }
 
 // ==================== SETTINGS ====================
@@ -2026,51 +1918,11 @@ model MessageLog {
   hospital        Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   template        CommunicationTemplate? @relation(fields: [templateId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
-  @@index([channel])
-  @@index([recipient])
-  @@index([status])
-  @@index([sentAt])
-  @@index([scheduledFor])
   @@index([relatedType, relatedId])
-}
-
-
-
-model BulkCommunication {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  name            String
-  description     String?
-
-  channel         CommunicationChannel
-  templateId      String?
-
-  filterCriteria  String?             @db.Text
-  recipientCount  Int                 @default(0)
-
-  status          BulkCommStatus      @default(DRAFT)
-
-  scheduledFor    DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-
-  sentCount       Int                 @default(0)
-  failedCount     Int                 @default(0)
-
-  estimatedCost   Decimal?            @db.Decimal(10, 2)
-  actualCost      Decimal?            @db.Decimal(10, 2)
-
-  createdBy       String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([status])
-  @@index([scheduledFor])
+  @@index([hospitalId, channel, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([status, scheduledFor])
 }
 
 enum TemplateCategory {
@@ -2096,15 +1948,6 @@ enum MessageStatus {
   QUEUED
   SENT
   DELIVERED
-  FAILED
-  CANCELLED
-}
-
-enum BulkCommStatus {
-  DRAFT
-  SCHEDULED
-  IN_PROGRESS
-  COMPLETED
   FAILED
   CANCELLED
 }
@@ -2154,10 +1997,9 @@ model FormSubmission {
   hospital      Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   template      FormTemplate         @relation(fields: [templateId], references: [id])
 
-  @@index([hospitalId])
-  @@index([patientId])
+  @@index([hospitalId, status, createdAt(sort: Desc)])
+  @@index([hospitalId, patientId])
   @@index([appointmentId])
-  @@index([status])
 }
 
 enum FormType {
@@ -2197,8 +2039,7 @@ model Waitlist {
 
   hospital       Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@index([hospitalId])
-  @@index([status])
+  @@index([hospitalId, status, createdAt])
 }
 
 enum WaitlistStatus {

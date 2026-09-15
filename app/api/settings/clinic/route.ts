@@ -34,7 +34,7 @@ const clinicInfoSchema = z.object({
   bankName: optionalString,
   bankAccountNo: optionalString,
   bankIban: optionalString,
-  upiId: optionalString,
+  mobileWalletId: optionalString,
   patientPortalEnabled: z.boolean().optional(),
   // Sales tax on services. Off for this clinic — dental services are exempt —
   // but kept configurable so turning it on is a settings change rather than a
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         bankName: true,
         bankAccountNo: true,
         bankIban: true,
-        upiId: true,
+        mobileWalletId: true,
         slug: true,
         patientPortalEnabled: true,
         taxEnabled: true,

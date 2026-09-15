@@ -52,21 +52,10 @@ export async function GET(request: NextRequest) {
     let items = await prisma.inventoryItem.findMany({
       where,
       include: {
-        supplierItems: {
-          include: {
-            supplier: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-              },
-            },
-          },
-          take: 1,
-          orderBy: {
-            supplierPrice: 'asc',
-          },
-        },
+        // The item's preferred supplier. This used to read the cheapest row in
+        // `SupplierItem` — a table nothing ever wrote to, so the supplier
+        // column on the inventory screen was always empty.
+        preferredSupplier: { select: { id: true, name: true, phone: true } },
       },
       orderBy: {
         name: 'asc',
@@ -88,8 +77,7 @@ export async function GET(request: NextRequest) {
         ...item,
         stockStatus,
         categoryName: item.category,
-        supplierName: item.supplierItems[0]?.supplier.name || null,
-        supplierItems: undefined, // Remove nested data
+        supplierName: item.preferredSupplier?.name || null,
       }
     })
 

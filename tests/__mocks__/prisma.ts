@@ -37,16 +37,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  subscriptionInvoice: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
   // MessageLog — every message the clinic sent, whatever the channel
   messageLog: {
     findUnique: vi.fn(),
@@ -288,20 +278,6 @@ const mockPrismaClient = {
     aggregate: vi.fn(),
   },
 
-  // LabVendor
-  labVendor: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-    updateMany: vi.fn(),
-    deleteMany: vi.fn(),
-    aggregate: vi.fn(),
-  },
-
   // Document
   document: {
     findUnique: vi.fn(),
@@ -328,6 +304,7 @@ const mockPrismaClient = {
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
+    createMany: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
@@ -382,19 +359,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // Notification
-  notification: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    createMany: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
   // TreatmentPlan
   treatmentPlan: {
     findUnique: vi.fn(),
@@ -408,6 +372,7 @@ const mockPrismaClient = {
 
   // InventoryBatch
   inventoryBatch: {
+    upsert: vi.fn(),
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
@@ -719,17 +684,6 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // BulkCommunication
-  bulkCommunication: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
   // Survey
   survey: {
     findUnique: vi.fn(),
@@ -837,8 +791,8 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // Supplier
-  supplier: {
+  // Vendor — a supplier of materials or a dental laboratory, told apart by `kind`
+  vendor: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
@@ -859,6 +813,15 @@ const mockPrismaClient = {
     delete: vi.fn(),
     count: vi.fn(),
     aggregate: vi.fn(),
+  },
+
+  // PurchaseOrderItem
+  purchaseOrderItem: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    deleteMany: vi.fn(),
   },
 
   // StockAlert

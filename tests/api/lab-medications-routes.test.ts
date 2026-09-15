@@ -240,7 +240,7 @@ describe('POST /api/lab-orders', () => {
   it('returns 404 when lab vendor not found', async () => {
     mockAuth()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
 
     const res = await labOrdersPOST(
       makeReq('/api/lab-orders', 'POST', {
@@ -260,7 +260,7 @@ describe('POST /api/lab-orders', () => {
   it('creates lab order with generated order number', async () => {
     mockAuth()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
     vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(null) // no previous orders
 
     const mockCreated = {
@@ -302,7 +302,7 @@ describe('POST /api/lab-orders', () => {
   it('increments order number from last existing order', async () => {
     mockAuth()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
-    vi.mocked(prisma.labVendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
     vi.mocked(prisma.labOrder.findFirst).mockResolvedValue({
       orderNumber: 'LAB20260042',
     } as any)

@@ -956,40 +956,16 @@ that was never built upstream. Nothing below is broken by the changes above.
 These were deliberately left alone. Each needs a choice I should not make on
 the clinic's behalf.
 
-#### Payment gateway — blocks online payment at go-live
+#### Payment gateway, the SMS vendor, and the discount threshold
 
-`lib/payment-gateways/{razorpay,phonepe,paytm}.ts` are the only three
-integrations, and all three onboard Indian merchants only. **No online payment
-works in Pakistan today.** The setup guide now says so plainly rather than
-walking you through configuring one.
+Parked on 2026-09-15 at the clinic's request and written up in
+[`docs/DEFERRED.md`](docs/DEFERRED.md): which payment processor to integrate,
+whether to stay on Twilio or add a local aggregator, and what to set the
+discount approval threshold to. None of the three blocks the desk.
 
-Everything that does not need a gateway already works: cash, card-on-terminal
-and bank transfer all record against an invoice and reconcile through the daily
-closing. What breaks without one is payment links and the pay-online buttons.
-
-Picking a processor is a commercial decision — rates, settlement times, KYC —
-so tell me which one and I will build it. The gateway interface in
-`lib/payment-gateways/types.ts` is the seam to implement against.
-
-#### SMS provider
-
-Three of the four gateways (MSG91, TextLocal, Fast2SMS) are India-only and do
-not deliver to Pakistani numbers. **Twilio is the one that works** and now leads
-the setup guide. If you would rather use a local bulk-SMS provider, that is
-another integration and another vendor choice.
-
-The Indian per-message prices are removed rather than replaced — quoting a
-Pakistani rate I have not verified would be worse than quoting none.
-
-#### `PaymentMethod.UPI` and `Payment.upiId`
-
-UPI is India's instant-payment rail. Pakistan's equivalent is Raast, and mobile
-wallets are usually JazzCash or EasyPaisa — but `WALLET` already exists as a
-method, so what `UPI` should become depends on what the clinic actually accepts
-at the desk. Renaming an enum value is a clean migration once you say which.
-
-Note it currently appears as a countable method in the daily closing, so
-whatever it becomes will show up in the reconciliation.
+`PaymentMethod.UPI` was on this list and is no longer — §18.1 settled it
+without a decision, because `WALLET` and `BANK_TRANSFER` already were the
+Pakistani answer.
 
 #### Per-user data scoping
 
@@ -1005,10 +981,11 @@ appointment, treatment and chart query.
   [`react-advanced-odontogram`](https://www.npmjs.com/package/react-advanced-odontogram)
   (MIT), persisting its JSON into a `jsonb` column. Adding a dependency is a
   decision worth taking deliberately.
-- **Device credentials.** `app/api/devices/data` now requires a staff
-  capability (§3.6), which means IoT devices cannot post to it. They need their
-  own credential — a per-device key checked like the cron secret — before that
-  feature works again.
+- **IoT devices are gone, not broken.** `39fdd2e` removed the devices route
+  and its tables as out of scope (spec §3). The setup guide still walks you
+  through registering one and links to `/devices`, which 404s — one of five
+  dead links left in that guide.
+
 - **`AuditLog` covers logins and configuration (§12), not patient-record
   access.** Spec §10 asks for that too, "where supported". It means a write on
   every patient a clinician opens, so it is worth deciding whether the volume
@@ -1527,20 +1504,795 @@ which allergy.
 - `InventoryItem.hsnCode` → `taxCode`. HSN is India's GST term; the value is
   still good, since Pakistan's customs tariff uses the same HS basis.
 
-### 16.6 What is still open from this pass
+### 16.6 What was still open from this pass
 
-- **`Supplier` and `LabVendor` are still two tables** with twenty-seven columns
-  in common — code, name, contact, address, tax identifiers, bank details,
-  payment terms, rating, status. They differ in three fields each. Merging them
-  into one `Vendor` with a `kind` is the next obvious reduction, and it touches
-  about fourteen files.
-- **`StockAlert` is a materialised query.** Every row in it is derivable from
-  `InventoryItem.currentStock` and `InventoryBatch.expiryDate`.
-- **`Supplier.isActive` duplicates `Supplier.status`**, and the schema comment
-  admits it mirrors `status != BLOCKED/INACTIVE`. Same on `LabVendor`.
-- **`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay** pending
-  your decision on a Pakistani rail — §11.1's open question. Removing them
-  before there is something to replace them with would leave the billing screens
-  with a gap.
-- **`sms.service.ts` still enforces a 9am–9pm _IST_ send window** and still
-  names MSG91/TextLocal/Fast2SMS. Part of the same §11.1 decision.
+The first three were done in §17. The rest stand:
+
+- ~~`Supplier` and `LabVendor` are still two tables~~ — merged, §17.1.
+- ~~`StockAlert` is a materialised query~~ — **this was wrong, and §17.2 says
+  why.** The _existence_ of an alert is derivable; the acknowledgement on it is
+  not, and that is the part the table is there for.
+- ~~`Supplier.isActive` duplicates `Supplier.status`~~ — gone, §17.1.
+- ~~`PaymentMethod.UPI`, `Payment.upiId` and `Hospital.upiId` stay~~ — gone,
+  §18.1. The decision turned out not to need making: the two things a Pakistani
+  patient pays with already had values in the enum.
+- ~~`sms.service.ts` still enforces a 9am–9pm _IST_ send window~~ — §18.2.
+
+---
+
+## 17. Suppliers and laboratories, and one alert rule
+
+48 tables → 47, and the last of the duplicated-table cases.
+
+### 17.1 `Supplier` + `LabVendor` → `Vendor`
+
+Twenty-seven columns in common — code, name, contact person, address, both tax
+identifiers, bank details, payment terms, credit limit, rating, status, soft
+delete. They differed in two fields, `specializations` and `avgTurnaround`, both
+of which only a laboratory uses.
+
+A dental laboratory _is_ a supplier — of crowns rather than composite. What
+actually differs is what the clinic sends them, and that lives on `LabOrder`.
+
+Every change to how the clinic records a business contact had to be made twice,
+and one of the two was always the one that got forgotten. Three examples, all
+found by doing this:
+
+- **`LabVendor` never got a uniqueness constraint on its code.** `Supplier` has
+  `@@unique([hospitalId, code])`; the lab table had none, so two laboratories
+  could quietly share one. The new index is `(hospitalId, kind, code)`, which
+  fixes that _and_ lets a supplier and a laboratory each be "V001" without this
+  migration renaming one of them.
+- **`LabVendor.deletedAt` was never filtered on.** The column existed; no query
+  used it. A deleted laboratory stayed on the list for ever.
+- **The laboratories screen filtered on `isActive`**, so "inactive" and
+  "blocked" were the same query — the screen could not tell a laboratory that
+  had simply lapsed from one the clinic had refused to use again.
+
+`isActive` is gone from both. Each table carried it _and_ `status`, and the
+schema comment on `isActive` admitted it merely mirrored
+`status != BLOCKED/INACTIVE` — two columns that could disagree, with nothing
+deciding which won. The migration takes the more restrictive of the two where
+they do: a row flagged inactive is not silently reopened.
+
+**Every id is carried across unchanged.** Both tables used `cuid()`, so their id
+spaces cannot collide, and the six foreign keys pointing at them only had to be
+repointed — no row anywhere was rewritten. The columns keep their names:
+`InventoryBatch.supplierId` and `LabOrder.labVendorId` both reference `Vendor`
+now, and each name still says which part the vendor plays in that row, which is
+more than `vendorId` twice over would have said.
+
+The one thing that can now go wrong is a query that forgets `kind`: forget it on
+the suppliers screen and the clinic's laboratories appear among its materials
+suppliers; forget it on a lab order and a case can be addressed to a glove
+wholesaler. Every such query is asserted in `tests/api/vendors.test.ts`.
+
+Two more India leftovers went with it: the laboratories page was still reading
+and writing `gstin` and `pan` — India's GST number and PAN — which the schema
+renamed in §5. The route destructured `taxRegistrationNo` and `nationalTaxNo`,
+so whatever anybody typed into those two fields had been silently discarded ever
+since.
+
+### 17.2 `StockAlert` stays — §16.6 was wrong about it
+
+§16.6 called it "a materialised query" whose every row is derivable from
+`currentStock` and `expiryDate`. The _existence_ of an alert is. The
+acknowledgement is not: who saw it, when, and what they wrote is not a function
+of stock levels, and a clinic that has already ordered more gloves needs the
+alert to stop shouting **before** the stock level changes. Deriving the list
+would have thrown that away.
+
+What was actually wrong was the logic around it, which existed three times — in
+the stock-movement route, in the item update route, and in the seed — as three
+hand-written copies of "find an open alert of this type, create one if there
+isn't". They had drifted:
+
+- **Only the movement route ever cleared an alert.** Raising an item's minimum
+  stock and then lowering it again left a LOW_STOCK alert standing over a full
+  shelf, and the only way to be rid of it was to acknowledge something that was
+  no longer true.
+- **Going from empty to merely low left both alerts showing**, because nothing
+  removed the OUT_OF_STOCK one.
+
+`lib/stock-alerts.ts` is now the single rule. It raises the one alert the level
+warrants, clears the shortage alerts that no longer apply, and never touches an
+acknowledged one — that is a record that somebody dealt with it, and deleting it
+would erase the evidence along with the noise. Expiry alerts are left alone;
+they are not about the stock level.
+
+Two columns went with it. `alertDate` defaulted to `now()` beside `createdAt`,
+which also defaults to `now()`, and nothing ever set either to anything else;
+`updatedAt` said only when the row was acknowledged, which `acknowledgedAt`
+already records.
+
+### 17.3 Where the schema has got to
+
+|                                        | Tables | Enums  |
+| -------------------------------------- | ------ | ------ |
+| Forked from `abinauv/dental-erp`       | 87     | 67     |
+| After §13, scoped to the specification | 53     | 44     |
+| After §15, multi-tenant SaaS           | 55     | 47     |
+| After §16, consolidation               | 48     | 45     |
+| After §17                              | **47** | **45** |
+
+Two of those tables did not exist at the fork: `Subscription` and
+`SubscriptionInvoice`, which are what make it a platform rather than one
+practice's installation.
+
+---
+
+## 18. The last of the India coupling
+
+Two items in §11.1 were listed as waiting on a decision from you. Both turned
+out to need less of one than they looked like.
+
+### 18.1 `PaymentMethod.UPI`
+
+UPI is India's instant-payment rail. No Pakistani clinic can take one — so the
+question "what replaces it" had an answer already sitting in the same enum:
+
+| A Pakistani patient pays by    | Value           |
+| ------------------------------ | --------------- |
+| JazzCash, Easypaisa, SadaPay   | `WALLET`        |
+| Raast or an interbank transfer | `BANK_TRANSFER` |
+
+Nothing had to be invented, and nothing was lost. What UPI was actually doing
+was putting a method on the till screen that nobody could select honestly, and a
+line on every daily reconciliation that was always zero.
+
+Anything recorded as UPI becomes `WALLET` — it was a phone payment, and that is
+where phone payments belong in a reconciliation. The till counts are **merged**
+rather than updated: `CashierSessionCount` is unique on
+`(sessionId, paymentMethod)`, so a session that counted both would have
+collided, and the answer to that is to add the two together. This is a cash
+reconciliation; losing a line loses money. Dry-run against sample rows before
+committing:
+
+```
+sessionId | paymentMethod | expected | counted | variance | notes
+s1        | WALLET        |  1500.00 | 1400.00 |  -100.00 | phone takings
+s2        | WALLET        |   250.00 |  250.00 |     0.00 |
+```
+
+Two columns went with it:
+
+- **`Payment.upiId`** recorded the payer's handle for a UPI payment — the same
+  kind of thing as `transactionId` sitting beside it, which covers every rail
+  rather than one. Any value is copied into `transactionId` where that is empty,
+  then the column goes.
+- **`Hospital.upiId`** → **`mobileWalletId`**. Renamed rather than dropped: a
+  Pakistani clinic does print a JazzCash or Easypaisa number on an invoice, and
+  nothing else covers that.
+
+Three things surfaced while doing it:
+
+- **The daily collection report had a "UPI" column that was always zero** — and
+  the route was computing a `wallet` total that no column displayed. The report
+  now shows Mobile Wallet, which is the number that was being thrown away.
+- **The IBAN fields on both the settings and onboarding forms were placeheld
+  `SBIN0001234`** — an Indian IFSC code, on a field §5 had already renamed to
+  IBAN.
+- **The setup guide still walked through Razorpay, PhonePe and Paytm**, step by
+  step, including which keys to paste into a "Payment Gateway" tab — a tab whose
+  code §13 removed. Three sets of instructions telling a Pakistani clinic to
+  sign up for processors that will not onboard them, into a screen that no
+  longer exists. Replaced with one honest section: no processor is integrated,
+  here is what to choose between, and nothing at the desk depends on it.
+
+The import aliases keep `UPI` and `NEFT`/`RTGS` — an import from an Indian
+system still carries those rows, and they now map onto `WALLET` and
+`BANK_TRANSFER`. `JazzCash`, `Easypaisa`, `SadaPay`, `IBFT` and `Raast` were
+added alongside.
+
+### 18.2 The send window, and three gateways that cannot deliver
+
+`sms.service.ts` refused to send outside **9am–9pm IST**, computed by adding
+five and a half hours to UTC. That is India's TRAI restriction, hardcoded, and
+on a Pakistani clinic it is wrong twice over: the country has no such statutory
+window, and the offset is half an hour out — so a message at 20:45 in Karachi
+was refused as "past 9pm", and one at 09:15 was refused as "before 9am".
+
+`lib/send-window.ts` replaces it with the clinic's own window, in the clinic's
+own timezone (`Hospital.timezone`, which already existed and already defaulted
+to `Asia/Karachi`). The default is the same 09:00–21:00, because that is a
+reasonable thing to want; what changed is that it is now the clinic's to move,
+through two settings keys.
+
+Details that are deliberate:
+
+- **`Intl`, not arithmetic on an offset.** An offset has to be kept in step by
+  hand, which is how the original got Pakistan half an hour wrong, and daylight
+  saving makes one wrong twice a year besides.
+- **Half-open at the end**, so a window ending 21:00 permits 20:59 and refuses
+  21:00 — "nine in the evening" meaning what a person means by it.
+- **A window that wraps past midnight is read as wrapping**, not as empty. No
+  clinic is likely to want one, but reading it as empty would silently stop
+  every message instead of doing the obvious thing.
+- **Equal bounds mean no restriction**, which is how a clinic turns the window
+  off — rather than by a checkbox elsewhere that does the same thing and can
+  disagree with this one.
+- **An unparseable bound falls back to the default.** A typo in a settings field
+  should not take down every reminder the clinic sends.
+- **A scheduled message is not judged by the hour it was queued.** "Is this an
+  acceptable time to make a phone buzz" only means anything at the moment of
+  sending.
+
+**MSG91, TextLocal and Fast2SMS are gone.** All three are Indian aggregators
+requiring a sender registered under TRAI's DLT scheme, which a Pakistani clinic
+cannot obtain — so three of the four options on the settings screen were three
+ways to have messages silently fail. Twilio, which delivers worldwide, is what
+remains, and adding a local aggregator is now one method on the service class
+plus a value in `SMS_GATEWAYS`.
+
+And the one that did work could not be configured. `sendViaTwilio` reads the
+Account SID from `sms.authKey` — a key **nothing ever wrote**. The settings
+route saved `gateway`, `apiKey`, `senderId` and `route`, and the form offered
+no field for the SID at all, so the only gateway that delivers to Pakistani
+numbers had no way to be set up through the interface. The form now asks for
+Account SID, Auth Token and From number, and has dropped `route`, which only the
+three removed gateways used.
+
+### 18.3 What is genuinely still yours to decide
+
+Which payment processor, Twilio or a local SMS aggregator, and where to set the
+discount threshold — all three parked at your request and written up in
+[`docs/DEFERRED.md`](docs/DEFERRED.md).
+
+Everything that is _mine_ rather than yours is in §19.
+
+---
+
+## 19. What is left
+
+Surveyed against the specification's FR table on 2026-09-15. Each item below was
+checked in the code, not inferred.
+
+### 19.1 Goods receipt — built, §20
+
+Was the largest gap on this list. Done.
+
+### 19.2 Expiry alerts are never raised
+
+`StockAlertType` has `EXPIRING_SOON` and `EXPIRED`. `lib/stock-alerts.ts` raises
+only `LOW_STOCK` and `OUT_OF_STOCK`, so **the "Expiring soon" counter on the
+inventory alerts screen is structurally zero** — the same class of bug as the
+UPI column in §18.1.
+
+The inventory _report_ does compute expiring batches live from
+`InventoryBatch.expiryDate`, so the information is reachable; it is the alert
+that never fires. Half of FR-016.
+
+### 19.3 Scheduled messages — built, §21
+
+Done, and it was worse than described: two reminder systems, one dead.
+
+### 19.4 Staff passwords — built, §22
+
+The invite flow has a user interface now.
+
+### 19.5 Multi-branch (FR-023) is sold and not built
+
+There is no `Branch` model and no location dimension. A tenant is a clinic.
+
+That would be a fair "Should, deferred" — except `lib/plans.ts` lists `branches`
+as a Professional-plan feature and the pricing page advertises it as **"Several
+locations under one account"**. Either build it or stop selling it; a paid plan
+promising a feature that does not exist is the one version of this that is not
+acceptable.
+
+### 19.6 Smaller, verified
+
+- **Four dead links in the setup guide** — `/devices`, `/settings/ai`,
+  `/settings/integrations`, `/video`. All 404. The IoT and video walkthroughs
+  describe features `39fdd2e` removed as out of scope. (`/staff/invites` was
+  the fifth; §22 built it.)
+- **`lib/rbac.ts` still maps `/devices`** to a capability for a route that no
+  longer exists. Harmless, but it is a claim the table is making falsely.
+- **Recall reminders.** FR-019 says "appointment/recall". Appointment reminders
+  exist; there is no recall concept anywhere — no six-month check-up, no
+  hygiene recall.
+- **Appointment types and status lists are enums**, so FR-025's "maintain …
+  appointment types and status lists" is not configurable by a user. Chairs,
+  procedures, fees, labs and suppliers all are.
+
+### 19.7 Carried forward from §11
+
+Still true, still open, unchanged by this survey: per-user data scoping ("own
+patients only"), periodontal charting, and audit logging of patient-record
+_access_ as opposed to changes.
+
+---
+
+## 20. Goods receipt
+
+`PurchaseOrder`, `PurchaseOrderItem`, `InventoryBatch` and `SupplierItem` have
+been in the schema since the fork with **nothing writing to any of them**. There
+was no purchase-order route and no purchase-order screen. Batches existed only
+because the seed made them.
+
+One gap, three requirements:
+
+|            |                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| **§5.7**   | Purchase and receipt — the workflow simply was not there                                       |
+| **FR-017** | "supplier/batch where configured" — there were no batches to trace                             |
+| **FR-016** | Near-expiry and expired alerts need an expiry date, and an expiry date arrives with a delivery |
+
+It also explains a screen that had been lying quietly: the supplier detail page
+renders total orders, completed business and pending business, and all three
+were permanently zero.
+
+### 20.1 What was built
+
+- `lib/purchase-orders.ts` — the arithmetic and the state rules, away from the
+  route, because receipt is the part that has to be right.
+- `GET|POST /api/inventory/purchase-orders`
+- `GET|PATCH|DELETE /api/inventory/purchase-orders/[id]`
+- `POST /api/inventory/purchase-orders/[id]/receive` — the receipt itself
+- `/inventory/purchase-orders`, `/new` and `/[id]`, the last of which is where a
+  delivery is booked in against the order
+
+### 20.2 The status list lost two values
+
+`PurchaseOrderStatus` was DRAFT → SUBMITTED → APPROVED → ORDERED →
+PARTIALLY_RECEIVED → RECEIVED → CANCELLED.
+
+SUBMITTED and APPROVED are gone. They describe an internal approval chain —
+raise, submit, have a manager approve, then order — which needs an approver
+capability, a queue to approve from and a notification, none of which exist. A
+practice manager orders gloves; there is nobody upstairs to ask. This project
+puts approval where money leaves against a patient's bill (FR-013/014), and
+that is a different thing.
+
+Five values now, each of which something can actually reach.
+
+### 20.3 What receipt does, and what it refuses
+
+Everything happens in one transaction. A receipt that raised the stock level but
+failed to record the movement is a discrepancy nobody can explain at the next
+stock take, which is the thing FR-017 exists to prevent.
+
+Per line received: an `InventoryBatch` (created or added to), a
+`StockTransaction` of type PURCHASE carrying the supplier, the order and the
+user, `InventoryItem.currentStock`, `PurchaseOrderItem.receivedQty`, and a pass
+through `reconcileStockAlerts` so a delivery clears the low-stock alert that
+prompted it. Then the order's own status, recomputed from all its lines rather
+than from this receipt alone.
+
+Four refusals, each of which is a decision rather than a validation:
+
+- **More than was ordered.** Keeping `receivedQty` no greater than `quantity` is
+  what makes "outstanding" mean anything, on the order and on the supplier's
+  pending-business figure. A genuine over-delivery is real, and the answer is to
+  amend the order — the error says so rather than leaving the reader guessing.
+- **Receiving against a DRAFT.** Stock arriving against an order nobody placed
+  came from somewhere else, and that is an adjustment with its own reason.
+- **A batch-tracked item with no batch number**, and an **expiry-tracked item
+  with no expiry date**. Both flags are opt-in per item; an item with
+  `expiryTracking` on is one whose expiry somebody decided to track, and letting
+  a delivery of it in without a date is how FR-016 ends up with nothing to
+  alert about.
+- **Cancelling an order goods have arrived against.** Those goods are on the
+  shelf; returning them is a stock adjustment.
+
+### 20.4 Schema
+
+Three structural changes, no table created and no column dropped:
+
+- **`PurchaseOrderItem.itemId` was a bare string** — no foreign key, no index,
+  no relation. A line could name an inventory item that did not exist and
+  nothing would say so, which is also why the model had no `item` to include.
+- **`InventoryBatch` is now unique on `(hospitalId, itemId, batchNumber)`.** A
+  delivery note gets entered twice often enough that it should be an error
+  rather than a second batch with the same number and its own expiry date.
+  Scoped to the clinic too: two clinics buying from the same supplier receive
+  the same batch number, and that is not a conflict.
+- The enum, as above.
+
+### 20.5 Tax is per line
+
+`orderTotals` takes each line's tax from the item's own `taxPercentage` rather
+than applying one rate to the order. A delivery mixes zero-rated gloves with
+taxable equipment, and a single rate would quietly get both wrong. Lines are
+rounded before they are summed, so the total matches what a reader gets by
+adding up the printed line amounts.
+
+### 20.6 Verified
+
+51 tests (25 unit, 26 route), and the chain driven end to end against the live
+database through the running application:
+
+- gloves 6 → 14 on a part delivery of 8, the standing LOW_STOCK alert cleared,
+  the movement carrying its supplier, order and user
+- 21 against an order for 20 refused, with nothing written
+- an expiry-tracked item refused without a batch number, then refused again
+  without an expiry date, then received — `LIG-88`, 50 remaining, expiring
+  2027-03-31, which is the first expiry date this application has ever recorded
+  outside the seed
+- the last 12 received through the screen itself, closing the order
+
+Full suite 3,540 passing; `npm run build` clean; `prisma migrate diff` reports
+no difference; `eslint` 0 errors.
+
+### 20.7 What this unblocks
+
+**§19.2 is now worth doing.** Expiry alerts were never raised, and until now
+there was nothing to raise them about. `lib/stock-alerts.ts` handles shortages;
+`EXPIRING_SOON` and `EXPIRED` still have no code that creates them, and the
+"Expiring soon" counter on the alerts screen is still structurally zero. That is
+a small job on top of this one.
+
+## 21. The reminder sender
+
+`/api/cron/reminders` wrote a `MessageLog` row at PENDING with a `scheduledFor`,
+and its own comment said "the sender picks them up". **There was no sender.**
+Every reminder the hourly job had ever queued was still sitting at PENDING.
+
+Building it turned up more than a missing function.
+
+### 21.1 There were two reminder systems, and only one sent anything
+
+`communicationTriggersService.sendAppointmentReminders24Hours` — behind
+`/api/communications/triggers` — found tomorrow's appointments, rendered a
+template and sent immediately. So reminders _did_ go out, from a completely
+different code path, while `/api/cron/reminders` queued rows that nothing drained.
+
+They also interfered. The queueing job skipped any appointment that already had
+a reminder row of any kind, and the triggers job left a SENT row against every
+appointment it handled — so the hour-before reminder was suppressed by the
+day-before one for every patient who got one. Two systems reminding the same
+patient about the same appointment, neither aware of the other.
+
+The queue owns appointment reminders now. `/api/cron/reminders` decides when,
+`/api/cron/dispatch` sends, and the triggers job keeps the three that have no
+schedule to respect: birthdays, payment reminders, lab work ready.
+
+Deduplication is keyed on the appointment **and the send time**, so two
+reminders for one appointment are two different messages rather than one
+cancelling the other.
+
+### 21.2 Reminders were scheduled against midnight, not the appointment
+
+`Appointment.scheduledDate` is `@db.Date` — a day, no time — and `scheduledTime`
+is an `HH:MM` string in the clinic's timezone. The job used
+`scheduledDate.getTime() - one hour`.
+
+That is an hour before **midnight on the day of the appointment**. A 15:00
+appointment was reminded about at 23:00 the night before: sixteen hours early,
+and at an hour the clinic's own send window says not to message patients.
+
+The same query filtered `scheduledDate >= now`, which against a midnight value
+means **every appointment later today was skipped entirely** — a job running at
+09:00 never saw the 16:00 list.
+
+`lib/appointment-time.ts` puts the two columns back together against the
+clinic's timezone, via `Intl` rather than a hardcoded offset, correct on both
+sides of a daylight-saving change. Verified live: a 15:00 appointment on 16
+September now queues its reminder for 09:00 UTC, which is 14:00 in Karachi.
+
+`formatCalendarDay` is there for the same class of bug on the way out —
+`format()` from date-fns reads the server's local timezone, so a date column
+renders as the previous day on any host west of Greenwich. A reminder naming
+the wrong day is worse than no reminder.
+
+### 21.3 Credentials belonged to whichever clinic loaded first
+
+Both senders are module-level singletons whose `initialize()` read
+`where: { category: 'sms' }` — **no clinic filter** — and cached the result on
+the instance.
+
+On a multi-tenant install that is one clinic's message going out over another
+clinic's Twilio account: their account billed, their sender id on the patient's
+handset, their SMTP server and reply-to on the email. And because the config was
+cached on a singleton, it outlived the request that loaded it.
+
+`initialize(hospitalId)` is now required and scoped, nothing is cached, and
+`hospitalId` is a required field on both payload types. Making it required found
+two more callers that had never passed one — both of which were writing a log
+row with an empty `hospitalId` and failing on the foreign key before reaching
+the gateway at all:
+
+- **the "send test message" button**, which therefore reported a configuration
+  problem whatever the configuration was;
+- **the lab-work-ready notification**, the one trigger that could never send.
+
+### 21.4 No clinic had any templates
+
+Every automated message ends at `getDefaultTemplate(hospitalId, category,
+channel)`. `communicationTemplate.create` appears once in the codebase, behind
+the template editor. **Nothing created a default template**, so the lookup
+returned null and the message was quietly not sent.
+
+The reminder machinery was complete and inert: it found the appointments,
+decided who to remind, and then found nothing to say.
+
+`lib/default-templates.ts` holds five starter templates — appointment reminder
+by SMS and email, payment reminder, lab work ready, birthday — created at signup
+for every new clinic and by the seed for the demo one. Starter wording, meant to
+be edited. SMS is kept under 160 characters with the longest plausible
+substitutions, so a reminder is one message and not three.
+
+### 21.5 What the dispatcher will not do
+
+- **A clinic outside its send window is skipped, not failed.** Its messages stay
+  PENDING for the next run. Failing them would lose an evening's reminders
+  because the job happened to run at 21:05.
+- **A cancelled, completed or no-show appointment cancels its reminder.**
+  Reminding somebody about an appointment they cancelled is worse than silence.
+- **Consent is re-checked at send time**, per channel and per kind. A patient who
+  opted out after the reminder was queued has opted out of it.
+- **Wording is rendered now, not at queueing time**, so a template edited this
+  afternoon changes the reminder that goes out this evening. What actually went
+  out — body and subject — is written back to the row, which is more than the
+  old `AppointmentReminder` table recorded.
+- **A message that cannot be sent is closed with a reason**, not left PENDING
+  forever. "SMS gateway not configured" on the row is something a clinic can act
+  on.
+
+### 21.6 Verified
+
+62 tests, and the pipeline driven end to end against the live database through
+the running application — including a real reminder rendered from the clinic's
+template and delivered over SMTP to a local sink:
+
+|           |                                                                              |
+| --------- | ---------------------------------------------------------------------------- |
+| Queued    | 15:00 appointment → reminder at 09:00 UTC, one hour before in Karachi        |
+| Sent      | Subject and body rendered from the clinic's template, stored back on the row |
+| Cancelled | Appointment cancelled → `The appointment is cancelled`                       |
+| Cancelled | Patient opted out → `Patient has asked not to be contacted`                  |
+| Deferred  | Outside the send window → left PENDING, nothing sent                         |
+| Failed    | No gateway configured → `SMS gateway not configured`                         |
+
+Full suite 3,570 passing; build clean; `eslint` 0 errors.
+
+### 21.7 Still to do: nothing runs these jobs
+
+**There is no scheduler anywhere in the repository** — no `vercel.json` crons, no
+timer unit, no CI schedule. `/api/cron/reminders`, `/api/cron/dispatch` and
+`/api/communications/triggers` are complete and correct, and on a fresh
+deployment none of them ever runs.
+
+Left deliberately, at your request, with a `TODO` on each of the three routes
+saying so. Whatever ends up calling them must send
+`Authorization: Bearer $CRON_SECRET`.
+
+## 22. Inviting a colleague
+
+`StaffInvite`, `POST /api/staff-invites`, its resend and cancel routes and
+`/api/public/invite/accept` have all existed since the fork. **Nothing in the
+dashboard called any of them.** The setup guide walked an admin through
+"Staff → Invites tab" and linked to `/staff/invites`, which did not exist.
+
+So the only way to add a colleague was the Staff form, where an admin types a
+password on their behalf — and therefore knows it.
+
+That is not a cosmetic gap. FR-021 and spec §10 rest on the audit log answering
+_who did this_, and FR-007 has a dentist signing a clinical note. Neither is
+strong evidence if the practice manager set that dentist's password.
+
+### 22.1 The screen
+
+`/staff/invites` — the path the setup guide had been pointing at. Lists every
+invitation with its role, status and dates; sends one; resends; cancels.
+
+The reason to prefer it over the Staff form is said on the screen rather than
+left in the documentation, because an admin who does not know it will carry on
+typing passwords for other people.
+
+Three decisions worth naming:
+
+- **A lapsed invitation shows as Expired, not Pending.** The row stays PENDING
+  in the database until somebody uses or cancels it; showing that to an admin
+  invites them to wait for an answer that cannot come, when what they need to do
+  is resend.
+- **An invitation created but not emailed is a warning, not a success.**
+  `emailSent: false` means SMTP is not configured, which is a different problem
+  from the invitation failing — and the one the admin has to fix before anybody
+  receives anything.
+- **The role list comes from `INVITABLE_ROLES`**, so it cannot drift from the
+  roles that can actually be granted. ADMIN is not on it.
+
+### 22.2 Two dead buttons beside it
+
+The staff screen's action bar had **Attendance** and **Leaves**, linking to
+`/staff/attendance` and `/staff/leaves`. Neither page exists: `39fdd2e` removed
+the attendance and leave tables as out of scope (spec §3) and left the buttons
+behind. Two 404s on the busiest staff screen, replaced by the one link that now
+goes somewhere.
+
+### 22.3 The invitation email offered the wrong job
+
+`sendInviteEmail` formatted the role itself — lowercase with the first
+underscore replaced — rather than using `roleLabel` from the capability table.
+An invitation offered a job as a "Dental assistant" where every screen says
+"Dental Assistant", and as a "Doctor" where the clinic calls the role Dentist.
+
+### 22.4 Verified
+
+12 component tests, and the whole loop driven for real against the live
+database: an invitation sent from the screen, the email delivered over SMTP with
+the right role on it, accepted with a password the invitee chose, and then used
+to sign in — arriving as a DENTAL_ASSISTANT whose password nobody at the clinic
+knows.
+
+Full suite 3,582 passing; build clean; `eslint` 0 errors.
+
+## 23. Clickable rows, and one pager
+
+Two things every list screen needed and each one had built for itself.
+
+### 23.1 Opening a record took two clicks and a menu
+
+Every grid put **View Details** inside a three-dot menu. Seeing a patient meant
+finding the menu, opening it, reading three items and picking the first — on the
+screen a receptionist uses more than any other. The rows looked clickable,
+because rows highlight on hover, and were not.
+
+`ClickableRow` makes the row open the record. The detail worth stating is the
+one that makes it safe: **a click that lands on a control inside the row belongs
+to that control.** The actions menu, an inline delete, a link to somewhere else —
+a row that swallowed those would be worse than the menu it replaces. Rows are
+also reachable by keyboard, named for a screen reader ("Open Ayesha Khan", not
+"Open row 4"), and take Enter or Space.
+
+Twelve screens now open on a row click: patients, appointments, invoices,
+payments, treatments, treatment plans, prescriptions, staff, form templates,
+purchase orders, and the outstanding invoices on the billing report.
+
+### 23.2 Two grids where View Details was already a 404
+
+**Inventory items and lab cases have no detail page.** Both grids have carried a
+"View Details" that routes to `/inventory/{id}` and `/lab/orders/{id}`, and
+neither page exists — it has been a dead link since the fork.
+
+Their rows are deliberately _not_ clickable. A row that navigates to a page
+which is not there is worse than a row that does nothing, because it looks like
+it worked. `tests/unit/grid-conventions.test.ts` asserts both the destinations
+that exist and these two that do not, so building either detail page will fail
+the test until the row link is added with it.
+
+### 23.3 The pager was copied twelve times, and missing from three screens
+
+Twelve hand-written copies of the same block, drifted the way copies do:
+
+- several were hidden unless there was more than one page, so a short list gave
+  **no total at all** — the one number a person wants from a list;
+- one counted from one on an empty result ("Showing 1 to 0 of 0");
+- most called the records "results" where the screen called them patients;
+- the waitlist, the form templates and the invitations had **no pager**, and
+  rendered however many rows the route returned.
+
+`GridPagination` replaces all twelve. It shows on a single page too — "10
+patients" is an answer — and names the records the way the screen does. Where a
+screen has a page size it can act on, it offers one.
+
+`usePagedRows` is for the three grids whose route hands back the whole list. It
+resets the page when a filter shrinks the result beneath it: filtering a hundred
+rows to three while sitting on page 4 otherwise shows an empty table and no
+explanation.
+
+### 23.4 Deliberately not a generic DataTable
+
+A `<DataTable columns={...} />` would have meant rewriting every screen's cells.
+Those cells are not data — they are avatars, two-line contact blocks, badges
+whose colour means something clinical — and the tables read well precisely
+because each screen writes its own. These are two primitives that drop into the
+existing markup rather than replacing it.
+
+### 23.5 Verified
+
+22 tests on the primitives, 6 more that hold the convention: every list screen
+pages, no screen writes its own pager again, every row destination is a page
+that exists. Driven in the browser as well — a row opens the patient, and the
+actions menu opens its menu without the row going anywhere underneath it.
+
+Full suite 3,610 passing; build clean; `eslint` 0 errors.
+
+## 24. Cutting the schema back
+
+Four commits against the study in `Schema Under Load`. **47 → 43 tables, 748 →
+689 columns, 45 → 42 enums**, and no feature lost — every table removed here is
+one nothing has ever written to.
+
+### 24.1 Payroll, and the form that collected it
+
+Spec §3 puts "full payroll, attendance, or enterprise HR management beyond
+basic user/staff profiles" out of scope. The staff form nonetheless asked for a
+**monthly salary, a bank account number and an IBAN**, and stored all three —
+three columns of a clinic's most sensitive employment data, held for a feature
+nobody was going to build. Attendance and leave went in `39fdd2e`; this is the
+rest of it.
+
+Nothing is preserved. There is nowhere to move a salary to, and keeping staff
+bank details "just in case" is the opposite of what dropping the feature is
+for.
+
+`staff:hr` now gates one thing — an individual's performance figures — and says
+so. Its two `ROUTE_PERMISSIONS` entries pointed at `/staff/attendance` and
+`/staff/leaves`, pages that have not existed since `39fdd2e`.
+
+### 24.2 Four tables nothing writes to
+
+Each was found by grepping every Prisma call across `app/`, `lib/`, `tests/`
+and the seed, then looking at what reads them. All four are **empty in a
+freshly seeded database**, which is the whole story.
+
+|                       |                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SupplierItem`        | Read once, through a relation on the inventory list, to fill a "Supplier" column — from a table nothing populates. The list now reads `InventoryItem.preferredSupplier`, which the item form does write, so **that column works for the first time**. |
+| `SubscriptionInvoice` | Nothing issues one. Platform billing has no payment processor, and the tenant console fetched an invoice list that was always empty.                                                                                                                  |
+| `BulkCommunication`   | Read by one analytics query, written by nothing. The bulk-SMS route sends the messages and records no campaign, so "Recent Campaigns" never had a row.                                                                                                |
+| `Notification`        | Listed and marked-as-read by `/api/notifications`, **created by nothing**. The bell in the header has shown zero since the fork.                                                                                                                      |
+
+A bell that never rings is a promise the product does not keep, so the route,
+the tray and the table went together. If in-app notifications are wanted, the
+discount approval in §7 is the obvious first one to raise — it already has an
+approver waiting on it.
+
+### 24.3 Every index leads with the tenant
+
+The largest single finding in the study, and the one that had nothing to do
+with table count. There were **142 single-column indexes and 3 composite ones,
+none of which started with `hospitalId`**. Every list screen asks the same
+shape of question —
+
+```sql
+WHERE "hospitalId" = $1 AND <filter> ORDER BY <column> DESC LIMIT 20
+```
+
+— and Postgres can use one index for that, then filter and sort the rest by
+hand. The rows it filters out are other clinics'.
+
+Measured on 400,001 invoices across 50 tenants, before and after, against the
+real migrated schema:
+
+|                         | Before  | After       |
+| ----------------------- | ------- | ----------- |
+| The page query          | 9.06 ms | **0.67 ms** |
+| The pager's count       | 62.9 ms | **0.70 ms** |
+| Rows read and discarded | 6,737   | **0**       |
+| Buffers touched         | 188     | **23**      |
+
+Every paginated screen runs both, so a list cost about 72 ms of database work
+and now costs 1.4 ms — and the old gap widened linearly with the table.
+
+Ninety-six single-column indexes go and fifty-seven composites replace them
+across 27 models, which is also less to write on every insert. The profile is
+now 36 single-column, 59 composite, 54 of them tenant-leading.
+
+One caveat carried in the migration: these are plain `CREATE INDEX` statements,
+and Prisma runs a migration inside a transaction where `CONCURRENTLY` cannot
+run. On a large production database, apply the creates by hand with
+`CONCURRENTLY` first and then mark the migration applied.
+
+### 24.4 Age is computed, not stored
+
+`Patient.age` was written once at registration and never again — wrong for most
+of the year, and a patient registered at 34 stayed 34 for life. **The analytics
+report already ignored it** and computed age from `dateOfBirth`, which is the
+tell: two places in the application disagreed about how old a patient was, and
+the report was the one that was right.
+
+`lib/age.ts` refuses rather than guessing: no date of birth, an unparseable
+one, or a date in the future all give null, because a blank is the honest
+answer and a negative age is a typo.
+
+The migration backfills before dropping. Some patients were registered with an
+age and no date of birth, and dropping the column would lose the only thing
+known about their age; a birth year is not a birth date, so it records the
+first of July — mid-year, the least wrong single day to pick — and only where
+there is nothing better.
+
+### 24.5 Where this leaves the count
+
+47 → 43 models; 44 tables in the database counting `_prisma_migrations`.
+
+The study's target was 42, and the last one is `StaffInvite` folding into
+`User` together with `StaffShift` and `Holiday` becoming one availability
+table. Both are Tier 2 — real application work rather than a migration — and
+neither removes a column that anything reads.
+
+Below that, the six widest tables barely move, because every remaining
+candidate column is rendered on a form somebody fills in. **Cutting further
+removes features, not fat.**

@@ -35,6 +35,13 @@ export const AUDIT_ACTIONS = {
   /// `LabOrderHistory` table recording exactly this and nothing else.
   LAB_ORDER_STATUS_CHANGED: 'lab_order.status_changed',
 
+  /// Goods booked in against a purchase order (§5.7). Receipt moves stock and
+  /// commits the clinic to paying for it, and it is the one inventory event
+  /// nobody can reconstruct from the stock level afterwards.
+  GOODS_RECEIVED: 'purchase_order.received',
+  PURCHASE_ORDER_PLACED: 'purchase_order.placed',
+  PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
+
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
   SECURITY_UPDATED: 'settings.security.updated',

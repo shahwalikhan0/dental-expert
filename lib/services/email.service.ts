@@ -26,7 +26,9 @@ export interface EmailConfig {
 }
 
 export interface EmailPayload {
-  hospitalId?: string
+  /// Required: it decides whose SMTP account carries the message, whose address
+  /// it appears to come from, and which clinic the log row belongs to.
+  hospitalId: string
   to: string
   subject: string
   body: string
@@ -49,22 +51,30 @@ export interface EmailAttachment {
 }
 
 class EmailService {
-  private transporter: Transporter | null = null
-  private config: EmailConfig | null = null
+  /**
+   * The clinic's own SMTP settings and a transporter for them.
+   *
+   * `hospitalId` is required, and that is the point. This used to read
+   * `where: { category: 'email' }` with no clinic filter and cache both the
+   * config and the transporter on the instance — and the service is a
+   * module-level singleton, so on a multi-tenant install one clinic's mail went
+   * out over whichever clinic's SMTP account loaded first, from their address,
+   * with their reply-to.
+   */
+  async initialize(hospitalId: string): Promise<{ config: EmailConfig; transporter: Transporter }> {
+    if (!hospitalId) {
+      throw new Error('Email cannot be sent without a clinic')
+    }
 
-  async initialize() {
-    // Load email configuration from settings
     const settings = await prisma.setting.findMany({
-      where: {
-        category: 'email',
-      },
+      where: { hospitalId, category: 'email' },
     })
 
     if (settings.length === 0) {
       throw new Error('Email not configured')
     }
 
-    this.config = {
+    const config: EmailConfig = {
       host: settings.find((s) => s.key === 'email.smtp.host')?.value || '',
       port: parseInt(settings.find((s) => s.key === 'email.smtp.port')?.value || '587'),
       secure: settings.find((s) => s.key === 'email.smtp.secure')?.value === 'true',
@@ -79,27 +89,27 @@ class EmailService {
       replyTo: settings.find((s) => s.key === 'email.replyTo')?.value,
     }
 
-    if (!this.config.host || !this.config.auth.user || !this.config.auth.pass) {
+    if (!config.host || !config.auth.user || !config.auth.pass) {
       throw new Error('Email SMTP configuration incomplete')
     }
 
-    // Create transporter
-    this.transporter = nodemailer.createTransport({
-      host: this.config.host,
-      port: this.config.port,
-      secure: this.config.secure,
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
       auth: {
-        user: this.config.auth.user,
-        pass: this.config.auth.pass,
+        user: config.auth.user,
+        pass: config.auth.pass,
       },
     })
 
-    // Verify connection
     try {
-      await this.transporter.verify()
-    } catch (error) {
+      await transporter.verify()
+    } catch {
       throw new Error('Failed to connect to SMTP server')
     }
+
+    return { config, transporter }
   }
 
   async sendEmail(payload: EmailPayload): Promise<string> {
@@ -131,7 +141,7 @@ class EmailService {
 
     const emailLog = await prisma.messageLog.create({
       data: {
-        hospitalId: payload.hospitalId || '',
+        hospitalId: payload.hospitalId,
         channel: 'EMAIL',
         patientId: payload.patientId || null,
         recipient: payload.to,
@@ -153,32 +163,30 @@ class EmailService {
       },
     })
 
-    // If scheduled for later, return
+    // Scheduled for later: it stays PENDING, and the dispatcher in
+    // `lib/services/message-dispatch.ts` picks it up when it falls due.
     if (payload.scheduledFor && payload.scheduledFor > new Date()) {
       return emailLog.id
     }
 
-    // Send email immediately
     try {
-      if (!this.transporter || !this.config) {
-        await this.initialize()
-      }
+      const { config, transporter } = await this.initialize(payload.hospitalId)
 
-      const result = await this.transporter!.sendMail({
-        from: `"${this.config!.from.name}" <${this.config!.from.email}>`,
+      const result = await transporter.sendMail({
+        from: `"${config.from.name}" <${config.from.email}>`,
         to: payload.to,
-        replyTo: this.config!.replyTo || this.config!.from.email,
+        replyTo: config.replyTo || config.from.email,
         subject: payload.subject,
         html: payload.body,
         attachments: payload.attachments || [],
       })
 
-      // Update email log
       await prisma.messageLog.update({
         where: { id: emailLog.id },
         data: {
           status: 'SENT',
           sentAt: new Date(),
+          provider: config.host,
           providerRef: result.messageId,
         },
       })
@@ -197,6 +205,33 @@ class EmailService {
 
       throw error
     }
+  }
+
+  /**
+   * Hand one message to the SMTP server, without writing a log row.
+   *
+   * The counterpart to `smsService.deliver`, and for the same reason: the
+   * dispatcher is draining a `MessageLog` row that already exists.
+   */
+  async deliver(
+    to: string,
+    subject: string,
+    body: string,
+    ctx: { config: EmailConfig; transporter: Transporter }
+  ): Promise<{ messageId: string }> {
+    if (!this.isValidEmail(to)) {
+      throw new Error('Invalid email address')
+    }
+
+    const result = await ctx.transporter.sendMail({
+      from: `"${ctx.config.from.name}" <${ctx.config.from.email}>`,
+      to,
+      replyTo: ctx.config.replyTo || ctx.config.from.email,
+      subject,
+      html: body,
+    })
+
+    return { messageId: result.messageId }
   }
 
   async sendBulkEmail(payloads: EmailPayload[]): Promise<string[]> {
@@ -235,6 +270,8 @@ class EmailService {
     }
 
     return this.sendEmail({
+      // The template's own clinic. A template is never shared between two.
+      hospitalId: template.hospitalId,
       to,
       subject,
       body,

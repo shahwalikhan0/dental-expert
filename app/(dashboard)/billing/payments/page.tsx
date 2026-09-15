@@ -23,10 +23,9 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import {
   Search,
-  ChevronLeft,
-  ChevronRight,
   User,
   CreditCard,
   Banknote,
@@ -155,7 +154,7 @@ export default function PaymentsPage() {
         return <Banknote className="h-4 w-4" />
       case 'CARD':
         return <CreditCard className="h-4 w-4" />
-      case 'UPI':
+      case 'WALLET':
         return <Smartphone className="h-4 w-4" />
       case 'BANK_TRANSFER':
         return <Building2 className="h-4 w-4" />
@@ -278,7 +277,7 @@ export default function PaymentsPage() {
                   <SelectItem value="all">All Methods</SelectItem>
                   <SelectItem value="CASH">Cash</SelectItem>
                   <SelectItem value="CARD">Card</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="WALLET">Mobile Wallet</SelectItem>
                   <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                   <SelectItem value="CHEQUE">Cheque</SelectItem>
                   <SelectItem value="INSURANCE">Insurance</SelectItem>
@@ -358,7 +357,11 @@ export default function PaymentsPage() {
                 </TableRow>
               ) : (
                 payments.map((payment) => (
-                  <TableRow key={payment.id}>
+                  <ClickableRow
+                    key={payment.id}
+                    href={`/billing/invoices/${payment.invoice.id}`}
+                    label={`Open the invoice for payment ${payment.paymentNo}`}
+                  >
                     <TableCell>
                       <div className="font-medium">{payment.paymentNo}</div>
                       {payment.transactionId && (
@@ -435,45 +438,20 @@ export default function PaymentsPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))
               )}
             </TableBody>
           </Table>
 
-          {/* Pagination */}
-          {!loading && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} payments
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={pagination.page <= 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="text-sm">
-                  Page {pagination.page} of {pagination.totalPages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="payments"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
     </div>

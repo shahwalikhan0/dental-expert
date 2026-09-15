@@ -154,11 +154,10 @@ export default function BillingPage() {
   const paymentMethodLabels: Record<string, string> = {
     CASH: 'Cash',
     CARD: 'Card',
-    UPI: 'UPI',
     BANK_TRANSFER: 'Bank Transfer',
     CHEQUE: 'Cheque',
     INSURANCE: 'Insurance',
-    WALLET: 'Wallet',
+    WALLET: 'Mobile Wallet',
   }
 
   const invoiceStatusLabels: Record<string, { label: string; color: string }> = {

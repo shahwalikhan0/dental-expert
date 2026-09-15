@@ -32,12 +32,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { GridPagination } from '@/components/ui/data-grid'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   MoreHorizontal,
   Eye,
   Edit,
@@ -72,14 +71,15 @@ interface LabVendor {
   city: string
   state: string
   postalCode: string
-  gstin: string
-  pan: string
+  taxRegistrationNo: string
+  nationalTaxNo: string
   specializations: string
   avgTurnaround: number
   rating: number
   paymentTerms: string
   creditLimit: number
-  status: 'active' | 'inactive' | 'blocked'
+  /** Stored as the `VendorStatus` enum — ACTIVE / INACTIVE / BLOCKED. */
+  status: string
   notes: string
   createdAt: string
   updatedAt: string
@@ -123,14 +123,14 @@ export default function LabVendorsPage() {
     city: '',
     state: '',
     postalCode: '',
-    gstin: '',
-    pan: '',
+    taxRegistrationNo: '',
+    nationalTaxNo: '',
     specializations: '',
     avgTurnaround: 7,
     rating: 0,
     paymentTerms: 'Net 30',
     creditLimit: 0,
-    status: 'active' as 'active' | 'inactive' | 'blocked',
+    status: 'active',
     notes: '',
   })
   const [saving, setSaving] = useState(false)
@@ -182,14 +182,15 @@ export default function LabVendorsPage() {
         city: vendor.city || '',
         state: vendor.state || '',
         postalCode: vendor.postalCode || '',
-        gstin: vendor.gstin || '',
-        pan: vendor.pan || '',
+        taxRegistrationNo: vendor.taxRegistrationNo || '',
+        nationalTaxNo: vendor.nationalTaxNo || '',
         specializations: vendor.specializations || '',
         avgTurnaround: vendor.avgTurnaround,
         rating: vendor.rating,
         paymentTerms: vendor.paymentTerms,
         creditLimit: vendor.creditLimit,
-        status: vendor.status,
+        // The picker's options are lowercase; the record holds the enum.
+        status: (vendor.status || 'active').toLowerCase(),
         notes: vendor.notes || '',
       })
     } else {
@@ -205,8 +206,8 @@ export default function LabVendorsPage() {
         city: '',
         state: '',
         postalCode: '',
-        gstin: '',
-        pan: '',
+        taxRegistrationNo: '',
+        nationalTaxNo: '',
         specializations: '',
         avgTurnaround: 7,
         rating: 0,
@@ -289,6 +290,11 @@ export default function LabVendorsPage() {
     }
   }
 
+  /**
+   * The column holds the enum (`ACTIVE`), the filter control sends lowercase.
+   * Lower-casing here is what makes the two agree — without it every badge fell
+   * through to `configs.active` and said "Active", including the blocked ones.
+   */
   const getStatusBadge = (status: string) => {
     const configs: Record<string, { label: string; className: string; icon: any }> = {
       active: {
@@ -308,7 +314,7 @@ export default function LabVendorsPage() {
       },
     }
 
-    const config = configs[status] || configs.active
+    const config = configs[status?.toLowerCase()] || configs.active
     const Icon = config.icon
 
     return (
@@ -359,7 +365,7 @@ export default function LabVendorsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {vendors.filter((v) => v.status === 'active').length}
+              {vendors.filter((v) => v.status?.toLowerCase() === 'active').length}
             </div>
           </CardContent>
         </Card>
@@ -514,34 +520,14 @@ export default function LabVendorsPage() {
                 </TableBody>
               </Table>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                  {pagination.total} vendors
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === 1}
-                    onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === pagination.pages}
-                    onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              <GridPagination
+                page={pagination.page}
+                pageSize={pagination.limit}
+                total={pagination.total}
+                noun="laboratories"
+                onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
+                onPageSizeChange={(limit) => setPagination((prev) => ({ ...prev, limit, page: 1 }))}
+              />
             </>
           )}
         </CardContent>
@@ -702,7 +688,7 @@ export default function LabVendorsPage() {
                   onValueChange={(value) =>
                     setFormData({
                       ...formData,
-                      status: value as 'active' | 'inactive' | 'blocked',
+                      status: value,
                     })
                   }
                 >

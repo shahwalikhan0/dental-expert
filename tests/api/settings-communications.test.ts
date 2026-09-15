@@ -126,6 +126,78 @@ describe('Settings Communications API', () => {
       expect(prisma.setting.upsert).toHaveBeenCalled()
     })
 
+    /**
+     * Twilio needs two credentials — an Account SID and an Auth Token — and
+     * only one of them was ever written. `sendViaTwilio` reads the SID from
+     * `sms.authKey`, which nothing set, so the one gateway that delivers to
+     * Pakistani numbers could not in fact be configured.
+     */
+    it('writes both Twilio credentials, not just the token', async () => {
+      ;(prisma.setting.upsert as any).mockResolvedValue({})
+
+      await mod.POST(
+        makePostRequest({
+          type: 'sms',
+          settings: {
+            gateway: 'TWILIO',
+            apiKey: 'auth-token',
+            authKey: 'ACxxxxxxxx',
+            senderId: '+923001234567',
+          },
+        })
+      )
+
+      const written = Object.fromEntries(
+        (prisma.setting.upsert as any).mock.calls
+          .map((c: any) => c[0].create)
+          .filter((d: any) => d?.category === 'sms')
+          .map((d: any) => [d.key, d.value])
+      )
+
+      expect(written['sms.apiKey']).toBe('auth-token')
+      expect(written['sms.authKey']).toBe('ACxxxxxxxx')
+      expect(written['sms.senderId']).toBe('+923001234567')
+    })
+
+    // The window is the clinic's, not a hardcoded IST rule — so it has to be
+    // stored per clinic like every other configurable.
+    it('stores the send window, defaulting to nine until nine', async () => {
+      ;(prisma.setting.upsert as any).mockResolvedValue({})
+
+      await mod.POST(makePostRequest({ type: 'sms', settings: { gateway: 'TWILIO' } }))
+
+      const written = Object.fromEntries(
+        (prisma.setting.upsert as any).mock.calls
+          .map((c: any) => c[0].create)
+          .filter((d: any) => d?.category === 'sms')
+          .map((d: any) => [d.key, d.value])
+      )
+
+      expect(written['sms.sendWindowStart']).toBe('09:00')
+      expect(written['sms.sendWindowEnd']).toBe('21:00')
+    })
+
+    it('keeps a send window the clinic has set', async () => {
+      ;(prisma.setting.upsert as any).mockResolvedValue({})
+
+      await mod.POST(
+        makePostRequest({
+          type: 'sms',
+          settings: { gateway: 'TWILIO', sendWindowStart: '08:00', sendWindowEnd: '18:00' },
+        })
+      )
+
+      const written = Object.fromEntries(
+        (prisma.setting.upsert as any).mock.calls
+          .map((c: any) => c[0].create)
+          .filter((d: any) => d?.category === 'sms')
+          .map((d: any) => [d.key, d.value])
+      )
+
+      expect(written['sms.sendWindowStart']).toBe('08:00')
+      expect(written['sms.sendWindowEnd']).toBe('18:00')
+    })
+
     it('saves email settings', async () => {
       ;(prisma.setting.upsert as any).mockResolvedValue({})
 

@@ -178,9 +178,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
-    // Verify vendor exists and belongs to this hospital
-    const vendor = await prisma.labVendor.findFirst({
-      where: { id: labVendorId, hospitalId },
+    // Verify the laboratory exists and belongs to this clinic. `kind` matters:
+    // laboratories and suppliers share one table, and a lab order addressed to
+    // a materials supplier is not a lab order.
+    const vendor = await prisma.vendor.findFirst({
+      where: { id: labVendorId, hospitalId, kind: 'LAB', deletedAt: null },
     })
 
     if (!vendor) {

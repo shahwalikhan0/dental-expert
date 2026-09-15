@@ -23,11 +23,10 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GridPagination } from '@/components/ui/data-grid'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   MoreHorizontal,
   Eye,
   Edit,
@@ -569,34 +568,14 @@ export default function LabWorkPage() {
                 </TableBody>
               </Table>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                  {pagination.total} orders
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === 1}
-                    onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === pagination.pages}
-                    onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              <GridPagination
+                page={pagination.page}
+                pageSize={pagination.limit}
+                total={pagination.total}
+                noun="lab cases"
+                onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+                onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+              />
             </>
           )}
         </CardContent>

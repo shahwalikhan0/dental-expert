@@ -15,6 +15,9 @@ vi.mock('@/lib/prisma', () => {
     patient: {
       findUnique: vi.fn(),
     },
+    hospital: {
+      findUnique: vi.fn(),
+    },
     communicationTemplate: {
       findUnique: vi.fn(),
     },
@@ -48,37 +51,86 @@ describe('SMSService - Phone Validation', () => {
     const { smsService } = smsServiceModule
 
     // Set up minimal mocks - the send should fail at validation before DB calls
-    await expect(smsService.sendSMS({ phone: '12345', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '12345', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects a subscriber number not starting with 3', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '0123456789', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '0123456789', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
 
-    await expect(smsService.sendSMS({ phone: '5123456789', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '5123456789', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects phone with fewer than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '30012', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '30012', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
   })
 
   it('rejects phone with more than 10 digits', async () => {
     const { smsService } = smsServiceModule
 
-    await expect(smsService.sendSMS({ phone: '30012345670', message: 'test' })).rejects.toThrow(
-      'Invalid phone number'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '30012345670', message: 'test' })
+    ).rejects.toThrow('Invalid phone number')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Whose credentials carry the message
+// ---------------------------------------------------------------------------
+
+describe('SMSService - credentials belong to one clinic', () => {
+  /**
+   * `initialize()` used to read `where: { category: 'sms' }` with no clinic
+   * filter, and cache the result on a module-level singleton. On a multi-tenant
+   * install that is one clinic's message going out over another clinic's Twilio
+   * account: their account billed, their sender id on the patient's handset,
+   * and the cached config outliving the request that loaded it.
+   */
+  it('reads only the calling clinic settings', async () => {
+    const { smsService } = smsServiceModule
+    vi.mocked(prisma.setting.findMany).mockResolvedValue([
+      { key: 'sms.apiKey', value: 'token' },
+      { key: 'sms.senderId', value: '+15005550006' },
+      { key: 'sms.authKey', value: 'AC123' },
+    ] as any)
+
+    await smsService.initialize('h1')
+
+    expect(vi.mocked(prisma.setting.findMany).mock.calls[0][0]!.where).toEqual({
+      hospitalId: 'h1',
+      category: 'sms',
+    })
+  })
+
+  it('refuses to load credentials with no clinic', async () => {
+    const { smsService } = smsServiceModule
+
+    await expect(smsService.initialize('')).rejects.toThrow('without a clinic')
+    expect(prisma.setting.findMany).not.toHaveBeenCalled()
+  })
+
+  it('does not cache one clinic credentials for the next', async () => {
+    const { smsService } = smsServiceModule
+    vi.mocked(prisma.setting.findMany)
+      .mockResolvedValueOnce([{ key: 'sms.apiKey', value: 'first' }] as any)
+      .mockResolvedValueOnce([{ key: 'sms.apiKey', value: 'second' }] as any)
+
+    const one = await smsService.initialize('h1')
+    const two = await smsService.initialize('h2')
+
+    expect(one.apiKey).toBe('first')
+    expect(two.apiKey).toBe('second')
   })
 })
 
@@ -95,7 +147,12 @@ describe('SMSService - Communication Preferences', () => {
     prefs({ doNotContact: true, sms: true })
 
     await expect(
-      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+      smsService.sendSMS({
+        hospitalId: 'h1',
+        phone: '3001234567',
+        message: 'test',
+        patientId: 'patient-1',
+      })
     ).rejects.toThrow('asked not to be contacted')
   })
 
@@ -104,7 +161,12 @@ describe('SMSService - Communication Preferences', () => {
     prefs({ sms: false })
 
     await expect(
-      smsService.sendSMS({ phone: '3001234567', message: 'test', patientId: 'patient-1' })
+      smsService.sendSMS({
+        hospitalId: 'h1',
+        phone: '3001234567',
+        message: 'test',
+        patientId: 'patient-1',
+      })
     ).rejects.toThrow('turned off sms')
   })
 
@@ -114,6 +176,7 @@ describe('SMSService - Communication Preferences', () => {
 
     await expect(
       smsService.sendSMS({
+        hospitalId: 'h1',
         phone: '3001234567',
         message: 'Half price whitening',
         patientId: 'patient-1',
@@ -141,6 +204,7 @@ describe('SMSService - Communication Preferences', () => {
     // which is the point: the preference check let it through.
     await expect(
       smsService.sendSMS({
+        hospitalId: 'h1',
         phone: '3001234567',
         message: 'Your appointment is tomorrow',
         patientId: 'patient-1',
@@ -157,39 +221,108 @@ describe('SMSService - Communication Preferences', () => {
 // Time restrictions
 // ---------------------------------------------------------------------------
 
-describe('SMSService - Time Restrictions', () => {
-  it('rejects SMS outside allowed hours (before 9 AM IST)', async () => {
+describe('SMSService - the clinic’s send window', () => {
+  /**
+   * The window is the clinic's own, read in the clinic's own timezone. It used
+   * to be 9am–9pm **IST**, computed by adding five and a half hours to UTC —
+   * India's TRAI restriction, hardcoded. On a Pakistani clinic that is wrong in
+   * both directions by half an hour, and Pakistan has no such rule to begin
+   * with.
+   */
+  const clinicIn = (timezone: string, settings: { key: string; value: string }[] = []) => {
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue({ timezone } as any)
+    vi.mocked(prisma.setting.findMany).mockImplementation((async (args: any) =>
+      args?.where?.key ? settings : []) as never)
+  }
+
+  it('refuses a message at three in the morning, Karachi time', async () => {
     const { smsService } = smsServiceModule
+    clinicIn('Asia/Karachi')
 
-    // Mock current time to 3 AM IST (3:00 AM IST = 9:30 PM UTC previous day)
-    const mockDate = new Date('2026-02-19T21:30:00Z') // 3 AM IST next day
-    vi.setSystemTime(mockDate)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-19T22:00:00Z')) // 03:00 in Karachi
 
-    // No patient preferences to check
-    await expect(smsService.sendSMS({ phone: '3001234567', message: 'test' })).rejects.toThrow(
-      'outside 9 AM - 9 PM'
-    )
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '3001234567', message: 'test' })
+    ).rejects.toThrow(/between 09:00–21:00/)
 
     vi.useRealTimers()
   })
 
-  it('allows SMS during allowed hours (12 PM IST)', async () => {
+  it('allows one at midday', async () => {
     const { smsService } = smsServiceModule
+    clinicIn('Asia/Karachi')
 
-    // 12 PM IST = 6:30 AM UTC
-    const mockDate = new Date('2026-02-19T06:30:00Z')
     vi.useFakeTimers()
-    vi.setSystemTime(mockDate)
+    vi.setSystemTime(new Date('2026-02-19T07:00:00Z')) // 12:00 in Karachi
 
-    // Set up to pass phone validation and time check, then fail at initialize
+    // Gets past the window and fails at the gateway, which is not configured.
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '3001234567', message: 'test' })
+    ).rejects.toThrow('SMS gateway not configured')
+
+    vi.useRealTimers()
+  })
+
+  /**
+   * The half hour the old code got wrong. 20:45 in Karachi is 21:15 in India,
+   * which the IST check refused — and 09:15 in Karachi is 08:45 IST, which it
+   * also refused.
+   */
+  it('judges the quarter-hours the IST offset used to get wrong', async () => {
+    const { smsService } = smsServiceModule
+    clinicIn('Asia/Karachi')
+
+    vi.useFakeTimers()
+
+    for (const utc of ['2026-02-19T15:45:00Z', '2026-02-19T04:15:00Z']) {
+      vi.setSystemTime(new Date(utc))
+      await expect(
+        smsService.sendSMS({ hospitalId: 'h1', phone: '3001234567', message: 'test' }),
+        utc
+      ).rejects.toThrow('SMS gateway not configured')
+    }
+
+    vi.useRealTimers()
+  })
+
+  it('honours a window the clinic has moved', async () => {
+    const { smsService } = smsServiceModule
+    clinicIn('Asia/Karachi', [
+      { key: 'sms.sendWindowStart', value: '08:00' },
+      { key: 'sms.sendWindowEnd', value: '18:00' },
+    ])
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-19T14:00:00Z')) // 19:00 in Karachi
+
+    await expect(
+      smsService.sendSMS({ hospitalId: 'h1', phone: '3001234567', message: 'test' })
+    ).rejects.toThrow(/between 08:00–18:00/)
+
+    vi.useRealTimers()
+  })
+
+  /**
+   * A message queued for tomorrow morning is not refused tonight. The question
+   * "is it an acceptable hour" only means anything at the moment of sending.
+   */
+  it('does not judge a scheduled message by the hour it was queued', async () => {
+    const { smsService } = smsServiceModule
+    clinicIn('Asia/Karachi')
     vi.mocked(prisma.messageLog.create).mockResolvedValue({ id: 'sms-1' } as any)
-    vi.mocked(prisma.setting.findMany).mockResolvedValue([])
 
-    // Should get past phone validation and time check, fail at initialize
-    await expect(smsService.sendSMS({ phone: '3001234567', message: 'test' })).rejects.toThrow(
-      'SMS gateway not configured'
-    )
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-19T22:00:00Z')) // 03:00 in Karachi
 
+    const id = await smsService.sendSMS({
+      hospitalId: 'h1',
+      phone: '3001234567',
+      message: 'test',
+      scheduledFor: new Date('2026-02-20T05:00:00Z'),
+    })
+
+    expect(id).toBe('sms-1')
     vi.useRealTimers()
   })
 })

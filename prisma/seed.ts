@@ -7,11 +7,11 @@ import {
   Plan,
   SubscriptionStatus,
   InvoiceStatus,
-  SupplierStatus,
+  VendorStatus,
   InventoryItemType,
   StockTransactionType,
   StockAlertType,
-  LabVendorStatus,
+  PurchaseOrderStatus,
   LabOrderStatus,
   LabOrderPriority,
   LabWorkType,
@@ -19,6 +19,8 @@ import {
   AppointmentType,
 } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { reconcileStockAlerts } from '../lib/stock-alerts'
+import { defaultTemplatesFor } from '../lib/default-templates'
 
 const prisma = new PrismaClient()
 
@@ -273,80 +275,80 @@ async function main() {
       firstName: 'Ahmed',
       lastName: 'Raza',
       phone: '3001234301',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 35}-03-14`),
       gender: Gender.MALE,
-      age: 35,
       bloodGroup: BloodGroup.O_POSITIVE,
     },
     {
       firstName: 'Zainab',
       lastName: 'Malik',
       phone: '3001234302',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 28}-03-14`),
       gender: Gender.FEMALE,
-      age: 28,
       bloodGroup: BloodGroup.A_POSITIVE,
     },
     {
       firstName: 'Hassan',
       lastName: 'Javed',
       phone: '3001234303',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 42}-03-14`),
       gender: Gender.MALE,
-      age: 42,
       bloodGroup: BloodGroup.B_POSITIVE,
     },
     {
       firstName: 'Fatima',
       lastName: 'Siddiqui',
       phone: '3001234304',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 31}-03-14`),
       gender: Gender.FEMALE,
-      age: 31,
       bloodGroup: BloodGroup.AB_POSITIVE,
     },
     {
       firstName: 'Tariq',
       lastName: 'Mehmood',
       phone: '3001234305',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 55}-03-14`),
       gender: Gender.MALE,
-      age: 55,
       bloodGroup: BloodGroup.O_NEGATIVE,
     },
     {
       firstName: 'Mahnoor',
       lastName: 'Shaikh',
       phone: '3001234306',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 25}-03-14`),
       gender: Gender.FEMALE,
-      age: 25,
       bloodGroup: BloodGroup.A_NEGATIVE,
     },
     {
       firstName: 'Danish',
       lastName: 'Qureshi',
       phone: '3001234307',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 38}-03-14`),
       gender: Gender.MALE,
-      age: 38,
       bloodGroup: BloodGroup.B_NEGATIVE,
     },
     {
       firstName: 'Rabia',
       lastName: 'Anwar',
       phone: '3001234308',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 45}-03-14`),
       gender: Gender.FEMALE,
-      age: 45,
       bloodGroup: BloodGroup.AB_NEGATIVE,
     },
     {
       firstName: 'Nadeem',
       lastName: 'Butt',
       phone: '3001234309',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 62}-03-14`),
       gender: Gender.MALE,
-      age: 62,
       bloodGroup: BloodGroup.O_POSITIVE,
     },
     {
       firstName: 'Sadia',
       lastName: 'Chaudhry',
       phone: '3001234310',
+      dateOfBirth: new Date(`${new Date().getFullYear() - 33}-03-14`),
       gender: Gender.FEMALE,
-      age: 33,
       bloodGroup: BloodGroup.A_POSITIVE,
     },
   ]
@@ -369,7 +371,7 @@ async function main() {
         lastName: patient.lastName,
         phone: patient.phone,
         gender: patient.gender,
-        age: patient.age,
+        dateOfBirth: patient.dateOfBirth,
         bloodGroup: patient.bloodGroup,
         city: 'Lahore',
         state: 'Punjab',
@@ -1178,7 +1180,7 @@ async function main() {
       contactPerson: 'Imran Sheikh',
       phone: '3211012345',
       email: 'sales@lahoredental.example',
-      status: SupplierStatus.ACTIVE,
+      status: VendorStatus.ACTIVE,
     },
     {
       code: 'SUP002',
@@ -1186,23 +1188,26 @@ async function main() {
       contactPerson: 'Saima Akhtar',
       phone: '3211067890',
       email: 'orders@northernortho.example',
-      status: SupplierStatus.ACTIVE,
+      status: VendorStatus.ACTIVE,
     },
     {
       code: 'SUP003',
       name: 'Legacy Instruments Co',
       contactPerson: 'Kamran Aziz',
       phone: '3211055555',
-      status: SupplierStatus.BLOCKED,
+      status: VendorStatus.BLOCKED,
     },
   ]
 
   for (const s of suppliers) {
-    await prisma.supplier.upsert({
-      where: { hospitalId_code: { hospitalId: hospital.id, code: s.code } },
+    await prisma.vendor.upsert({
+      where: {
+        hospitalId_kind_code: { hospitalId: hospital.id, kind: 'SUPPLIER', code: s.code },
+      },
       update: {},
       create: {
         hospitalId: hospital.id,
+        kind: 'SUPPLIER',
         city: 'Lahore',
         state: 'Punjab',
         paymentTerms: 'Net 30',
@@ -1212,8 +1217,10 @@ async function main() {
     })
   }
 
-  const primarySupplier = await prisma.supplier.findUnique({
-    where: { hospitalId_code: { hospitalId: hospital.id, code: 'SUP001' } },
+  const primarySupplier = await prisma.vendor.findUnique({
+    where: {
+      hospitalId_kind_code: { hospitalId: hospital.id, kind: 'SUPPLIER', code: 'SUP001' },
+    },
   })
 
   // currentStock is deliberately varied so the stock-status badges, the low
@@ -1353,20 +1360,112 @@ async function main() {
       }
     }
 
-    // Open, unacknowledged alerts matching the two depleted items.
-    for (const [item, alertType] of [
-      [gloves, StockAlertType.LOW_STOCK],
-      [anaesthetic, StockAlertType.OUT_OF_STOCK],
-    ] as const) {
-      const open = await prisma.stockAlert.findFirst({
-        where: { itemId: item.id, alertType, isAcknowledged: false },
+    // Open, unacknowledged alerts matching the two depleted items. Derived from
+    // the stock levels themselves rather than asserted, so the seed cannot
+    // disagree with what the application would have raised.
+    for (const item of [gloves, anaesthetic]) {
+      await reconcileStockAlerts(prisma, {
+        hospitalId: hospital.id,
+        itemId: item.id,
+        currentStock: item.currentStock,
+        minimumStock: item.minimumStock,
       })
-      if (!open) {
-        await prisma.stockAlert.create({
-          data: { hospitalId: hospital.id, itemId: item.id, alertType },
-        })
-      }
     }
+  }
+
+  // ── Purchase orders ───────────────────────────────────────────────────────
+  //
+  // One received, one still outstanding. The received order is the one that
+  // explains where BATCH-2026-01 and the composite PURCHASE movement above came
+  // from — before goods receipt existed, batches and purchase movements had no
+  // order behind them because nothing could create one.
+
+  if (composite && gloves && primarySupplier) {
+    const existingOrders = await prisma.purchaseOrder.count({ where: { hospitalId: hospital.id } })
+
+    if (existingOrders === 0) {
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+      const inSevenDays = new Date()
+      inSevenDays.setDate(inSevenDays.getDate() + 7)
+
+      const received = await prisma.purchaseOrder.create({
+        data: {
+          hospitalId: hospital.id,
+          orderNumber: `PO${thirtyDaysAgo.getFullYear()}0001`,
+          supplierId: primarySupplier.id,
+          orderDate: thirtyDaysAgo,
+          receivedDate: thirtyDaysAgo,
+          subtotal: 18000,
+          taxAmount: 0,
+          totalAmount: 18000,
+          status: PurchaseOrderStatus.RECEIVED,
+          items: {
+            create: [
+              {
+                itemId: composite.id,
+                quantity: 40,
+                receivedQty: 40,
+                unitPrice: 450,
+                amount: 18000,
+              },
+            ],
+          },
+        },
+      })
+
+      // Point the composite purchase movement at the order that caused it, so
+      // the order's deliveries list and FR-017's traceability line up.
+      await prisma.stockTransaction.updateMany({
+        where: {
+          hospitalId: hospital.id,
+          itemId: composite.id,
+          type: StockTransactionType.PURCHASE,
+          referenceId: null,
+        },
+        data: { referenceType: 'PurchaseOrder', referenceId: received.id },
+      })
+
+      // Gloves are below their minimum and have an alert standing against them.
+      // This is the order that answers it, and it has not arrived yet.
+      await prisma.purchaseOrder.create({
+        data: {
+          hospitalId: hospital.id,
+          orderNumber: `PO${new Date().getFullYear()}0002`,
+          supplierId: primarySupplier.id,
+          expectedDate: inSevenDays,
+          subtotal: 6400,
+          taxAmount: 0,
+          totalAmount: 6400,
+          status: PurchaseOrderStatus.ORDERED,
+          notes: 'Reorder against the low-stock alert',
+          items: {
+            create: [
+              { itemId: gloves.id, quantity: 20, receivedQty: 0, unitPrice: 320, amount: 6400 },
+            ],
+          },
+        },
+      })
+
+      console.log('Created purchase orders')
+    }
+  }
+
+  // ── Communication templates ───────────────────────────────────────────────
+  //
+  // Every automated message looks up a default template for its category and
+  // channel. Nothing created one, so the lookup returned null and the message
+  // was quietly not sent. New clinics get these at signup; the demo clinic gets
+  // them here.
+
+  const templateCount = await prisma.communicationTemplate.count({
+    where: { hospitalId: hospital.id },
+  })
+
+  if (templateCount === 0) {
+    await prisma.communicationTemplate.createMany({ data: defaultTemplatesFor(hospital.id) })
+    console.log('Created default communication templates')
   }
 
   console.log('Created suppliers, inventory items, batches, movements and alerts')
@@ -1396,24 +1495,25 @@ async function main() {
   ]
 
   for (const v of vendors) {
-    const existing = await prisma.labVendor.findFirst({
-      where: { hospitalId: hospital.id, code: v.code },
+    const existing = await prisma.vendor.findFirst({
+      where: { hospitalId: hospital.id, kind: 'LAB', code: v.code },
     })
     if (!existing) {
-      await prisma.labVendor.create({
+      await prisma.vendor.create({
         data: {
           hospitalId: hospital.id,
+          kind: 'LAB',
           city: 'Lahore',
           state: 'Punjab',
-          status: LabVendorStatus.ACTIVE,
+          status: VendorStatus.ACTIVE,
           ...v,
         },
       })
     }
   }
 
-  const primaryVendor = await prisma.labVendor.findFirst({
-    where: { hospitalId: hospital.id, code: 'LAB001' },
+  const primaryVendor = await prisma.vendor.findFirst({
+    where: { hospitalId: hospital.id, kind: 'LAB', code: 'LAB001' },
   })
 
   const seededPatients = await prisma.patient.findMany({

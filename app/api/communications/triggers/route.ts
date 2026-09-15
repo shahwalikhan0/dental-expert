@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { communicationTriggersService } from '@/lib/services/communication-triggers.service'
 
-// POST /api/communications/triggers - Run communication triggers
-// This endpoint should be called by a cron job (e.g., every hour)
+/**
+ * POST /api/communications/triggers — birthday wishes, payment reminders and
+ * lab-work-ready notifications. Appointment reminders are not here: they are
+ * queued by /api/cron/reminders and sent by /api/cron/dispatch.
+ *
+ * TODO — nothing schedules this yet. The endpoint is complete and can be called
+ * by hand; what is missing is the thing that calls it daily. There is no
+ * scheduler config anywhere in the repository (no `vercel.json` crons, no timer
+ * unit, no CI schedule), so on a fresh deployment this route never runs.
+ * Whatever runs it must send `Authorization: Bearer $CRON_SECRET`.
+ */
 export async function POST(req: NextRequest) {
   try {
     // Verify cron secret to prevent unauthorized access

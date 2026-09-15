@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { PurchaseOrderStatus, SupplierStatus } from '@prisma/client'
+import { PurchaseOrderStatus, VendorStatus } from '@prisma/client'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ const supplier = {
   hospitalId: 'hospital-1',
   code: 'SUP001',
   name: 'Dental Supplies Co',
-  status: SupplierStatus.ACTIVE,
+  status: VendorStatus.ACTIVE,
   deletedAt: null,
 }
 
@@ -100,13 +100,13 @@ describe('Inventory supplier detail and reports', () => {
     })
 
     it('returns 404 when supplier not found', async () => {
-      prisma.supplier.findFirst.mockResolvedValue(null)
+      prisma.vendor.findFirst.mockResolvedValue(null)
       const res = await supplierDetailGET(makeReq('/api/inventory/suppliers/sup-1'), ctx)
       expect(res.status).toBe(404)
     })
 
     it('returns supplier detail with items and purchase orders', async () => {
-      prisma.supplier.findFirst.mockResolvedValue(supplier)
+      prisma.vendor.findFirst.mockResolvedValue(supplier)
       prisma.inventoryItem.findMany.mockResolvedValue([
         { id: 'item-1', sku: 'IT1', name: 'Composite', currentStock: 5, purchasePrice: 100 },
       ])
@@ -142,7 +142,7 @@ describe('Inventory supplier detail and reports', () => {
     })
 
     it('returns 404 when supplier not found', async () => {
-      prisma.supplier.findFirst.mockResolvedValue(null)
+      prisma.vendor.findFirst.mockResolvedValue(null)
       const res = await supplierDetailPUT(
         makeReq('/api/inventory/suppliers/sup-1', {
           method: 'PUT',
@@ -154,7 +154,7 @@ describe('Inventory supplier detail and reports', () => {
     })
 
     it('returns 409 when the code conflicts with another supplier', async () => {
-      prisma.supplier.findFirst
+      prisma.vendor.findFirst
         .mockResolvedValueOnce({ id: 'sup-1', code: 'SUP001' })
         .mockResolvedValueOnce({ id: 'sup-2' })
 
@@ -169,8 +169,8 @@ describe('Inventory supplier detail and reports', () => {
     })
 
     it('updates supplier successfully', async () => {
-      prisma.supplier.findFirst.mockResolvedValue({ id: 'sup-1', code: 'SUP001' })
-      prisma.supplier.update.mockResolvedValue({ id: 'sup-1' })
+      prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1', code: 'SUP001' })
+      prisma.vendor.update.mockResolvedValue({ id: 'sup-1' })
 
       const res = await supplierDetailPUT(
         makeReq('/api/inventory/suppliers/sup-1', {
@@ -180,10 +180,10 @@ describe('Inventory supplier detail and reports', () => {
         ctx
       )
       expect(res.status).toBe(200)
-      const data = prisma.supplier.update.mock.calls[0][0].data
+      const data = prisma.vendor.update.mock.calls[0][0].data
       expect(data.name).toBe('Updated')
       // Legacy lowercase status is still accepted and mapped onto the enum.
-      expect(data.status).toBe(SupplierStatus.BLOCKED)
+      expect(data.status).toBe(VendorStatus.BLOCKED)
     })
   })
 
@@ -195,35 +195,38 @@ describe('Inventory supplier detail and reports', () => {
     })
 
     it('returns 404 when supplier not found', async () => {
-      prisma.supplier.findFirst.mockResolvedValue(null)
+      prisma.vendor.findFirst.mockResolvedValue(null)
       const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)
       expect(res.status).toBe(404)
     })
 
     it('soft deletes a supplier that is still referenced', async () => {
-      prisma.supplier.findFirst.mockResolvedValue({ id: 'sup-1' })
+      prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1' })
       prisma.purchaseOrder.count.mockResolvedValue(2)
       prisma.inventoryItem.count.mockResolvedValue(0)
-      prisma.supplier.update.mockResolvedValue({ id: 'sup-1' })
+      prisma.vendor.update.mockResolvedValue({ id: 'sup-1' })
 
       const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)
       expect(res.status).toBe(200)
-      expect(prisma.supplier.delete).not.toHaveBeenCalled()
-      const data = prisma.supplier.update.mock.calls[0][0].data
+      expect(prisma.vendor.delete).not.toHaveBeenCalled()
+      const data = prisma.vendor.update.mock.calls[0][0].data
       expect(data.deletedAt).toBeInstanceOf(Date)
-      expect(data.status).toBe(SupplierStatus.INACTIVE)
+      expect(data.status).toBe(VendorStatus.INACTIVE)
+      // One lifecycle field. `isActive` and `status` both existed, and the
+      // schema comment on `isActive` admitted it merely mirrored the enum.
+      expect(data).not.toHaveProperty('isActive')
     })
 
     it('hard deletes a supplier with no references', async () => {
-      prisma.supplier.findFirst.mockResolvedValue({ id: 'sup-1' })
+      prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1' })
       prisma.purchaseOrder.count.mockResolvedValue(0)
       prisma.inventoryItem.count.mockResolvedValue(0)
-      prisma.supplier.delete.mockResolvedValue({ id: 'sup-1' })
+      prisma.vendor.delete.mockResolvedValue({ id: 'sup-1' })
 
       const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)
       expect(res.status).toBe(200)
-      expect(prisma.supplier.delete).toHaveBeenCalledWith({ where: { id: 'sup-1' } })
-      expect(prisma.supplier.update).not.toHaveBeenCalled()
+      expect(prisma.vendor.delete).toHaveBeenCalledWith({ where: { id: 'sup-1' } })
+      expect(prisma.vendor.update).not.toHaveBeenCalled()
     })
   })
 
@@ -253,7 +256,7 @@ describe('Inventory supplier detail and reports', () => {
           category: null,
         },
       ])
-      prisma.supplier.count.mockResolvedValue(3)
+      prisma.vendor.count.mockResolvedValue(3)
       prisma.stockAlert.count.mockResolvedValue(4)
 
       const res = await reportsGET(makeReq('/api/inventory/reports'))

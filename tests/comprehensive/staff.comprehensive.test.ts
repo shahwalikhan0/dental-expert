@@ -522,9 +522,6 @@ describe('Staff API - Comprehensive Tests', () => {
           role: 'RECEPTIONIST',
           password: 'SecurePass123!',
           // Financial info
-          salary: '50000',
-          bankAccountNo: '1234567890',
-          bankIban: 'PK36SCBL0000001123456702',
           cnic: '35202-1234567-1',
           nationalTaxNo: '1234567',
         }),
@@ -643,24 +640,6 @@ describe('Staff API - Comprehensive Tests', () => {
       const response = await POST(request)
 
       expect([201, 400]).toContain(response.status)
-    })
-
-    it('should handle salary as string or number', async () => {
-      const request = new NextRequest('http://localhost/api/staff', {
-        method: 'POST',
-        body: JSON.stringify({
-          firstName: 'Jane',
-          lastName: 'Smith',
-          email: 'jane@example.com',
-          phone: '9876543210',
-          role: 'RECEPTIONIST',
-          password: 'SecurePass123!',
-          salary: '75000.50', // String with decimal
-        }),
-      })
-      const response = await POST(request)
-
-      expect(response.status).toBe(201)
     })
 
     it('should handle joining date in different formats', async () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { reconcileStockAlerts } from '@/lib/stock-alerts'
 import { Prisma, StockAlertType, StockTransactionType } from '@prisma/client'
 
 const TRANSACTION_TYPES = Object.values(StockTransactionType) as string[]
@@ -220,27 +221,12 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      if (newStock <= item.minimumStock) {
-        const alertType = newStock <= 0 ? StockAlertType.OUT_OF_STOCK : StockAlertType.LOW_STOCK
-
-        const openAlert = await tx.stockAlert.findFirst({
-          where: { itemId, alertType, isAcknowledged: false },
-          select: { id: true },
-        })
-
-        if (!openAlert) {
-          await tx.stockAlert.create({ data: { hospitalId, itemId, alertType } })
-        }
-      } else {
-        // Stock is healthy again - clear the open shortage alerts.
-        await tx.stockAlert.deleteMany({
-          where: {
-            itemId,
-            alertType: { in: [StockAlertType.LOW_STOCK, StockAlertType.OUT_OF_STOCK] },
-            isAcknowledged: false,
-          },
-        })
-      }
+      await reconcileStockAlerts(tx, {
+        hospitalId,
+        itemId,
+        currentStock: newStock,
+        minimumStock: item.minimumStock,
+      })
 
       return { status: 201 as const, id: created.id, newStock }
     })

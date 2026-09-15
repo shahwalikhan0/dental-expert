@@ -1,13 +1,27 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { appointmentInstant } from '@/lib/appointment-time'
+
+const HOUR = 60 * 60 * 1000
+const DAY = 24 * HOUR
+
+/** Midnight UTC on the day of `at`, to compare against a `@db.Date` column. */
+function startOfUtcDay(at: Date): Date {
+  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()))
+}
 
 /**
- * GET /api/cron/reminders — scheduled hourly.
+ * GET /api/cron/reminders — meant to run hourly.
  *
- * Queues a reminder for every appointment in the next 24 hours that has not
- * already got one, and a second, earlier one for patients with a history of not
- * turning up. Dispatch is somebody else's job: these rows sit at PENDING with a
- * `scheduledFor`, and the sender picks them up.
+ * Queues the day-before reminder for every upcoming appointment, and a second
+ * one a few hours before for patients with a history of not turning up.
+ * Dispatch is somebody else's job: these rows sit at PENDING with a
+ * `scheduledFor`, and `/api/cron/dispatch` sends them when they fall due.
+ *
+ * This is the only thing that queues an appointment reminder. The
+ * communication-triggers job used to send its own, immediately, in parallel —
+ * two systems reminding the same patient about the same appointment, neither
+ * aware of the other.
  *
  * Reminders are `MessageLog` rows tagged `relatedType: 'Appointment'`. They
  * used to be their own table, which recorded that a reminder had been scheduled
@@ -16,6 +30,12 @@ import { prisma } from '@/lib/prisma'
  *
  * The one route in the application that deliberately reads across clinics: it
  * authenticates on CRON_SECRET, and no clinic can call it.
+ *
+ * TODO — nothing schedules this yet. The endpoint is complete and can be called
+ * by hand; what is missing is the thing that calls it every hour. There is no
+ * scheduler config anywhere in the repository (no `vercel.json` crons, no
+ * timer unit, no CI schedule), so on a fresh deployment this route never runs.
+ * Whatever runs it must send `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(req: Request) {
   const secret = req.headers.get('Authorization')?.replace('Bearer ', '')
@@ -24,21 +44,49 @@ export async function GET(req: Request) {
   }
 
   const now = new Date()
-  const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
-  // Find appointments in next 24 hours across all active hospitals
+  // A two-day window of *calendar days*, narrowed afterwards to the
+  // appointments whose reminder actually falls due.
+  //
+  // `scheduledDate` is `@db.Date`, so it holds midnight and nothing else. The
+  // filter used to be `scheduledDate >= now`, which against midnight means
+  // every appointment later today was skipped — an appointment at 4pm was
+  // never found by a cron running at 9am. Two days rather than one because an
+  // appointment early tomorrow needs its reminder queued tonight.
+  const today = startOfUtcDay(now)
+  const dayAfterTomorrow = new Date(today.getTime() + 2 * DAY)
+
   const appointments = await prisma.appointment.findMany({
     where: {
       status: { in: ['SCHEDULED', 'CONFIRMED'] },
-      scheduledDate: { gte: now, lte: in24Hours },
+      scheduledDate: { gte: today, lte: dayAfterTomorrow },
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
     },
   })
 
-  // Which of them already have a reminder queued or sent.
-  const alreadyReminded = new Set(
+  // Clinic timezones, without which a date and an `HH:MM` string are not an
+  // instant. Fetched separately rather than included on the query above: this
+  // handler runs for every clinic by design, and an `include: { hospital }`
+  // would make the tenant-isolation scanner read it as scoped to one.
+  const timezones = new Map(
+    (
+      await prisma.hospital.findMany({
+        where: { id: { in: [...new Set(appointments.map((a) => a.hospitalId))] } },
+        select: { id: true, timezone: true },
+      })
+    ).map((h) => [h.id, h.timezone])
+  )
+
+  // Which reminders already exist, keyed by appointment *and* send time.
+  //
+  // This used to be keyed by appointment alone, which made any existing
+  // reminder suppress every other one: the 24-hour reminder sent by the
+  // communication triggers left a SENT row, so the hour-before reminder queued
+  // here was skipped for every appointment that had had one. The two are
+  // different messages at different times and both are wanted.
+  const existingReminders = new Set(
     (
       await prisma.messageLog.findMany({
         where: {
@@ -46,10 +94,13 @@ export async function GET(req: Request) {
           relatedId: { in: appointments.map((a) => a.id) },
           status: { in: ['PENDING', 'QUEUED', 'SENT', 'DELIVERED'] },
         },
-        select: { relatedId: true },
+        select: { relatedId: true, scheduledFor: true },
       })
-    ).map((m) => m.relatedId!)
+    ).map((m) => `${m.relatedId}@${m.scheduledFor?.toISOString() ?? 'immediate'}`)
   )
+
+  const alreadyQueued = (appointmentId: string, at: Date) =>
+    existingReminders.has(`${appointmentId}@${at.toISOString()}`)
 
   // Gather no-show history for risk assessment
   const patientIds = [...new Set(appointments.map((a) => a.patientId))]
@@ -76,21 +127,49 @@ export async function GET(req: Request) {
 
   let created = 0
   let extraReminders = 0
+  let skipped = 0
   for (const appt of appointments) {
-    if (alreadyReminded.has(appt.id)) continue
+    // When the appointment actually is, rather than midnight on its day.
+    const startsAt = appointmentInstant(
+      appt.scheduledDate,
+      appt.scheduledTime,
+      timezones.get(appt.hospitalId) || 'Asia/Karachi'
+    )
+
+    if (!startsAt) {
+      skipped++
+      continue
+    }
 
     // Assess no-show risk: high if >30% no-show rate with at least 2 past appointments
     const total = totalMap[appt.patientId] || 0
     const noShows = noShowMap[appt.patientId] || 0
     const isHighRisk = total >= 2 && noShows / total > 0.3
 
-    await queueReminder(appt, new Date(appt.scheduledDate.getTime() - 60 * 60 * 1000))
-    created++
+    // Everybody gets the day-before reminder; patients with a history of not
+    // turning up get a second nudge a few hours before.
+    //
+    // The day-before one is what the communication triggers had been sending
+    // directly, and it is kept because it is what clinics have been getting.
+    // The queue used to schedule its main reminder an hour before instead,
+    // which would have replaced a day's notice with sixty minutes' — for a
+    // patient who has to arrange time off, that is not a reminder.
+    //
+    // A reminder whose moment has already gone is not queued. The dispatcher
+    // would send it the instant it ran, which for an appointment starting in
+    // twenty minutes is a message arriving after the patient has left home.
+    const at = [
+      { when: new Date(startsAt.getTime() - 24 * HOUR), extra: false },
+      ...(isHighRisk ? [{ when: new Date(startsAt.getTime() - 3 * HOUR), extra: true }] : []),
+    ]
 
-    // High-risk patients get an extra early reminder (3 hours before)
-    if (isHighRisk) {
-      await queueReminder(appt, new Date(appt.scheduledDate.getTime() - 3 * 60 * 60 * 1000))
-      extraReminders++
+    for (const reminder of at) {
+      if (reminder.when <= now) continue
+      if (alreadyQueued(appt.id, reminder.when)) continue
+
+      await queueReminder(appt, reminder.when)
+      if (reminder.extra) extraReminders++
+      else created++
     }
   }
 
@@ -98,6 +177,7 @@ export async function GET(req: Request) {
     checked: appointments.length,
     created,
     extraReminders,
+    skipped,
     processedAt: now.toISOString(),
   })
 }
@@ -124,6 +204,9 @@ async function queueReminder(
       relatedId: appointment.id,
       scheduledFor,
       status: 'PENDING',
+      // What the message is for, so the dispatcher can re-check consent for
+      // this kind alone rather than for the channel as a whole.
+      metadata: { kind: 'appointmentReminders' },
     },
   })
 }

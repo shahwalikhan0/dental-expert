@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { StockTransactionType, SupplierStatus } from '@prisma/client'
+import { StockTransactionType, VendorStatus } from '@prisma/client'
 
 /**
  * These reports multiply columns together (SUM(stock * price)) and do date
@@ -87,8 +87,8 @@ async function getInventorySummary(hospitalId: string) {
         itemType: true,
       },
     }),
-    prisma.supplier.count({
-      where: { hospitalId, deletedAt: null, status: SupplierStatus.ACTIVE },
+    prisma.vendor.count({
+      where: { hospitalId, kind: 'SUPPLIER', deletedAt: null, status: VendorStatus.ACTIVE },
     }),
     prisma.stockAlert.count({
       where: { hospitalId, isAcknowledged: false, item: { deletedAt: null } },

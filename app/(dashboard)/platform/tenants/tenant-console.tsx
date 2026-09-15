@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { PLANS } from '@/lib/plans'
 
@@ -53,6 +54,8 @@ const SELECT_CLASS =
 export function TenantConsole() {
   const { toast } = useToast()
   const [tenants, setTenants] = useState<Tenant[]>([])
+  // The route hands back every clinic, so the paging is done here.
+  const paged = usePagedRows(tenants)
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
@@ -157,7 +160,7 @@ export function TenantConsole() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tenants.map((tenant) => (
+                  {paged.rows.map((tenant) => (
                     <tr key={tenant.id} className="border-b last:border-0">
                       <td className="py-3 pr-4">
                         <div className="font-medium">{tenant.name}</div>
@@ -237,6 +240,14 @@ export function TenantConsole() {
               </table>
             </div>
           )}
+          <GridPagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            noun="clinics"
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+          />
         </CardContent>
       </Card>
     </div>

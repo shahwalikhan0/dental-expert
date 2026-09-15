@@ -12,14 +12,6 @@ const UserMenu = dynamic(() => import('./user-menu').then((m) => m.UserMenu), {
   loading: () => <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />,
 })
 
-const NotificationTray = dynamic(
-  () => import('./notification-tray').then((m) => m.NotificationTray),
-  {
-    ssr: false,
-    loading: () => <div className="h-10 w-10 rounded bg-muted animate-pulse" />,
-  }
-)
-
 interface HeaderProps {
   user: {
     name: string
@@ -46,9 +38,6 @@ export function Header({ user }: HeaderProps) {
       <div className="flex items-center gap-2">
         {/* Theme toggle */}
         <ThemeToggle />
-
-        {/* Notifications */}
-        <NotificationTray />
 
         {/* User menu */}
         <UserMenu user={user} />

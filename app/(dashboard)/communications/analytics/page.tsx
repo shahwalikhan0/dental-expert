@@ -56,18 +56,6 @@ interface AnalyticsData {
     openRate: number
   }
   dailyTrend: Array<{ date: string; sms: number; email: number }>
-  campaigns: Array<{
-    id: string
-    name: string
-    channel: string
-    status: string
-    recipientCount: number
-    sentCount: number
-    failedCount: number
-    estimatedCost: number
-    actualCost: number
-    createdAt: string
-  }>
   topTemplates: {
     sms: Array<{ templateId: string; name: string; category: string; count: number }>
     email: Array<{ templateId: string; name: string; category: string; count: number }>
@@ -108,9 +96,7 @@ export default function CampaignAnalyticsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Campaign Analytics</h2>
-          <p className="text-muted-foreground">
-            SMS delivery rates, email engagement, and campaign performance
-          </p>
+          <p className="text-muted-foreground">SMS delivery rates and email engagement</p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
@@ -307,65 +293,6 @@ export default function CampaignAnalyticsPage() {
                     <span className="w-3 h-3 rounded-sm bg-purple-500" /> Email
                   </span>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Campaign Comparison */}
-          {data.campaigns.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Campaigns</CardTitle>
-                <CardDescription>Bulk communication campaign performance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Campaign</TableHead>
-                      <TableHead>Channel</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Recipients</TableHead>
-                      <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Failed</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.campaigns.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{c.channel}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              c.status === 'COMPLETED'
-                                ? 'default'
-                                : c.status === 'FAILED'
-                                  ? 'destructive'
-                                  : 'secondary'
-                            }
-                          >
-                            {c.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{c.recipientCount}</TableCell>
-                        <TableCell className="text-right text-green-600">{c.sentCount}</TableCell>
-                        <TableCell className="text-right text-red-600">{c.failedCount}</TableCell>
-                        <TableCell className="text-right">
-                          Rs{' '}
-                          {c.actualCost > 0 ? c.actualCost.toFixed(2) : c.estimatedCost.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {new Date(c.createdAt).toLocaleDateString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
               </CardContent>
             </Card>
           )}
