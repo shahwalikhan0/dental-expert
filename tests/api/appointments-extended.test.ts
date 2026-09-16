@@ -325,20 +325,19 @@ describe('GET /api/appointments/slots', () => {
   it('returns available slots for a doctor on a date', async () => {
     const { GET } = await import('@/app/api/appointments/slots/route')
 
+    // One entry per weekday — what the settings screen, onboarding and the
+    // seed all write. These fixtures used to hold `{ start, end, … }`, a shape
+    // nothing stores, and so agreed with the bug rather than with the clinic.
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
-      workingHours: JSON.stringify({
-        start: '09:00',
-        end: '10:00',
-        lunchStart: '13:00',
-        lunchEnd: '14:00',
-      }),
+      timezone: KARACHI,
+      workingHours: JSON.stringify({ monday: { open: '09:00', close: '10:00' } }),
     } as any)
     vi.mocked(prisma.holiday.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
     vi.mocked(prisma.staffShift.findUnique).mockResolvedValue(null)
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
 
-    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-15')
+    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-16')
     const res = await GET(req)
     const data = await res.json()
 
@@ -354,7 +353,7 @@ describe('GET /api/appointments/slots', () => {
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({ workingHours: null } as any)
     vi.mocked(prisma.holiday.findFirst).mockResolvedValue({ name: 'Diwali' } as any)
 
-    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-15')
+    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-16')
     const res = await GET(req)
     const data = await res.json()
 
@@ -391,22 +390,21 @@ describe('GET /api/appointments/slots', () => {
   it('marks booked slots as unavailable', async () => {
     const { GET } = await import('@/app/api/appointments/slots/route')
 
+    // One entry per weekday — what the settings screen, onboarding and the
+    // seed all write. These fixtures used to hold `{ start, end, … }`, a shape
+    // nothing stores, and so agreed with the bug rather than with the clinic.
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
-      workingHours: JSON.stringify({
-        start: '09:00',
-        end: '10:00',
-        lunchStart: '13:00',
-        lunchEnd: '14:00',
-      }),
+      timezone: KARACHI,
+      workingHours: JSON.stringify({ monday: { open: '09:00', close: '10:00' } }),
     } as any)
     vi.mocked(prisma.holiday.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
     vi.mocked(prisma.staffShift.findUnique).mockResolvedValue(null)
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
-      { startsAt: instantAt('2026-03-15', '09:00', KARACHI), duration: 30 },
+      { startsAt: instantAt('2026-03-16', '09:00', KARACHI), duration: 30 },
     ] as any)
 
-    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-15')
+    const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-16')
     const res = await GET(req)
     const data = await res.json()
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, wallClockIn } from '@/lib/appointment-time'
+import { availableSlots, hoursOn } from '@/lib/working-hours'
 
 // GET - Get available time slots for a doctor on a specific date
 export async function GET(request: NextRequest) {
@@ -28,14 +29,16 @@ export async function GET(request: NextRequest) {
     })
 
     const timezone = hospital?.timezone || (await clinicTimezone(prisma, hospitalId))
-    let workingHours = { start: '09:00', end: '21:00', lunchStart: '13:00', lunchEnd: '14:00' }
 
-    if (hospital?.workingHours) {
-      try {
-        workingHours = JSON.parse(hospital.workingHours)
-      } catch (e) {
-        // Use defaults
-      }
+    // The clinic's hours for this weekday. This used to parse the stored JSON
+    // into a shape nothing writes — see lib/working-hours.ts.
+    const workingHours = hoursOn(hospital?.workingHours, date)
+    if (!workingHours) {
+      return NextResponse.json({
+        available: false,
+        reason: 'The clinic is closed on this day',
+        slots: [],
+      })
     }
 
     // Check if it's a holiday for this hospital
@@ -91,73 +94,20 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Generate all possible slots
-    const slots: { time: string; available: boolean }[] = []
-
-    const startHour = parseInt(
-      doctorShift?.startTime?.split(':')[0] || workingHours.start.split(':')[0]
-    )
-    const startMin = parseInt(
-      doctorShift?.startTime?.split(':')[1] || workingHours.start.split(':')[1]
-    )
-    const endHour = parseInt(doctorShift?.endTime?.split(':')[0] || workingHours.end.split(':')[0])
-    const endMin = parseInt(doctorShift?.endTime?.split(':')[1] || workingHours.end.split(':')[1])
-
-    const lunchStartHour = parseInt(workingHours.lunchStart.split(':')[0])
-    const lunchStartMin = parseInt(workingHours.lunchStart.split(':')[1])
-    const lunchEndHour = parseInt(workingHours.lunchEnd.split(':')[0])
-    const lunchEndMin = parseInt(workingHours.lunchEnd.split(':')[1])
-
-    // Generate slots in 30-minute intervals
-    let currentHour = startHour
-    let currentMin = startMin
-
-    while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
-      const timeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`
-
-      // Check if slot is during lunch break
-      const isLunchTime =
-        (currentHour > lunchStartHour ||
-          (currentHour === lunchStartHour && currentMin >= lunchStartMin)) &&
-        (currentHour < lunchEndHour || (currentHour === lunchEndHour && currentMin < lunchEndMin))
-
-      // Check if slot overlaps with existing appointments
-      // Booked slots are compared as clinic wall-clock minutes: the slot grid
-      // itself is wall clock, so the stored instant is rendered back into the
-      // clinic's zone to line the two up.
-      const isBooked = existingAppointments.some((apt) => {
-        const aptStartParts = wallClockIn(apt.startsAt, timezone)
-          .scheduledTime.split(':')
-          .map(Number)
-        const aptStartMins = aptStartParts[0] * 60 + aptStartParts[1]
-        const aptEndMins = aptStartMins + apt.duration
-
-        const slotStartMins = currentHour * 60 + currentMin
-        const slotEndMins = slotStartMins + duration
-
-        // Check for overlap
-        return slotStartMins < aptEndMins && slotEndMins > aptStartMins
-      })
-
-      // Check if slot is in the past — on the clinic's clock, not the host's.
-      const nowLocal = wallClockIn(new Date(), timezone)
-      const isToday = nowLocal.scheduledDate === date.slice(0, 10)
-      const [nowHour, nowMin] = nowLocal.scheduledTime.split(':').map(Number)
-      const isPast =
-        isToday && (currentHour < nowHour || (currentHour === nowHour && currentMin <= nowMin))
-
-      slots.push({
-        time: timeStr,
-        available: !isLunchTime && !isBooked && !isPast,
-      })
-
-      // Increment by 30 minutes
-      currentMin += 30
-      if (currentMin >= 60) {
-        currentHour += 1
-        currentMin = 0
-      }
-    }
+    const slots = availableSlots({
+      hours: workingHours,
+      shift: doctorShift,
+      duration,
+      booked: existingAppointments.map((apt) => ({
+        start: wallClockIn(apt.startsAt, timezone).scheduledTime,
+        duration: apt.duration,
+      })),
+      day: date.slice(0, 10),
+      now: {
+        day: wallClockIn(new Date(), timezone).scheduledDate,
+        time: wallClockIn(new Date(), timezone).scheduledTime,
+      },
+    })
 
     return NextResponse.json({
       available: true,
@@ -165,10 +115,7 @@ export async function GET(request: NextRequest) {
       doctorId,
       slots,
       workingHours: doctorShift
-        ? {
-            start: doctorShift.startTime,
-            end: doctorShift.endTime,
-          }
+        ? { open: doctorShift.startTime, close: doctorShift.endTime }
         : workingHours,
     })
   } catch (error) {
