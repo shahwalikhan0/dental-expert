@@ -65,7 +65,7 @@ describe('Staff Shifts API', () => {
   describe('GET /api/staff/[id]/shifts', () => {
     it('returns shifts for a staff member', async () => {
       ;(prisma.staff.findFirst as any).mockResolvedValue({ id: 'staff-1' })
-      ;(prisma.staffShift.findMany as any).mockResolvedValue([
+      ;(prisma.availability.findMany as any).mockResolvedValue([
         { id: 's1', staffId: 'staff-1', dayOfWeek: 1, startTime: '09:00', endTime: '17:00' },
         { id: 's2', staffId: 'staff-1', dayOfWeek: 2, startTime: '09:00', endTime: '17:00' },
       ])
@@ -107,9 +107,9 @@ describe('Staff Shifts API', () => {
       ]
 
       // $transaction mock already delegates to the callback with prisma
-      ;(prisma.staffShift.deleteMany as any).mockResolvedValue({ count: 2 })
-      ;(prisma.staffShift.createMany as any).mockResolvedValue({ count: 2 })
-      ;(prisma.staffShift.findMany as any).mockResolvedValue(
+      ;(prisma.availability.deleteMany as any).mockResolvedValue({ count: 2 })
+      ;(prisma.availability.createMany as any).mockResolvedValue({ count: 2 })
+      ;(prisma.availability.findMany as any).mockResolvedValue(
         newShifts.map((s, i) => ({ id: `s-new-${i}`, staffId: 'staff-1', ...s, isActive: true }))
       )
 

@@ -332,9 +332,9 @@ describe('GET /api/appointments/slots', () => {
       timezone: KARACHI,
       workingHours: JSON.stringify({ monday: { open: '09:00', close: '10:00' } }),
     } as any)
-    vi.mocked(prisma.holiday.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
-    vi.mocked(prisma.staffShift.findUnique).mockResolvedValue(null)
+    // Clinic closures plus this dentist's shifts and leave, in one query.
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
 
     const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-16')
@@ -351,7 +351,20 @@ describe('GET /api/appointments/slots', () => {
     const { GET } = await import('@/app/api/appointments/slots/route')
 
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({ workingHours: null } as any)
-    vi.mocked(prisma.holiday.findFirst).mockResolvedValue({ name: 'Diwali' } as any)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([
+      {
+        id: 'a1',
+        staffId: null,
+        dayOfWeek: null,
+        date: new Date('2026-03-16T00:00:00.000Z'),
+        startTime: null,
+        endTime: null,
+        isAvailable: false,
+        name: 'Diwali',
+        isRecurring: false,
+      },
+    ] as any)
 
     const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-16')
     const res = await GET(req)
@@ -378,7 +391,6 @@ describe('GET /api/appointments/slots', () => {
     const { GET } = await import('@/app/api/appointments/slots/route')
 
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({ workingHours: null } as any)
-    vi.mocked(prisma.holiday.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue(null)
 
     const req = makeRequest('http://localhost/api/appointments/slots?doctorId=bad&date=2026-03-15')
@@ -397,9 +409,9 @@ describe('GET /api/appointments/slots', () => {
       timezone: KARACHI,
       workingHours: JSON.stringify({ monday: { open: '09:00', close: '10:00' } }),
     } as any)
-    vi.mocked(prisma.holiday.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
-    vi.mocked(prisma.staffShift.findUnique).mockResolvedValue(null)
+    // Clinic closures plus this dentist's shifts and leave, in one query.
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
       { startsAt: instantAt('2026-03-16', '09:00', KARACHI), duration: 30 },
     ] as any)

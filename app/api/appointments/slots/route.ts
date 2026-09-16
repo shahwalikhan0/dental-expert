@@ -3,6 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 import { availableSlots, hoursOn } from '@/lib/working-hours'
+import {
+  closureOn,
+  obstaclesOn,
+  relevantOn,
+  shiftOn,
+  type AvailabilityRow,
+} from '@/lib/availability'
 
 // GET - Get available time slots for a doctor on a specific date
 export async function GET(request: NextRequest) {
@@ -41,22 +48,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Check if it's a holiday for this hospital
     const dateObj = new Date(date)
-    const holiday = await prisma.holiday.findFirst({
-      where: {
-        hospitalId,
-        date: dateObj,
-      },
-    })
-
-    if (holiday) {
-      return NextResponse.json({
-        available: false,
-        reason: `Holiday: ${holiday.name}`,
-        slots: [],
-      })
-    }
 
     // Verify doctor belongs to this hospital
     const doctor = await prisma.staff.findFirst({
@@ -67,16 +59,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
     }
 
-    // Get doctor's shift for the day of week
-    const dayOfWeek = dateObj.getDay()
-    const doctorShift = await prisma.staffShift.findUnique({
-      where: {
-        staffId_dayOfWeek: {
-          staffId: doctorId,
-          dayOfWeek,
-        },
+    // Clinic closures and this dentist's own shifts and leave, in one query.
+    // These were two tables consulted separately, and the holiday check ran
+    // before the doctor was even verified — see lib/availability.ts.
+    const availability = (await prisma.availability.findMany({
+      where: relevantOn(hospitalId, date, doctorId),
+      select: {
+        id: true,
+        staffId: true,
+        dayOfWeek: true,
+        date: true,
+        startTime: true,
+        endTime: true,
+        isAvailable: true,
+        name: true,
+        isRecurring: true,
       },
-    })
+    })) as AvailabilityRow[]
+
+    const closed = closureOn(availability, date)
+    if (closed) {
+      return NextResponse.json({ available: false, reason: closed.reason, slots: [] })
+    }
+
+    const doctorShift = shiftOn(availability, date, doctorId)
 
     // Get existing appointments for the doctor on this date
     const existingAppointments = await prisma.appointment.findMany({
@@ -102,6 +108,7 @@ export async function GET(request: NextRequest) {
         start: wallClockIn(apt.startsAt, timezone).scheduledTime,
         duration: apt.duration,
       })),
+      blocked: obstaclesOn(workingHours, availability, date),
       day: date.slice(0, 10),
       now: {
         day: wallClockIn(new Date(), timezone).scheduledDate,

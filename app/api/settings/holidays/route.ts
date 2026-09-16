@@ -30,11 +30,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const holidays = await prisma.holiday.findMany({
-      where,
-      orderBy: {
-        date: 'asc',
-      },
+    // A clinic holiday is a dated `Availability` row that closes the whole day
+    // for everybody — see lib/availability.ts.
+    const holidays = await prisma.availability.findMany({
+      where: { ...where, staffId: null, date: where.date ?? { not: null }, isAvailable: false },
+      orderBy: { date: 'asc' },
+      select: { id: true, name: true, date: true, isRecurring: true },
     })
 
     return NextResponse.json({
@@ -59,13 +60,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createHolidaySchema.parse(body)
 
-    const holiday = await prisma.holiday.create({
+    const holiday = await prisma.availability.create({
       data: {
         name: data.name,
         date: new Date(data.date),
         isRecurring: data.isRecurring || false,
         hospitalId,
+        // Nobody is bookable, and no times means the whole day.
+        staffId: null,
+        isAvailable: false,
       },
+      select: { id: true, name: true, date: true, isRecurring: true },
     })
 
     return NextResponse.json({
@@ -97,9 +102,15 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Holiday ID is required' }, { status: 400 })
     }
 
-    await prisma.holiday.delete({
-      where: { id, hospitalId },
+    // `deleteMany` rather than `delete` so the clinic filter is part of the
+    // statement: deleting by id alone would reach another clinic's row.
+    const removed = await prisma.availability.deleteMany({
+      where: { id, hospitalId, staffId: null, date: { not: null } },
     })
+
+    if (removed.count === 0) {
+      return NextResponse.json({ error: 'Holiday not found' }, { status: 404 })
+    }
 
     return NextResponse.json({
       success: true,

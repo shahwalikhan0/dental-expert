@@ -132,6 +132,13 @@ export interface SlotQuery {
   /** How long the appointment being booked will run. */
   duration: number
   booked: BookedSlot[]
+  /**
+   * Stretches of the day the clinic is shut — a lunch break, a half-day, an
+   * afternoon of somebody's leave. See lib/availability.ts: the caller works
+   * these out, so a booked appointment and a closure are one kind of obstacle
+   * here rather than two.
+   */
+  blocked?: { start: string; end: string }[]
   /** The calendar day being asked about, `YYYY-MM-DD` in the clinic's zone. */
   day: string
   /** Now, on the clinic's wall clock, so a slot already gone is not offered. */
@@ -149,9 +156,10 @@ export function availableSlots(query: SlotQuery): { time: string; available: boo
 
   const open = minutesOf(time(shift?.startTime) ?? hours.open)
   const close = minutesOf(time(shift?.endTime) ?? hours.close)
-  const lunch = hours.lunch
-    ? { start: minutesOf(hours.lunch.start), end: minutesOf(hours.lunch.end) }
-    : null
+  const blocked = (query.blocked ?? []).map((b) => ({
+    start: minutesOf(b.start),
+    end: minutesOf(b.end),
+  }))
 
   const isToday = now.day === day
   const nowMinutes = minutesOf(now.time)
@@ -161,14 +169,14 @@ export function availableSlots(query: SlotQuery): { time: string; available: boo
   for (let start = open; start + duration <= close; start += SLOT_STEP_MINUTES) {
     const end = start + duration
 
-    const overLunch = lunch !== null && start < lunch.end && lunch.start < end
+    const shut = blocked.some((b) => start < b.end && b.start < end)
     const taken = booked.some((b) => {
       const bStart = minutesOf(b.start)
       return start < bStart + b.duration && bStart < end
     })
     const past = isToday && start <= nowMinutes
 
-    slots.push({ time: timeOf(start), available: !overLunch && !taken && !past })
+    slots.push({ time: timeOf(start), available: !shut && !taken && !past })
   }
 
   return slots

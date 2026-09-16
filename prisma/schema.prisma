@@ -106,10 +106,9 @@ model Hospital {
   auditLogs           AuditLog[]
   settings            Setting[]
   documentCounters    DocumentCounter[]
-  holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
   messageLogs         MessageLog[]
-  staffShifts         StaffShift[]
+  availability        Availability[]
   patientPortalEnabled Boolean   @default(false)
 
   formTemplates       FormTemplate[]
@@ -344,7 +343,7 @@ model Staff {
   appointments    Appointment[] @relation("DoctorAppointments")
   treatments      Treatment[]
   prescriptions   Prescription[]
-  shifts          StaffShift[]
+  availability    Availability[]
 
   @@unique([hospitalId, employeeId])
   // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
@@ -353,20 +352,46 @@ model Staff {
   @@index([hospitalId, isActive, lastName])
 }
 
-model StaffShift {
+model Availability {
   id          String    @id @default(cuid())
   hospitalId  String
-  staffId     String
-  dayOfWeek   Int
-  startTime   String
-  endTime     String
-  isActive    Boolean   @default(true)
+
+  /// Null means the clinic as a whole; set means this one person. A clinic
+  /// closing for Eid and a dentist taking the Tuesday off are the same fact at
+  /// different scopes, and the slot picker has to consult both.
+  staffId     String?
+
+  /// Exactly one of these is set, enforced by a CHECK constraint the migration
+  /// adds: `dayOfWeek` (0 = Sunday) for something that repeats every week, or
+  /// `date` for one particular day.
+  dayOfWeek   Int?
+  date        DateTime? @db.Date
+
+  /// `HH:MM` on the clinic's own wall clock. Null on both means the whole day,
+  /// which is what a clinic holiday is — and what a day of leave is, something
+  /// neither of the two tables this replaces could express.
+  startTime   String?
+  endTime     String?
+
+  /// Whether this opens the time or closes it. A weekly shift opens it; a
+  /// holiday or a day of leave closes it.
+  isAvailable Boolean   @default(true)
+
+  /// What to call it on a screen: "Eid al-Fitr", "Annual leave".
+  name        String?
+
+  /// A dated entry that comes round every year. The holiday table had this
+  /// column and nothing read it, so a recurring holiday was observed once.
+  isRecurring Boolean   @default(false)
+
+  createdAt   DateTime  @default(now())
 
   hospital    Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  staff       Staff     @relation(fields: [staffId], references: [id])
+  staff       Staff?    @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
-  @@unique([staffId, dayOfWeek])
-  @@index([hospitalId])
+  @@index([hospitalId, staffId, dayOfWeek])
+  @@index([hospitalId, date])
+  @@index([hospitalId, isRecurring])
 }
 
 // ==================== PATIENT MANAGEMENT ====================
@@ -1835,21 +1860,6 @@ model Setting {
   @@unique([hospitalId, key])
   @@index([hospitalId])
   @@index([category])
-}
-
-model Holiday {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  name            String
-  date            DateTime  @db.Date
-  isRecurring     Boolean   @default(false)
-
-  createdAt       DateTime  @default(now())
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId])
-  @@index([date])
 }
 
 // ==================== COMMUNICATION SYSTEM ====================

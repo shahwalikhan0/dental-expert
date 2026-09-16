@@ -20,9 +20,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Staff not found' }, { status: 404 })
     }
 
-    const shifts = await prisma.staffShift.findMany({
-      where: { staffId: id },
+    // A weekly shift is an `Availability` row scoped to this person — see
+    // lib/availability.ts. The clinic filter is on the query as well as on the
+    // staff check above, so tenant isolation does not rest on one of them.
+    const shifts = await prisma.availability.findMany({
+      where: { hospitalId, staffId: id, dayOfWeek: { not: null }, isAvailable: true },
       orderBy: { dayOfWeek: 'asc' },
+      select: { id: true, dayOfWeek: true, startTime: true, endTime: true },
     })
 
     return NextResponse.json({ shifts })
@@ -72,31 +76,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Delete existing shifts and create new ones in transaction
+    // Replace the week. Only the weekly rows go: this person's days of leave
+    // are dated entries in the same table and are not what this screen edits.
     const result = await prisma.$transaction(async (tx) => {
-      // Delete all existing shifts for this staff
-      await tx.staffShift.deleteMany({
-        where: { staffId: id },
+      await tx.availability.deleteMany({
+        where: { hospitalId, staffId: id, dayOfWeek: { not: null } },
       })
 
-      // Create new shifts
-      if (shifts.length > 0) {
-        await tx.staffShift.createMany({
-          data: shifts.map((shift: any) => ({
+      const working = shifts.filter((shift: any) => shift.isActive !== false)
+      if (working.length > 0) {
+        await tx.availability.createMany({
+          data: working.map((shift: any) => ({
             hospitalId,
             staffId: id,
             dayOfWeek: shift.dayOfWeek,
             startTime: shift.startTime,
             endTime: shift.endTime,
-            isActive: shift.isActive !== false,
+            isAvailable: true,
           })),
         })
       }
 
-      // Fetch and return the new shifts
-      return await tx.staffShift.findMany({
-        where: { staffId: id },
+      return await tx.availability.findMany({
+        where: { hospitalId, staffId: id, dayOfWeek: { not: null } },
         orderBy: { dayOfWeek: 'asc' },
+        select: { id: true, dayOfWeek: true, startTime: true, endTime: true },
       })
     })
 

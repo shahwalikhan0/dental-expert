@@ -76,7 +76,7 @@ describe('Settings Backup API', () => {
       ;(prisma.stockTransaction.findMany as any).mockResolvedValue([])
       ;(prisma.setting.findMany as any).mockResolvedValue([])
       ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'My Clinic' })
-      ;(prisma.holiday.findMany as any).mockResolvedValue([])
+      ;(prisma.availability.findMany as any).mockResolvedValue([])
 
       const res = await backupModule.GET(makeRequest())
       expect(res.status).toBe(200)
@@ -116,13 +116,13 @@ describe('Settings Backup API', () => {
     it('exports settings-only backup', async () => {
       ;(prisma.setting.findMany as any).mockResolvedValue([])
       ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'My Clinic' })
-      ;(prisma.holiday.findMany as any).mockResolvedValue([])
+      ;(prisma.availability.findMany as any).mockResolvedValue([])
 
       const res = await backupModule.GET(makeRequest({ type: 'settings' }))
       const body = JSON.parse(await res.text())
       expect(body.data.settings).toBeDefined()
       expect(body.data.clinicInfo).toBeDefined()
-      expect(body.data.holidays).toBeDefined()
+      expect(body.data.availability).toBeDefined()
     })
 
     it('returns 401/403 for non-ADMIN', async () => {

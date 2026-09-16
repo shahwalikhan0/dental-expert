@@ -153,16 +153,34 @@ describe('availableSlots', () => {
     expect(slots.find((s) => s.time === '09:30')?.available).toBe(true)
   })
 
-  it('closes the lunch break when there is one', () => {
+  // A lunch break, a half-day closure and an afternoon of somebody's leave are
+  // one kind of obstacle here; lib/availability.ts works out which apply.
+  it('closes a blocked stretch of the day', () => {
     const slots = availableSlots({
-      hours: { open: '12:00', close: '15:00', lunch: { start: '13:00', end: '14:00' } },
+      hours: { open: '12:00', close: '15:00' },
       duration: 30,
       booked: [],
+      blocked: [{ start: '13:00', end: '14:00' }],
       day: '2026-09-16',
       now: NOT_TODAY,
     })
     const closed = slots.filter((s) => !s.available).map((s) => s.time)
     expect(closed).toEqual(['13:00', '13:30'])
+  })
+
+  it('closes every blocked stretch, not just the first', () => {
+    const slots = availableSlots({
+      hours: { open: '09:00', close: '12:00' },
+      duration: 30,
+      booked: [],
+      blocked: [
+        { start: '09:30', end: '10:00' },
+        { start: '11:00', end: '11:30' },
+      ],
+      day: '2026-09-16',
+      now: NOT_TODAY,
+    })
+    expect(slots.filter((s) => !s.available).map((s) => s.time)).toEqual(['09:30', '11:00'])
   })
 
   it('narrows the clinic hours to the doctor shift', () => {

@@ -137,7 +137,7 @@ describe('GET /api/settings/holidays', () => {
       { id: 'h1', name: 'Republic Day', date: new Date('2026-01-26'), isRecurring: true },
       { id: 'h2', name: 'Diwali', date: new Date('2026-10-20'), isRecurring: false },
     ]
-    vi.mocked(prisma.holiday.findMany).mockResolvedValue(mockHolidays as any)
+    vi.mocked(prisma.availability.findMany).mockResolvedValue(mockHolidays as any)
 
     const res = await holidaysGET(makeReq('/api/settings/holidays'))
     const body = await res.json()
@@ -149,11 +149,11 @@ describe('GET /api/settings/holidays', () => {
 
   it('filters holidays by year', async () => {
     mockAuth()
-    vi.mocked(prisma.holiday.findMany).mockResolvedValue([])
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
 
     await holidaysGET(makeReq('/api/settings/holidays?year=2026'))
 
-    const whereArg = vi.mocked(prisma.holiday.findMany).mock.calls[0][0]?.where
+    const whereArg = vi.mocked(prisma.availability.findMany).mock.calls[0][0]?.where
     expect(whereArg.date).toBeDefined()
     expect(whereArg.date.gte).toBeDefined()
     expect(whereArg.date.lte).toBeDefined()
@@ -186,7 +186,7 @@ describe('POST /api/settings/holidays', () => {
       date: new Date('2026-01-26'),
       isRecurring: true,
     }
-    vi.mocked(prisma.holiday.create).mockResolvedValue(mockHoliday as any)
+    vi.mocked(prisma.availability.create).mockResolvedValue(mockHoliday as any)
 
     const res = await holidaysPOST(
       makeReq('/api/settings/holidays', 'POST', {
@@ -230,15 +230,26 @@ describe('DELETE /api/settings/holidays', () => {
 
   it('deletes a holiday', async () => {
     mockAuth()
-    vi.mocked(prisma.holiday.delete).mockResolvedValue({} as any)
+    vi.mocked(prisma.availability.deleteMany).mockResolvedValue({ count: 1 } as any)
 
-    const res = await holidaysDELETE(makeReq('/api/settings/holidays?id=h1', 'DELETE'))
+    const res = await holidaysDELETE(makeReq('/api/settings/holidays?id=hol-1', 'DELETE'))
     const body = await res.json()
 
     expect(body.success).toBe(true)
-    expect(prisma.holiday.delete).toHaveBeenCalledWith({
-      where: { id: 'h1', hospitalId: 'h1' },
+    // A closure is one row among staff shifts and leave in the same table, so
+    // the statement names what it is allowed to remove as well as the clinic.
+    expect(prisma.availability.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'hol-1', hospitalId: 'h1', staffId: null, date: { not: null } },
     })
+  })
+
+  it('404s rather than reporting success when nothing matched', async () => {
+    mockAuth()
+    vi.mocked(prisma.availability.deleteMany).mockResolvedValue({ count: 0 } as any)
+
+    const res = await holidaysDELETE(makeReq('/api/settings/holidays?id=someone-elses', 'DELETE'))
+
+    expect(res.status).toBe(404)
   })
 })
 

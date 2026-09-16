@@ -92,7 +92,8 @@ export async function GET(req: NextRequest) {
           mobileWalletId: true,
         },
       })
-      data.holidays = await prisma.holiday.findMany({
+      // Clinic closures and staff shifts alike — one table now.
+      data.availability = await prisma.availability.findMany({
         where: { hospitalId },
       })
     }

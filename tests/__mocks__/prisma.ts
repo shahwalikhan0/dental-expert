@@ -485,24 +485,17 @@ const mockPrismaClient = {
   },
 
   // Holiday
-  holiday: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
 
   // StaffShift
-  staffShift: {
+  // StaffShift and Holiday are one table now — see lib/availability.ts.
+  availability: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
     count: vi.fn(),

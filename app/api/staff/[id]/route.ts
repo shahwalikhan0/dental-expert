@@ -28,7 +28,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             createdAt: true,
           },
         },
-        shifts: {
+        availability: {
+          where: { dayOfWeek: { not: null } },
           orderBy: { dayOfWeek: 'asc' },
         },
         _count: {
@@ -45,7 +46,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Staff not found' }, { status: 404 })
     }
 
-    return NextResponse.json(staff)
+    // The weekly rows are still called shifts on the wire and on the screen —
+    // that is what a working pattern is. `Availability` is the table they sit
+    // in alongside clinic closures and leave; see lib/availability.ts.
+    const { availability, ...rest } = staff
+    return NextResponse.json({ ...rest, shifts: availability })
   } catch (error) {
     console.error('Error fetching staff:', error)
     return NextResponse.json({ error: 'Failed to fetch staff details' }, { status: 500 })

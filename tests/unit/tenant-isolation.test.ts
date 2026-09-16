@@ -61,12 +61,11 @@ const TENANT_MODELS = new Set([
   'procedure',
   'medication',
   'staff',
-  'staffShift',
+  'availability',
   'chair',
   'notification',
   'auditLog',
   'setting',
-  'holiday',
   'communicationTemplate',
   'smsLog',
   'emailLog',
@@ -115,12 +114,6 @@ const ACCEPTED: Record<string, string> = {
   'forms/[id]/verify GET prisma.patient.findUnique':
     'the submission was fetched with hospitalId; this is the patient it names',
   'forms/[id]/pdf GET prisma.patient.findUnique': 'same',
-  'appointments/slots GET prisma.staffShift.findUnique':
-    'the doctor was fetched with hospitalId; these are their shifts',
-  'public/[slug]/slots GET prisma.staffShift.findUnique':
-    'the clinic is resolved from the slug in the URL and the doctor checked against it',
-  'staff/[id]/shifts GET prisma.staffShift.findMany':
-    'the staff member was fetched with hospitalId; these are their shifts',
   'lab-vendors/[id] DELETE prisma.labOrder.count':
     'the vendor was fetched with hospitalId; this counts its orders before deleting it',
   'treatment-plans/[id] PUT prisma.treatmentPlanItem.deleteMany':
