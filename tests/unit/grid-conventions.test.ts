@@ -107,7 +107,9 @@ describe('clickable rows', () => {
     'billing/invoices/page.tsx': 'billing/invoices/[id]/page.tsx',
     'billing/payments/page.tsx': 'billing/invoices/[id]/page.tsx',
     'billing/reports/page.tsx': 'billing/invoices/[id]/page.tsx',
+    'inventory/page.tsx': 'inventory/[id]/page.tsx',
     'inventory/purchase-orders/page.tsx': 'inventory/purchase-orders/[id]/page.tsx',
+    'lab/page.tsx': 'lab/orders/[id]/page.tsx',
     'patients/page.tsx': 'patients/[id]/page.tsx',
     'prescriptions/page.tsx': 'prescriptions/[id]/page.tsx',
     'settings/forms/page.tsx': 'settings/forms/[id]/page.tsx',
@@ -131,12 +133,11 @@ describe('clickable rows', () => {
     expect(broken, 'a row cannot open a page that is not there').toEqual([])
   })
 
-  it('are not added where there is nothing to open', () => {
-    // Inventory items and lab cases have no detail page — their "View Details"
-    // menu item has always been a 404 — so their rows are deliberately not
-    // links. If a detail page is built, add the row link with it.
-    for (const name of ['inventory/page.tsx', 'lab/page.tsx']) {
-      expect(ALL.find((f) => f.name === name)!.source).not.toContain('<ClickableRow')
+  it('name a record the reader can recognise', () => {
+    // "Open Ayesha Khan", not "Open row 4". A row is not a link element, so
+    // the accessible name has to be written.
+    for (const name of Object.keys(ROW_DESTINATIONS)) {
+      expect(ALL.find((f) => f.name === name)!.source).toMatch(/label=\{`Open /)
     }
   })
 })

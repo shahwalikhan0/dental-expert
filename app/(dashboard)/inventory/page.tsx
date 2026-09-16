@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GridPagination } from '@/components/ui/data-grid'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Plus,
@@ -584,7 +584,11 @@ export default function InventoryPage() {
                 </TableRow>
               ) : (
                 items.map((item) => (
-                  <TableRow key={item.id}>
+                  <ClickableRow
+                    key={item.id}
+                    href={`/inventory/${item.id}`}
+                    label={`Open ${item.name}`}
+                  >
                     <TableCell>
                       <div className="font-medium">{item.sku}</div>
                     </TableCell>
@@ -665,7 +669,7 @@ export default function InventoryPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
-                  </TableRow>
+                  </ClickableRow>
                 ))
               )}
             </TableBody>

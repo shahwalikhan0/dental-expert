@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GridPagination } from '@/components/ui/data-grid'
+import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import {
   Plus,
   Search,
@@ -520,7 +520,11 @@ export default function LabWorkPage() {
                 </TableHeader>
                 <TableBody>
                   {orders.map((order) => (
-                    <TableRow key={order.id}>
+                    <ClickableRow
+                      key={order.id}
+                      href={`/lab/orders/${order.id}`}
+                      label={`Open lab case ${order.orderNumber}`}
+                    >
                       <TableCell className="font-medium">{order.orderNumber}</TableCell>
                       <TableCell>
                         <div>
@@ -563,7 +567,7 @@ export default function LabWorkPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
-                    </TableRow>
+                    </ClickableRow>
                   ))}
                 </TableBody>
               </Table>
