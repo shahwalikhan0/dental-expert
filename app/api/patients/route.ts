@@ -1,32 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import { ageInYears } from '@/lib/age'
 
 // Generate unique patient ID for the hospital
 async function generatePatientId(hospitalId: string): Promise<string> {
-  const today = new Date()
-  const prefix = `PAT${today.getFullYear()}`
+  const prefix = `PAT${new Date().getFullYear()}`
 
-  const lastPatient = await prisma.patient.findFirst({
-    where: {
-      hospitalId,
-      patientId: {
-        startsWith: prefix,
-      },
-    },
-    orderBy: {
-      patientId: 'desc',
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 5,
+    currentMax: async () => {
+      const last = await prisma.patient.findFirst({
+        where: { hospitalId, patientId: { startsWith: prefix } },
+        orderBy: { patientId: 'desc' },
+        select: { patientId: true },
+      })
+      return trailingNumber(last?.patientId, 5)
     },
   })
-
-  if (lastPatient) {
-    const lastNumber = parseInt(lastPatient.patientId.slice(-5))
-    return `${prefix}${String(lastNumber + 1).padStart(5, '0')}`
-  }
-
-  return `${prefix}00001`
 }
 
 // GET - List patients

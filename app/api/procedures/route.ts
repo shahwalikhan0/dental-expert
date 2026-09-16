@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
 
 // Generate unique procedure code
@@ -19,24 +20,19 @@ async function generateProcedureCode(category: string, hospitalId: string): Prom
 
   const prefix = prefixMap[category] || 'GEN'
 
-  const lastProcedure = await prisma.procedure.findFirst({
-    where: {
-      hospitalId,
-      code: {
-        startsWith: prefix,
-      },
-    },
-    orderBy: {
-      code: 'desc',
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 3,
+    currentMax: async () => {
+      const last = await prisma.procedure.findFirst({
+        where: { hospitalId, code: { startsWith: prefix } },
+        orderBy: { code: 'desc' },
+        select: { code: true },
+      })
+      return trailingNumber(last?.code, 3)
     },
   })
-
-  if (lastProcedure) {
-    const lastNumber = parseInt(lastProcedure.code.slice(3))
-    return `${prefix}${String(lastNumber + 1).padStart(3, '0')}`
-  }
-
-  return `${prefix}001`
 }
 
 // GET - List procedures with filters

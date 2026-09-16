@@ -17,6 +17,9 @@ vi.mock('bcryptjs', () => ({
 // Mock Prisma
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    // Reference numbers come from a counter row via one INSERT … ON CONFLICT
+    // … RETURNING, so anything that numbers a document needs this to answer.
+    $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
     staff: {
       findFirst: vi.fn(),
       findMany: vi.fn(),

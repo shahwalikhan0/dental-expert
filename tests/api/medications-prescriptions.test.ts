@@ -471,12 +471,8 @@ describe('POST /api/prescriptions', () => {
       })
     )
 
-    expect(prisma.prescription.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prescriptionNo: `RX${new Date().getFullYear()}0016`,
-        }),
-      })
-    )
+    // The number comes from a counter row now, so what is asserted is the
+    // seed that continues the clinic's existing series.
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0].slice(1)).toContain(17)
   })
 })

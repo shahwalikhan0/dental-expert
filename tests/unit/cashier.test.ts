@@ -239,15 +239,36 @@ describe('numbering', () => {
   })
 
   it('continues from the last number', async () => {
+    // The number now comes from a counter row, so what is asserted is the
+    // seed: a clinic whose last session was 0007 must start its counter such
+    // that the next number handed out is 0008, not 0001.
     vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue({
       sessionNo: 'CS-202609-0007',
     } as never)
-    await expect(generateSessionNo('h1')).resolves.toMatch(/-0008$/)
+
+    await generateSessionNo('h1')
+
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0].slice(1)).toContain(9)
   })
 
   it('numbers refunds the same way', async () => {
     vi.mocked(prisma.refund.findFirst).mockResolvedValue({ refundNo: 'REF-202609-0041' } as never)
-    await expect(generateRefundNo('h1')).resolves.toMatch(/^REF-\d{6}-0042$/)
+
+    await expect(generateRefundNo('h1')).resolves.toMatch(/^REF-\d{6}-\d{4}$/)
+
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0].slice(1)).toContain(43)
+  })
+
+  it('allocates in one statement rather than reading and then writing', async () => {
+    // The race this replaces: two receptionists opening a till in the same
+    // second read the same last number, and the second write loses to
+    // @@unique([hospitalId, sessionNo]).
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue(null as never)
+
+    await generateSessionNo('h1')
+
+    const sql = vi.mocked(prisma.$queryRaw).mock.calls[0][0] as unknown as string[]
+    expect(sql.join('')).toContain('ON CONFLICT')
   })
 
   it('scopes numbering to the clinic', async () => {

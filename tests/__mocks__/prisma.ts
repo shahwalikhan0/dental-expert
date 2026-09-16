@@ -10,7 +10,11 @@ const mockPrismaClient = {
   $transaction: vi.fn((arg: any) =>
     Array.isArray(arg) ? Promise.all(arg) : arg(mockPrismaClient)
   ),
-  $queryRaw: vi.fn(),
+  // Reference numbers come from a counter row via one INSERT … ON CONFLICT …
+  // RETURNING, so every route that numbers a document needs this to answer.
+  // A default keeps the several dozen tests that do not care about numbering
+  // from each having to mock it.
+  $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
   $queryRawUnsafe: vi.fn(),
   $executeRaw: vi.fn(),
 

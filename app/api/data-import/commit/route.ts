@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { normalizeCNIC } from '@/lib/cnic'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
@@ -199,20 +200,24 @@ async function generateId(
   prefix: string,
   field: string
 ): Promise<string> {
-  const year = new Date().getFullYear()
-  const idPrefix = `${prefix}${year}`
+  const idPrefix = `${prefix}${new Date().getFullYear()}`
 
-  const existing = await (prisma as any)[model].findFirst({
-    where: { hospitalId, [field]: { startsWith: idPrefix } },
-    orderBy: { [field]: 'desc' },
-    select: { [field]: true },
+  // The importer shares its unique index with the desk. A staff member
+  // registering a patient while an import runs used to read the same highest
+  // number the import had just read, and one of the two lost.
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix: idPrefix,
+    width: 5,
+    currentMax: async () => {
+      const existing = await (prisma as any)[model].findFirst({
+        where: { hospitalId, [field]: { startsWith: idPrefix } },
+        orderBy: { [field]: 'desc' },
+        select: { [field]: true },
+      })
+      return trailingNumber(existing?.[field], 5)
+    },
   })
-
-  if (existing) {
-    const lastNum = parseInt(existing[field].replace(idPrefix, ''), 10) || 0
-    return `${idPrefix}${String(lastNum + 1).padStart(5, '0')}`
-  }
-  return `${idPrefix}00001`
 }
 
 // ---------------------------------------------------------------------------

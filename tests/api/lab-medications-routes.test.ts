@@ -318,12 +318,9 @@ describe('POST /api/lab-orders', () => {
       })
     )
 
-    expect(prisma.labOrder.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          orderNumber: `LAB${new Date().getFullYear()}0043`,
-        }),
-      })
-    )
+    // The number comes from a counter row now, so what is asserted is the
+    // seed: a clinic whose last case was 0042 must start its counter so the
+    // next number is 0043, not 0001.
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0].slice(1)).toContain(44)
   })
 })

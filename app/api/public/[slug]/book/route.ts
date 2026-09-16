@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
 import { prisma } from '@/lib/prisma'
+import { nextAppointmentNo } from '@/lib/numbering'
 
 /**
  * POST: Public booking endpoint.
@@ -103,14 +104,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       )
     }
 
-    // Generate appointment number
-    const lastAppt = await prisma.appointment.findFirst({
-      where: { hospitalId: hospital.id },
-      orderBy: { createdAt: 'desc' },
-      select: { appointmentNo: true },
-    })
-    const lastNum = lastAppt ? parseInt(lastAppt.appointmentNo.replace(/\D/g, '')) || 0 : 0
-    const appointmentNo = `APT${String(lastNum + 1).padStart(5, '0')}`
+    // The same series the desk uses. This route had its own, incompatible
+    // one — see nextAppointmentNo.
+    const appointmentNo = await nextAppointmentNo(prisma, hospital.id)
 
     const appointment = await prisma.appointment.create({
       data: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
 
 // Generate unique treatment number
@@ -7,24 +8,19 @@ async function generateTreatmentNo(hospitalId: string): Promise<string> {
   const today = new Date()
   const prefix = `TRT${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
 
-  const lastTreatment = await prisma.treatment.findFirst({
-    where: {
-      hospitalId,
-      treatmentNo: {
-        startsWith: prefix,
-      },
-    },
-    orderBy: {
-      treatmentNo: 'desc',
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await prisma.treatment.findFirst({
+        where: { hospitalId, treatmentNo: { startsWith: prefix } },
+        orderBy: { treatmentNo: 'desc' },
+        select: { treatmentNo: true },
+      })
+      return trailingNumber(last?.treatmentNo, 4)
     },
   })
-
-  if (lastTreatment) {
-    const lastNumber = parseInt(lastTreatment.treatmentNo.slice(-4))
-    return `${prefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${prefix}0001`
 }
 
 // GET - List treatments with filters

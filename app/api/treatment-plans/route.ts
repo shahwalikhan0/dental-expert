@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
 
 // Generate unique plan number for a hospital
@@ -7,24 +8,19 @@ async function generatePlanNumber(hospitalId: string): Promise<string> {
   const today = new Date()
   const prefix = `PLN${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}`
 
-  const lastPlan = await prisma.treatmentPlan.findFirst({
-    where: {
-      hospitalId,
-      planNumber: {
-        startsWith: prefix,
-      },
-    },
-    orderBy: {
-      planNumber: 'desc',
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await prisma.treatmentPlan.findFirst({
+        where: { hospitalId, planNumber: { startsWith: prefix } },
+        orderBy: { planNumber: 'desc' },
+        select: { planNumber: true },
+      })
+      return trailingNumber(last?.planNumber, 4)
     },
   })
-
-  if (lastPlan) {
-    const lastNumber = parseInt(lastPlan.planNumber.slice(-4))
-    return `${prefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${prefix}0001`
 }
 
 // GET - List treatment plans with filters

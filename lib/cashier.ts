@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import type { PaymentMethod, Prisma } from '@prisma/client'
 
 /**
@@ -83,31 +84,41 @@ export async function getOpenSession(hospitalId: string) {
 /** `CS-YYYYMM-0001`, matching the invoice and payment numbering. */
 export async function generateSessionNo(hospitalId: string): Promise<string> {
   const now = new Date()
-  const datePrefix = `CS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
+  const prefix = `CS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  const last = await prisma.cashierSession.findFirst({
-    where: { hospitalId, sessionNo: { startsWith: datePrefix } },
-    orderBy: { sessionNo: 'desc' },
-    select: { sessionNo: true },
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await prisma.cashierSession.findFirst({
+        where: { hospitalId, sessionNo: { startsWith: prefix } },
+        orderBy: { sessionNo: 'desc' },
+        select: { sessionNo: true },
+      })
+      return trailingNumber(last?.sessionNo, 4)
+    },
   })
-
-  const next = last ? parseInt(last.sessionNo.slice(-4), 10) + 1 : 1
-  return `${datePrefix}${String(next).padStart(4, '0')}`
 }
 
 /** `REF-YYYYMM-0001`. */
 export async function generateRefundNo(hospitalId: string): Promise<string> {
   const now = new Date()
-  const datePrefix = `REF-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
+  const prefix = `REF-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  const last = await prisma.refund.findFirst({
-    where: { hospitalId, refundNo: { startsWith: datePrefix } },
-    orderBy: { refundNo: 'desc' },
-    select: { refundNo: true },
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await prisma.refund.findFirst({
+        where: { hospitalId, refundNo: { startsWith: prefix } },
+        orderBy: { refundNo: 'desc' },
+        select: { refundNo: true },
+      })
+      return trailingNumber(last?.refundNo, 4)
+    },
   })
-
-  const next = last ? parseInt(last.refundNo.slice(-4), 10) + 1 : 1
-  return `${datePrefix}${String(next).padStart(4, '0')}`
 }
 
 export interface MethodTotal {

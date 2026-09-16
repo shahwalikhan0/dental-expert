@@ -15,6 +15,7 @@
  */
 import { PurchaseOrderStatus } from '@prisma/client'
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 
 /** Works against the client or a transaction — both are used by callers. */
 type Db = PrismaClient | Prisma.TransactionClient
@@ -208,24 +209,24 @@ export const ORDER_NUMBER_PREFIX = 'PO'
 /**
  * The next order number for this clinic, as `PO20260001`.
  *
- * Read-then-write, so two orders raised in the same second can land on the same
- * number. `@@unique([hospitalId, orderNumber])` catches that; the caller
- * retries. Sequences would avoid the race, but one per clinic per year is a
- * schema object created at runtime, and a collision here is rare enough and
- * cheap enough that the retry is the better trade.
+ * Allocated from a counter row rather than read-then-write, so two orders
+ * raised in the same second get two numbers. The caller's retry loop around
+ * `P2002` is now a belt to the counter's braces.
  */
 export async function nextOrderNumber(db: Db, hospitalId: string): Promise<string> {
-  const year = new Date().getFullYear()
-  const prefix = `${ORDER_NUMBER_PREFIX}${year}`
+  const prefix = `${ORDER_NUMBER_PREFIX}${new Date().getFullYear()}`
 
-  const last = await db.purchaseOrder.findFirst({
-    where: { hospitalId, orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: 'desc' },
-    select: { orderNumber: true },
+  return nextInSeries(db, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await db.purchaseOrder.findFirst({
+        where: { hospitalId, orderNumber: { startsWith: prefix } },
+        orderBy: { orderNumber: 'desc' },
+        select: { orderNumber: true },
+      })
+      return trailingNumber(last?.orderNumber, 4)
+    },
   })
-
-  const lastNumber = last ? parseInt(last.orderNumber.slice(prefix.length), 10) : 0
-  const next = (Number.isFinite(lastNumber) ? lastNumber : 0) + 1
-
-  return `${prefix}${next.toString().padStart(4, '0')}`
 }

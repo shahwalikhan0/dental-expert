@@ -105,6 +105,7 @@ model Hospital {
   documents           Document[]
   auditLogs           AuditLog[]
   settings            Setting[]
+  documentCounters    DocumentCounter[]
   holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
   messageLogs         MessageLog[]
@@ -1799,6 +1800,31 @@ model AuditLog {
 }
 
 // ==================== SETTINGS ====================
+
+/// One counter per clinic per number series.
+///
+/// Every reference number in the application — invoices, payments, patients,
+/// appointments, treatments, prescriptions, lab cases, purchase orders, till
+/// sessions, refunds — was produced by reading the highest existing one and
+/// adding one. Two receptionists billing in the same second read the same
+/// number, and the second write lost to `@@unique([hospitalId, invoiceNo])`
+/// with a 500 and no invoice.
+///
+/// `series` is the number's own prefix, which already encodes whatever resets
+/// it: `INV-202609-` rolls monthly, `PAT2609` monthly, `APT2026` yearly. A new
+/// period is simply a series nobody has used yet.
+model DocumentCounter {
+  hospitalId String
+  /// The prefix the numbers in this series share.
+  series     String
+  /// The next number to hand out.
+  next       Int      @default(1)
+  updatedAt  DateTime @updatedAt
+
+  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@id([hospitalId, series])
+}
 
 model Setting {
   id              String    @id @default(cuid())

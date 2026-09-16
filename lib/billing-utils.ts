@@ -1,6 +1,10 @@
 // Billing & Financial Management Utilities
 
 import { InvoiceStatus, PaymentMethod, PaymentStatus, DiscountType } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
+
+type Db = PrismaClient | Prisma.TransactionClient
 import {
   formatCurrency as baseFormatCurrency,
   formatDate as baseFormatDate,
@@ -323,62 +327,60 @@ export function formatDateTime(date: Date | string | null | undefined, locale?: 
   return baseFormatDateTime(date, { locale, hour12: true })
 }
 
-// Generate Invoice Number
-export async function generateInvoiceNo(prisma: any, prefix: string = 'INV'): Promise<string> {
+/**
+ * The next invoice number for a clinic, as `INV-202609-0001`.
+ *
+ * Two changes from what this replaced. It is **atomic**, so two receptionists
+ * billing in the same second get two numbers rather than one number and a 500.
+ * And it is **per clinic**: the old version scanned every invoice in the
+ * database regardless of who it belonged to, so one clinic's numbering jumped
+ * whenever another clinic billed.
+ */
+export async function generateInvoiceNo(
+  db: Db,
+  hospitalId: string,
+  prefix: string = 'INV'
+): Promise<string> {
   const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const datePrefix = `${prefix}-${year}${month}-`
+  const series = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  const lastInvoice = await prisma.invoice.findFirst({
-    where: {
-      invoiceNo: {
-        startsWith: datePrefix,
-      },
-    },
-    orderBy: {
-      invoiceNo: 'desc',
-    },
-    select: {
-      invoiceNo: true,
+  return nextInSeries(db, {
+    hospitalId,
+    prefix: series,
+    width: 4,
+    currentMax: async () => {
+      const last = await db.invoice.findFirst({
+        where: { hospitalId, invoiceNo: { startsWith: series } },
+        orderBy: { invoiceNo: 'desc' },
+        select: { invoiceNo: true },
+      })
+      return trailingNumber(last?.invoiceNo, 4)
     },
   })
-
-  if (lastInvoice) {
-    const lastNumber = parseInt(lastInvoice.invoiceNo.slice(-4))
-    return `${datePrefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${datePrefix}0001`
 }
 
-// Generate Payment Number
-export async function generatePaymentNo(prisma: any, prefix: string = 'PAY'): Promise<string> {
+/** The next payment number for a clinic, as `PAY-202609-0001`. */
+export async function generatePaymentNo(
+  db: Db,
+  hospitalId: string,
+  prefix: string = 'PAY'
+): Promise<string> {
   const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const datePrefix = `${prefix}-${year}${month}-`
+  const series = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  const lastPayment = await prisma.payment.findFirst({
-    where: {
-      paymentNo: {
-        startsWith: datePrefix,
-      },
-    },
-    orderBy: {
-      paymentNo: 'desc',
-    },
-    select: {
-      paymentNo: true,
+  return nextInSeries(db, {
+    hospitalId,
+    prefix: series,
+    width: 4,
+    currentMax: async () => {
+      const last = await db.payment.findFirst({
+        where: { hospitalId, paymentNo: { startsWith: series } },
+        orderBy: { paymentNo: 'desc' },
+        select: { paymentNo: true },
+      })
+      return trailingNumber(last?.paymentNo, 4)
     },
   })
-
-  if (lastPayment) {
-    const lastNumber = parseInt(lastPayment.paymentNo.slice(-4))
-    return `${datePrefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${datePrefix}0001`
 }
 
 // Get patient display name

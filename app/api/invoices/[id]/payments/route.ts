@@ -110,7 +110,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Generate payment number
-    const paymentNo = await generatePaymentNo(prisma)
+    const paymentNo = await generatePaymentNo(prisma, hospitalId)
 
     // FR-015: a payment taken while a till is open belongs to that till's
     // reconciliation, and spec §12 names the cashier on a financial

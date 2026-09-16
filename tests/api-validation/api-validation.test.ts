@@ -42,6 +42,7 @@ vi.mock('@/lib/api-helpers', () => mockAuth)
 // ── Prisma mock ────────────────────────────────────────────────────────────────
 vi.mock('@/lib/prisma', () => {
   const prismaMock = {
+    $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
     patient: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),

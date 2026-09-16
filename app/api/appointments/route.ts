@@ -1,36 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextAppointmentNo } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
 import {
   conflictResponseBody,
   findAppointmentConflicts,
   getDoubleBookingPolicy,
 } from '@/lib/appointment-conflicts'
-
-// Generate unique appointment number for the hospital
-async function generateAppointmentNo(hospitalId: string): Promise<string> {
-  const today = new Date()
-  const prefix = `APT${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
-
-  const lastAppointment = await prisma.appointment.findFirst({
-    where: {
-      hospitalId,
-      appointmentNo: {
-        startsWith: prefix,
-      },
-    },
-    orderBy: {
-      appointmentNo: 'desc',
-    },
-  })
-
-  if (lastAppointment) {
-    const lastNumber = parseInt(lastAppointment.appointmentNo.slice(-4))
-    return `${prefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${prefix}0001`
-}
 
 // GET - List appointments with filters
 export async function GET(request: NextRequest) {
@@ -280,7 +256,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate appointment number for this hospital
-    const appointmentNo = await generateAppointmentNo(hospitalId)
+    const appointmentNo = await nextAppointmentNo(prisma, hospitalId)
 
     // Create appointment
     const appointment = await prisma.appointment.create({

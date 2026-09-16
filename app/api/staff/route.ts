@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
 import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
 import { parseOptionalCNIC } from '@/lib/cnic'
@@ -85,24 +86,21 @@ export async function GET(request: NextRequest) {
 
 // Helper to generate employee ID
 async function generateEmployeeId(hospitalId: string): Promise<string> {
-  const year = new Date().getFullYear().toString().slice(-2)
-  const lastStaff = await prisma.staff.findFirst({
-    where: {
-      hospitalId,
-      employeeId: {
-        startsWith: `EMP${year}`,
-      },
+  const prefix = `EMP${new Date().getFullYear().toString().slice(-2)}`
+
+  return nextInSeries(prisma, {
+    hospitalId,
+    prefix,
+    width: 4,
+    currentMax: async () => {
+      const last = await prisma.staff.findFirst({
+        where: { hospitalId, employeeId: { startsWith: prefix } },
+        orderBy: { employeeId: 'desc' },
+        select: { employeeId: true },
+      })
+      return trailingNumber(last?.employeeId, 4)
     },
-    orderBy: { employeeId: 'desc' },
   })
-
-  let nextNum = 1
-  if (lastStaff) {
-    const lastNum = parseInt(lastStaff.employeeId.slice(-4))
-    nextNum = lastNum + 1
-  }
-
-  return `EMP${year}${nextNum.toString().padStart(4, '0')}`
 }
 
 // POST - Create new staff member

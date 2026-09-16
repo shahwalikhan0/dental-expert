@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 
 // GET — list prescriptions
 export async function GET(request: NextRequest) {
@@ -102,18 +103,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
-    // Generate prescription number
+    // One counter per clinic per year, allocated atomically: two doctors
+    // prescribing in the same second get two numbers rather than one number
+    // and a unique-constraint failure.
     const year = new Date().getFullYear()
-    const lastRx = await prisma.prescription.findFirst({
-      where: { hospitalId, prescriptionNo: { startsWith: `RX${year}` } },
-      orderBy: { prescriptionNo: 'desc' },
+    const prescriptionNo = await nextInSeries(prisma, {
+      hospitalId,
+      prefix: `RX${year}`,
+      width: 4,
+      currentMax: async () => {
+        const last = await prisma.prescription.findFirst({
+          where: { hospitalId, prescriptionNo: { startsWith: `RX${year}` } },
+          orderBy: { prescriptionNo: 'desc' },
+          select: { prescriptionNo: true },
+        })
+        return trailingNumber(last?.prescriptionNo, 4)
+      },
     })
-
-    let prescriptionNo = `RX${year}0001`
-    if (lastRx) {
-      const lastNum = parseInt(lastRx.prescriptionNo.slice(-4))
-      prescriptionNo = `RX${year}${(lastNum + 1).toString().padStart(4, '0')}`
-    }
 
     // Get doctor's staff record
     const staff = await prisma.staff.findFirst({ where: { userId: session!.user!.id, hospitalId } })

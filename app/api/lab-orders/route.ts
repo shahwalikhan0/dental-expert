@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { nextInSeries, trailingNumber } from '@/lib/numbering'
 
 // GET - Fetch all lab orders with filters
 export async function GET(request: NextRequest) {
@@ -189,26 +190,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Lab vendor not found' }, { status: 404 })
     }
 
-    // Generate order number unique to this hospital
     const year = new Date().getFullYear()
-    const lastOrder = await prisma.labOrder.findFirst({
-      where: {
-        hospitalId,
-        orderNumber: {
-          startsWith: `LAB${year}`,
-        },
-      },
-      orderBy: {
-        orderNumber: 'desc',
+    const orderNumber = await nextInSeries(prisma, {
+      hospitalId,
+      prefix: `LAB${year}`,
+      width: 4,
+      currentMax: async () => {
+        const last = await prisma.labOrder.findFirst({
+          where: { hospitalId, orderNumber: { startsWith: `LAB${year}` } },
+          orderBy: { orderNumber: 'desc' },
+          select: { orderNumber: true },
+        })
+        return trailingNumber(last?.orderNumber, 4)
       },
     })
-
-    let orderNumber = `LAB${year}0001`
-    if (lastOrder) {
-      const lastNumber = parseInt(lastOrder.orderNumber.slice(-4))
-      const nextNumber = (lastNumber + 1).toString().padStart(4, '0')
-      orderNumber = `LAB${year}${nextNumber}`
-    }
 
     // Create lab order
     const labOrder = await prisma.labOrder.create({

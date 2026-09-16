@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate invoice number
-    const invoiceNo = await generateInvoiceNo(prisma)
+    const invoiceNo = await generateInvoiceNo(prisma, hospitalId)
 
     // Calculate due date
     const invoiceDate = new Date()

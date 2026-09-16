@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock all required modules
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    // Reference numbers come from a counter row via one INSERT … ON CONFLICT
+    // … RETURNING, so anything that numbers a document needs this to answer.
+    $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
     patient: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), count: vi.fn() },
     appointment: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     treatment: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
