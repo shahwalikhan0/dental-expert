@@ -104,7 +104,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           setAppointment(data)
           // Set form values
           setSelectedDoctor(data.doctorId)
-          setSelectedDate(new Date(data.scheduledDate).toISOString().split('T')[0])
+          setSelectedDate(data.scheduledDate.slice(0, 10))
           setSelectedTime(data.scheduledTime)
           setDuration(data.duration.toString())
           setAppointmentType(data.appointmentType)
@@ -157,8 +157,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 slot.available ||
                 (appointment &&
                   appointment.doctorId === selectedDoctor &&
-                  new Date(appointment.scheduledDate).toISOString().split('T')[0] ===
-                    selectedDate &&
+                  appointment.scheduledDate.slice(0, 10) === selectedDate &&
                   slot.time === appointment.scheduledTime),
             }))
             setTimeSlots(slots)

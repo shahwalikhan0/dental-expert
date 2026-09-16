@@ -107,9 +107,18 @@ export function formatTime(time: string): string {
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`
 }
 
-// Format date for display
+// Format date for display.
+//
+// A bare `YYYY-MM-DD` — which is what the appointment API returns, the clinic's
+// own calendar day — is read as that day and not as UTC midnight, which the
+// browser would otherwise render as the day before for anyone west of
+// Greenwich.
 export function formatDate(date: Date | string): string {
-  const d = new Date(date)
+  const calendarDay =
+    typeof date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim()) : null
+  const d = calendarDay
+    ? new Date(Number(calendarDay[1]), Number(calendarDay[2]) - 1, Number(calendarDay[3]))
+    : new Date(date)
   return d.toLocaleDateString('en-PK', {
     day: '2-digit',
     month: 'short',

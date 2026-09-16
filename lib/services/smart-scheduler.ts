@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma'
+import { wallClockIn } from '@/lib/appointment-time'
 
 /**
  * Smart Scheduler Service
@@ -9,14 +10,22 @@ import prisma from '@/lib/prisma'
 interface CancelledSlot {
   hospitalId: string
   doctorId: string
-  scheduledDate: Date
-  scheduledTime: string
+  startsAt: Date
   duration: number
+  /** The clinic's zone: which weekday a slot falls on depends on it. */
+  timezone: string
 }
 
-function getDayOfWeek(date: Date): string {
-  const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
-  return days[date.getDay()]
+const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+
+/**
+ * The weekday a slot falls on, in the clinic's zone rather than the server's —
+ * a Monday 09:00 appointment in Karachi is still Sunday in UTC, and the
+ * waitlist matches on the patient's preferred *days*.
+ */
+function getDayOfWeek(slot: CancelledSlot): string {
+  const { scheduledDate } = wallClockIn(slot.startsAt, slot.timezone)
+  return DAY_NAMES[new Date(`${scheduledDate}T00:00:00Z`).getUTCDay()]
 }
 
 function getTimeOfDay(time: string): string {
@@ -37,8 +46,8 @@ export async function findMatchingWaitlistPatients(slot: CancelledSlot): Promise
     patientPhone: string
   }>
 > {
-  const dayOfWeek = getDayOfWeek(slot.scheduledDate)
-  const timeOfDay = getTimeOfDay(slot.scheduledTime)
+  const dayOfWeek = getDayOfWeek(slot)
+  const timeOfDay = getTimeOfDay(wallClockIn(slot.startsAt, slot.timezone).scheduledTime)
 
   // Find active waitlist entries for this hospital
   const waitlistEntries = await prisma.waitlist.findMany({
@@ -135,11 +144,12 @@ export async function handleCancellationWaitlist(slot: CancelledSlot): Promise<{
   })
 
   const doctorName = doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'your doctor'
-  const dateStr = slot.scheduledDate.toLocaleDateString('en-PK', {
+  const dateStr = new Intl.DateTimeFormat('en-PK', {
+    timeZone: slot.timezone,
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-  })
+  }).format(slot.startsAt)
 
   // Mark top matching entries as NOTIFIED (limit to 3 to avoid overbooking)
   const toNotify = matches.slice(0, 3)
@@ -160,7 +170,7 @@ export async function handleCancellationWaitlist(slot: CancelledSlot): Promise<{
     matchedPatients: toNotify,
     slotDetails: {
       date: dateStr,
-      time: slot.scheduledTime,
+      time: wallClockIn(slot.startsAt, slot.timezone).scheduledTime,
       doctorName,
     },
   }

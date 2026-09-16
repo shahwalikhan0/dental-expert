@@ -6,6 +6,7 @@ import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { normalizeCNIC } from '@/lib/cnic'
 import { parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
+import { clinicTimezone, instantAt } from '@/lib/appointment-time'
 import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
@@ -414,6 +415,8 @@ async function importAppointments(
   let successCount = 0,
     errorCount = 0
 
+  const timezone = await clinicTimezone(prisma, hospitalId)
+
   // Pre-load lookups
   const patients = await prisma.patient.findMany({
     where: { hospitalId },
@@ -484,6 +487,18 @@ async function importAppointments(
         throw new Error(`Row ${row._rowNum}: Missing scheduledDate or scheduledTime`)
       }
 
+      // The spreadsheet gives a day and an `HH:MM` in the clinic's own terms;
+      // what gets stored is the instant those refer to.
+      const startsAt = instantAt(row.scheduledDate as string, String(row.scheduledTime), timezone)
+      if (!startsAt) {
+        if (skipErrors) {
+          errorCount++
+          errors.push({ row: row._rowNum, message: 'Unreadable scheduledDate or scheduledTime' })
+          continue
+        }
+        throw new Error(`Row ${row._rowNum}: Unreadable scheduledDate or scheduledTime`)
+      }
+
       const appointmentNo =
         row.appointmentNo || (await generateId(hospitalId, 'appointment', 'APT', 'appointmentNo'))
 
@@ -493,8 +508,7 @@ async function importAppointments(
           appointmentNo,
           patientId,
           doctorId,
-          scheduledDate: row.scheduledDate,
-          scheduledTime: row.scheduledTime,
+          startsAt,
           duration: row.duration || 30,
           appointmentType: row.appointmentType || undefined,
           status: row.status || 'COMPLETED',

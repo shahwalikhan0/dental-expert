@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 import { can, holderCan } from '@/lib/rbac'
 import {
   MIN_REASON_LENGTH,
@@ -62,8 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           select: {
             id: true,
             appointmentNo: true,
-            scheduledDate: true,
-            scheduledTime: true,
+            startsAt: true,
             status: true,
           },
         },
@@ -93,7 +93,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 })
     }
 
-    return NextResponse.json(treatment)
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
+    return NextResponse.json({
+      ...treatment,
+      appointment: treatment.appointment
+        ? withWallClock(treatment.appointment, timezone)
+        : treatment.appointment,
+    })
   } catch (error) {
     console.error('Error fetching treatment:', error)
     return NextResponse.json({ error: 'Failed to fetch treatment' }, { status: 500 })

@@ -11,6 +11,12 @@ vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 import { GET as publicDoctorsGET } from '@/app/api/public/[slug]/doctors/route'
 import { POST as publicBookPOST } from '@/app/api/public/[slug]/book/route'
 import { prisma } from '@/lib/prisma'
+import { instantAt } from '@/lib/appointment-time'
+
+const KARACHI = 'Asia/Karachi'
+
+/** A wall-clock time on the fixtures' day, as the instant it refers to. */
+const at = (time: string) => instantAt('2026-03-15', time, KARACHI)!
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +140,7 @@ describe('POST /api/public/[slug]/book', () => {
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
       id: 'h1',
       patientPortalEnabled: true,
+      timezone: KARACHI,
     } as any)
     vi.mocked(prisma.patient.findFirst).mockResolvedValue(null)
 
@@ -153,6 +160,7 @@ describe('POST /api/public/[slug]/book', () => {
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
       id: 'h1',
       patientPortalEnabled: true,
+      timezone: KARACHI,
     } as any)
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'p1',
@@ -177,6 +185,7 @@ describe('POST /api/public/[slug]/book', () => {
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
       id: 'h1',
       patientPortalEnabled: true,
+      timezone: KARACHI,
     } as any)
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'p1',
@@ -207,6 +216,7 @@ describe('POST /api/public/[slug]/book', () => {
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
       id: 'h1',
       patientPortalEnabled: true,
+      timezone: KARACHI,
     } as any)
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'p1',
@@ -224,8 +234,7 @@ describe('POST /api/public/[slug]/book', () => {
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([] as any) // doctor's slot is free
     vi.mocked(prisma.appointment.create).mockResolvedValue({
       appointmentNo: 'APT00100',
-      scheduledDate: new Date('2026-03-15'),
-      scheduledTime: '10:00',
+      startsAt: at('10:00'),
     } as any)
 
     const res = await publicBookPOST(
@@ -270,7 +279,7 @@ describe('POST /api/public/[slug]/book', () => {
       {
         id: 'apt-1',
         appointmentNo: 'APT00042',
-        scheduledTime: '09:45',
+        startsAt: at('09:45'),
         duration: 30,
         doctorId: 'd1',
         chairId: null,

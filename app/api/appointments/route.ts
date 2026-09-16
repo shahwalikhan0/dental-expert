@@ -7,6 +7,13 @@ import {
   findAppointmentConflicts,
   getDoubleBookingPolicy,
 } from '@/lib/appointment-conflicts'
+import {
+  clinicTimezone,
+  dayRangeIn,
+  instantAt,
+  localDay,
+  withWallClock,
+} from '@/lib/appointment-time'
 
 // GET - List appointments with filters
 export async function GET(request: NextRequest) {
@@ -29,6 +36,7 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get('view') || 'list' // list, day, week, month
 
     const skip = (page - 1) * limit
+    const timezone = await clinicTimezone(prisma, hospitalId)
 
     // Build where clause - always include hospitalId
     const where: any = { hospitalId }
@@ -46,9 +54,25 @@ export async function GET(request: NextRequest) {
       where.status = status
     }
 
+    // A day, a week or a month of the clinic's own calendar, expressed as the
+    // half-open instant range it covers. The previous version called
+    // `setHours()` on a date column, which is the *server's* midnight, and then
+    // compared it against a value that was always midnight anyway.
     if (date) {
-      const dateObj = new Date(date)
-      where.scheduledDate = dateObj
+      if (view === 'week') {
+        const start = new Date(`${date}T00:00:00Z`)
+        start.setUTCDate(start.getUTCDate() - start.getUTCDay())
+        where.startsAt = dayRangeIn(start, timezone, 7)
+      } else if (view === 'month') {
+        const start = new Date(`${date}T00:00:00Z`)
+        start.setUTCDate(1)
+        const days = new Date(
+          Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)
+        ).getUTCDate()
+        where.startsAt = dayRangeIn(start, timezone, days)
+      } else {
+        where.startsAt = dayRangeIn(date, timezone)
+      }
     }
 
     if (doctorId) {
@@ -61,41 +85,6 @@ export async function GET(request: NextRequest) {
 
     if (type) {
       where.appointmentType = type
-    }
-
-    // For calendar views, get date range
-    if (view === 'day' && date) {
-      const dayStart = new Date(date)
-      dayStart.setHours(0, 0, 0, 0)
-      const dayEnd = new Date(date)
-      dayEnd.setHours(23, 59, 59, 999)
-      where.scheduledDate = {
-        gte: dayStart,
-        lte: dayEnd,
-      }
-    } else if (view === 'week' && date) {
-      const weekStart = new Date(date)
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-      weekStart.setHours(0, 0, 0, 0)
-      const weekEnd = new Date(weekStart)
-      weekEnd.setDate(weekEnd.getDate() + 6)
-      weekEnd.setHours(23, 59, 59, 999)
-      where.scheduledDate = {
-        gte: weekStart,
-        lte: weekEnd,
-      }
-    } else if (view === 'month' && date) {
-      const monthStart = new Date(date)
-      monthStart.setDate(1)
-      monthStart.setHours(0, 0, 0, 0)
-      const monthEnd = new Date(monthStart)
-      monthEnd.setMonth(monthEnd.getMonth() + 1)
-      monthEnd.setDate(0)
-      monthEnd.setHours(23, 59, 59, 999)
-      where.scheduledDate = {
-        gte: monthStart,
-        lte: monthEnd,
-      }
     }
 
     const [appointments, total] = await Promise.all([
@@ -122,7 +111,7 @@ export async function GET(request: NextRequest) {
           },
           chair: { select: { id: true, name: true } },
         },
-        orderBy: [{ scheduledDate: 'asc' }, { scheduledTime: 'asc' }],
+        orderBy: { startsAt: 'asc' },
         skip: view === 'list' ? skip : undefined,
         take: view === 'list' ? limit : undefined,
       }),
@@ -130,7 +119,7 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({
-      appointments,
+      appointments: appointments.map((a) => withWallClock(a, timezone)),
       pagination: {
         page,
         limit,
@@ -192,11 +181,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate scheduled date is not in the past
-    const scheduledDateObj = new Date(scheduledDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (scheduledDateObj < today) {
+    // The clinic books a wall-clock time; what is stored is the instant that
+    // refers to in the clinic's own timezone.
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    const startsAt = instantAt(scheduledDate, scheduledTime, timezone)
+    if (!startsAt) {
+      return NextResponse.json({ error: 'Invalid appointment date' }, { status: 400 })
+    }
+
+    // "In the past" means the clinic's yesterday, not the server's: a booking
+    // made at 02:00 Karachi for later that morning is not in the past, however
+    // the host's own clock reads.
+    if (localDay(startsAt, timezone) < localDay(new Date(), timezone)) {
       return NextResponse.json(
         { error: 'Cannot schedule appointments in the past' },
         { status: 400 }
@@ -236,12 +232,11 @@ export async function POST(request: NextRequest) {
     // FR-004: refuse (or warn about) an overlap on either the doctor or the
     // chair. This compares intervals, not start times — see
     // lib/appointment-conflicts.ts.
-    const appointmentDate = new Date(scheduledDate)
     const conflicts = await findAppointmentConflicts({
       hospitalId,
-      scheduledDate: appointmentDate,
-      scheduledTime,
+      startsAt,
       duration,
+      timezone,
       doctorId,
       chairId,
     })
@@ -265,8 +260,7 @@ export async function POST(request: NextRequest) {
         patientId,
         doctorId,
         hospitalId,
-        scheduledDate: appointmentDate,
-        scheduledTime,
+        startsAt,
         duration,
         chairId,
         appointmentType,
@@ -298,11 +292,13 @@ export async function POST(request: NextRequest) {
 
     // Under the WARN policy the booking stands, but the caller is told exactly
     // what it overlaps so the front desk can see it rather than discover it.
+    const body201 = withWallClock(appointment, timezone)
+
     if (conflictWarnings.length > 0) {
-      return NextResponse.json({ ...appointment, conflicts: conflictWarnings }, { status: 201 })
+      return NextResponse.json({ ...body201, conflicts: conflictWarnings }, { status: 201 })
     }
 
-    return NextResponse.json(appointment, { status: 201 })
+    return NextResponse.json(body201, { status: 201 })
   } catch (error) {
     console.error('Error creating appointment:', error)
     return NextResponse.json({ error: 'Failed to create appointment' }, { status: 500 })

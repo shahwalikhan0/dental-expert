@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { appointmentInstant } from '@/lib/appointment-time'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
-
-/** Midnight UTC on the day of `at`, to compare against a `@db.Date` column. */
-function startOfUtcDay(at: Date): Date {
-  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()))
-}
 
 /**
  * GET /api/cron/reminders — meant to run hourly.
@@ -45,39 +39,23 @@ export async function GET(req: Request) {
 
   const now = new Date()
 
-  // A two-day window of *calendar days*, narrowed afterwards to the
-  // appointments whose reminder actually falls due.
+  // Everything starting in the next two days. Two rather than one because an
+  // appointment early the day after tomorrow needs its day-before reminder
+  // queued tonight.
   //
-  // `scheduledDate` is `@db.Date`, so it holds midnight and nothing else. The
-  // filter used to be `scheduledDate >= now`, which against midnight means
-  // every appointment later today was skipped — an appointment at 4pm was
-  // never found by a cron running at 9am. Two days rather than one because an
-  // appointment early tomorrow needs its reminder queued tonight.
-  const today = startOfUtcDay(now)
-  const dayAfterTomorrow = new Date(today.getTime() + 2 * DAY)
-
+  // This used to filter a `@db.Date` column with `scheduledDate >= now`, which
+  // against a column holding midnight means every appointment later today was
+  // skipped: a 4pm appointment was never found by a cron running at 9am. The
+  // column is an instant now, so the window says what it means.
   const appointments = await prisma.appointment.findMany({
     where: {
       status: { in: ['SCHEDULED', 'CONFIRMED'] },
-      scheduledDate: { gte: today, lte: dayAfterTomorrow },
+      startsAt: { gte: now, lte: new Date(now.getTime() + 2 * DAY) },
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
     },
   })
-
-  // Clinic timezones, without which a date and an `HH:MM` string are not an
-  // instant. Fetched separately rather than included on the query above: this
-  // handler runs for every clinic by design, and an `include: { hospital }`
-  // would make the tenant-isolation scanner read it as scoped to one.
-  const timezones = new Map(
-    (
-      await prisma.hospital.findMany({
-        where: { id: { in: [...new Set(appointments.map((a) => a.hospitalId))] } },
-        select: { id: true, timezone: true },
-      })
-    ).map((h) => [h.id, h.timezone])
-  )
 
   // Which reminders already exist, keyed by appointment *and* send time.
   //
@@ -116,7 +94,7 @@ export async function GET(req: Request) {
     by: ['patientId'],
     where: {
       patientId: { in: patientIds },
-      scheduledDate: { lt: now },
+      startsAt: { lt: now },
     },
     _count: true,
   })
@@ -127,19 +105,8 @@ export async function GET(req: Request) {
 
   let created = 0
   let extraReminders = 0
-  let skipped = 0
   for (const appt of appointments) {
-    // When the appointment actually is, rather than midnight on its day.
-    const startsAt = appointmentInstant(
-      appt.scheduledDate,
-      appt.scheduledTime,
-      timezones.get(appt.hospitalId) || 'Asia/Karachi'
-    )
-
-    if (!startsAt) {
-      skipped++
-      continue
-    }
+    const startsAt = appt.startsAt
 
     // Assess no-show risk: high if >30% no-show rate with at least 2 past appointments
     const total = totalMap[appt.patientId] || 0
@@ -177,7 +144,6 @@ export async function GET(req: Request) {
     checked: appointments.length,
     created,
     extraReminders,
-    skipped,
     processedAt: now.toISOString(),
   })
 }

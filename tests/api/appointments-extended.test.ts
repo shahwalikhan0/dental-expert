@@ -40,6 +40,13 @@ vi.mock('@/lib/api-helpers', () => mockAuth)
 // Mock prisma
 vi.mock('@/lib/prisma', () => ({ prisma, default: prisma }))
 
+const { instantAt, localDay } = await import('@/lib/appointment-time')
+
+const KARACHI = 'Asia/Karachi'
+
+/** A wall-clock time today, in the clinic's zone, as the instant it refers to. */
+const todayAt = (time: string) => instantAt(localDay(new Date(), KARACHI), time, KARACHI)!
+
 function makeRequest(url: string, options: any = {}) {
   return new Request(url, {
     method: options.method || 'GET',
@@ -65,8 +72,7 @@ describe('POST /api/appointments/[id]/check-in', () => {
       id: 'a1',
       hospitalId: 'h1',
       status: 'SCHEDULED',
-      scheduledDate: new Date(),
-      scheduledTime: '10:00',
+      startsAt: todayAt('10:00'),
     }
     vi.mocked(prisma.appointment.findFirst).mockResolvedValue(appt as any)
     vi.mocked(prisma.appointment.update).mockResolvedValue({
@@ -97,8 +103,7 @@ describe('POST /api/appointments/[id]/check-in', () => {
       id: 'a2',
       hospitalId: 'h1',
       status: 'CONFIRMED',
-      scheduledDate: new Date(),
-      scheduledTime: '14:00',
+      startsAt: todayAt('14:00'),
     } as any)
     vi.mocked(prisma.appointment.update).mockResolvedValue({ status: 'CHECKED_IN' } as any)
 
@@ -115,8 +120,7 @@ describe('POST /api/appointments/[id]/check-in', () => {
       id: 'a3',
       hospitalId: 'h1',
       status: 'COMPLETED',
-      scheduledDate: new Date(),
-      scheduledTime: '09:00',
+      startsAt: todayAt('09:00'),
     } as any)
 
     const req = makeRequest('http://localhost/api/appointments/a3/check-in', { method: 'POST' })
@@ -399,7 +403,7 @@ describe('GET /api/appointments/slots', () => {
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'd1' } as any)
     vi.mocked(prisma.staffShift.findUnique).mockResolvedValue(null)
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
-      { scheduledTime: '09:00', duration: 30 },
+      { startsAt: instantAt('2026-03-15', '09:00', KARACHI), duration: 30 },
     ] as any)
 
     const req = makeRequest('http://localhost/api/appointments/slots?doctorId=d1&date=2026-03-15')

@@ -45,7 +45,7 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: vi.fn(),
     },
     hospital: {
-      findUnique: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
   },
 }))
@@ -88,6 +88,8 @@ vi.mock('@/lib/api-helpers', async () => {
 import { prisma } from '@/lib/prisma'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { GET, POST } from '@/app/api/appointments/route'
+
+import { instantAt } from '@/lib/appointment-time'
 
 const mockPrisma = vi.mocked(prisma)
 const mockRequireAuth = vi.mocked(requireAuthAndRole)
@@ -157,13 +159,11 @@ describe('Appointments API - Comprehensive Tests', () => {
       const request = new NextRequest('http://localhost/api/appointments?date=2025-01-29')
       await GET(request)
 
-      expect(mockPrisma.appointment.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            scheduledDate: expect.any(Date),
-          }),
-        })
-      )
+      // A day filter is the half-open instant range the clinic's own calendar
+      // day covers, not a comparison against a date column holding midnight.
+      const where = mockPrisma.appointment.findMany.mock.calls[0][0].where
+      expect(where.startsAt.gte.toISOString()).toBe('2025-01-28T19:00:00.000Z')
+      expect(where.startsAt.lt.toISOString()).toBe('2025-01-29T19:00:00.000Z')
     })
 
     it('should filter appointments by doctor', async () => {
@@ -210,9 +210,9 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(mockPrisma.appointment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            scheduledDate: expect.objectContaining({
+            startsAt: expect.objectContaining({
               gte: expect.any(Date),
-              lte: expect.any(Date),
+              lt: expect.any(Date),
             }),
           }),
           take: undefined, // No pagination for calendar view
@@ -288,7 +288,7 @@ describe('Appointments API - Comprehensive Tests', () => {
 
       expect(mockPrisma.appointment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          orderBy: [{ scheduledDate: 'asc' }, { scheduledTime: 'asc' }],
+          orderBy: { startsAt: 'asc' },
         })
       )
     })
@@ -397,7 +397,7 @@ describe('Appointments API - Comprehensive Tests', () => {
         {
           id: 'existing-apt',
           appointmentNo: 'APT00001',
-          scheduledTime: '10:00',
+          startsAt: instantAt('2030-06-15', '10:00', 'Asia/Karachi'),
           duration: 60,
           doctorId: mockDoctorId,
           chairId: null,

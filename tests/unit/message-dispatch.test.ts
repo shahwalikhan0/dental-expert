@@ -65,13 +65,17 @@ function queued(overrides: Record<string, unknown> = {}) {
 function appointment(overrides: Record<string, unknown> = {}) {
   return {
     appointmentNo: 'APT001',
-    scheduledDate: new Date('2026-09-15T11:00:00Z'),
-    scheduledTime: '16:00',
+    // 16:00 on 15 September in Karachi.
+    startsAt: new Date('2026-09-15T11:00:00Z'),
     status: 'CONFIRMED',
     patient: { firstName: 'Ayesha', lastName: 'Khan' },
     doctor: { firstName: 'Sana', lastName: 'Iqbal' },
     chair: { name: 'Chair 2' },
-    hospital: { name: 'Demo Dental Clinic', phone: '4235000000' },
+    hospital: {
+      name: 'Demo Dental Clinic',
+      phone: '4235000000',
+      timezone: 'Asia/Karachi',
+    },
     ...overrides,
   }
 }

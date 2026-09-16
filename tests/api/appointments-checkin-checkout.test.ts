@@ -38,6 +38,13 @@ const mockAuth = vi.hoisted(() => {
 vi.mock('@/lib/api-helpers', () => mockAuth)
 vi.mock('@/lib/prisma', () => ({ prisma, default: prisma }))
 
+const { instantAt, localDay } = await import('@/lib/appointment-time')
+
+const KARACHI = 'Asia/Karachi'
+
+/** A wall-clock time today, in the clinic's zone, as the instant it refers to. */
+const todayAt = (time: string) => instantAt(localDay(new Date(), KARACHI), time, KARACHI)!
+
 const checkInModule = await import('@/app/api/appointments/[id]/check-in/route')
 const checkOutModule = await import('@/app/api/appointments/[id]/check-out/route')
 
@@ -68,8 +75,7 @@ describe('Appointments Check-in & Check-out API', () => {
       ;(prisma.appointment.findFirst as any).mockResolvedValue({
         id: 'apt-1',
         status: 'SCHEDULED',
-        scheduledDate: new Date(),
-        scheduledTime: '10:00',
+        startsAt: todayAt('10:00'),
       })
       ;(prisma.appointment.update as any).mockResolvedValue({
         id: 'apt-1',
@@ -93,8 +99,7 @@ describe('Appointments Check-in & Check-out API', () => {
       ;(prisma.appointment.findFirst as any).mockResolvedValue({
         id: 'apt-1',
         status: 'CONFIRMED',
-        scheduledDate: new Date(),
-        scheduledTime: '14:00',
+        startsAt: todayAt('14:00'),
       })
       ;(prisma.appointment.update as any).mockResolvedValue({
         id: 'apt-1',
@@ -109,8 +114,7 @@ describe('Appointments Check-in & Check-out API', () => {
       ;(prisma.appointment.findFirst as any).mockResolvedValue({
         id: 'apt-1',
         status: 'COMPLETED',
-        scheduledDate: new Date(),
-        scheduledTime: '10:00',
+        startsAt: todayAt('10:00'),
       })
 
       const res = await checkInModule.POST(makeRequest('POST'), ctx)
@@ -123,8 +127,7 @@ describe('Appointments Check-in & Check-out API', () => {
       ;(prisma.appointment.findFirst as any).mockResolvedValue({
         id: 'apt-1',
         status: 'CANCELLED',
-        scheduledDate: new Date(),
-        scheduledTime: '10:00',
+        startsAt: todayAt('10:00'),
       })
 
       const res = await checkInModule.POST(makeRequest('POST'), ctx)

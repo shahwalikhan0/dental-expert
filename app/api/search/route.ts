@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, formatCalendarDay, wallClockIn } from '@/lib/appointment-time'
 
 interface SearchResult {
   id: string
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const timezone = await clinicTimezone(prisma, hospitalId)
     const [patients, appointments, invoices, staff, treatments] = await Promise.all([
       // Patients
       prisma.patient.findMany({
@@ -60,14 +62,13 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           appointmentNo: true,
-          scheduledDate: true,
-          scheduledTime: true,
+          startsAt: true,
           status: true,
           patient: { select: { firstName: true, lastName: true } },
           doctor: { select: { firstName: true, lastName: true } },
         },
         take: 5,
-        orderBy: { scheduledDate: 'desc' },
+        orderBy: { startsAt: 'desc' },
       }),
 
       // Invoices
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest) {
       appointments: appointments.map((a): SearchResult => ({
         id: a.id,
         label: `${a.appointmentNo} — ${a.patient.firstName} ${a.patient.lastName}`,
-        sublabel: `${new Date(a.scheduledDate).toLocaleDateString('en-PK')} ${a.scheduledTime} · Dr. ${a.doctor.firstName} ${a.doctor.lastName} · ${a.status}`,
+        sublabel: `${formatCalendarDay(a.startsAt, timezone)} ${wallClockIn(a.startsAt, timezone).scheduledTime} · Dr. ${a.doctor.firstName} ${a.doctor.lastName} · ${a.status}`,
         href: `/appointments/${a.id}`,
       })),
       invoices: invoices.map((inv): SearchResult => ({

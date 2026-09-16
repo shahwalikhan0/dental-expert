@@ -52,14 +52,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             select: { firstName: true, lastName: true },
           },
         },
-        orderBy: { scheduledDate: 'desc' },
+        orderBy: { startsAt: 'desc' },
       })
 
       appointments.forEach((apt) => {
         events.push({
           id: apt.id,
           type: 'appointment',
-          date: apt.scheduledDate,
+          date: apt.startsAt,
           title: `${apt.appointmentType} Appointment`,
           description: apt.doctor
             ? `with Dr. ${apt.doctor.firstName} ${apt.doctor.lastName}`

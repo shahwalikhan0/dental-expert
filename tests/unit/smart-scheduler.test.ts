@@ -5,6 +5,12 @@ vi.mock('@/lib/prisma', () => ({ default: prisma }))
 
 const { findMatchingWaitlistPatients, handleCancellationWaitlist, bookFromWaitlist } =
   await import('@/lib/services/smart-scheduler')
+const { instantAt } = await import('@/lib/appointment-time')
+
+const KARACHI = 'Asia/Karachi'
+
+/** A freed slot as the instant it is, in the clinic's own zone. */
+const at = (day: string, time: string) => instantAt(day, time, KARACHI)!
 
 describe('Smart Scheduler Service', () => {
   beforeEach(() => {
@@ -26,8 +32,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'), // Monday
-        scheduledTime: '09:00',
+        startsAt: at('2026-03-02', '09:00'), // Monday
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -49,8 +55,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'), // Monday
-        scheduledTime: '09:00',
+        startsAt: at('2026-03-02', '09:00'), // Monday
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -70,8 +76,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'),
-        scheduledTime: '09:00',
+        startsAt: at('2026-03-02', '09:00'),
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -85,8 +91,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'),
-        scheduledTime: '09:00',
+        startsAt: at('2026-03-02', '09:00'),
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -105,8 +111,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'),
-        scheduledTime: '14:00', // 2 PM = AFTERNOON
+        startsAt: at('2026-03-02', '14:00'), // 2 PM = AFTERNOON
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -131,8 +137,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'),
-        scheduledTime: '10:00',
+        startsAt: at('2026-03-02', '10:00'),
+        timezone: KARACHI,
         duration: 30,
       }
 
@@ -165,8 +171,8 @@ describe('Smart Scheduler Service', () => {
       const slot = {
         hospitalId: 'hospital-1',
         doctorId: 'doc-1',
-        scheduledDate: new Date('2026-03-02'),
-        scheduledTime: '10:00',
+        startsAt: at('2026-03-02', '10:00'),
+        timezone: KARACHI,
         duration: 30,
       }
 

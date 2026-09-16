@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
-import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, subMonths } from 'date-fns'
+import { subDays, subMonths } from 'date-fns'
+import { clinicTimezone, dayRangeIn, localDay, wallClockIn } from '@/lib/appointment-time'
 
 // Helper function to convert BigInt to Number in query results
 function convertBigIntToNumber(obj: any): any {
@@ -29,10 +30,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const now = new Date()
-    const todayStart = startOfDay(now)
-    const todayEnd = endOfDay(now)
-    const monthStart = startOfMonth(now)
-    const monthEnd = endOfMonth(now)
+
+    // Day and month boundaries on the clinic's calendar. These were `date-fns`
+    // calls against the *server's* midnight, which on a host in UTC puts the
+    // first five hours of a Karachi clinic's day into yesterday's figures.
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    const today = localDay(now, timezone)
+    const { gte: todayStart, lt: todayEnd } = dayRangeIn(today, timezone)
+    const firstOfMonth = `${today.slice(0, 7)}-01`
+    const daysInMonth = new Date(
+      Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)
+    ).getUTCDate()
+    const { gte: monthStart, lt: monthEnd } = dayRangeIn(firstOfMonth, timezone, daysInMonth)
     const last7DaysStart = subDays(now, 6)
     const last6MonthsStart = subMonths(monthStart, 5)
 
@@ -61,9 +70,9 @@ export async function GET(req: NextRequest) {
         prisma.appointment.count({
           where: {
             hospitalId,
-            scheduledDate: {
+            startsAt: {
               gte: todayStart,
-              lte: todayEnd,
+              lt: todayEnd,
             },
           },
         }),
@@ -72,9 +81,9 @@ export async function GET(req: NextRequest) {
         prisma.appointment.count({
           where: {
             hospitalId,
-            scheduledDate: {
+            startsAt: {
               gte: monthStart,
-              lte: monthEnd,
+              lt: monthEnd,
             },
           },
         }),
@@ -84,7 +93,7 @@ export async function GET(req: NextRequest) {
           where: {
             hospitalId,
             status: { in: ['SCHEDULED', 'CONFIRMED'] },
-            scheduledDate: {
+            startsAt: {
               gte: now,
             },
           },
@@ -95,9 +104,9 @@ export async function GET(req: NextRequest) {
           where: {
             hospitalId,
             status: 'COMPLETED',
-            scheduledDate: {
+            startsAt: {
               gte: todayStart,
-              lte: todayEnd,
+              lt: todayEnd,
             },
           },
         }),
@@ -188,9 +197,9 @@ export async function GET(req: NextRequest) {
           },
           where: {
             hospitalId,
-            scheduledDate: {
+            startsAt: {
               gte: monthStart,
-              lte: monthEnd,
+              lt: monthEnd,
             },
           },
         }),
@@ -215,7 +224,7 @@ export async function GET(req: NextRequest) {
         prisma.appointment.findMany({
           where: {
             hospitalId,
-            scheduledDate: {
+            startsAt: {
               gte: now,
             },
             status: { in: ['SCHEDULED', 'CONFIRMED'] },
@@ -235,7 +244,7 @@ export async function GET(req: NextRequest) {
             },
           },
           orderBy: {
-            scheduledDate: 'asc',
+            startsAt: 'asc',
           },
           take: 5,
         }),
@@ -323,7 +332,7 @@ export async function GET(req: NextRequest) {
       prisma.appointment.count({
         where: {
           hospitalId,
-          scheduledDate: {
+          startsAt: {
             gte: prevMonthStart,
             lte: prevMonthEnd,
           },
@@ -378,7 +387,8 @@ export async function GET(req: NextRequest) {
           doctorName: apt.doctor
             ? `${apt.doctor.firstName} ${apt.doctor.lastName}`
             : 'Not assigned',
-          date: apt.scheduledDate,
+          ...wallClockIn(apt.startsAt, timezone),
+          date: apt.startsAt,
           type: apt.appointmentType,
           status: apt.status,
         })),

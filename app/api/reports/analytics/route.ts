@@ -373,7 +373,7 @@ async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId:
   const appointments = await prisma.appointment.findMany({
     where: {
       hospitalId,
-      scheduledDate: {
+      startsAt: {
         gte: dateFrom,
         lte: dateTo,
       },

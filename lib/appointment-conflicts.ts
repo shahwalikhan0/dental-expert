@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { endsAt, wallClockIn } from '@/lib/appointment-time'
 
 /**
  * FR-004 — "Prevent or clearly warn against double-booking a doctor/chair
@@ -10,11 +11,12 @@ import { prisma } from '@/lib/prisma'
  * commonest form of double-booking — an overlap, not a tie — went through. The
  * chair was never checked at all.
  *
- * Times are stored as `HH:MM` strings alongside a `duration` in minutes, so the
- * overlap test is arithmetic on minutes-since-midnight rather than SQL. The day
- * is fetched in one query and compared in memory: a clinic's appointments for
- * one doctor on one date are a handful of rows, and expressing the interval
- * maths in the query would mean raw SQL against a string column.
+ * Appointments are instants now, so the overlap test is arithmetic on
+ * milliseconds rather than on minutes-since-midnight parsed out of a string.
+ * Candidates are narrowed in SQL and compared in memory: Postgres cannot index
+ * an interval it has to compute, but every appointment that overlaps must start
+ * before this one ends and no earlier than the longest possible appointment
+ * before it begins, which is a plain range scan on `startsAt`.
  */
 
 /**
@@ -30,18 +32,12 @@ export const BLOCKING_STATUSES_EXCLUDED = ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'
  */
 export const DEFAULT_APPOINTMENT_DURATION = 30
 
-/** `HH:MM` (24-hour) to minutes since midnight. */
-export function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number)
-  return hours * 60 + minutes
-}
-
-/** Minutes since midnight back to `HH:MM`, for reporting where a clash ends. */
-export function minutesToTime(minutes: number): string {
-  const h = Math.floor(minutes / 60) % 24
-  const m = minutes % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
+/**
+ * The longest appointment the API will accept, and so how far back a candidate
+ * can start and still overlap the slot being checked. Kept in step with the
+ * duration validation on the appointment routes.
+ */
+export const MAX_APPOINTMENT_DURATION = 480
 
 /**
  * Do two appointments overlap?
@@ -50,14 +46,14 @@ export function minutesToTime(minutes: number): string {
  * do not overlap, which is the whole point of booking them that way.
  */
 export function intervalsOverlap(
-  startA: string,
+  startA: Date,
   durationA: number,
-  startB: string,
+  startB: Date,
   durationB: number
 ): boolean {
-  const aStart = timeToMinutes(startA)
-  const bStart = timeToMinutes(startB)
-  return aStart < bStart + durationB && bStart < aStart + durationA
+  const aStart = startA.getTime()
+  const bStart = startB.getTime()
+  return aStart < bStart + durationB * 60000 && bStart < aStart + durationA * 60000
 }
 
 export type ConflictPolicy = 'BLOCK' | 'WARN'
@@ -82,9 +78,10 @@ export async function getDoubleBookingPolicy(hospitalId: string): Promise<Confli
 
 export interface ConflictQuery {
   hospitalId: string
-  scheduledDate: Date
-  scheduledTime: string
+  startsAt: Date
   duration: number
+  /** Only to word the clash — the overlap test itself is timezone-free. */
+  timezone: string
   doctorId?: string | null
   chairId?: string | null
   /** The appointment being rescheduled, which must not clash with itself. */
@@ -110,7 +107,7 @@ export interface AppointmentConflict {
 export async function findAppointmentConflicts(
   query: ConflictQuery
 ): Promise<AppointmentConflict[]> {
-  const { hospitalId, scheduledDate, scheduledTime, duration, doctorId, chairId } = query
+  const { hospitalId, startsAt, duration, timezone, doctorId, chairId } = query
 
   if (!doctorId && !chairId) return []
 
@@ -118,10 +115,13 @@ export async function findAppointmentConflicts(
   if (doctorId) resourceFilters.push({ doctorId })
   if (chairId) resourceFilters.push({ chairId })
 
-  const sameDay = await prisma.appointment.findMany({
+  const candidates = await prisma.appointment.findMany({
     where: {
       hospitalId,
-      scheduledDate,
+      startsAt: {
+        gte: new Date(startsAt.getTime() - MAX_APPOINTMENT_DURATION * 60000),
+        lt: endsAt(startsAt, duration),
+      },
       status: { notIn: [...BLOCKING_STATUSES_EXCLUDED] as never },
       OR: resourceFilters,
       ...(query.excludeAppointmentId ? { id: { not: query.excludeAppointmentId } } : {}),
@@ -129,7 +129,7 @@ export async function findAppointmentConflicts(
     select: {
       id: true,
       appointmentNo: true,
-      scheduledTime: true,
+      startsAt: true,
       duration: true,
       doctorId: true,
       chairId: true,
@@ -141,13 +141,17 @@ export async function findAppointmentConflicts(
 
   const conflicts: AppointmentConflict[] = []
 
-  for (const existing of sameDay) {
-    if (!intervalsOverlap(scheduledTime, duration, existing.scheduledTime, existing.duration)) {
+  for (const existing of candidates) {
+    if (!intervalsOverlap(startsAt, duration, existing.startsAt, existing.duration)) {
       continue
     }
 
     const patientName = `${existing.patient.firstName} ${existing.patient.lastName}`.trim()
-    const endTime = minutesToTime(timeToMinutes(existing.scheduledTime) + existing.duration)
+    const startTime = wallClockIn(existing.startsAt, timezone).scheduledTime
+    const endTime = wallClockIn(
+      endsAt(existing.startsAt, existing.duration),
+      timezone
+    ).scheduledTime
 
     // One appointment can clash on both resources — the same dentist *and* the
     // same chair. Report each, so the message names what actually needs moving.
@@ -157,12 +161,12 @@ export async function findAppointmentConflicts(
         resource: 'doctor',
         appointmentId: existing.id,
         appointmentNo: existing.appointmentNo,
-        scheduledTime: existing.scheduledTime,
+        scheduledTime: startTime,
         endTime,
         duration: existing.duration,
         patientName,
         resourceName: doctorName,
-        message: `${doctorName} is with ${patientName} from ${existing.scheduledTime} to ${endTime} (${existing.appointmentNo})`,
+        message: `${doctorName} is with ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
       })
     }
 
@@ -172,12 +176,12 @@ export async function findAppointmentConflicts(
         resource: 'chair',
         appointmentId: existing.id,
         appointmentNo: existing.appointmentNo,
-        scheduledTime: existing.scheduledTime,
+        scheduledTime: startTime,
         endTime,
         duration: existing.duration,
         patientName,
         resourceName: chairName,
-        message: `${chairName} is occupied by ${patientName} from ${existing.scheduledTime} to ${endTime} (${existing.appointmentNo})`,
+        message: `${chairName} is occupied by ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
       })
     }
   }

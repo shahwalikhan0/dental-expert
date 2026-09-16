@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 
 /**
  * GET: Public slot availability by hospital slug.
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     const hospital = await prisma.hospital.findUnique({
       where: { slug },
-      select: { id: true, workingHours: true, patientPortalEnabled: true },
+      select: { id: true, workingHours: true, patientPortalEnabled: true, timezone: true },
     })
 
     if (!hospital) {
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     }
 
     const hospitalId = hospital.id
+    const timezone = hospital.timezone
 
     // Parse working hours
     let workingHours = { start: '09:00', end: '21:00', lunchStart: '13:00', lunchEnd: '14:00' }
@@ -75,10 +77,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       where: {
         hospitalId,
         doctorId,
-        scheduledDate: dateObj,
+        startsAt: dayRangeIn(dateObj, timezone),
         status: { notIn: ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'] },
       },
-      select: { scheduledTime: true, duration: true },
+      select: { startsAt: true, duration: true },
     })
 
     // Generate slots
@@ -108,7 +110,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         (h < lunchEndHour || (h === lunchEndHour && m < lunchEndMin))
 
       const isBooked = existingAppointments.some((apt) => {
-        const [ah, am] = apt.scheduledTime.split(':').map(Number)
+        const [ah, am] = wallClockIn(apt.startsAt, timezone).scheduledTime.split(':').map(Number)
         const aptStart = ah * 60 + am
         const aptEnd = aptStart + apt.duration
         const slotStart = h * 60 + m
@@ -116,10 +118,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         return slotStart < aptEnd && slotEnd > aptStart
       })
 
-      const now = new Date()
-      const isToday = dateObj.toDateString() === now.toDateString()
-      const isPast =
-        isToday && (h < now.getHours() || (h === now.getHours() && m <= now.getMinutes()))
+      // The clinic's clock, not the host's — this page is served to patients
+      // from wherever the application happens to be running.
+      const nowLocal = wallClockIn(new Date(), timezone)
+      const isToday = nowLocal.scheduledDate === date.slice(0, 10)
+      const [nowHour, nowMin] = nowLocal.scheduledTime.split(':').map(Number)
+      const isPast = isToday && (h < nowHour || (h === nowHour && m <= nowMin))
 
       slots.push({ time: timeStr, available: !isLunch && !isBooked && !isPast })
 

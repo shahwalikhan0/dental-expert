@@ -549,8 +549,12 @@ model Appointment {
   patientId       String
   doctorId        String
 
-  scheduledDate   DateTime          @db.Date
-  scheduledTime   String
+  /// The instant the appointment starts, in UTC. A clinic books a wall-clock
+  /// time ("Thursday at 15:00"), which the API converts against the clinic's
+  /// own timezone on the way in and renders back on the way out — but what is
+  /// stored is a point in time, so "an hour before" is arithmetic rather than a
+  /// reassembly of a date column and a free-text string.
+  startsAt        DateTime          @db.Timestamptz(3)
   duration        Int               @default(30)
   chairId         String?
 
@@ -579,11 +583,11 @@ model Appointment {
   treatments      Treatment[]
 
   @@unique([hospitalId, appointmentNo])
-  @@index([hospitalId, scheduledDate, scheduledTime])
-  @@index([hospitalId, status, scheduledDate])
-  @@index([hospitalId, doctorId, scheduledDate])
-  @@index([hospitalId, patientId, scheduledDate(sort: Desc)])
-  @@index([chairId, scheduledDate])
+  @@index([hospitalId, startsAt])
+  @@index([hospitalId, status, startsAt])
+  @@index([hospitalId, doctorId, startsAt])
+  @@index([hospitalId, patientId, startsAt(sort: Desc)])
+  @@index([chairId, startsAt])
 }
 
 /// A treatment chair / operatory. FR-025 lists chairs among the master data a

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 
 // Generate unique treatment number
 async function generateTreatmentNo(hospitalId: string): Promise<string> {
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               appointmentNo: true,
-              scheduledDate: true,
+              startsAt: true,
             },
           },
         },
@@ -137,8 +138,13 @@ export async function GET(request: NextRequest) {
       prisma.treatment.count({ where }),
     ])
 
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
     return NextResponse.json({
-      treatments,
+      treatments: treatments.map((t) => ({
+        ...t,
+        appointment: t.appointment ? withWallClock(t.appointment, timezone) : t.appointment,
+      })),
       pagination: {
         page,
         limit,

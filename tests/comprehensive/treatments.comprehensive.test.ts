@@ -36,6 +36,11 @@ vi.mock('@/lib/prisma', () => ({
     invoiceItem: {
       findMany: vi.fn(),
     },
+    // Appointments are stored as instants and rendered against the clinic's
+    // own timezone, so every route that touches one reads this row.
+    hospital: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
+    },
   },
 }))
 

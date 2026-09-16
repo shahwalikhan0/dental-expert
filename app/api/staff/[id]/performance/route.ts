@@ -44,7 +44,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: {
         hospitalId,
         doctorId: id,
-        scheduledDate: {
+        startsAt: {
           gte: start,
           lte: end,
         },
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       select: {
         id: true,
         status: true,
-        scheduledDate: true,
+        startsAt: true,
         waitTime: true,
       },
     })

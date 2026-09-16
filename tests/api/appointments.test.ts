@@ -26,6 +26,11 @@ vi.mock('@/lib/prisma', () => ({
     setting: {
       findUnique: vi.fn(),
     },
+    // Appointments are stored as instants and rendered against the clinic's
+    // own timezone, so every route that touches one reads this row.
+    hospital: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
+    },
   },
 }))
 
@@ -72,6 +77,12 @@ vi.mock('@/lib/api-helpers', async () => {
 import { GET, POST } from '@/app/api/appointments/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { instantAt } from '@/lib/appointment-time'
+
+const KARACHI = 'Asia/Karachi'
+
+/** A wall-clock time on the fixtures' day, as the instant it refers to. */
+const at = (time: string) => instantAt('2030-06-15', time, KARACHI)!
 
 describe('Appointments API - GET /api/appointments', () => {
   beforeEach(() => {
@@ -104,8 +115,7 @@ describe('Appointments API - GET /api/appointments', () => {
       {
         id: 'apt-1',
         appointmentNo: 'APT202501150001',
-        scheduledDate: new Date('2030-06-15'),
-        scheduledTime: '09:00',
+        startsAt: at('09:00'),
         status: 'SCHEDULED',
         patient: {
           id: 'patient-1',
@@ -209,8 +219,7 @@ describe('Appointments API - POST /api/appointments', () => {
       appointmentNo: 'APT202501150001',
       patientId: 'patient-1',
       doctorId: 'doctor-1',
-      scheduledDate: new Date('2030-06-15'),
-      scheduledTime: '09:00',
+      startsAt: at('09:00'),
       status: 'SCHEDULED',
       patient: {
         id: 'patient-1',
@@ -315,7 +324,7 @@ describe('Appointments API - POST /api/appointments', () => {
       {
         id: 'existing-apt',
         appointmentNo: 'APT00001',
-        scheduledTime: '09:00',
+        startsAt: at('09:00'),
         duration: 60,
         doctorId: 'doctor-1',
         chairId: null,

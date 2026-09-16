@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 
 // GET - Get available time slots for a doctor on a specific date
 export async function GET(request: NextRequest) {
@@ -23,9 +24,10 @@ export async function GET(request: NextRequest) {
     // Get hospital working hours (default 9 AM to 9 PM)
     const hospital = await prisma.hospital.findUnique({
       where: { id: hospitalId },
-      select: { workingHours: true },
+      select: { workingHours: true, timezone: true },
     })
 
+    const timezone = hospital?.timezone || (await clinicTimezone(prisma, hospitalId))
     let workingHours = { start: '09:00', end: '21:00', lunchStart: '13:00', lunchEnd: '14:00' }
 
     if (hospital?.workingHours) {
@@ -78,13 +80,13 @@ export async function GET(request: NextRequest) {
       where: {
         hospitalId,
         doctorId,
-        scheduledDate: dateObj,
+        startsAt: dayRangeIn(dateObj, timezone),
         status: {
           notIn: ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'],
         },
       },
       select: {
-        scheduledTime: true,
+        startsAt: true,
         duration: true,
       },
     })
@@ -120,8 +122,13 @@ export async function GET(request: NextRequest) {
         (currentHour < lunchEndHour || (currentHour === lunchEndHour && currentMin < lunchEndMin))
 
       // Check if slot overlaps with existing appointments
+      // Booked slots are compared as clinic wall-clock minutes: the slot grid
+      // itself is wall clock, so the stored instant is rendered back into the
+      // clinic's zone to line the two up.
       const isBooked = existingAppointments.some((apt) => {
-        const aptStartParts = apt.scheduledTime.split(':').map(Number)
+        const aptStartParts = wallClockIn(apt.startsAt, timezone)
+          .scheduledTime.split(':')
+          .map(Number)
         const aptStartMins = aptStartParts[0] * 60 + aptStartParts[1]
         const aptEndMins = aptStartMins + apt.duration
 
@@ -132,13 +139,12 @@ export async function GET(request: NextRequest) {
         return slotStartMins < aptEndMins && slotEndMins > aptStartMins
       })
 
-      // Check if slot is in the past (for today)
-      const now = new Date()
-      const isToday = dateObj.toDateString() === now.toDateString()
+      // Check if slot is in the past — on the clinic's clock, not the host's.
+      const nowLocal = wallClockIn(new Date(), timezone)
+      const isToday = nowLocal.scheduledDate === date.slice(0, 10)
+      const [nowHour, nowMin] = nowLocal.scheduledTime.split(':').map(Number)
       const isPast =
-        isToday &&
-        (currentHour < now.getHours() ||
-          (currentHour === now.getHours() && currentMin <= now.getMinutes()))
+        isToday && (currentHour < nowHour || (currentHour === nowHour && currentMin <= nowMin))
 
       slots.push({
         time: timeStr,

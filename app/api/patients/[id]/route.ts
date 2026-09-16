@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import prisma from '@/lib/prisma'
+import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 import { Prisma } from '@prisma/client'
 
 // GET /api/patients/[id] - Get a specific patient with all details
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         medicalHistory: true,
         appointments: {
           take: 10,
-          orderBy: { scheduledDate: 'desc' },
+          orderBy: { startsAt: 'desc' },
           include: {
             doctor: {
               select: {
@@ -77,9 +78,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
     return NextResponse.json({
       success: true,
-      patient,
+      patient: {
+        ...patient,
+        appointments: patient.appointments.map((a) => withWallClock(a, timezone)),
+      },
     })
   } catch (error: any) {
     console.error('Error fetching patient:', error)

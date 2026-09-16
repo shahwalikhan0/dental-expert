@@ -13,78 +13,58 @@ vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
 import {
   intervalsOverlap,
-  timeToMinutes,
-  minutesToTime,
   findAppointmentConflicts,
   getDoubleBookingPolicy,
   conflictResponseBody,
   DEFAULT_APPOINTMENT_DURATION,
 } from '@/lib/appointment-conflicts'
+import { instantAt } from '@/lib/appointment-time'
 import { prisma } from '@/lib/prisma'
 
-describe('timeToMinutes / minutesToTime', () => {
-  it('converts a time to minutes since midnight', () => {
-    expect(timeToMinutes('00:00')).toBe(0)
-    expect(timeToMinutes('09:30')).toBe(570)
-    expect(timeToMinutes('23:59')).toBe(1439)
-  })
+const KARACHI = 'Asia/Karachi'
 
-  it('round-trips', () => {
-    expect(minutesToTime(timeToMinutes('14:45'))).toBe('14:45')
-  })
-
-  it('pads single-digit hours and minutes', () => {
-    expect(minutesToTime(545)).toBe('09:05')
-  })
-
-  // An appointment that runs past midnight would otherwise report an end time
-  // like "24:30", which is not a time.
-  it('wraps an end time past midnight', () => {
-    expect(minutesToTime(timeToMinutes('23:45') + 60)).toBe('00:45')
-  })
-})
+/** A wall-clock time on the test's day, as the instant it refers to. */
+const at = (time: string) => instantAt('2026-10-01', time, KARACHI)!
 
 describe('intervalsOverlap', () => {
   // The exact case the old equality check missed.
   it('catches an appointment starting inside another', () => {
-    expect(intervalsOverlap('09:15', 30, '09:00', 60)).toBe(true)
+    expect(intervalsOverlap(at('09:15'), 30, at('09:00'), 60)).toBe(true)
   })
 
   it('catches an appointment the other starts inside of', () => {
-    expect(intervalsOverlap('09:00', 60, '09:15', 30)).toBe(true)
+    expect(intervalsOverlap(at('09:00'), 60, at('09:15'), 30)).toBe(true)
   })
 
   it('catches identical slots', () => {
-    expect(intervalsOverlap('09:00', 30, '09:00', 30)).toBe(true)
+    expect(intervalsOverlap(at('09:00'), 30, at('09:00'), 30)).toBe(true)
   })
 
   it('catches one slot wholly containing another', () => {
-    expect(intervalsOverlap('09:00', 120, '09:30', 15)).toBe(true)
+    expect(intervalsOverlap(at('09:00'), 120, at('09:30'), 15)).toBe(true)
   })
 
   // Booking back-to-back is the normal way to fill a day; treating it as a
   // clash would make the schedule unusable.
   it('allows back-to-back appointments', () => {
-    expect(intervalsOverlap('09:00', 30, '09:30', 30)).toBe(false)
-    expect(intervalsOverlap('09:30', 30, '09:00', 30)).toBe(false)
+    expect(intervalsOverlap(at('09:00'), 30, at('09:30'), 30)).toBe(false)
+    expect(intervalsOverlap(at('09:30'), 30, at('09:00'), 30)).toBe(false)
   })
 
   it('allows appointments with a gap', () => {
-    expect(intervalsOverlap('09:00', 30, '11:00', 30)).toBe(false)
+    expect(intervalsOverlap(at('09:00'), 30, at('11:00'), 30)).toBe(false)
   })
 
   it('catches an overlap of a single minute', () => {
-    expect(intervalsOverlap('09:29', 30, '09:00', 30)).toBe(true)
+    expect(intervalsOverlap(at('09:29'), 30, at('09:00'), 30)).toBe(true)
   })
 })
-
-const DATE = new Date('2026-10-01T00:00:00.000Z')
 
 function existingAppointment(overrides: Record<string, unknown> = {}) {
   return {
     id: 'apt-existing',
     appointmentNo: 'APT00010',
-    scheduledTime: '09:00',
+    startsAt: at('09:00'),
     duration: 60,
     doctorId: 'doc-1',
     chairId: 'chair-1',
@@ -103,8 +83,8 @@ describe('findAppointmentConflicts', () => {
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:15',
+      startsAt: at('09:15'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
     })
@@ -126,8 +106,8 @@ describe('findAppointmentConflicts', () => {
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:30',
+      startsAt: at('09:30'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
       chairId: 'chair-1',
@@ -145,8 +125,8 @@ describe('findAppointmentConflicts', () => {
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:30',
+      startsAt: at('09:30'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
       chairId: 'chair-1',
@@ -162,8 +142,8 @@ describe('findAppointmentConflicts', () => {
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:30',
+      startsAt: at('09:30'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
       chairId: 'chair-1',
@@ -172,13 +152,57 @@ describe('findAppointmentConflicts', () => {
     expect(conflicts).toEqual([])
   })
 
+  // The overlap test runs in memory, so the SQL window has to be wide enough to
+  // hand it every appointment that could overlap. The widest miss is a long
+  // appointment that began well before this one: a 480-minute booking starting
+  // at 09:00 still occupies 16:30, and a window of "starts after this one
+  // starts" would never have fetched it.
+  it('catches a long appointment that started hours earlier', async () => {
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      existingAppointment({ duration: 480 }),
+    ] as never)
+
+    const conflicts = await findAppointmentConflicts({
+      hospitalId: 'h1',
+      startsAt: at('16:30'),
+      timezone: KARACHI,
+      duration: 30,
+      doctorId: 'doc-1',
+    })
+
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].endTime).toBe('17:00')
+
+    const where = vi.mocked(prisma.appointment.findMany).mock.calls[0][0]!.where as any
+    expect(where.startsAt.gte.toISOString()).toBe(at('08:30').toISOString())
+    expect(where.startsAt.lt.toISOString()).toBe(at('17:00').toISOString())
+  })
+
+  // An appointment crossing clinic midnight would report an end time of
+  // "24:30" if the end were computed as minutes since midnight.
+  it('words an overnight clash with a real time', async () => {
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      existingAppointment({ startsAt: at('23:45'), duration: 60 }),
+    ] as never)
+
+    const conflicts = await findAppointmentConflicts({
+      hospitalId: 'h1',
+      startsAt: at('23:50'),
+      timezone: KARACHI,
+      duration: 30,
+      doctorId: 'doc-1',
+    })
+
+    expect(conflicts[0].endTime).toBe('00:45')
+  })
+
   it('excludes the appointment being rescheduled', async () => {
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([] as never)
 
     await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:15',
+      startsAt: at('09:15'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
       excludeAppointmentId: 'apt-existing',
@@ -194,8 +218,8 @@ describe('findAppointmentConflicts', () => {
 
     await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:00',
+      startsAt: at('09:00'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
     })
@@ -209,8 +233,8 @@ describe('findAppointmentConflicts', () => {
 
     await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:00',
+      startsAt: at('09:00'),
+      timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
     })
@@ -225,8 +249,8 @@ describe('findAppointmentConflicts', () => {
   it('does not query at all when neither resource is given', async () => {
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:00',
+      startsAt: at('09:00'),
+      timezone: KARACHI,
       duration: 30,
     })
 
@@ -241,8 +265,8 @@ describe('findAppointmentConflicts', () => {
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
-      scheduledDate: DATE,
-      scheduledTime: '09:15',
+      startsAt: at('09:15'),
+      timezone: KARACHI,
       duration: 30,
       chairId: 'chair-1',
     })

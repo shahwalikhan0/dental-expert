@@ -36,7 +36,7 @@ import {
   type MessageKind,
 } from '@/lib/communication-preferences'
 import type { Transporter } from 'nodemailer'
-import { formatCalendarDay } from '@/lib/appointment-time'
+import { formatCalendarDay, wallClockIn } from '@/lib/appointment-time'
 
 /** How many messages one run will attempt, so a backlog cannot run forever. */
 export const DISPATCH_BATCH_SIZE = 200
@@ -78,18 +78,20 @@ function kindOf(message: {
 /** The variables an appointment reminder template can use. */
 export function appointmentVariables(appointment: {
   appointmentNo: string
-  scheduledDate: Date
-  scheduledTime: string
+  startsAt: Date
   patient: { firstName: string; lastName: string }
   doctor: { firstName: string; lastName: string } | null
   chair: { name: string } | null
-  hospital: { name: string; phone: string | null }
+  hospital: { name: string; phone: string | null; timezone: string }
 }): Record<string, string> {
+  // The day and time a patient is told to come in are the clinic's, read off
+  // the clinic's own wall clock — not the server's, wherever it happens to run.
+  const timezone = appointment.hospital.timezone
   return {
     patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
     firstName: appointment.patient.firstName,
-    appointmentDate: formatCalendarDay(appointment.scheduledDate),
-    appointmentTime: appointment.scheduledTime,
+    appointmentDate: formatCalendarDay(appointment.startsAt, timezone),
+    appointmentTime: wallClockIn(appointment.startsAt, timezone).scheduledTime,
     appointmentNo: appointment.appointmentNo,
     doctorName: appointment.doctor
       ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
@@ -294,13 +296,12 @@ async function renderMessage(message: QueuedMessage, hospitalId: string): Promis
     where: { id: message.relatedId, hospitalId },
     select: {
       appointmentNo: true,
-      scheduledDate: true,
-      scheduledTime: true,
+      startsAt: true,
       status: true,
       patient: { select: { firstName: true, lastName: true } },
       doctor: { select: { firstName: true, lastName: true } },
       chair: { select: { name: true } },
-      hospital: { select: { name: true, phone: true } },
+      hospital: { select: { name: true, phone: true, timezone: true } },
     },
   })
 

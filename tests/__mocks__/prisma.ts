@@ -19,8 +19,12 @@ const mockPrismaClient = {
   $executeRaw: vi.fn(),
 
   // Hospital
+  //
+  // `findUnique` answers by default because appointments are stored as
+  // instants and rendered against the clinic's timezone, so nearly every route
+  // that touches one reads this row. A test that cares sets its own value.
   hospital: {
-    findUnique: vi.fn(),
+    findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),

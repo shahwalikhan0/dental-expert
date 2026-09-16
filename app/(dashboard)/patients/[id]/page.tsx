@@ -82,6 +82,7 @@ import { ImageViewer } from '@/components/imaging/image-viewer'
 import { ImageAnnotator, type Annotation } from '@/components/imaging/image-annotator'
 import { ImageCompare } from '@/components/imaging/image-compare'
 import { uploadUrl } from '@/lib/storage/keys'
+import { formatDate, formatTime } from '@/lib/appointment-utils'
 
 interface Patient {
   id: string
@@ -1159,11 +1160,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                       <TableRow key={apt.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">
-                              {format(new Date(apt.scheduledDate), 'PPP')}
-                            </p>
+                            <p className="font-medium">{formatDate(apt.scheduledDate)}</p>
                             <p className="text-sm text-muted-foreground">
-                              {format(new Date(apt.scheduledDate), 'p')}
+                              {formatTime(apt.scheduledTime)}
                             </p>
                           </div>
                         </TableCell>

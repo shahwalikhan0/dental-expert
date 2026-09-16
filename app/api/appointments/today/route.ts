@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, dayRangeIn, localDay, withWallClock } from '@/lib/appointment-time'
 
 // GET - Get today's appointments for queue management
 export async function GET(request: NextRequest) {
@@ -14,24 +15,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const doctorId = searchParams.get('doctorId') || ''
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
+    // "Today" is the clinic's today. On a host running in UTC, a Karachi
+    // clinic's morning belongs to the server's previous day for its first five
+    // hours, and the queue used to empty itself at 05:00 local.
+    const timezone = await clinicTimezone(prisma, hospitalId)
     const where: any = {
       hospitalId,
-      scheduledDate: {
-        gte: today,
-        lt: tomorrow,
-      },
+      startsAt: dayRangeIn(localDay(new Date(), timezone), timezone),
     }
 
     if (doctorId) {
       where.doctorId = doctorId
     }
 
-    const appointments = await prisma.appointment.findMany({
+    const rows = await prisma.appointment.findMany({
       where,
       include: {
         patient: {
@@ -53,8 +50,10 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: [{ scheduledTime: 'asc' }],
+      orderBy: { startsAt: 'asc' },
     })
+
+    const appointments = rows.map((a) => withWallClock(a, timezone))
 
     // Group appointments by status for queue view
     const waiting = appointments.filter((a) => a.status === 'CHECKED_IN')

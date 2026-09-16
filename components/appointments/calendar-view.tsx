@@ -175,7 +175,9 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
   const getAppointmentsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0]
     return appointments.filter(
-      (apt) => new Date(apt.scheduledDate).toISOString().split('T')[0] === dateStr
+      // `scheduledDate` is the clinic's calendar day as `YYYY-MM-DD`; round-
+      // tripping it through `Date` only reintroduced a timezone to get wrong.
+      (apt) => apt.scheduledDate.slice(0, 10) === dateStr
     )
   }
 

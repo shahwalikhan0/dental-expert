@@ -21,6 +21,7 @@ import {
 import bcrypt from 'bcryptjs'
 import { reconcileStockAlerts } from '../lib/stock-alerts'
 import { defaultTemplatesFor } from '../lib/default-templates'
+import { instantAt, localDay } from '../lib/appointment-time'
 
 const prisma = new PrismaClient()
 
@@ -1620,12 +1621,17 @@ async function main() {
       const status = statuses[i % statuses.length]
 
       // Today for the first few so the queue page has something, then spread
-      // across the coming days.
-      const scheduledDate = new Date()
-      scheduledDate.setHours(0, 0, 0, 0)
-      if (i >= 5) scheduledDate.setDate(scheduledDate.getDate() + (i - 4))
+      // across the coming days. Built against the clinic's timezone so the
+      // seeded 09:00 is 09:00 on the screens, not on the seeder's host.
+      const day = new Date()
+      if (i >= 5) day.setDate(day.getDate() + (i - 4))
 
       const hour = 9 + (i % 8)
+      const startsAt = instantAt(
+        localDay(day, hospital.timezone),
+        `${String(hour).padStart(2, '0')}:00`,
+        hospital.timezone
+      )!
 
       await prisma.appointment.create({
         data: {
@@ -1633,8 +1639,7 @@ async function main() {
           appointmentNo: `APT2026${String(i + 1).padStart(4, '0')}`,
           patientId: patient.id,
           doctorId: doctorStaff.id,
-          scheduledDate,
-          scheduledTime: `${String(hour).padStart(2, '0')}:00`,
+          startsAt,
           duration: 30,
           appointmentType: types[i % types.length],
           status,

@@ -236,6 +236,9 @@ describe('8.1 CRUD Operations', () => {
         firstName: 'John',
         lastName: 'Doe',
         hospitalId: HOSPITAL_A,
+        // The route renders each appointment's instant into the clinic's wall
+        // clock, so the relation the query asks for has to be here.
+        appointments: [],
       })
 
       const req = makeRequest(`/api/patients/${PATIENT_ID}`)

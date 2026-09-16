@@ -42,16 +42,21 @@ vi.mock('@/lib/api-helpers', async () => {
 import { PUT } from '@/app/api/appointments/[id]/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { instantAt } from '@/lib/appointment-time'
 
 const params = { params: Promise.resolve({ id: 'apt-1' }) }
+
+const KARACHI = 'Asia/Karachi'
+
+/** A wall-clock time on the fixtures' day, as the instant it refers to. */
+const at = (time: string) => instantAt('2030-06-15', time, KARACHI)!
 
 const EXISTING = {
   id: 'apt-1',
   hospitalId: 'h1',
   doctorId: 'doc-1',
   chairId: 'chair-1',
-  scheduledDate: new Date('2030-06-15T00:00:00.000Z'),
-  scheduledTime: '09:00',
+  startsAt: at('09:00'),
   duration: 30,
   status: 'SCHEDULED',
 }
@@ -64,7 +69,7 @@ const EXISTING = {
 const COLLEAGUE = {
   id: 'apt-2',
   appointmentNo: 'APT00002',
-  scheduledTime: '09:45',
+  startsAt: at('09:45'),
   duration: 30,
   doctorId: 'doc-1',
   chairId: 'chair-3',
@@ -128,7 +133,7 @@ describe('PUT /api/appointments/[id] — conflicts', () => {
         doctorId: 'doc-9',
         chairId: 'chair-2',
         chair: { name: 'Chair 2' },
-        scheduledTime: '09:15',
+        startsAt: at('09:15'),
       },
     ] as never)
 
@@ -156,7 +161,7 @@ describe('PUT /api/appointments/[id] — conflicts', () => {
 
     expect(res.status).toBe(200)
     expect(vi.mocked(prisma.appointment.update).mock.calls[0][0].data).toMatchObject({
-      scheduledTime: '14:00',
+      startsAt: at('14:00'),
     })
   })
 

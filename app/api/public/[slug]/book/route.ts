@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
 import { prisma } from '@/lib/prisma'
+import { instantAt, wallClockIn } from '@/lib/appointment-time'
 import { nextAppointmentNo } from '@/lib/numbering'
 
 /**
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
     const hospital = await prisma.hospital.findUnique({
       where: { slug },
-      select: { id: true, patientPortalEnabled: true },
+      select: { id: true, patientPortalEnabled: true, timezone: true },
     })
 
     if (!hospital) {
@@ -64,15 +65,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
     }
 
+    // The time the patient picked is wall clock on the clinic's own page, so
+    // it is resolved against the clinic's zone and stored as the instant.
+    const startsAt = instantAt(date, time, hospital.timezone)
+    if (!startsAt) {
+      return NextResponse.json({ error: 'Invalid date or time' }, { status: 400 })
+    }
+
     // Check for duplicate booking
-    const dateObj = new Date(date)
     const existing = await prisma.appointment.findFirst({
       where: {
         hospitalId: hospital.id,
         patientId: patient.id,
         doctorId,
-        scheduledDate: dateObj,
-        scheduledTime: time,
+        startsAt,
         status: { notIn: ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'] },
       },
     })
@@ -91,8 +97,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     // desk, not for whoever is on the website.
     const conflicts = await findAppointmentConflicts({
       hospitalId: hospital.id,
-      scheduledDate: dateObj,
-      scheduledTime: time,
+      startsAt,
+      timezone: hospital.timezone,
       duration: DEFAULT_APPOINTMENT_DURATION,
       doctorId,
     })
@@ -114,8 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         appointmentNo,
         patientId: patient.id,
         doctorId,
-        scheduledDate: dateObj,
-        scheduledTime: time,
+        startsAt,
         duration: DEFAULT_APPOINTMENT_DURATION,
         appointmentType: (type as any) || 'CONSULTATION',
         status: 'SCHEDULED',
@@ -128,8 +133,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         success: true,
         appointment: {
           appointmentNo: appointment.appointmentNo,
-          date: appointment.scheduledDate,
-          time: appointment.scheduledTime,
+          date: wallClockIn(appointment.startsAt, hospital.timezone).scheduledDate,
+          time: wallClockIn(appointment.startsAt, hospital.timezone).scheduledTime,
           doctor: `Dr. ${doctor.firstName} ${doctor.lastName}`,
         },
       },

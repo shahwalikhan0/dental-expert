@@ -7,6 +7,7 @@ import {
   findAppointmentConflicts,
   getDoubleBookingPolicy,
 } from '@/lib/appointment-conflicts'
+import { clinicTimezone, instantAt, withWallClock, wallClockIn } from '@/lib/appointment-time'
 
 // GET - Get single appointment
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -49,7 +50,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 })
     }
 
-    return NextResponse.json(appointment)
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    return NextResponse.json(withWallClock(appointment, timezone))
   } catch (error) {
     console.error('Error fetching appointment:', error)
     return NextResponse.json({ error: 'Failed to fetch appointment' }, { status: 500 })
@@ -89,13 +91,30 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 })
     }
 
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
+    // A reschedule can move the day, the time or neither; whichever half the
+    // caller sends, the other comes from where the appointment already is.
+    const current = wallClockIn(existingAppointment.startsAt, timezone)
+    let startsAt = existingAppointment.startsAt
+    if (scheduledDate !== undefined || scheduledTime !== undefined) {
+      const moved = instantAt(
+        scheduledDate ?? current.scheduledDate,
+        scheduledTime ?? current.scheduledTime,
+        timezone
+      )
+      if (!moved) {
+        return NextResponse.json({ error: 'Invalid appointment date or time' }, { status: 400 })
+      }
+      startsAt = moved
+    }
+
     // Build update data
     const updateData: any = {}
 
-    if (scheduledDate !== undefined) {
-      updateData.scheduledDate = new Date(scheduledDate)
+    if (scheduledDate !== undefined || scheduledTime !== undefined) {
+      updateData.startsAt = startsAt
     }
-    if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime
     if (duration !== undefined) updateData.duration = duration
     if (chairId !== undefined) updateData.chairId = chairId
     if (appointmentType !== undefined) updateData.appointmentType = appointmentType
@@ -137,8 +156,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     ) {
       const conflicts = await findAppointmentConflicts({
         hospitalId,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : existingAppointment.scheduledDate,
-        scheduledTime: scheduledTime || existingAppointment.scheduledTime,
+        startsAt,
+        timezone,
         duration: duration ?? existingAppointment.duration,
         doctorId: doctorId || existingAppointment.doctorId,
         chairId: chairId !== undefined ? chairId : existingAppointment.chairId,
@@ -192,15 +211,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const waitlistResult = await handleCancellationWaitlist({
           hospitalId,
           doctorId: existingAppointment.doctorId,
-          scheduledDate: existingAppointment.scheduledDate,
-          scheduledTime: existingAppointment.scheduledTime,
+          startsAt: existingAppointment.startsAt,
+          timezone,
           duration: existingAppointment.duration,
         })
 
         if (waitlistResult.matchedPatients.length > 0) {
           // Return the waitlist notification info alongside the appointment
           return NextResponse.json({
-            ...appointment,
+            ...withWallClock(appointment, timezone),
             _waitlistNotifications: {
               patientsNotified: waitlistResult.matchedPatients.length,
               patients: waitlistResult.matchedPatients.map((p) => ({
@@ -218,10 +237,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (conflictWarnings.length > 0) {
-      return NextResponse.json({ ...appointment, conflicts: conflictWarnings })
+      return NextResponse.json({
+        ...withWallClock(appointment, timezone),
+        conflicts: conflictWarnings,
+      })
     }
 
-    return NextResponse.json(appointment)
+    return NextResponse.json(withWallClock(appointment, timezone))
   } catch (error) {
     console.error('Error updating appointment:', error)
     return NextResponse.json({ error: 'Failed to update appointment' }, { status: 500 })

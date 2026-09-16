@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 
 // POST - Check in patient for appointment
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,15 +32,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const checkedInAt = new Date()
 
-    // Calculate wait time from scheduled time
-    const scheduledDateTime = new Date(appointment.scheduledDate)
-    const [hours, minutes] = appointment.scheduledTime.split(':').map(Number)
-    scheduledDateTime.setHours(hours, minutes, 0, 0)
-
-    const waitTime =
-      checkedInAt > scheduledDateTime
-        ? Math.round((checkedInAt.getTime() - scheduledDateTime.getTime()) / 60000)
-        : 0
+    // How late the patient is. This used to rebuild the moment out of a date
+    // column and an `HH:MM` string using `setHours`, which applies the
+    // *server's* timezone — so on a host in UTC every Karachi patient looked
+    // five hours late.
+    const waitTime = Math.max(
+      0,
+      Math.round((checkedInAt.getTime() - appointment.startsAt.getTime()) / 60000)
+    )
 
     const updatedAppointment = await prisma.appointment.update({
       where: { id },
@@ -68,7 +68,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       },
     })
 
-    return NextResponse.json(updatedAppointment)
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    return NextResponse.json(withWallClock(updatedAppointment, timezone))
   } catch (error) {
     console.error('Error checking in appointment:', error)
     return NextResponse.json({ error: 'Failed to check in' }, { status: 500 })
