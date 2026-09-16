@@ -51,7 +51,6 @@
 - [x] `lib/ai/skills/inventory-forecaster.ts` — demand forecasting prompt (tests/unit/ai-skills-individual.test.ts)
 - [x] `lib/ai/skills/cashflow-forecaster.ts` — revenue projection prompt (tests/unit/ai-skills-individual.test.ts)
 - [x] `lib/ai/skills/patient-segmentation.ts` — RFM/segmentation prompt (tests/unit/ai-skills-individual.test.ts)
-- [x] `lib/ai/skills/claim-analyzer.ts` — claim/insurance prompt (tests/unit/ai-skills-individual.test.ts)
 - [x] `lib/ai/skills/consent-generator.ts` — consent form prompt, clinical tier (tests/unit/ai-skills-individual.test.ts)
 - [x] `lib/ai/skills/dynamic-pricing.ts` — pricing suggestion prompt (tests/unit/ai-skills-individual.test.ts)
 
@@ -107,12 +106,8 @@
 - [x] `PATCH /api/patients/[id]` — update fields, partial update, validation (tests/comprehensive/patients.comprehensive.test.ts)
 - [x] `DELETE /api/patients/[id]` — soft delete, cascade effects (tests/comprehensive/patients.comprehensive.test.ts)
 - [x] `GET /api/patients/[id]/timeline` — chronological event list, type filter, pagination, 6 event types (tests/api/patients-timeline.test.ts)
-- [x] `GET /api/patients/[id]/documents` — document list with type/treatment filters (tests/api/patient-insurance-documents.test.ts)
-- [x] `GET/PATCH/DELETE /api/patients/[id]/documents/[documentId]` — metadata, update, soft/permanent delete (tests/api/patient-insurance-documents.test.ts)
 - [x] `POST /api/patients/[id]/documents` — file upload with type/size validation, document create, 404 patient (tests/api/patient-documents-upload.test.ts)
 - [x] `GET/PUT /api/patients/[id]/documents/[documentId]/annotations` — save annotations with annotatedBy, role check, GET with empty fallback (tests/api/patient-document-annotations.test.ts)
-- [x] `GET/POST/PUT /api/patients/[id]/insurance` — insurance policies list, create, update (tests/api/patient-insurance-documents.test.ts)
-- [x] `POST /api/patients/[id]/insurance/verify` — verify policy (VERIFIED status), 400 missing policyId, 404 not found (tests/api/patient-insurance-verify.test.ts)
 
 #### Appointments
 
@@ -227,11 +222,6 @@
 - [x] `GET/POST /api/referrals` — referral creation, tracking (tests/api/crm-loyalty-routes.test.ts)
 - [x] `PUT /api/referrals/[id]` — referral status update (tests/api/crm-extended.test.ts)
 
-#### Insurance Claims
-
-- [x] `GET/POST /api/insurance-claims` — claim list with summary, create claim (tests/api/insurance-routes.test.ts)
-- [x] `GET/PUT/DELETE /api/insurance-claims/[id]` — claim detail, status transitions, delete draft (tests/api/insurance-routes.test.ts)
-
 #### Sterilization
 
 - [x] `GET/POST /api/sterilization/instruments` — instrument CRUD (tests/api/sterilization-routes.test.ts)
@@ -273,7 +263,6 @@
 - [x] `POST /api/ai/clinical` — consent-generator skill (tests/api/ai-routes.test.ts)
 - [x] `GET /api/ai/no-show-risk` — no-show risk scoring (tests/api/ai-extended.test.ts)
 - [x] `GET /api/ai/inventory-forecast` — AI demand forecast with rule-based fallback, empty inventory edge case (tests/api/ai-forecasts-segments-claims.test.ts)
-- [x] `GET /api/ai/cashflow-forecast` — 30-day projection with payment/appointment/insurance data, fallback (tests/api/ai-forecasts-segments-claims.test.ts)
 - [x] `GET /api/ai/patient-segments` — RFM analysis, AI segmentation with rule-based fallback, enrichment (tests/api/ai-forecasts-segments-claims.test.ts)
 - [x] `POST /api/ai/claim-analysis` — denied claim analysis, denial patterns, appeal letter, AI fallback (tests/api/ai-forecasts-segments-claims.test.ts)
 - [x] `GET /api/ai/pricing-suggestions` — dynamic pricing (tests/api/ai-extended.test.ts)
@@ -371,9 +360,7 @@
 
 #### Patient Management
 
-- [x] `patients-crud.spec.ts` — list, search, filter, add patient, view, create with validation, documents, insurance (tests/e2e/patients-crud.spec.ts — 11 tests)
 - [x] `patients-documents.spec.ts` — documents tab navigation, upload button, upload dialog, document type options, empty state, annotation/compare controls (tests/e2e/patients-documents.spec.ts — 6 tests)
-- [x] `patients-insurance.spec.ts` — insurance tab navigation, add policy button, add dialog, form fields, empty state/existing policies, verification badges, verify/edit actions, coverage details (tests/e2e/patients-insurance.spec.ts — 8 tests)
 
 #### Appointment Workflow
 
@@ -562,10 +549,6 @@
 #### Patient Form Components
 
 - [x] `patient-form-submissions.tsx` — empty state, submission list, status badges, signed indicator, view dialog, review section, status options, review notes (tests/components/patient-form-submissions.test.tsx — 10 tests)
-
-#### Insurance Components
-
-- [x] `patient-insurance.tsx` — loading skeletons, empty state, policy cards, provider name, policy/group/member IDs, subscriber info, verification badges (Verified/Unverified/Expired), copay/deductible, Activate/Deactivate, Add/Edit dialog, form validation, verify API (tests/components/patient-insurance.test.tsx — 22 tests)
 
 #### Clinical Components (Additional)
 

@@ -1250,12 +1250,15 @@ enum InvoiceStatus {
 /// `WALLET`, and Raast or an interbank transfer is `BANK_TRANSFER`. Keeping it
 /// meant a payment method on the till screen that nobody could ever select
 /// honestly, and a line on every daily reconciliation that was always zero.
+/// `INSURANCE` is gone too. There is no insurance module — the tables went in
+/// `39fdd2e` and the screens that survived them called endpoints that do not
+/// exist — so a payment recorded against a claim nobody could raise was a
+/// second method on the till that could not be chosen honestly.
 enum PaymentMethod {
   CASH
   CARD
   BANK_TRANSFER
   CHEQUE
-  INSURANCE
   /// A mobile-money wallet: JazzCash, Easypaisa, SadaPay.
   WALLET
   /// Taken through a payment gateway on the clinic's own booking pages. No
@@ -1274,10 +1277,6 @@ enum PaymentStatus {
   REFUNDED
   CANCELLED
 }
-
-// ==================== INSURANCE MANAGEMENT ====================
-
-// ==================== PAYMENT GATEWAY ====================
 
 // ==================== INVENTORY MANAGEMENT ====================
 
@@ -1765,7 +1764,6 @@ enum DocumentType {
   CONSENT_FORM
   PRESCRIPTION
   LAB_REPORT
-  INSURANCE
   ID_PROOF
   OTHER
 }

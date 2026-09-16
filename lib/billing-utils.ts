@@ -91,11 +91,6 @@ export const paymentMethodConfig: Record<
     icon: 'FileText',
     description: 'Cheque payment',
   },
-  INSURANCE: {
-    label: 'Insurance',
-    icon: 'Shield',
-    description: 'Insurance claim payment',
-  },
   WALLET: {
     label: 'Mobile Wallet',
     icon: 'Smartphone',
@@ -386,35 +381,6 @@ export async function generatePaymentNo(prisma: any, prefix: string = 'PAY'): Pr
   return `${datePrefix}0001`
 }
 
-// Generate Insurance Claim Number
-export async function generateClaimNo(prisma: any, prefix: string = 'CLM'): Promise<string> {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const datePrefix = `${prefix}-${year}${month}-`
-
-  const lastClaim = await prisma.insuranceClaim.findFirst({
-    where: {
-      claimNumber: {
-        startsWith: datePrefix,
-      },
-    },
-    orderBy: {
-      claimNumber: 'desc',
-    },
-    select: {
-      claimNumber: true,
-    },
-  })
-
-  if (lastClaim) {
-    const lastNumber = parseInt(lastClaim.claimNumber.slice(-4))
-    return `${datePrefix}${String(lastNumber + 1).padStart(4, '0')}`
-  }
-
-  return `${datePrefix}0001`
-}
-
 // Get patient display name
 export function getPatientName(
   patient: {
@@ -486,7 +452,6 @@ export const paymentMethodIcons = {
   CARD: 'CreditCard',
   BANK_TRANSFER: 'Building2',
   CHEQUE: 'FileText',
-  INSURANCE: 'Shield',
   WALLET: 'Wallet',
   ONLINE: 'Globe',
 } as const

@@ -204,24 +204,4 @@ test.describe('Patient Management', () => {
       }
     })
   })
-
-  test.describe('Patient Insurance', () => {
-    test('should navigate to patient insurance section', async ({ adminPage: page }) => {
-      await page.goto('/patients')
-      await page.waitForTimeout(1000)
-      const patientLink = page.locator('a[href*="/patients/"]').first()
-      if (await patientLink.isVisible()) {
-        await patientLink.click()
-        await page.waitForTimeout(1000)
-        const insuranceTab = page
-          .getByRole('tab', { name: /insurance/i })
-          .or(page.getByText(/insurance/i))
-          .first()
-        if (await insuranceTab.isVisible()) {
-          await insuranceTab.click()
-          await expect(page.locator('body')).toBeVisible()
-        }
-      }
-    })
-  })
 })

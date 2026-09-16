@@ -146,19 +146,6 @@ const mockPrismaClient = {
     groupBy: vi.fn(),
   },
 
-  // InsuranceClaim
-  insuranceClaim: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-    aggregate: vi.fn(),
-  },
-
   // InventoryItem
   inventoryItem: {
     findUnique: vi.fn(),
@@ -382,30 +369,6 @@ const mockPrismaClient = {
     count: vi.fn(),
     deleteMany: vi.fn(),
     updateMany: vi.fn(),
-    aggregate: vi.fn(),
-  },
-
-  // PaymentPlan
-  paymentPlan: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // PaymentPlanSchedule
-  paymentPlanSchedule: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
     aggregate: vi.fn(),
   },
 
@@ -727,29 +690,6 @@ const mockPrismaClient = {
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // PatientInsurance
-  patientInsurance: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // InsuranceProvider
-  insuranceProvider: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
   },

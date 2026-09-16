@@ -381,10 +381,6 @@ describe('GET /api/billing/reports', () => {
       _sum: { balanceAmount: 20000 },
       _count: 5,
     } as any)
-    vi.mocked(prisma.insuranceClaim.aggregate).mockResolvedValue({
-      _sum: { claimAmount: 30000, settledAmount: 25000 },
-      _count: 3,
-    } as any)
     vi.mocked(prisma.payment.groupBy).mockResolvedValue([
       { paymentMethod: 'CASH', _sum: { amount: 50000 }, _count: 10 },
     ] as any)

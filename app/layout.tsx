@@ -31,7 +31,6 @@ export const metadata: Metadata = {
     'AI dental software',
     'tele-dentistry India',
     'dental inventory management',
-    'dental insurance claims India',
     'dental lab management',
     'multi-branch dental software',
   ],

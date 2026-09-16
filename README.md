@@ -21,7 +21,6 @@ A comprehensive, AI-powered **dental hospital management system** built with Nex
 
 - **AI Skills (16 built-in)** — Treatment advisor, smart scheduler, billing agent, patient intake, inventory forecaster, cashflow forecaster, patient segmentation, claim analyzer, consent generator, dynamic pricing, and more
 - **Patient Portal** — Online booking, medical records access, digital intake forms
-- **Insurance & Claims** — Insurance verification, claim submission, auto-adjudication
 - **CRM & Loyalty** — Patient segmentation, loyalty points, referral tracking
 - **Communications** — SMS/Email/WhatsApp messaging, campaign management, marketing automation
 - **Tele-Dentistry** — Video consultations via Jitsi Meet integration

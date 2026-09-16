@@ -14,10 +14,8 @@ vi.mock('@prisma/client', () => ({
   PaymentMethod: {
     CASH: 'CASH',
     CARD: 'CARD',
-    UPI: 'UPI',
     BANK_TRANSFER: 'BANK_TRANSFER',
     CHEQUE: 'CHEQUE',
-    INSURANCE: 'INSURANCE',
     WALLET: 'WALLET',
     ONLINE: 'ONLINE',
   },
@@ -27,15 +25,6 @@ vi.mock('@prisma/client', () => ({
     FAILED: 'FAILED',
     REFUNDED: 'REFUNDED',
     CANCELLED: 'CANCELLED',
-  },
-  InsuranceClaimStatus: {
-    DRAFT: 'DRAFT',
-    SUBMITTED: 'SUBMITTED',
-    UNDER_REVIEW: 'UNDER_REVIEW',
-    APPROVED: 'APPROVED',
-    PARTIALLY_APPROVED: 'PARTIALLY_APPROVED',
-    REJECTED: 'REJECTED',
-    SETTLED: 'SETTLED',
   },
   DiscountType: { PERCENTAGE: 'PERCENTAGE', FIXED: 'FIXED' },
 }))

@@ -17,7 +17,6 @@ export const PAYMENT_METHODS = [
   'CARD',
   'BANK_TRANSFER',
   'CHEQUE',
-  'INSURANCE',
   'WALLET',
   'ONLINE',
 ] as const satisfies readonly PaymentMethod[]

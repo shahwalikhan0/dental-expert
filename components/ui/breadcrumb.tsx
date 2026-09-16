@@ -30,7 +30,6 @@ const ROUTE_LABELS: Record<string, string> = {
   edit: 'Edit',
   invoices: 'Invoices',
   payments: 'Payments',
-  insurance: 'Insurance',
   'payment-plans': 'Payment Plans',
   'pre-auth': 'Pre-Authorizations',
   providers: 'Providers',

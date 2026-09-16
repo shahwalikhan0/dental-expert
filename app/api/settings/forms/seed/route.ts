@@ -59,7 +59,7 @@ const DEFAULT_TEMPLATES = [
         id: 'acknowledge_payment',
         type: 'checkbox',
         label:
-          'I understand that I am responsible for the cost of treatment as discussed, and that insurance coverage (if applicable) is subject to the terms of my policy.',
+          'I understand that I am responsible for the cost of treatment as discussed, and that payment is due as agreed with the clinic.',
         required: true,
       },
       {

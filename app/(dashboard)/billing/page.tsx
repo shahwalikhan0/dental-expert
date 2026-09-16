@@ -22,12 +22,10 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
-  Shield,
   Clock,
   CheckCircle,
   XCircle,
   BarChart3,
-  CalendarClock,
   Brain,
   Loader2,
 } from 'lucide-react'
@@ -44,9 +42,6 @@ interface SummaryData {
     paymentCount: number
     totalOutstanding: number
     outstandingInvoices: number
-    insuranceClaimed: number
-    insuranceSettled: number
-    insuranceClaimCount: number
   }
   breakdowns: {
     byPaymentMethod: Array<{
@@ -156,7 +151,6 @@ export default function BillingPage() {
     CARD: 'Card',
     BANK_TRANSFER: 'Bank Transfer',
     CHEQUE: 'Cheque',
-    INSURANCE: 'Insurance',
     WALLET: 'Mobile Wallet',
   }
 
@@ -216,16 +210,6 @@ export default function BillingPage() {
                 rows.push({
                   Metric: 'Total Discounts',
                   Amount: data.summary.totalDiscounts,
-                  Count: '',
-                })
-                rows.push({
-                  Metric: 'Insurance Claimed',
-                  Amount: data.summary.insuranceClaimed,
-                  Count: data.summary.insuranceClaimCount,
-                })
-                rows.push({
-                  Metric: 'Insurance Settled',
-                  Amount: data.summary.insuranceSettled,
                   Count: '',
                 })
                 data.breakdowns.byPaymentMethod.forEach((m) => {
@@ -342,28 +326,6 @@ export default function BillingPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* Insurance */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Insurance Claims</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(data?.summary.insuranceClaimed || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {formatCurrency(data?.summary.insuranceSettled || 0)} settled
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* Quick Actions & Breakdowns */}
@@ -387,30 +349,11 @@ export default function BillingPage() {
                 View All Payments
               </Button>
             </Link>
-            <Link href="/billing/payment-plans" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <CalendarClock className="h-4 w-4 mr-2" />
-                Payment Plans
-              </Button>
-            </Link>
-            <Link href="/billing/insurance" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <Shield className="h-4 w-4 mr-2" />
-                Insurance Claims
-              </Button>
-            </Link>
-            <Link href="/billing/insurance/providers" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <Shield className="h-4 w-4 mr-2" />
-                Insurance Providers
-              </Button>
-            </Link>
-            <Link href="/billing/insurance/pre-auth" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <FileText className="h-4 w-4 mr-2" />
-                Pre-Authorizations
-              </Button>
-            </Link>
+            {/* Payment plans, insurance claims, insurance providers and
+                pre-authorisations were four more links here. None of those
+                pages exists — `39fdd2e` removed the tables as out of scope
+                (spec §3) and left the buttons, so four of the seven quick
+                actions on the billing screen were 404s. */}
             <Link href="/billing/reports" className="block">
               <Button variant="outline" className="w-full justify-start">
                 <BarChart3 className="h-4 w-4 mr-2" />

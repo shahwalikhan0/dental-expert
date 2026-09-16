@@ -133,12 +133,6 @@ interface Invoice {
     refundAmount: string | number | null
     refundDate: string | null
   }>
-  insuranceClaim: {
-    id: string
-    claimNumber: string
-    status: string
-    approvedAmount: string | number | null
-  } | null
 }
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -625,36 +619,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </CardContent>
           </Card>
-
-          {/* Insurance Claim */}
-          {invoice.insuranceClaim && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Insurance Claim
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Claim Number</span>
-                  <span className="font-medium">{invoice.insuranceClaim.claimNumber}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <Badge>{invoice.insuranceClaim.status}</Badge>
-                </div>
-                {invoice.insuranceClaim.approvedAmount && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Approved</span>
-                    <span className="font-medium text-green-600">
-                      {formatCurrency(invoice.insuranceClaim.approvedAmount)}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Quick Actions */}
           <Card>

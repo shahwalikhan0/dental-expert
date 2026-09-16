@@ -280,7 +280,6 @@ export default function PaymentsPage() {
                   <SelectItem value="WALLET">Mobile Wallet</SelectItem>
                   <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                   <SelectItem value="CHEQUE">Cheque</SelectItem>
-                  <SelectItem value="INSURANCE">Insurance</SelectItem>
                 </SelectContent>
               </Select>
               <Input

@@ -73,13 +73,11 @@ import {
   Pill,
   TestTube,
   Smile,
-  Shield,
   Pen,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { Patient360 } from '@/components/ai/patient-360'
 import { PatientFormSubmissions } from '@/components/forms/patient-form-submissions'
-import { PatientInsurance } from '@/components/insurance/patient-insurance'
 import { ImageViewer } from '@/components/imaging/image-viewer'
 import { ImageAnnotator, type Annotation } from '@/components/imaging/image-annotator'
 import { ImageCompare } from '@/components/imaging/image-compare'
@@ -159,7 +157,6 @@ const DOCUMENT_TYPES = [
   { value: 'CONSENT_FORM', label: 'Consent Form', icon: FileCheck },
   { value: 'PRESCRIPTION', label: 'Prescription', icon: FileText },
   { value: 'LAB_REPORT', label: 'Lab Report', icon: FileText },
-  { value: 'INSURANCE', label: 'Insurance', icon: FileText },
   { value: 'ID_PROOF', label: 'ID Proof', icon: FileText },
   { value: 'OTHER', label: 'Other', icon: FolderOpen },
 ]
@@ -474,7 +471,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="overview" className="gap-2">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -509,10 +506,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <TabsTrigger value="forms" className="gap-2">
             <FileCheck className="h-4 w-4" />
             <span className="hidden sm:inline">Forms</span>
-          </TabsTrigger>
-          <TabsTrigger value="insurance" className="gap-2">
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Insurance</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1323,11 +1316,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         {/* Forms Tab */}
         <TabsContent value="forms" className="space-y-6">
           <PatientFormSubmissions patientId={patient.id} />
-        </TabsContent>
-
-        {/* Insurance Tab */}
-        <TabsContent value="insurance" className="space-y-6">
-          <PatientInsurance patientId={patient.id} />
         </TabsContent>
       </Tabs>
       {ConfirmDialogComponent}
