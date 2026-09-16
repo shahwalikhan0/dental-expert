@@ -109,7 +109,6 @@ model Hospital {
   holidays            Holiday[]
   communicationTemplates CommunicationTemplate[]
   messageLogs         MessageLog[]
-  staffInvites        StaffInvite[]
   staffShifts         StaffShift[]
   patientPortalEnabled Boolean   @default(false)
 
@@ -205,7 +204,13 @@ model User {
   /// "an account with this email already exists" about a clinic they cannot
   /// see and have nothing to do with.
   email           String
-  password        String
+  /// Null while this row is an invitation rather than an account. An invited
+  /// person exists here from the moment they are invited — same clinic, same
+  /// email uniqueness, same row they will go on using — but holds no password,
+  /// no Staff record and `isActive: false`, so nothing can sign in as them and
+  /// they appear nowhere a member of staff appears. Accepting the invitation
+  /// sets the password and clears the token below; there is no second table.
+  password        String?
   name            String
   phone           String?
   role            Role      @default(RECEPTIONIST)
@@ -237,11 +242,21 @@ model User {
   // silently fail to propagate to every staff member who never expressed a
   // preference. See docs/LOCALIZATION.md.
   locale          String?
+
+  /// The outstanding invitation, when this row is one. Cleared on acceptance,
+  /// so a non-null token is what makes the row an invitation and a lookup by
+  /// token cannot reach an account that has already been claimed.
+  inviteToken     String?   @unique
+  inviteExpiresAt DateTime?
+  invitedById     String?
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   staff           Staff?
+  invitedBy       User?     @relation("StaffInvitations", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitationsSent User[]    @relation("StaffInvitations")
   auditLogs       AuditLog[]
   dataImportJobs  DataImportJob[]
   acknowledgedStockAlerts StockAlert[]
@@ -286,33 +301,6 @@ enum Role {
 }
 
 // ==================== STAFF INVITES ====================
-
-model StaffInvite {
-  id          String            @id @default(cuid())
-  hospitalId  String
-  email       String
-  name        String?
-  phone       String?
-  role        Role
-  invitedBy   String
-  token       String            @unique
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  status      StaffInviteStatus @default(PENDING)
-  createdAt   DateTime          @default(now())
-
-  hospital    Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-
-  @@index([hospitalId, status, createdAt(sort: Desc)])
-  @@index([token])
-}
-
-enum StaffInviteStatus {
-  PENDING
-  ACCEPTED
-  EXPIRED
-  CANCELLED
-}
 
 // ==================== STAFF MANAGEMENT ====================
 

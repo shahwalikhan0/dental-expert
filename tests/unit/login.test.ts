@@ -239,3 +239,51 @@ describe('the audit trail — specification §10', () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * An invitation is a `User` row with no password — see lib/invitations.ts. That
+ * puts rows in the users table that must never open, so this is the boundary
+ * the merge has to hold.
+ */
+describe('a row that is an invitation, not an account', () => {
+  const invited = account({
+    id: 'u3',
+    password: null,
+    isActive: false,
+    staff: null,
+  })
+
+  it('cannot be signed in to, whatever is typed', async () => {
+    found([invited])
+
+    for (const attempt of ['', 'correct-horse', 'null', 'undefined']) {
+      expect(await resolveLogin({ email: invited.email, password: attempt })).toEqual({
+        status: 'invalid',
+      })
+    }
+  })
+
+  it('never reaches bcrypt at all', async () => {
+    found([invited])
+    const bcrypt = (await import('bcryptjs')).default
+
+    await resolveLogin({ email: invited.email, password: 'anything' })
+
+    // Comparing against a null hash is not something to leave to the library.
+    expect(bcrypt.compare).not.toHaveBeenCalled()
+  })
+
+  it('does not make a real account at another clinic ambiguous', async () => {
+    // The same address invited to one clinic and holding an account at another:
+    // signing in must go straight to the account, with no clinic picker.
+    found([invited, SECOND_CLINIC])
+
+    const outcome = await resolveLogin({
+      email: invited.email,
+      password: 'correct-horse',
+    })
+
+    expect(outcome.status).toBe('ok')
+    expect(outcome.status === 'ok' && outcome.identity.hospitalId).toBe('h2')
+  })
+})

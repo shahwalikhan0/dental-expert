@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { checkStaffLimit, generateToken, requirePermission } from '@/lib/api-helpers'
-import { Role, StaffInviteStatus } from '@prisma/client'
+import { Role } from '@prisma/client'
 import { sendInviteEmail } from '@/lib/email-helpers'
 import { INVITABLE_ROLES } from '@/lib/rbac'
+import { INVITATION_FILTER, invitationStatus, inviteExpiry, isInvitation } from '@/lib/invitations'
 
 const inviteSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -47,53 +48,55 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if email already exists in the hospital
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        email,
-        hospitalId,
-      },
+    // An invitation and an account are the same row, so one lookup answers
+    // both "is this person already here" and "have we already invited them" —
+    // and the unique index on (hospitalId, email) means the answer cannot go
+    // stale between the check and the write.
+    const existing = await prisma.user.findUnique({
+      where: { hospitalId_email: { hospitalId, email } },
+      select: { id: true, password: true, inviteToken: true, inviteExpiresAt: true },
     })
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'A user with this email already exists in your hospital' },
-        { status: 409 }
-      )
-    }
-
-    // Check for pending invite with same email
-    const existingInvite = await prisma.staffInvite.findFirst({
-      where: {
-        email,
-        hospitalId,
-        status: StaffInviteStatus.PENDING,
-      },
-    })
-
-    if (existingInvite) {
-      return NextResponse.json(
-        { error: 'An invite has already been sent to this email' },
-        { status: 409 }
-      )
-    }
-
-    // Generate invite token (valid for 7 days)
     const token = generateToken(32)
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    const expiresAt = inviteExpiry()
 
-    // Create the invite
-    const invite = await prisma.staffInvite.create({
-      data: {
-        email,
-        name,
-        role: role as Role,
-        token,
-        expiresAt,
-        hospitalId,
-        invitedBy: user!.id,
-      },
-    })
+    if (existing) {
+      if (!isInvitation(existing)) {
+        return NextResponse.json(
+          { error: 'A user with this email already exists in your hospital' },
+          { status: 409 }
+        )
+      }
+      // An invitation that has lapsed is re-sent rather than refused: the
+      // clinic is asking for exactly what the expired one was for, and making
+      // them cancel it first is a step with no decision in it.
+      if (invitationStatus(existing) === 'PENDING') {
+        return NextResponse.json(
+          { error: 'An invite has already been sent to this email' },
+          { status: 409 }
+        )
+      }
+    }
+
+    const invite = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: { name, role: role as Role, inviteToken: token, inviteExpiresAt: expiresAt },
+        })
+      : await prisma.user.create({
+          data: {
+            email,
+            name,
+            role: role as Role,
+            inviteToken: token,
+            inviteExpiresAt: expiresAt,
+            hospitalId,
+            invitedById: user!.id,
+            // Not an account until somebody sets a password with that token.
+            password: null,
+            isActive: false,
+          },
+        })
 
     // Get hospital name for the email
     const hospital = await prisma.hospital.findUnique({
@@ -122,7 +125,7 @@ export async function POST(request: Request) {
         email: invite.email,
         name: invite.name,
         role: invite.role,
-        expiresAt: invite.expiresAt,
+        expiresAt: invite.inviteExpiresAt,
       },
       emailSent,
       // Development-only: show direct link for testing
@@ -145,21 +148,33 @@ export async function GET() {
   }
 
   try {
-    const invites = await prisma.staffInvite.findMany({
-      where: { hospitalId },
+    const rows = await prisma.user.findMany({
+      where: { hospitalId, ...INVITATION_FILTER },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
-        status: true,
-        expiresAt: true,
+        password: true,
+        inviteToken: true,
+        inviteExpiresAt: true,
         createdAt: true,
-        invitedBy: true,
-        acceptedAt: true,
+        invitedById: true,
       },
     })
+
+    // Only outstanding invitations: once accepted, the row is a member of
+    // staff and belongs on the staff screen rather than on this one. The
+    // status is worked out here rather than stored — a column nothing updates
+    // until somebody clicks the link showed a lapsed invitation as pending for
+    // as long as it sat there.
+    const invites = rows.map(({ password, inviteToken, ...row }) => ({
+      ...row,
+      status: invitationStatus({ password, inviteToken, inviteExpiresAt: row.inviteExpiresAt }),
+      expiresAt: row.inviteExpiresAt,
+      invitedBy: row.invitedById,
+    }))
 
     return NextResponse.json({ invites })
   } catch (error) {

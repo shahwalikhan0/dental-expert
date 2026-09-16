@@ -62,7 +62,6 @@ const TENANT_MODELS = new Set([
   'medication',
   'staff',
   'staffShift',
-  'staffInvite',
   'chair',
   'notification',
   'auditLog',

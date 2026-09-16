@@ -77,6 +77,9 @@ const mockPrismaClient = {
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // Accepting an invitation claims the row with a conditional updateMany, so
+    // that two people opening the same emailed link cannot both win.
+    updateMany: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
   },
@@ -502,17 +505,6 @@ const mockPrismaClient = {
     update: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
-    count: vi.fn(),
-  },
-
-  // StaffInvite
-  staffInvite: {
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
     count: vi.fn(),
   },
 

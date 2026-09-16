@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import { StaffInviteStatus, Role } from '@prisma/client'
+import { invitationStatus, isInvitation, inviteeName } from '@/lib/invitations'
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -10,7 +10,35 @@ const acceptInviteSchema = z.object({
   phone: z.string().min(10, 'Phone number must be at least 10 digits'),
 })
 
-// Accept an invite and create user account
+/**
+ * Accepting an invitation.
+ *
+ * The invitation is already the user row — see lib/invitations.ts — so this
+ * sets a password on it rather than creating a second account, and adds the
+ * `Staff` record that makes the person a member of staff. Because the token is
+ * cleared in the same statement that sets the password, two people racing the
+ * same link cannot both win: the second finds no invitation.
+ */
+async function invitationFor(token: string) {
+  const row = await prisma.user.findUnique({
+    where: { inviteToken: token },
+    select: {
+      id: true,
+      hospitalId: true,
+      email: true,
+      name: true,
+      role: true,
+      password: true,
+      inviteToken: true,
+      inviteExpiresAt: true,
+      hospital: { select: { id: true, name: true, isActive: true } },
+    },
+  })
+
+  return row && isInvitation(row) ? row : null
+}
+
+// Accept an invite and turn it into an account
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -25,32 +53,13 @@ export async function POST(request: Request) {
 
     const { token, password, phone } = validated.data
 
-    // Find the invite
-    const invite = await prisma.staffInvite.findUnique({
-      where: { token },
-      include: {
-        hospital: {
-          select: { id: true, name: true, isActive: true },
-        },
-      },
-    })
+    const invite = await invitationFor(token)
 
     if (!invite) {
       return NextResponse.json({ error: 'Invalid invite token' }, { status: 400 })
     }
 
-    if (invite.status !== StaffInviteStatus.PENDING) {
-      return NextResponse.json(
-        { error: 'This invite has already been used or cancelled' },
-        { status: 400 }
-      )
-    }
-
-    if (new Date() > invite.expiresAt) {
-      await prisma.staffInvite.update({
-        where: { id: invite.id },
-        data: { status: StaffInviteStatus.EXPIRED },
-      })
+    if (invitationStatus(invite) === 'EXPIRED') {
       return NextResponse.json(
         { error: 'This invite has expired. Please ask for a new invite.' },
         { status: 400 }
@@ -64,63 +73,46 @@ export async function POST(request: Request) {
       )
     }
 
-    // Only within the clinic that issued the invite. Refusing because the
-    // address holds an account at some *other* clinic would have made it
-    // impossible to invite a dentist who already works elsewhere on the
-    // platform — while telling them a clinic they cannot see exists.
-    const existingUser = await prisma.user.findUnique({
-      where: { hospitalId_email: { hospitalId: invite.hospitalId, email: invite.email } },
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists at this clinic' },
-        { status: 409 }
-      )
-    }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
+    const fullName = inviteeName(invite.name, invite.email)
 
-    // Generate employee ID
     const staffCount = await prisma.staff.count({
       where: { hospitalId: invite.hospitalId },
     })
     const employeeId = `EMP${String(staffCount + 1).padStart(3, '0')}`
 
-    // Create user and staff in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create the user
-      const user = await tx.user.create({
-        data: {
-          email: invite.email,
-          name: invite.name ?? invite.email.split('@')[0],
-          password: hashedPassword,
-          phone,
-          role: invite.role as Role,
-          isActive: true,
-          isHospitalAdmin: false,
-          hospitalId: invite.hospitalId,
-          staff: {
-            create: {
-              employeeId,
-              firstName: (invite.name ?? invite.email.split('@')[0]).split(' ')[0],
-              lastName: (invite.name ?? '').split(' ').slice(1).join(' ') || '',
-              email: invite.email,
-              phone,
-              hospitalId: invite.hospitalId,
-            },
-          },
-        },
-      })
+    // `inviteToken: token` in the where clause is what makes this safe to run
+    // twice: whichever request updates the row first clears the token, and the
+    // other one's update matches nothing.
+    const claimed = await prisma.user.updateMany({
+      where: { id: invite.id, inviteToken: token, password: null },
+      data: {
+        password: hashedPassword,
+        phone,
+        name: fullName,
+        isActive: true,
+        inviteToken: null,
+        inviteExpiresAt: null,
+      },
+    })
 
-      // Mark invite as accepted
-      await tx.staffInvite.update({
-        where: { id: invite.id },
-        data: { status: StaffInviteStatus.ACCEPTED },
-      })
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: 'This invite has already been used or cancelled' },
+        { status: 400 }
+      )
+    }
 
-      return user
+    await prisma.staff.create({
+      data: {
+        userId: invite.id,
+        employeeId,
+        firstName: fullName.split(' ')[0],
+        lastName: fullName.split(' ').slice(1).join(' ') || '',
+        email: invite.email,
+        phone,
+        hospitalId: invite.hospitalId,
+      },
     })
 
     return NextResponse.json({
@@ -144,27 +136,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Token is required' }, { status: 400 })
     }
 
-    const invite = await prisma.staffInvite.findUnique({
-      where: { token },
-      include: {
-        hospital: {
-          select: { name: true, isActive: true },
-        },
-      },
-    })
+    const invite = await invitationFor(token)
 
     if (!invite) {
       return NextResponse.json({ valid: false, error: 'Invalid invite token' }, { status: 400 })
     }
 
-    if (invite.status !== StaffInviteStatus.PENDING) {
-      return NextResponse.json(
-        { valid: false, error: 'This invite has already been used or cancelled' },
-        { status: 400 }
-      )
-    }
-
-    if (new Date() > invite.expiresAt) {
+    if (invitationStatus(invite) === 'EXPIRED') {
       return NextResponse.json({ valid: false, error: 'This invite has expired' }, { status: 400 })
     }
 
@@ -182,7 +160,7 @@ export async function GET(request: Request) {
         name: invite.name,
         role: invite.role,
         hospitalName: invite.hospital.name,
-        expiresAt: invite.expiresAt,
+        expiresAt: invite.inviteExpiresAt,
       },
     })
   } catch (error) {

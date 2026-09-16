@@ -1,7 +1,7 @@
 /**
  * The invitation screen.
  *
- * `StaffInvite` and `/api/public/invite/accept` have existed since the fork and
+ * Invitations and `/api/public/invite/accept` have existed since the fork and
  * had no user interface at all — nothing in the dashboard called
  * `/api/staff-invites`, and the setup guide linked to `/staff/invites`, which
  * did not exist. So the only way to add a colleague was the Staff form, where
@@ -100,26 +100,31 @@ describe('the invitations list', () => {
   })
 
   it('shows a lapsed invitation as expired, not pending', async () => {
-    // The row stays PENDING in the database until somebody uses or cancels it;
-    // showing that to an admin invites them to wait for an answer that cannot
-    // come, when what they need to do is resend.
-    vi.stubGlobal('fetch', respondWith([{ ...PENDING, expiresAt: '2020-01-01T00:00:00.000Z' }]))
+    // The status is derived from the expiry by the API rather than read from a
+    // stored column, which nothing updated until somebody used or cancelled the
+    // link: an admin was invited to wait for an answer that could not come,
+    // when what they needed to do was resend.
+    vi.stubGlobal(
+      'fetch',
+      respondWith([{ ...PENDING, status: 'EXPIRED', expiresAt: '2020-01-01T00:00:00.000Z' }])
+    )
     render(<StaffInvitesPage />)
 
     expect(await screen.findByText('Expired')).toBeInTheDocument()
     expect(screen.queryByText('Pending')).not.toBeInTheDocument()
   })
 
-  it('offers nothing to do to an invitation already accepted', async () => {
+  // Reviving a lapsed invitation is what the button is for, so it stays.
+  it('offers to resend an invitation that has expired', async () => {
     vi.stubGlobal(
       'fetch',
-      respondWith([{ ...PENDING, status: 'ACCEPTED', acceptedAt: '2026-09-11T00:00:00.000Z' }])
+      respondWith([{ ...PENDING, status: 'EXPIRED', expiresAt: '2020-01-01T00:00:00.000Z' }])
     )
     render(<StaffInvitesPage />)
 
-    expect(await screen.findByText('Accepted')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument()
+    expect(await screen.findByText('Expired')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /resend/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument()
   })
 
   it('has an empty state rather than an empty table', async () => {

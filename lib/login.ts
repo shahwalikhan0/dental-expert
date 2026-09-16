@@ -102,6 +102,11 @@ export async function resolveLogin({
 
   const opened: typeof candidates = []
   for (const candidate of candidates) {
+    // A row with no password is an invitation that has not been accepted, not
+    // an account — see lib/invitations.ts. Checked before bcrypt rather than
+    // left to it: `compare` against a null hash is not a comparison anybody
+    // should be relying on to return false.
+    if (candidate.password === null) continue
     if (await bcrypt.compare(password, candidate.password)) opened.push(candidate)
   }
 

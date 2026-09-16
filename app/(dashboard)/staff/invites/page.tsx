@@ -38,31 +38,34 @@ import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
 import { MailPlus, RotateCw, X, ArrowLeft } from 'lucide-react'
 
+/**
+ * An outstanding invitation.
+ *
+ * Only two states reach this screen. An invitation is a user row with no
+ * password, so once somebody accepts, the row stops being an invitation and
+ * becomes a member of staff on the staff screen — there is no "accepted"
+ * invitation to list. Cancelling deletes the row, so there is no "cancelled"
+ * one either. `status` is derived from the expiry by the API rather than
+ * stored, which is why an invitation that lapsed a month ago no longer reads
+ * as pending.
+ */
 interface Invite {
   id: string
   email: string
   name: string
   role: string
-  status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED'
+  status: 'PENDING' | 'EXPIRED'
   expiresAt: string
   createdAt: string
-  acceptedAt: string | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-800',
-  ACCEPTED: 'bg-green-100 text-green-800',
   EXPIRED: 'bg-muted text-foreground',
-  CANCELLED: 'bg-red-100 text-red-800',
 }
 
 function label(status: string) {
   return status.charAt(0) + status.slice(1).toLowerCase()
-}
-
-/** A pending invite past its expiry, which the list shows as PENDING until used. */
-function hasLapsed(invite: Invite) {
-  return invite.status === 'PENDING' && new Date(invite.expiresAt) < new Date()
 }
 
 export default function StaffInvitesPage() {
@@ -243,40 +246,31 @@ export default function StaffInvitesPage() {
                     <TableCell>{roleLabel(invite.role)}</TableCell>
                     <TableCell>
                       <Badge
-                        className={`border-0 ${
-                          hasLapsed(invite)
-                            ? STATUS_STYLES.EXPIRED
-                            : (STATUS_STYLES[invite.status] ?? STATUS_STYLES.EXPIRED)
-                        }`}
+                        className={`border-0 ${STATUS_STYLES[invite.status] ?? STATUS_STYLES.EXPIRED}`}
                       >
-                        {hasLapsed(invite) ? 'Expired' : label(invite.status)}
+                        {label(invite.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(invite.createdAt)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {invite.status === 'ACCEPTED'
-                        ? `Accepted ${formatDate(invite.acceptedAt)}`
-                        : formatDate(invite.expiresAt)}
+                      {formatDate(invite.expiresAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {invite.status === 'PENDING' ? (
-                        <div className="flex justify-end gap-1">
-                          {/* Resending issues a fresh token and a new seven days,
-                              which is the fix for an invite that has lapsed. */}
-                          <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
-                            <RotateCw className="h-4 w-4 mr-1" />
-                            Resend
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => cancel(invite)}>
-                            <X className="h-4 w-4 mr-1" />
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      )}
+                      <div className="flex justify-end gap-1">
+                        {/* Resending issues a fresh token and a new seven days,
+                            which is the fix for an invitation that has lapsed —
+                            so it is offered for an expired one too. */}
+                        <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
+                          <RotateCw className="h-4 w-4 mr-1" />
+                          Resend
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => cancel(invite)}>
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

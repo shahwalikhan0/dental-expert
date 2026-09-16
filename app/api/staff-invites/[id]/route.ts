@@ -1,8 +1,33 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { StaffInviteStatus } from '@prisma/client'
 import { sendInviteEmail } from '@/lib/email-helpers'
+import { invitationStatus, inviteeName, inviteExpiry, isInvitation } from '@/lib/invitations'
+
+/**
+ * An invitation is a `User` row with no password — see lib/invitations.ts. Both
+ * handlers here load one by id and refuse anything that turns out to be a real
+ * account, so neither can be pointed at a colleague's login.
+ */
+async function loadInvitation(id: string, hospitalId: string) {
+  const row = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      hospitalId: true,
+      email: true,
+      name: true,
+      role: true,
+      password: true,
+      inviteToken: true,
+      inviteExpiresAt: true,
+      invitedById: true,
+    },
+  })
+
+  if (!row || row.hospitalId !== hospitalId || !isInvitation(row)) return null
+  return row
+}
 
 // Cancel/revoke an invite
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,23 +39,16 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params
+    const invite = await loadInvitation(id, hospitalId)
 
-    const invite = await prisma.staffInvite.findUnique({
-      where: { id },
-    })
-
-    if (!invite || invite.hospitalId !== hospitalId) {
+    if (!invite) {
       return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
     }
 
-    if (invite.status !== StaffInviteStatus.PENDING) {
-      return NextResponse.json({ error: 'Can only cancel pending invites' }, { status: 400 })
-    }
-
-    await prisma.staffInvite.update({
-      where: { id },
-      data: { status: StaffInviteStatus.CANCELLED },
-    })
+    // The row is deleted rather than marked cancelled. An invitation nobody
+    // accepted holds nothing but the address it was sent to, and leaving it
+    // behind would keep that address from ever being invited again.
+    await prisma.user.delete({ where: { id } })
 
     return NextResponse.json({
       success: true,
@@ -52,32 +70,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     const { id } = await params
+    const invite = await loadInvitation(id, hospitalId)
 
-    const invite = await prisma.staffInvite.findUnique({
-      where: { id },
-    })
-
-    if (!invite || invite.hospitalId !== hospitalId) {
+    if (!invite) {
       return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
     }
 
-    if (invite.status !== StaffInviteStatus.PENDING) {
-      return NextResponse.json({ error: 'Can only resend pending invites' }, { status: 400 })
-    }
+    // Resending an expired invitation is the point of the button, so unlike
+    // the old version this does not refuse one that has lapsed.
+    const expiresAt = inviteExpiry()
+    await prisma.user.update({ where: { id }, data: { inviteExpiresAt: expiresAt } })
 
-    // Extend expiry
-    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-
-    await prisma.staffInvite.update({
-      where: { id },
-      data: { expiresAt: newExpiresAt },
-    })
-
-    // Fetch hospital name and inviter for the email
     const [hospital, inviter] = await Promise.all([
       prisma.hospital.findUnique({ where: { id: hospitalId }, select: { name: true } }),
-      invite.invitedBy
-        ? prisma.user.findUnique({ where: { id: invite.invitedBy }, select: { name: true } })
+      invite.invitedById
+        ? prisma.user.findUnique({ where: { id: invite.invitedById }, select: { name: true } })
         : null,
     ])
 
@@ -85,11 +92,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const emailSent = await sendInviteEmail({
       hospitalId,
       to: invite.email,
-      inviteeName: invite.name ?? invite.email.split('@')[0],
+      inviteeName: inviteeName(invite.name, invite.email),
       hospitalName: hospital?.name || 'Your Dental Clinic',
       role: invite.role,
       inviterName: inviter?.name || 'Admin',
-      token: invite.token,
+      token: invite.inviteToken!,
     })
 
     return NextResponse.json({
@@ -97,7 +104,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       message: emailSent
         ? `Invite resent to ${invite.email}`
         : `Invite renewed for ${invite.email} (email delivery pending)`,
-      expiresAt: newExpiresAt,
+      expiresAt,
+      status: invitationStatus({ ...invite, inviteExpiresAt: expiresAt }),
       emailSent,
     })
   } catch (error) {
