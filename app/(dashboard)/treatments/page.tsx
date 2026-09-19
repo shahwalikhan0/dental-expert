@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
   Search,
@@ -102,6 +103,8 @@ interface PaginationInfo {
 }
 
 export default function TreatmentsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Treatments')
   const router = useRouter()
   const [treatments, setTreatments] = useState<Treatment[]>([])
   const [loading, setLoading] = useState(true)
@@ -365,7 +368,7 @@ export default function TreatmentsPage() {
                 treatments.map((treatment) => (
                   <ClickableRow
                     key={treatment.id}
-                    href={`/treatments/${treatment.id}`}
+                    href={trail.to(`/treatments/${treatment.id}`)}
                     label={`Open treatment ${treatment.treatmentNo}`}
                   >
                     <TableCell>

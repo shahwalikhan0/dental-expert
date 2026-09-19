@@ -448,37 +448,6 @@ const setupSections: SetupSection[] = [
     ],
   },
   {
-    id: 'google-calendar',
-    title: 'Google Calendar Sync',
-    description: 'Sync appointments with Google Calendar for easy access on your phone',
-    icon: Link2,
-    color: 'text-cyan-600 bg-cyan-50',
-    priority: 'recommended',
-    estimatedTime: '5 min',
-    guides: [
-      {
-        title: 'Connect Google Calendar',
-        description: 'Sync your DentalERP appointments to Google Calendar automatically.',
-        steps: [
-          'Go to Settings → Integrations',
-          'In the "Google Calendar" section, click "Connect Google Calendar"',
-          'A Google sign-in popup will appear — sign in with the Google account you want to sync to',
-          'Grant DentalERP permission to manage your calendar events',
-          'Once connected, you\'ll see a "Connected" badge with your Calendar ID',
-          'Toggle "Sync Status" to Enabled',
-          'Click "Sync Now" to sync existing appointments',
-        ],
-        tips: [
-          'All new appointments will automatically appear in your Google Calendar',
-          'Google Calendar events include patient name, procedure, and appointment time',
-          'You can view appointments on your phone via the Google Calendar app',
-          'To disconnect, click "Disconnect" — this removes sync but doesn\'t delete calendar events',
-        ],
-        link: { label: 'Go to Integrations', href: '/settings/integrations' },
-      },
-    ],
-  },
-  {
     id: 'google-reviews',
     title: 'Google Reviews',
     description: 'Automatically request Google reviews from happy patients',
@@ -541,127 +510,6 @@ const setupSections: SetupSection[] = [
           'You can disable the portal at any time from the same toggle',
         ],
         link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
-      },
-    ],
-  },
-  {
-    id: 'ai',
-    title: 'AI Assistant Setup',
-    description:
-      'Enable AI-powered features like chat, scheduling suggestions, and billing assistance',
-    icon: Sparkles,
-    color: 'text-amber-600 bg-amber-50',
-    priority: 'optional',
-    estimatedTime: '10 min',
-    guides: [
-      {
-        title: 'Get an OpenRouter API Key',
-        description: "DentalERP uses OpenRouter to power its AI features. You'll need an API key.",
-        steps: [
-          'Go to openrouter.ai and create a free account',
-          'Click on your profile icon → "Keys" (or go to openrouter.ai/keys)',
-          'Click "Create Key" and give it a name like "DentalERP"',
-          'Copy the API key (starts with "sk-or-")',
-          'Add this key to your DentalERP environment configuration:',
-          "  — In your server's .env file, add: OPENROUTER_API_KEY=sk-or-your-key-here",
-          '  — Restart the application after adding the key',
-          'In DentalERP, go to Settings → AI Features and toggle "Enable AI" ON',
-        ],
-        tips: [
-          'OpenRouter provides access to multiple AI models at competitive prices',
-          'DentalERP uses cost-effective models — typical monthly cost is Rs 100-500 for a small clinic',
-          'You can set a monthly budget limit in AI Settings to control spending',
-          'Start with "Economy" model and upgrade to "Quality" if needed',
-        ],
-        link: { label: 'Go to AI Settings', href: '/settings/ai' },
-        externalLinks: [{ label: 'Create OpenRouter Account', url: 'https://openrouter.ai' }],
-      },
-      {
-        title: 'Configure AI Features',
-        description: 'Choose which AI features to enable and set spending limits.',
-        steps: [
-          'Go to Settings → AI Features',
-          'Toggle the master "Enable AI" switch ON',
-          'Enable/disable individual features:',
-          '  — AI Chat Widget: Floating assistant on every page',
-          '  — Command Bar (Ctrl+K): Quick natural-language commands',
-          '  — Auto Reminders: AI-triggered appointment reminders',
-          '  — Morning Briefing: Daily summary for clinic admins',
-          '  — Patient Risk Scoring: Automatic risk assessment',
-          'Set your Model Preference: Economy (cheapest), Balanced, or Quality',
-          'Set your Monthly AI Budget limit (e.g., Rs 500)',
-          'Click "Save Settings"',
-        ],
-        tips: [
-          'Start with Economy model — it handles most tasks well',
-          'The chat widget can answer questions about patients, appointments, and billing',
-          'Use Ctrl+K command bar for quick actions like "schedule appointment for Rahul tomorrow"',
-        ],
-        link: { label: 'Go to AI Settings', href: '/settings/ai' },
-      },
-    ],
-  },
-  {
-    id: 'devices',
-    title: 'IoT Devices',
-    description: 'Connect dental chairs, sensors, and other IoT devices',
-    icon: Cpu,
-    color: 'text-slate-600 bg-slate-50',
-    priority: 'optional',
-    estimatedTime: '10 min per device',
-    guides: [
-      {
-        title: 'Register a New Device',
-        description:
-          'Add IoT-enabled dental equipment like chairs, sensors, or monitors to the system.',
-        steps: [
-          'Go to Devices from the sidebar (under Operations)',
-          'Click "+ Register Device"',
-          'Enter the Device Name (e.g., "Chair 1 — Room 2")',
-          'Select the Device Type (e.g., Dental Chair, Sensor, Monitor)',
-          'Enter the Device Serial Number (found on the device or its documentation)',
-          'Enter the Device API Key or Connection Token (provided by the device manufacturer)',
-          'Click "Register"',
-          'The device will appear in the dashboard with a "Pending" status until it sends its first data',
-        ],
-        tips: [
-          'Each device needs an API key to send data to DentalERP',
-          'Contact your device manufacturer for integration documentation',
-          'Device data is stored securely and can be viewed in real-time from the dashboard',
-          'You can deactivate a device without deleting its historical data',
-        ],
-        link: { label: 'Go to Devices', href: '/devices' },
-      },
-    ],
-  },
-  {
-    id: 'video',
-    title: 'Video Consultations (Tele-Dentistry)',
-    description: 'Enable online video appointments with patients',
-    icon: Video,
-    color: 'text-rose-600 bg-rose-50',
-    priority: 'optional',
-    estimatedTime: '2 min',
-    guides: [
-      {
-        title: 'Enable Video Consultations',
-        description: 'Allow patients to have video appointments with doctors from home.',
-        steps: [
-          'Video consultations work out of the box with no external setup needed',
-          'Go to Appointments and create a new appointment',
-          'Set the appointment Type to "VIDEO" or "TELEDENTISTRY"',
-          'A unique video link will be generated automatically',
-          'The patient receives the video link via SMS/Email (if configured)',
-          'At the appointment time, both doctor and patient click the link to join',
-          'Go to Video Consults in the sidebar to manage all video appointments',
-        ],
-        tips: [
-          'Video calls use peer-to-peer technology (WebRTC) — no additional software needed',
-          'Both doctor and patient need a device with a camera and microphone',
-          'A stable internet connection (at least 2 Mbps) is recommended',
-          'Doctors can take notes during the video call just like in-person appointments',
-        ],
-        link: { label: 'Go to Video Consults', href: '/video' },
       },
     ],
   },
@@ -1015,18 +863,13 @@ export default function SetupGuidePage() {
         <CardContent className="pt-6">
           <div className="text-center">
             <h3 className="font-semibold mb-1">Need More Help?</h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              If you&apos;re stuck on any step, feel free to use the AI Chat Assistant (bottom-right
-              corner) for instant help, or contact our support team.
+            <p className="text-sm text-muted-foreground">
+              {/* This offered a button to `/chat`, which is not a page. The
+                  assistant it means is the one in the bottom-right corner of
+                  every screen. */}
+              If you&apos;re stuck on any step, the assistant in the bottom-right corner of the
+              screen can help, or contact your system administrator.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Link href="/chat">
-                <Button variant="default" size="sm">
-                  <MessageSquare className="w-4 h-4 mr-1" />
-                  Ask AI Assistant
-                </Button>
-              </Link>
-            </div>
           </div>
         </CardContent>
       </Card>

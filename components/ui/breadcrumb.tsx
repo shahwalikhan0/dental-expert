@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Home } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { hopHref } from '@/lib/trail'
+import { useTrailHops } from '@/components/ui/trail'
 
 const ROUTE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -70,23 +72,53 @@ function isUUID(segment: string): boolean {
   )
 }
 
+/**
+ * Where the reader is, and how they got here.
+ *
+ * The path alone cannot answer the second half. A patient opened from the
+ * appointment book and a patient opened from the patient list have the same
+ * URL, and this used to read "Patients › Details" for both — so the reader had
+ * no way back to the appointment except the browser's own button, and no way
+ * to see that they had come from one.
+ *
+ * When the URL carries a trail (lib/trail.ts) the crumbs are the pages actually
+ * walked, each named after its record. Without one — a shared link, a bookmark,
+ * a page reached from the sidebar — it falls back to the path, which is still
+ * the right answer for a list opened directly.
+ */
 export function Breadcrumb({ className }: { className?: string }) {
   const pathname = usePathname()
+  const trail = useTrailHops()
 
   const segments = pathname.split('/').filter(Boolean)
 
-  if (segments.length <= 1) return null
+  if (segments.length <= 1 && trail.length === 0) return null
 
-  const crumbs = segments.map((segment, index) => {
-    const href = '/' + segments.slice(0, index + 1).join('/')
-    const isLast = index === segments.length - 1
-    const label = isUUID(segment)
-      ? 'Details'
-      : ROUTE_LABELS[segment] ||
-        segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
+  const here = segments[segments.length - 1] ?? ''
+  const hereLabel = isUUID(here)
+    ? 'Details'
+    : ROUTE_LABELS[here] || here.charAt(0).toUpperCase() + here.slice(1).replace(/-/g, ' ')
 
-    return { label, href, isLast }
-  })
+  const crumbs =
+    trail.length > 0
+      ? [
+          ...trail.map((hop, index) => ({
+            label: hop.label,
+            href: hopHref(trail, index),
+            isLast: false,
+          })),
+          { label: hereLabel, href: pathname, isLast: true },
+        ]
+      : segments.map((segment, index) => {
+          const href = '/' + segments.slice(0, index + 1).join('/')
+          const isLast = index === segments.length - 1
+          const label = isUUID(segment)
+            ? 'Details'
+            : ROUTE_LABELS[segment] ||
+              segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
+
+          return { label, href, isLast }
+        })
 
   return (
     <nav
@@ -96,8 +128,8 @@ export function Breadcrumb({ className }: { className?: string }) {
       <Link href="/dashboard" className="hover:text-foreground transition-colors">
         <Home className="h-3.5 w-3.5" />
       </Link>
-      {crumbs.map((crumb) => (
-        <div key={crumb.href} className="flex items-center gap-1.5">
+      {crumbs.map((crumb, index) => (
+        <div key={`${index}-${crumb.href}`} className="flex items-center gap-1.5">
           <ChevronRight className="h-3.5 w-3.5" />
           {crumb.isLast ? (
             <span className="font-medium text-foreground truncate max-w-[200px]">

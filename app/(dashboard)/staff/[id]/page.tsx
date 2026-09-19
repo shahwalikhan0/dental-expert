@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface StaffDetail {
   id: string
@@ -94,6 +95,8 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter()
   const { toast } = useToast()
   const [staff, setStaff] = useState<StaffDetail | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(staff ? `${staff.firstName} ${staff.lastName}` : null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -183,11 +186,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
-          <Link href="/staff">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <BackLink trail={trail} fallback="/staff" fallbackLabel="Staff" />
           <div className="flex items-start gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
               <User className="h-8 w-8 text-primary" />

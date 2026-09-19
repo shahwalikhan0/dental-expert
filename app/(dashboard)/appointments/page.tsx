@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Calendar,
   Plus,
@@ -101,6 +102,8 @@ interface PaginationInfo {
 }
 
 export default function AppointmentsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Appointments')
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
@@ -455,7 +458,7 @@ export default function AppointmentsPage() {
                   appointments.map((appointment) => (
                     <ClickableRow
                       key={appointment.id}
-                      href={`/appointments/${appointment.id}`}
+                      href={trail.to(`/appointments/${appointment.id}`)}
                       label={`Open appointment ${appointment.appointmentNo}`}
                     >
                       <TableCell>

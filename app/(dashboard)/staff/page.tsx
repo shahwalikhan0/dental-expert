@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
   Search,
@@ -85,6 +86,8 @@ interface PaginationInfo {
 }
 
 export default function StaffPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Staff')
   const router = useRouter()
   const { toast } = useToast()
   const [staff, setStaff] = useState<Staff[]>([])
@@ -328,7 +331,7 @@ export default function StaffPage() {
                 staff.map((member) => (
                   <ClickableRow
                     key={member.id}
-                    href={`/staff/${member.id}`}
+                    href={trail.to(`/staff/${member.id}`)}
                     label={`Open ${member.firstName} ${member.lastName}`}
                   >
                     <TableCell>

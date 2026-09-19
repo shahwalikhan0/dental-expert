@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ClickableRow, GridPagination, usePagedRows } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Table,
   TableBody,
@@ -62,6 +63,8 @@ const typeLabels: Record<string, string> = {
 }
 
 export default function FormsSettingsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Forms')
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [templates, setTemplates] = useState<FormTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -180,7 +183,7 @@ export default function FormsSettingsPage() {
                 {paged.rows.map((t) => (
                   <ClickableRow
                     key={t.id}
-                    href={`/settings/forms/${t.id}`}
+                    href={trail.to(`/settings/forms/${t.id}`)}
                     label={`Open ${t.name}`}
                   >
                     <TableCell>

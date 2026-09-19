@@ -61,7 +61,11 @@ export default function NewAppointmentPage() {
   const [patientSearch, setPatientSearch] = useState('')
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [selectedDoctor, setSelectedDoctor] = useState('')
-  const [selectedDate, setSelectedDate] = useState('')
+  // A follow-up booked from a treatment arrives with the date it is due, so
+  // the day is already chosen and the slot list loads without a second step.
+  const [selectedDate, setSelectedDate] = useState(
+    /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') ?? '') ? searchParams.get('date')! : ''
+  )
   const [selectedTime, setSelectedTime] = useState('')
   const [duration, setDuration] = useState('30')
   const [appointmentType, setAppointmentType] = useState('CONSULTATION')

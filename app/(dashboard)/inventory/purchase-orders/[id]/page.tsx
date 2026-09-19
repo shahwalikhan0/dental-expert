@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface OrderLine {
   id: string
@@ -70,6 +71,8 @@ export default function PurchaseOrderPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const [order, setOrder] = useState<Order | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(order?.orderNumber ?? null)
   const [loading, setLoading] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, ReceiptDraft>>({})
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10))

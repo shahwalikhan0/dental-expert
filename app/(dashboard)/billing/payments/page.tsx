@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Search,
   User,
@@ -89,6 +90,8 @@ interface Summary {
 }
 
 export default function PaymentsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Payments')
   const router = useRouter()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
@@ -358,7 +361,7 @@ export default function PaymentsPage() {
                 payments.map((payment) => (
                   <ClickableRow
                     key={payment.id}
-                    href={`/billing/invoices/${payment.invoice.id}`}
+                    href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
                     label={`Open the invoice for payment ${payment.paymentNo}`}
                   >
                     <TableCell>

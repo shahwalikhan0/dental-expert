@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Plus,
@@ -87,6 +88,8 @@ interface PaginationInfo {
 }
 
 export default function InventoryPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Inventory')
   const router = useRouter()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -586,7 +589,7 @@ export default function InventoryPage() {
                 items.map((item) => (
                   <ClickableRow
                     key={item.id}
-                    href={`/inventory/${item.id}`}
+                    href={trail.to(`/inventory/${item.id}`)}
                     label={`Open ${item.name}`}
                   >
                     <TableCell>

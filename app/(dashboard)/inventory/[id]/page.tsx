@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, Package, TriangleAlert } from 'lucide-react'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Batch {
   id: string
@@ -92,6 +93,8 @@ function daysUntil(date: string) {
 export default function InventoryItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [item, setItem] = useState<Item | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(item?.name ?? null)
   const [loading, setLoading] = useState(true)
 
   const fetchItem = useCallback(async () => {
@@ -156,13 +159,8 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/inventory">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-          <Link href={`/inventory/transactions?item=${item.id}`}>
+          <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
+          <Link href={trail.to(`/inventory/transactions?item=${item.id}`)}>
             <Button variant="outline">Record movement</Button>
           </Link>
         </div>

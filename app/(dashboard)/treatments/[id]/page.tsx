@@ -52,6 +52,7 @@ import {
   parseToothNumbers,
   toothNames,
 } from '@/lib/treatment-utils'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Treatment {
   id: string
@@ -118,14 +119,24 @@ interface Treatment {
     scheduledTime: string
     status: string
   } | null
-  prescriptions: any[]
-  invoiceItems: any[]
+  /**
+   * There is no Treatment–Prescription relation and the route never returned
+   * one, so this page read `treatment.prescriptions.length` on `undefined` and
+   * threw on every load. Prescriptions belong to the patient; the card below
+   * links to theirs.
+   */
+  invoiceItems: Array<{
+    id: string
+    invoice: { id: string; invoiceNo: string; status: string; totalAmount: string | number } | null
+  }>
 }
 
 export default function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const [treatment, setTreatment] = useState<Treatment | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(treatment?.treatmentNo ?? null)
   const [loading, setLoading] = useState(true)
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
@@ -301,11 +312,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/treatments">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{treatment.treatmentNo}</h1>
@@ -359,7 +366,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 </Button>
               </>
             )}
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-2" />
             Print
           </Button>
@@ -657,7 +664,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 )}
               </div>
 
-              <Link href={`/patients/${treatment.patient.id}`}>
+              <Link href={trail.to(`/patients/${treatment.patient.id}`)}>
                 <Button variant="outline" className="w-full">
                   View Patient Profile
                 </Button>
@@ -706,7 +713,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   {formatDate(treatment.appointment.scheduledDate)} at{' '}
                   {treatment.appointment.scheduledTime}
                 </div>
-                <Link href={`/appointments/${treatment.appointment.id}`}>
+                <Link href={trail.to(`/appointments/${treatment.appointment.id}`)}>
                   <Button variant="outline" size="sm" className="w-full mt-2">
                     View Appointment
                   </Button>
@@ -733,32 +740,48 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 ) : (
                   <p className="text-sm text-muted-foreground">Date not scheduled</p>
                 )}
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  Schedule Follow-up
-                </Button>
+                {/* Booking the follow-up is the whole point of the card, and
+                    this button did nothing at all. The date, when one was set,
+                    is what the booking screen should open on. */}
+                <Link
+                  href={trail.to(
+                    `/appointments/new?patientId=${treatment.patient.id}` +
+                      (treatment.followUpDate
+                        ? `&date=${String(treatment.followUpDate).slice(0, 10)}`
+                        : '')
+                  )}
+                  className="block mt-4"
+                >
+                  <Button variant="outline" size="sm" className="w-full">
+                    Schedule Follow-up
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           )}
 
           {/* Prescriptions */}
-          {treatment.prescriptions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Pill className="h-5 w-5" />
-                  Prescriptions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm">
-                  {treatment.prescriptions.length} prescription(s) issued
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  View Prescriptions
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Pill className="h-5 w-5" />
+                Prescriptions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Prescriptions are written for the patient rather than for one treatment.
+              </p>
+              <Link
+                href={trail.to(`/prescriptions?patientId=${treatment.patient.id}`)}
+                className="block mt-4"
+              >
+                <Button variant="outline" size="sm" className="w-full">
+                  Prescriptions for {treatment.patient.firstName}
                 </Button>
-              </CardContent>
-            </Card>
-          )}
+              </Link>
+            </CardContent>
+          </Card>
 
           {/* Invoices */}
           {treatment.invoiceItems.length > 0 && (
@@ -769,11 +792,21 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   Billing
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="text-sm">{treatment.invoiceItems.length} invoice item(s)</div>
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  View Invoices
-                </Button>
+              <CardContent className="space-y-2">
+                {/* This was a count and a button that did nothing. The invoice
+                    each line belongs to is already on the response. */}
+                {treatment.invoiceItems.map((item) =>
+                  item.invoice ? (
+                    <Link
+                      key={item.id}
+                      href={trail.to(`/billing/invoices/${item.invoice.id}`)}
+                      className="flex items-center justify-between rounded-lg border p-3 text-sm hover:bg-accent transition-colors"
+                    >
+                      <span className="font-medium">{item.invoice.invoiceNo}</span>
+                      <Badge variant="outline">{item.invoice.status}</Badge>
+                    </Link>
+                  ) : null
+                )}
               </CardContent>
             </Card>
           )}

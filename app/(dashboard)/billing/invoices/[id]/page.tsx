@@ -66,6 +66,7 @@ import {
   getDueDays,
   numberToWords,
 } from '@/lib/billing-utils'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Invoice {
   id: string
@@ -143,6 +144,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<Invoice | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(invoice?.invoiceNo ?? null)
   const [error, setError] = useState('')
 
   // Payment dialog state
@@ -319,11 +322,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/billing/invoices">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{invoice.invoiceNo}</h1>
@@ -421,7 +420,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         <div className="font-medium">{item.description}</div>
                         {item.treatment && (
                           <div className="text-sm text-muted-foreground">
-                            {item.treatment.treatmentNo}
+                            {/* The clinical record behind the charge. Disputing
+                                a line means reading the note that produced it,
+                                and the number was printed here unlinked. */}
+                            <Link
+                              href={trail.to(`/treatments/${item.treatment.id}`)}
+                              className="hover:underline print:no-underline"
+                            >
+                              {item.treatment.treatmentNo}
+                            </Link>
                             {item.treatment.doctor && (
                               <>
                                 {' '}
@@ -651,13 +658,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 <Printer className="h-4 w-4 mr-2" />
                 Print Invoice
               </Button>
-              {invoice.patient.email && (
-                <Button variant="outline" className="w-full justify-start">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Send via Email
-                </Button>
-              )}
-              <Link href={`/patients/${invoice.patient.id}`} className="block">
+              {/* "Send via Email" was here with no handler and no route behind
+                  it — there is no endpoint that emails an invoice. Removed
+                  rather than left as a button that silently does nothing; see
+                  docs/DEFERRED.md for what sending one would involve. */}
+              <Link href={trail.to(`/patients/${invoice.patient.id}`)} className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <User className="h-4 w-4 mr-2" />
                   View Patient

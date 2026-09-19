@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 
 interface PurchaseOrderRow {
   id: string
@@ -31,6 +32,8 @@ function statusLabel(status: string) {
 }
 
 export default function PurchaseOrdersPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Purchase Orders')
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -148,7 +151,7 @@ export default function PurchaseOrdersPage() {
                 {orders.map((order) => (
                   <ClickableRow
                     key={order.id}
-                    href={`/inventory/purchase-orders/${order.id}`}
+                    href={trail.to(`/inventory/purchase-orders/${order.id}`)}
                     label={`Open order ${order.orderNumber}`}
                     className="hover:bg-muted/50"
                   >

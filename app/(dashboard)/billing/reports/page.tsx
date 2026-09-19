@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   BarChart3,
   Download,
@@ -85,6 +86,8 @@ interface DoctorRevenue {
 }
 
 export default function FinancialReportsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Billing Reports')
   const [loading, setLoading] = useState(true)
   const [datePreset, setDatePreset] = useState('this_month')
   const [dateFrom, setDateFrom] = useState('')
@@ -384,7 +387,7 @@ export default function FinancialReportsPage() {
                     outstandingData?.invoices.map((invoice) => (
                       <ClickableRow
                         key={invoice.id}
-                        href={`/billing/invoices/${invoice.id}`}
+                        href={trail.to(`/billing/invoices/${invoice.id}`)}
                         label={`Open invoice ${invoice.invoiceNo}`}
                       >
                         <TableCell className="font-medium">{invoice.invoiceNo}</TableCell>

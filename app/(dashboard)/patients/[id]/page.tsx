@@ -83,6 +83,8 @@ import { ImageAnnotator, type Annotation } from '@/components/imaging/image-anno
 import { ImageCompare } from '@/components/imaging/image-compare'
 import { uploadUrl } from '@/lib/storage/keys'
 import { formatDate, formatTime } from '@/lib/appointment-utils'
+import { ClickableRow } from '@/components/ui/data-grid'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Patient {
   id: string
@@ -184,6 +186,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [patient, setPatient] = useState<Patient | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(patient ? `${patient.firstName} ${patient.lastName}` : null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -434,9 +438,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/patients')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          <BackLink trail={trail} fallback="/patients" fallbackLabel="Patients" />
           <Avatar className="h-16 w-16">
             <AvatarFallback className="text-lg">
               {patient.firstName[0]}
@@ -461,7 +463,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               Edit
             </Button>
           </Link>
-          <Link href={`/appointments/new?patientId=${patient.id}`}>
+          <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
             <Button>
               <Calendar className="h-4 w-4 mr-2" />
               Book Appointment
@@ -1132,7 +1134,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle>Appointments</CardTitle>
                 <CardDescription>Recent and upcoming appointments</CardDescription>
               </div>
-              <Link href={`/appointments/new?patientId=${patient.id}`}>
+              <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
                 <Button>
                   <Calendar className="h-4 w-4 mr-2" />
                   New Appointment
@@ -1157,7 +1159,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                   </TableHeader>
                   <TableBody>
                     {patient.appointments.map((apt) => (
-                      <TableRow key={apt.id}>
+                      <ClickableRow
+                        key={apt.id}
+                        href={trail.to(`/appointments/${apt.id}`)}
+                        label={`Open appointment on ${formatDate(apt.scheduledDate)}`}
+                      >
                         <TableCell>
                           <div>
                             <p className="font-medium">{formatDate(apt.scheduledDate)}</p>
@@ -1185,7 +1191,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                             {apt.status}
                           </Badge>
                         </TableCell>
-                      </TableRow>
+                      </ClickableRow>
                     ))}
                   </TableBody>
                 </Table>
@@ -1220,7 +1226,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                   </TableHeader>
                   <TableBody>
                     {patient.treatments.map((treatment) => (
-                      <TableRow key={treatment.id}>
+                      <ClickableRow
+                        key={treatment.id}
+                        href={trail.to(`/treatments/${treatment.id}`)}
+                        label={`Open ${treatment.procedure.name}`}
+                      >
                         <TableCell>{format(new Date(treatment.createdAt), 'PP')}</TableCell>
                         <TableCell className="font-medium">{treatment.procedure.name}</TableCell>
                         <TableCell>
@@ -1244,7 +1254,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                             {treatment.status}
                           </Badge>
                         </TableCell>
-                      </TableRow>
+                      </ClickableRow>
                     ))}
                   </TableBody>
                 </Table>
@@ -1284,7 +1294,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                         0
                       )
                       return (
-                        <TableRow key={invoice.id}>
+                        <ClickableRow
+                          key={invoice.id}
+                          href={trail.to(`/billing/invoices/${invoice.id}`)}
+                          label={`Open invoice ${invoice.invoiceNumber}`}
+                        >
                           <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                           <TableCell>{format(new Date(invoice.createdAt), 'PP')}</TableCell>
                           <TableCell>Rs {Number(invoice.totalAmount).toLocaleString()}</TableCell>
@@ -1302,7 +1316,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                               {invoice.status}
                             </Badge>
                           </TableCell>
-                        </TableRow>
+                        </ClickableRow>
                       )
                     })}
                   </TableBody>

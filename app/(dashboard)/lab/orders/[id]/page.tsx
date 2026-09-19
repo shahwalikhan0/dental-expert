@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, FlaskConical, Phone, User } from 'lucide-react'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface HistoryEntry {
   id: string
@@ -50,6 +51,8 @@ interface LabOrder {
   vendorName: string
   vendorPhone: string | null
   avgTurnaroundDays: number | null
+  /** The patient's record id, for the link to it. */
+  patientId: string
   patientCode: string
   patientName: string
   patientPhone: string
@@ -91,6 +94,8 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params)
   const { toast } = useToast()
   const [order, setOrder] = useState<LabOrder | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(order?.orderNumber ?? null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [note, setNote] = useState('')
@@ -180,12 +185,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             {label(order.workType)} · {order.vendorName}
           </p>
         </div>
-        <Link href="/lab">
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Lab
-          </Button>
-        </Link>
+        <BackLink trail={trail} fallback="/lab" fallbackLabel="Lab Orders" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -297,7 +297,15 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <p className="font-medium">{order.patientName}</p>
+              {/* A crown is made for a person. Reading the case and not being
+                  able to reach their record meant going back to the patient
+                  list and searching for a name already on the screen. */}
+              <Link
+                href={trail.to(`/patients/${order.patientId}`)}
+                className="font-medium hover:underline"
+              >
+                {order.patientName}
+              </Link>
               <p className="text-muted-foreground">{order.patientCode}</p>
               <p className="flex items-center gap-2">
                 <Phone className="h-3 w-3 text-muted-foreground" />

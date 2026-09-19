@@ -68,20 +68,12 @@ interface AgingData {
   totals: { totalOutstanding: number; invoiceCount: number }
 }
 
-interface PlanSummary {
-  active: number
-  completed: number
-  defaulted: number
-  totalOutstanding: number
-}
-
 export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<SummaryData | null>(null)
   const [datePreset, setDatePreset] = useState('this_month')
   const [error, setError] = useState<string | null>(null)
   const [agingData, setAgingData] = useState<AgingData | null>(null)
-  const [planSummary, setPlanSummary] = useState<PlanSummary | null>(null)
 
   // AI Cash Flow Forecast
   const [cashFlowData, setCashFlowData] = useState<any>(null)
@@ -124,17 +116,14 @@ export default function BillingPage() {
 
   const fetchRevenueCycle = async () => {
     try {
-      const [agingRes, plansRes] = await Promise.all([
-        fetch('/api/billing/reports?type=outstanding'),
-        fetch('/api/payment-plans?limit=1'),
-      ])
+      // Instalment plans were a card here calling `/api/payment-plans`, a route
+      // that does not exist, over a `PaymentPlan` model that does not exist —
+      // so the card sat on its loading skeleton for ever and its two buttons
+      // opened pages that were never built. Removed rather than left pretending.
+      const [agingRes] = await Promise.all([fetch('/api/billing/reports?type=outstanding')])
       if (agingRes.ok) {
         const d = await agingRes.json()
         setAgingData(d)
-      }
-      if (plansRes.ok) {
-        const d = await plansRes.json()
-        setPlanSummary(d.summary)
       }
     } catch {
       // non-critical
@@ -683,61 +672,6 @@ export default function BillingPage() {
         </Card>
 
         {/* Payment Plans Summary */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Payment Plans</CardTitle>
-                <CardDescription>Installment plan overview</CardDescription>
-              </div>
-              <Link href="/billing/payment-plans">
-                <Button variant="outline" size="sm">
-                  View All
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!planSummary ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-8 w-full" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-3 rounded-lg bg-blue-50">
-                    <div className="text-2xl font-bold text-blue-700">{planSummary.active}</div>
-                    <div className="text-xs text-blue-600">Active Plans</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-green-50">
-                    <div className="text-2xl font-bold text-green-700">{planSummary.completed}</div>
-                    <div className="text-xs text-green-600">Completed</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-red-50">
-                    <div className="text-2xl font-bold text-red-700">{planSummary.defaulted}</div>
-                    <div className="text-xs text-red-600">Defaulted</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-orange-50">
-                    <div className="text-2xl font-bold text-orange-700">
-                      {formatCurrency(planSummary.totalOutstanding)}
-                    </div>
-                    <div className="text-xs text-orange-600">Outstanding EMI</div>
-                  </div>
-                </div>
-                <div className="pt-2">
-                  <Link href="/billing/payment-plans/new">
-                    <Button className="w-full" variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create New Payment Plan
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

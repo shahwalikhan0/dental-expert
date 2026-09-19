@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Printer, Loader2, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface PrescriptionDetail {
   id: string
@@ -65,6 +67,8 @@ export default function PrescriptionDetailPage() {
   const printRef = useRef<HTMLDivElement>(null)
 
   const [prescription, setPrescription] = useState<PrescriptionDetail | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(prescription?.prescriptionNo ?? null)
   const [hospital, setHospital] = useState<Hospital | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -138,9 +142,7 @@ export default function PrescriptionDetailPage() {
       {/* Screen-only controls */}
       <div className="container mx-auto p-6 max-w-4xl print:hidden">
         <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={() => router.push('/prescriptions')}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back
-          </Button>
+          <BackLink trail={trail} fallback="/prescriptions" fallbackLabel="Prescriptions" />
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleDelete} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" /> Delete
@@ -206,9 +208,15 @@ export default function PrescriptionDetailPage() {
             <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4">
               <div>
                 <span className="text-muted-foreground">Patient: </span>
-                <span className="font-medium">
+                {/* A prescription names a patient whose record the prescriber
+                    will usually want next — their allergies are printed right
+                    here, and the rest of the history is one click away. */}
+                <Link
+                  href={trail.to(`/patients/${prescription.patient.id}`)}
+                  className="font-medium hover:underline print:no-underline"
+                >
                   {prescription.patient.firstName} {prescription.patient.lastName}
-                </span>
+                </Link>
               </div>
               <div>
                 <span className="text-muted-foreground">ID: </span>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -282,7 +283,11 @@ export default function CommunicationsPage() {
                       Create and manage reusable message templates
                     </p>
                   </div>
-                  <Button>Create Template</Button>
+                  {/* Templates are edited in clinic settings; this button had
+                      no handler and no screen of its own. */}
+                  <Link href="/settings/communications">
+                    <Button>Manage Templates</Button>
+                  </Link>
                 </div>
 
                 <div className="border rounded-lg p-4">
@@ -309,7 +314,9 @@ export default function CommunicationsPage() {
                     <h3 className="font-semibold">Active Surveys</h3>
                     <p className="text-sm text-muted-foreground">Collect feedback from patients</p>
                   </div>
-                  <Button>Create Survey</Button>
+                  <Link href="/communications/feedback">
+                    <Button>Manage Surveys</Button>
+                  </Link>
                 </div>
 
                 <div className="border rounded-lg p-4">

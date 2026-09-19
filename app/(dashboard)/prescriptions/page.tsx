@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import {
   Table,
@@ -38,7 +39,13 @@ interface Prescription {
 }
 
 export default function PrescriptionsPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Prescriptions')
   const router = useRouter()
+  // Arriving from a patient or a treatment narrows the list to that patient.
+  // The route has always accepted this filter; nothing passed it, so the only
+  // way to see one patient's prescriptions was to search for their name.
+  const patientId = useSearchParams().get('patientId') ?? ''
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
@@ -54,6 +61,7 @@ export default function PrescriptionsPage() {
         limit: String(pagination.limit),
       })
       if (search) params.set('search', search)
+      if (patientId) params.set('patientId', patientId)
 
       const res = await fetch(`/api/prescriptions?${params}`)
       const result = await res.json()
@@ -70,7 +78,7 @@ export default function PrescriptionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, pagination.page, pagination.limit])
+  }, [search, patientId, pagination.page, pagination.limit])
 
   useEffect(() => {
     fetchPrescriptions()
@@ -190,7 +198,7 @@ export default function PrescriptionsPage() {
                 {prescriptions.map((rx) => (
                   <ClickableRow
                     key={rx.id}
-                    href={`/prescriptions/${rx.id}`}
+                    href={trail.to(`/prescriptions/${rx.id}`)}
                     label={`Open prescription ${rx.prescriptionNo}`}
                   >
                     <TableCell className="font-mono text-sm">{rx.prescriptionNo}</TableCell>

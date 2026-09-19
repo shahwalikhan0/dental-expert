@@ -47,6 +47,7 @@ import {
   getPatientName,
   getDoctorName,
 } from '@/lib/appointment-utils'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Appointment {
   id: string
@@ -113,6 +114,8 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   const { id } = use(params)
   const router = useRouter()
   const [appointment, setAppointment] = useState<Appointment | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(appointment?.appointmentNo ?? null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -274,11 +277,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/appointments">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{appointment.appointmentNo}</h1>
@@ -506,7 +505,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             )}
 
             <div className="pt-2">
-              <Link href={`/patients/${appointment.patient.id}`}>
+              <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
                 <Button variant="outline" className="w-full">
                   View Full Patient Profile
                 </Button>
@@ -556,17 +555,22 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               <p className="text-muted-foreground">No treatments recorded yet.</p>
             ) : (
               <div className="space-y-3">
+                {/* The work done at this appointment, each opening its own
+                    record. These were plain boxes: the treatment they named
+                    had a page, and the only way to reach it was the treatments
+                    list and a search. */}
                 {appointment.treatments.map((treatment) => (
-                  <div
+                  <Link
                     key={treatment.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    href={trail.to(`/treatments/${treatment.id}`)}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
                   >
                     <div>
                       <p className="font-medium">{treatment.procedure.name}</p>
                       <p className="text-sm text-muted-foreground">{treatment.treatmentNo}</p>
                     </div>
                     <Badge>{treatment.status}</Badge>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

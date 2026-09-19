@@ -48,6 +48,7 @@ import {
   formatDate,
   calculatePlanProgress,
 } from '@/lib/treatment-utils'
+import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface TreatmentPlanItem {
   id: string
@@ -100,6 +101,8 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const { id } = use(params)
   const router = useRouter()
   const [plan, setPlan] = useState<TreatmentPlan | null>(null)
+  // Named for the breadcrumb, and for the back arrow of anything opened from here.
+  const trail = useTrail(plan?.planNumber ?? null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
@@ -230,11 +233,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/treatments/plans">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{plan.planNumber}</h1>
@@ -286,7 +285,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
               </Button>
             </>
           )}
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-2" />
             Print
           </Button>

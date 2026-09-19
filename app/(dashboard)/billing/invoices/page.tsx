@@ -25,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
   Search,
@@ -83,6 +84,8 @@ interface PaginationInfo {
 }
 
 export default function InvoicesPage() {
+  // This screen's own crumb, so a record opened from it can offer the way back.
+  const trail = useTrail('Invoices')
   const router = useRouter()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -299,7 +302,7 @@ export default function InvoicesPage() {
                   return (
                     <ClickableRow
                       key={invoice.id}
-                      href={`/billing/invoices/${invoice.id}`}
+                      href={trail.to(`/billing/invoices/${invoice.id}`)}
                       label={`Open invoice ${invoice.invoiceNo}`}
                     >
                       <TableCell>

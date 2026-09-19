@@ -141,3 +141,109 @@ describe('clickable rows', () => {
     }
   })
 })
+
+/**
+ * Going back.
+ *
+ * Every back arrow in the dashboard was a hard-coded link to its own module's
+ * list page — not one used the history, and none of them could know that the
+ * reader had arrived from somewhere else. Opening a patient from an appointment
+ * and pressing back put you in the patient list.
+ *
+ * A grep again, because the defect is one line repeated across a dozen files
+ * that share nothing. See lib/trail.ts.
+ */
+describe('detail screens', () => {
+  /** The screens that open one record, and the list each falls back to. */
+  const DETAIL_SCREENS: Record<string, string> = {
+    'appointments/[id]/page.tsx': '/appointments',
+    'billing/invoices/[id]/page.tsx': '/billing/invoices',
+    'inventory/[id]/page.tsx': '/inventory',
+    'lab/orders/[id]/page.tsx': '/lab',
+    'patients/[id]/page.tsx': '/patients',
+    'prescriptions/[id]/page.tsx': '/prescriptions',
+    'staff/[id]/page.tsx': '/staff',
+    'treatments/[id]/page.tsx': '/treatments',
+    'treatments/plans/[id]/page.tsx': '/treatments/plans',
+  }
+
+  it('are all present — the list below is not stale', () => {
+    const names = new Set(ALL.map((f) => f.name))
+    const missing = Object.keys(DETAIL_SCREENS).filter((s) => !names.has(s))
+
+    expect(missing, 'these screens were renamed or removed').toEqual([])
+  })
+
+  it('offer a way back that knows where the reader came from', () => {
+    const without = Object.keys(DETAIL_SCREENS).filter(
+      (name) => !ALL.find((f) => f.name === name)!.source.includes('<BackLink')
+    )
+
+    expect(
+      without,
+      'use BackLink from components/ui/trail rather than a link to the module list'
+    ).toEqual([])
+  })
+
+  it('name the list they fall back to when the reader arrived directly', () => {
+    for (const [name, fallback] of Object.entries(DETAIL_SCREENS)) {
+      expect(ALL.find((f) => f.name === name)!.source).toContain(`fallback="${fallback}"`)
+    }
+  })
+
+  it('put themselves on the trail, so the next screen can come back here', () => {
+    const without = Object.keys(DETAIL_SCREENS).filter(
+      (name) => !ALL.find((f) => f.name === name)!.source.includes('useTrail(')
+    )
+
+    expect(without).toEqual([])
+  })
+})
+
+/**
+ * A link that leaves the record being read has to carry the trail, or the
+ * screen it opens has nothing to go back to. This checks the crossings the
+ * audit found — a patient reached from four different modules, and the records
+ * hanging off a treatment.
+ */
+describe('links between modules', () => {
+  const CROSSINGS: Array<[string, string]> = [
+    ['appointments/[id]/page.tsx', '/patients/'],
+    ['treatments/[id]/page.tsx', '/patients/'],
+    ['treatments/[id]/page.tsx', '/appointments/'],
+    ['billing/invoices/[id]/page.tsx', '/patients/'],
+    ['billing/invoices/[id]/page.tsx', '/treatments/'],
+    ['lab/orders/[id]/page.tsx', '/patients/'],
+    ['prescriptions/[id]/page.tsx', '/patients/'],
+    ['patients/[id]/page.tsx', '/appointments/'],
+    ['patients/[id]/page.tsx', '/treatments/'],
+    ['patients/[id]/page.tsx', '/billing/invoices/'],
+  ]
+
+  it('exist at all', () => {
+    const missing = CROSSINGS.filter(
+      ([name, target]) => !ALL.find((f) => f.name === name)!.source.includes(target)
+    )
+
+    expect(missing, 'a record named on the screen with no way to open it').toEqual([])
+  })
+
+  it('carry the trail', () => {
+    const bare = CROSSINGS.filter(([name, target]) => {
+      const source = ALL.find((f) => f.name === name)!.source
+      // Every mention of the destination has to sit inside a `trail.to(...)`.
+      // Looked for just behind each one rather than by an exact prefix, because
+      // some of these links are built by concatenation.
+      for (let at = source.indexOf(target); at !== -1; at = source.indexOf(target, at + 1)) {
+        const preceding = source.slice(Math.max(0, at - 80), at)
+        if (!preceding.includes('trail.to(')) return true
+      }
+      return false
+    })
+
+    expect(
+      bare.map(([name, target]) => `${name} -> ${target}`),
+      'use trail.to() so the screen it opens can come back'
+    ).toEqual([])
+  })
+})
