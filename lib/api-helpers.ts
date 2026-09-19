@@ -5,6 +5,7 @@ import { jwtVerify } from 'jose'
 import { auth } from './auth'
 import { prisma } from './prisma'
 import { holderCan, isReadOnlyPermission, type Permission } from './rbac'
+import { AUDIT_ACTIONS, recordAudit } from './audit'
 import {
   checkPatientEntitlement,
   checkStaffEntitlement,
@@ -111,6 +112,19 @@ export async function requirePermission(permission: Permission) {
   }
 
   if (!holderCan(user, permission)) {
+    // Recorded, not just refused. The permission asked for is the useful part:
+    // one receptionist opening the reports screen by accident looks nothing
+    // like a series of refusals across billing and staff administration, and
+    // only the log can tell those two apart afterwards.
+    void recordAudit({
+      hospitalId,
+      userId: user.id,
+      action: AUDIT_ACTIONS.ACCESS_DENIED,
+      entityType: 'Permission',
+      entityId: permission,
+      newValues: { permission, role: user.role },
+    })
+
     return {
       error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
       user: null,
@@ -175,6 +189,16 @@ export async function requireAllPermissions(permissions: Permission[]) {
   }
 
   if (!permissions.every((p) => holderCan(user, p))) {
+    const missing = permissions.filter((p) => !holderCan(user, p))
+    void recordAudit({
+      hospitalId,
+      userId: user.id,
+      action: AUDIT_ACTIONS.ACCESS_DENIED,
+      entityType: 'Permission',
+      entityId: missing.join(','),
+      newValues: { permission: missing.join(','), role: user.role },
+    })
+
     return {
       error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
       user: null,

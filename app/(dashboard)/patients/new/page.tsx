@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
-import { DuplicateDetector } from '@/components/ai/duplicate-detector'
+import { DuplicateDetector } from '@/components/patients/duplicate-detector'
 
 const BLOOD_GROUPS = [
   { value: 'A_POSITIVE', label: 'A+' },
@@ -396,6 +396,7 @@ export default function NewPatientPage() {
           phone={form.phone}
           email={form.email}
           dateOfBirth={form.dateOfBirth}
+          cnic={form.cnic}
           onSelect={(existingId) => router.push(`/patients/${existingId}`)}
         />
 

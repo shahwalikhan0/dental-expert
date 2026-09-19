@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { ChevronRight, Home } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { hopHref } from '@/lib/trail'
+import { routeExists } from '@/lib/routes'
 import { useTrailHops } from '@/components/ui/trail'
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -84,7 +85,8 @@ function isUUID(segment: string): boolean {
  * When the URL carries a trail (lib/trail.ts) the crumbs are the pages actually
  * walked, each named after its record. Without one — a shared link, a bookmark,
  * a page reached from the sidebar — it falls back to the path, which is still
- * the right answer for a list opened directly.
+ * the right answer for a list opened directly. A fallback crumb is only a link
+ * when there is a page at that path; see lib/routes.ts.
  */
 export function Breadcrumb({ className }: { className?: string }) {
   const pathname = usePathname()
@@ -99,7 +101,9 @@ export function Breadcrumb({ className }: { className?: string }) {
     ? 'Details'
     : ROUTE_LABELS[here] || here.charAt(0).toUpperCase() + here.slice(1).replace(/-/g, ' ')
 
-  const crumbs =
+  // `href: null` means "show it, do not link it" — a crumb can be a step in the
+  // URL without being a place you can go.
+  const crumbs: { label: string; href: string | null; isLast: boolean }[] =
     trail.length > 0
       ? [
           ...trail.map((hop, index) => ({
@@ -107,7 +111,7 @@ export function Breadcrumb({ className }: { className?: string }) {
             href: hopHref(trail, index),
             isLast: false,
           })),
-          { label: hereLabel, href: pathname, isLast: true },
+          { label: hereLabel, href: null, isLast: true },
         ]
       : segments.map((segment, index) => {
           const href = '/' + segments.slice(0, index + 1).join('/')
@@ -117,7 +121,11 @@ export function Breadcrumb({ className }: { className?: string }) {
             : ROUTE_LABELS[segment] ||
               segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
 
-          return { label, href, isLast }
+          // Not every path segment is a page. /billing/payments/<id> is a step
+          // in the URL of the refund screen and nothing more, so linking it
+          // would hand the reader a 404 from the one control they reach for
+          // when they are lost.
+          return { label, href: isLast || !routeExists(href) ? null : href, isLast }
         })
 
   return (
@@ -129,10 +137,15 @@ export function Breadcrumb({ className }: { className?: string }) {
         <Home className="h-3.5 w-3.5" />
       </Link>
       {crumbs.map((crumb, index) => (
-        <div key={`${index}-${crumb.href}`} className="flex items-center gap-1.5">
+        <div key={`${index}-${crumb.label}`} className="flex items-center gap-1.5">
           <ChevronRight className="h-3.5 w-3.5" />
-          {crumb.isLast ? (
-            <span className="font-medium text-foreground truncate max-w-[200px]">
+          {crumb.href === null ? (
+            <span
+              className={cn(
+                'truncate',
+                crumb.isLast ? 'font-medium text-foreground max-w-[200px]' : 'max-w-[150px]'
+              )}
+            >
               {crumb.label}
             </span>
           ) : (

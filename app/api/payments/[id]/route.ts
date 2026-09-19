@@ -35,6 +35,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
           },
         },
+        // What has already gone back, so a refund screen can show the running
+        // total rather than offering the full amount a second time.
+        refunds: {
+          select: {
+            id: true,
+            refundNo: true,
+            amount: true,
+            refundMethod: true,
+            reason: true,
+            refundedAt: true,
+            authorisedBy: { select: { id: true, name: true } },
+          },
+          orderBy: { refundedAt: 'desc' },
+        },
       },
     })
 
@@ -42,7 +56,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    return NextResponse.json(payment)
+    // The clinic's letterhead, for the receipt. Carried here rather than left to
+    // the receipt screen to fetch from /api/settings/clinic, which needs
+    // `settings:read` — a capability a cashier has no other reason to hold, and
+    // should not have to hold in order to hand somebody a receipt.
+    const clinic = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
+      select: { name: true, address: true, city: true, phone: true, email: true },
+    })
+
+    return NextResponse.json({ ...payment, clinic })
   } catch (error) {
     console.error('Error fetching payment:', error)
     return NextResponse.json({ error: 'Failed to fetch payment' }, { status: 500 })

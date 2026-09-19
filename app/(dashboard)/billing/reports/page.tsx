@@ -43,7 +43,7 @@ import { dateRangePresets, formatCurrency, formatDate } from '@/lib/billing-util
 interface OutstandingInvoice {
   id: string
   invoiceNo: string
-  invoiceDate: string
+  createdAt: string
   dueDate: string | null
   totalAmount: string | number
   balanceAmount: string | number
@@ -394,7 +394,7 @@ export default function FinancialReportsPage() {
                         <TableCell>
                           {invoice.patient.firstName} {invoice.patient.lastName}
                         </TableCell>
-                        <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
+                        <TableCell>{formatDate(invoice.createdAt)}</TableCell>
                         <TableCell>{invoice.dueDate ? formatDate(invoice.dueDate) : '-'}</TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(invoice.totalAmount)}

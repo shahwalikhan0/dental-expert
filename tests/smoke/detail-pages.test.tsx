@@ -108,7 +108,7 @@ const RESPONSES: Record<string, unknown> = {
     id: 'inv-1',
     invoiceNo: 'INV20260001',
     status: 'PENDING',
-    invoiceDate: '2026-09-01T00:00:00.000Z',
+    createdAt: '2026-09-01T00:00:00.000Z',
     dueDate: null,
     subtotal: 5000,
     taxAmount: 0,

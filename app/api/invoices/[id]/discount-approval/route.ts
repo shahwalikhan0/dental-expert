@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 /**
  * POST /api/invoices/[id]/discount-approval — the second half of FR-013.
@@ -86,6 +87,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         discountApprovedBy: { select: { id: true, name: true } },
         discountRequestedBy: { select: { id: true, name: true } },
       },
+    })
+
+    // The decision is on the invoice already. It goes here too because the
+    // audit screen is where somebody looks for "what was approved this month,
+    // and by whom" — a question the invoice cannot answer on its own.
+    await recordAudit({
+      hospitalId,
+      userId: user.id,
+      action:
+        body.decision === 'APPROVE'
+          ? AUDIT_ACTIONS.DISCOUNT_APPROVED
+          : AUDIT_ACTIONS.DISCOUNT_REJECTED,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      oldValues: { discountApprovalStatus: invoice.discountApprovalStatus },
+      newValues: {
+        invoiceNo: invoice.invoiceNo,
+        discountAmount: Number(invoice.discountAmount),
+        decision: body.decision,
+        note: body.note ?? null,
+        requestedById: invoice.discountRequestedById,
+      },
+      ...requestContext(req.headers),
     })
 
     return NextResponse.json({

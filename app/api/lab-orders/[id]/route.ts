@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
+import { normaliseWorkType } from '@/lib/lab-orders'
 import { prisma } from '@/lib/prisma'
 import { LabOrderStatus, QualityCheckStatus } from '@prisma/client'
 import { AUDIT_ACTIONS } from '@/lib/audit'
@@ -159,13 +160,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // See the same normalisation in the create route: the column is an enum.
+    const normalisedWorkType = normaliseWorkType(workType)
+    if (!normalisedWorkType) {
+      return NextResponse.json({ error: `"${workType}" is not a work type` }, { status: 400 })
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.labOrder.update({
         where: { id },
         data: {
           patient: { connect: { id: patientId } },
           labVendor: { connect: { id: labVendorId } },
-          workType,
+          workType: normalisedWorkType,
           description: description || null,
           toothNumbers: toothNumbers || null,
           shadeGuide: shadeGuide || null,

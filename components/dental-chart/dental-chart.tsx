@@ -42,6 +42,7 @@ interface DentalChartEntry {
   notes?: string
   diagnosedDate: string
   resolvedDate?: string
+  recordedBy?: { id: string; name: string } | null
 }
 
 interface DentalChartProps {
@@ -585,6 +586,14 @@ export function DentalChart({ patientId }: DentalChartProps) {
                         {entry.notes && (
                           <p className="text-xs text-muted-foreground mt-1">{entry.notes}</p>
                         )}
+                        {/* Findings charted before authorship was recorded have
+                            nobody to name; say so rather than leaving a blank
+                            that reads like the line was never there. */}
+                        <p className="text-xs text-muted-foreground mt-1 italic">
+                          {entry.recordedBy
+                            ? `Charted by ${entry.recordedBy.name}`
+                            : 'Author not recorded'}
+                        </p>
                       </div>
                     ))}
                   </div>

@@ -266,6 +266,7 @@ model User {
   cashierSessionsOpened   CashierSession[] @relation("CashierSessionsOpened")
   cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
   treatmentsSigned        Treatment[]          @relation("TreatmentsSigned")
+  chartEntriesRecorded    DentalChartEntry[]   @relation("ChartEntriesRecorded")
   treatmentAmendments     TreatmentAmendment[] @relation("TreatmentAmendments")
 
   @@unique([hospitalId, email])
@@ -677,13 +678,22 @@ model DentalChartEntry {
   diagnosedDate   DateTime       @default(now())
   resolvedDate    DateTime?
 
+  // Who charted this. A finding on a tooth is a clinical record, and UAT-04
+  // asks for the encounter to be saved "with author/date": the date was here
+  // from the start, the author was not recorded anywhere at all. Nullable
+  // because entries charted before this column existed have no author to name,
+  // and guessing one would be worse than admitting the gap.
+  recordedById    String?
+
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
+  recordedBy      User?          @relation("ChartEntriesRecorded", fields: [recordedById], references: [id])
 
   @@index([hospitalId, patientId, toothNumber])
+  @@index([recordedById])
 }
 
 enum ToothCondition {

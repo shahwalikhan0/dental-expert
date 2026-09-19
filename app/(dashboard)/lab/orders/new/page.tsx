@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { WORK_TYPES } from '@/lib/lab-orders'
 import { ArrowLeft, Search, User, FlaskConical, Save, Loader2 } from 'lucide-react'
 
 interface Patient {
@@ -34,21 +35,6 @@ interface LabVendor {
   specializations: string | null
   avgTurnaround: number | null
 }
-
-const WORK_TYPES = [
-  { value: 'crown', label: 'Crown' },
-  { value: 'bridge', label: 'Bridge' },
-  { value: 'denture', label: 'Denture' },
-  { value: 'partial_denture', label: 'Partial Denture' },
-  { value: 'implant_crown', label: 'Implant Crown' },
-  { value: 'veneer', label: 'Veneer' },
-  { value: 'inlay_onlay', label: 'Inlay/Onlay' },
-  { value: 'night_guard', label: 'Night Guard' },
-  { value: 'retainer', label: 'Retainer' },
-  { value: 'aligner', label: 'Aligner' },
-  { value: 'model', label: 'Model' },
-  { value: 'other', label: 'Other' },
-]
 
 export default function NewLabOrderPage() {
   const router = useRouter()

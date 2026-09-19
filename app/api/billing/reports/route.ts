@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { getDateRangeFromPreset } from '@/lib/billing-utils'
+import { collectionTotals, dayKeyOf } from '@/lib/collections'
+import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
+import { clinicTimezone } from '@/lib/appointment-time'
 
 // GET - Generate billing reports
 export async function GET(request: NextRequest) {
@@ -68,23 +71,15 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
     lte: endDate,
   }
 
-  const [invoiceSummary, paymentSummary, outstandingSummary] = await Promise.all([
+  const [invoiceSummary, collected, outstandingSummary] = await Promise.all([
     // Invoice summary
     prisma.invoice.aggregate({
       where: { hospitalId, createdAt: dateFilter },
       _sum: { totalAmount: true, discountAmount: true },
       _count: true,
     }),
-    // Payment summary
-    prisma.payment.aggregate({
-      where: {
-        hospitalId,
-        paymentDate: dateFilter,
-        status: 'COMPLETED',
-      },
-      _sum: { amount: true },
-      _count: true,
-    }),
+    // What was actually taken, net of anything handed back — see lib/collections.ts.
+    collectionTotals(hospitalId, dateFilter),
     // Outstanding summary
     prisma.invoice.aggregate({
       where: {
@@ -95,18 +90,6 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
       _count: true,
     }),
   ])
-
-  // Payment method breakdown
-  const paymentMethodBreakdown = await prisma.payment.groupBy({
-    by: ['paymentMethod'],
-    where: {
-      hospitalId,
-      paymentDate: dateFilter,
-      status: 'COMPLETED',
-    },
-    _sum: { amount: true },
-    _count: true,
-  })
 
   // Invoice status breakdown
   const invoiceStatusBreakdown = await prisma.invoice.groupBy({
@@ -122,16 +105,21 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
       totalBilled: invoiceSummary._sum.totalAmount || 0,
       totalDiscounts: invoiceSummary._sum.discountAmount || 0,
       invoiceCount: invoiceSummary._count,
-      totalCollected: paymentSummary._sum.amount || 0,
-      paymentCount: paymentSummary._count,
+      totalCollected: collected.net,
+      totalReceived: collected.received,
+      totalRefunded: collected.refunded,
+      paymentCount: collected.paymentCount,
+      refundCount: collected.refundCount,
       totalOutstanding: outstandingSummary._sum.balanceAmount || 0,
       outstandingInvoices: outstandingSummary._count,
     },
     breakdowns: {
-      byPaymentMethod: paymentMethodBreakdown.map((item) => ({
-        method: item.paymentMethod,
-        amount: item._sum.amount || 0,
-        count: item._count,
+      byPaymentMethod: collected.byMethod.map((row) => ({
+        method: row.method,
+        amount: row.net,
+        received: row.received,
+        refunded: row.refunded,
+        count: row.count,
       })),
       byInvoiceStatus: invoiceStatusBreakdown.map((item) => ({
         status: item.status,
@@ -229,7 +217,10 @@ async function getPaymentsReport(startDate: Date, endDate: Date, hospitalId: str
         gte: startDate,
         lte: endDate,
       },
-      status: 'COMPLETED',
+      // A payment that has been refunded in part or in full is still a payment
+      // that was taken. Filtering it out here is what made a refunded day read
+      // as a day with no takings at all.
+      status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
     },
     include: {
       invoice: {
@@ -248,35 +239,24 @@ async function getPaymentsReport(startDate: Date, endDate: Date, hospitalId: str
     orderBy: { paymentDate: 'desc' },
   })
 
-  // Group by payment method
-  const byMethod: Record<
-    string,
-    {
-      method: string
-      total: number
-      count: number
-    }
-  > = {}
-
-  payments.forEach((payment) => {
-    const method = payment.paymentMethod
-    if (!byMethod[method]) {
-      byMethod[method] = { method, total: 0, count: 0 }
-    }
-    byMethod[method].total += Number(payment.amount)
-    byMethod[method].count += 1
-  })
-
-  // Calculate totals
-  const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const collected = await collectionTotals(hospitalId, { gte: startDate, lte: endDate })
 
   return NextResponse.json({
     period: { startDate, endDate },
     payments,
-    byMethod: Object.values(byMethod),
+    byMethod: collected.byMethod.map((row) => ({
+      method: row.method,
+      total: row.net,
+      received: row.received,
+      refunded: row.refunded,
+      count: row.count,
+    })),
     totals: {
-      totalAmount,
-      totalCount: payments.length,
+      totalAmount: collected.net,
+      totalReceived: collected.received,
+      totalRefunded: collected.refunded,
+      totalCount: collected.paymentCount,
+      refundCount: collected.refundCount,
     },
   })
 }
@@ -556,106 +536,158 @@ async function getDoctorRevenueReport(startDate: Date, endDate: Date, hospitalId
 
 // Daily Collection Report
 async function getDailyCollectionReport(startDate: Date, endDate: Date, hospitalId: string) {
-  const payments = await prisma.payment.findMany({
-    where: {
-      hospitalId,
-      paymentDate: {
-        gte: startDate,
-        lte: endDate,
+  const timezone = await clinicTimezone(prisma, hospitalId)
+  const window = { gte: startDate, lte: endDate }
+
+  const [payments, refunds] = await Promise.all([
+    prisma.payment.findMany({
+      where: {
+        hospitalId,
+        paymentDate: window,
+        status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
       },
-      status: 'COMPLETED',
-    },
-    include: {
-      invoice: {
-        select: {
-          invoiceNo: true,
-          patient: {
-            select: {
-              patientId: true,
-              firstName: true,
-              lastName: true,
+      include: {
+        invoice: {
+          select: {
+            invoiceNo: true,
+            patient: {
+              select: { patientId: true, firstName: true, lastName: true },
             },
           },
         },
       },
-    },
-    orderBy: { paymentDate: 'asc' },
-  })
+      orderBy: { paymentDate: 'asc' },
+    }),
+    prisma.refund.findMany({
+      where: { hospitalId, refundedAt: window },
+      include: {
+        payment: {
+          select: {
+            paymentNo: true,
+            invoice: {
+              select: {
+                invoiceNo: true,
+                patient: {
+                  select: { patientId: true, firstName: true, lastName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { refundedAt: 'asc' },
+    }),
+  ])
 
-  // Group by date
-  const dailyCollection: Record<
-    string,
-    {
-      date: string
-      cash: number
-      card: number
-      bankTransfer: number
-      cheque: number
-      wallet: number
-      total: number
-      count: number
-      payments: any[]
+  interface Day {
+    date: string
+    cash: number
+    card: number
+    bankTransfer: number
+    cheque: number
+    wallet: number
+    online: number
+    received: number
+    refunded: number
+    total: number
+    count: number
+    payments: {
+      paymentNo: string
+      amount: number
+      method: string
+      invoiceNo: string
+      patient: string
+      refund?: boolean
+      reason?: string
+    }[]
+  }
+
+  const dailyCollection: Record<string, Day> = {}
+
+  // A day is the clinic's day, not the host's. Grouping on the UTC calendar put
+  // an evening payment in Karachi onto the following day's sheet, which is the
+  // sheet the cashier had already closed.
+  const dayOf = (at: Date): Day => {
+    const key = dayKeyOf(at, timezone)
+    dailyCollection[key] ??= {
+      date: key,
+      cash: 0,
+      card: 0,
+      bankTransfer: 0,
+      cheque: 0,
+      wallet: 0,
+      online: 0,
+      received: 0,
+      refunded: 0,
+      total: 0,
+      count: 0,
+      payments: [],
     }
-  > = {}
+    return dailyCollection[key]
+  }
 
-  payments.forEach((payment) => {
-    const dateKey = payment.paymentDate.toISOString().split('T')[0]
-    if (!dailyCollection[dateKey]) {
-      dailyCollection[dateKey] = {
-        date: dateKey,
-        cash: 0,
-        card: 0,
-        bankTransfer: 0,
-        cheque: 0,
-        wallet: 0,
-        total: 0,
-        count: 0,
-        payments: [],
-      }
-    }
+  const METHOD_COLUMN = {
+    CASH: 'cash',
+    CARD: 'card',
+    BANK_TRANSFER: 'bankTransfer',
+    CHEQUE: 'cheque',
+    WALLET: 'wallet',
+    ONLINE: 'online',
+  } as const
 
+  const patientName = (p: { firstName: string; lastName: string } | null | undefined) =>
+    p ? `${p.firstName} ${p.lastName}` : 'Unknown'
+
+  for (const payment of payments) {
+    const day = dayOf(payment.paymentDate)
     const amount = Number(payment.amount)
-    dailyCollection[dateKey].total += amount
-    dailyCollection[dateKey].count += 1
-
-    switch (payment.paymentMethod) {
-      case 'CASH':
-        dailyCollection[dateKey].cash += amount
-        break
-      case 'CARD':
-        dailyCollection[dateKey].card += amount
-        break
-      case 'BANK_TRANSFER':
-        dailyCollection[dateKey].bankTransfer += amount
-        break
-      case 'CHEQUE':
-        dailyCollection[dateKey].cheque += amount
-        break
-      case 'WALLET':
-        dailyCollection[dateKey].wallet += amount
-        break
-    }
-
-    dailyCollection[dateKey].payments.push({
+    const column = METHOD_COLUMN[payment.paymentMethod]
+    if (column) day[column] += amount
+    day.received += amount
+    day.total += amount
+    day.count += 1
+    day.payments.push({
       paymentNo: payment.paymentNo,
-      amount: payment.amount,
+      amount,
       method: payment.paymentMethod,
       invoiceNo: payment.invoice.invoiceNo,
-      patient: payment.invoice.patient
-        ? `${payment.invoice.patient.firstName} ${payment.invoice.patient.lastName}`
-        : 'Unknown',
+      patient: patientName(payment.invoice.patient),
     })
-  })
+  }
 
-  const totalCollection = Object.values(dailyCollection).reduce((sum, day) => sum + day.total, 0)
+  // Refunds land on the day the money left, under the method it left by, and
+  // reduce that method's column. Anything else and the sheet will not agree
+  // with the drawer.
+  for (const refund of refunds) {
+    const day = dayOf(refund.refundedAt)
+    const amount = Number(refund.amount)
+    const column = METHOD_COLUMN[refund.refundMethod]
+    if (column) day[column] -= amount
+    day.refunded += amount
+    day.total -= amount
+    day.payments.push({
+      paymentNo: refund.refundNo,
+      amount: -amount,
+      method: refund.refundMethod,
+      invoiceNo: refund.payment.invoice.invoiceNo,
+      patient: patientName(refund.payment.invoice.patient),
+      refund: true,
+      reason: refund.reason,
+    })
+  }
+
+  const days = Object.values(dailyCollection).sort((a, b) => a.date.localeCompare(b.date))
 
   return NextResponse.json({
     period: { startDate, endDate },
-    dailyData: Object.values(dailyCollection),
+    dailyData: days,
     totals: {
-      totalCollection,
+      totalCollection: days.reduce((sum, day) => sum + day.total, 0),
+      totalReceived: days.reduce((sum, day) => sum + day.received, 0),
+      totalRefunded: days.reduce((sum, day) => sum + day.refunded, 0),
       totalPayments: payments.length,
-      daysWithCollection: Object.keys(dailyCollection).length,
+      totalRefunds: refunds.length,
+      daysWithCollection: days.length,
     },
   })
 }

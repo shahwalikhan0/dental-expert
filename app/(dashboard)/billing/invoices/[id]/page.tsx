@@ -71,7 +71,9 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 interface Invoice {
   id: string
   invoiceNo: string
-  invoiceDate: string
+  // The Invoice model has no `invoiceDate`. Three screens read one anyway, so
+  // every invoice in the system rendered undated — including the printed copy.
+  createdAt: string
   dueDate: string | null
   subtotal: string | number
   discountType: string
@@ -328,7 +330,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <h1 className="text-3xl font-bold tracking-tight">{invoice.invoiceNo}</h1>
               {getStatusBadge(invoice.status)}
             </div>
-            <p className="text-muted-foreground">Created on {formatDate(invoice.invoiceDate)}</p>
+            <p className="text-muted-foreground">Created on {formatDate(invoice.createdAt)}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -524,7 +526,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     {invoice.payments.map((payment) => (
                       <TableRow key={payment.id}>
                         <TableCell>
-                          <div className="font-medium">{payment.paymentNo}</div>
+                          {/* The payment number opens its receipt — what the
+                              patient asks for when they say "can I have
+                              something showing I paid". */}
+                          <Link
+                            href={trail.to(`/billing/payments/${payment.id}/receipt`)}
+                            className="font-medium hover:underline print:no-underline"
+                          >
+                            {payment.paymentNo}
+                          </Link>
                           {payment.transactionId && (
                             <div className="text-sm text-muted-foreground">
                               TXN: {payment.transactionId}
@@ -589,7 +599,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Invoice Date</span>
-                <span>{formatDate(invoice.invoiceDate)}</span>
+                <span>{formatDate(invoice.createdAt)}</span>
               </div>
               {invoice.dueDate && (
                 <div className="flex items-center justify-between">

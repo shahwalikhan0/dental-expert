@@ -49,6 +49,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
 
 interface LabOrder {
   id: string
@@ -265,15 +266,7 @@ export default function LabWorkPage() {
     return <Badge className={config.className}>{config.label}</Badge>
   }
 
-  // workType is the LabWorkType enum (NIGHT_GUARD, ...), so lower-case the
-  // tail rather than leaving it shouting.
-  const formatWorkType = (workType: string) => {
-    return workType
-      .toLowerCase()
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-  }
+  const formatWorkType = workTypeLabel
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
@@ -456,18 +449,11 @@ export default function LabWorkPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Work Types</SelectItem>
-                <SelectItem value="CROWN">Crown</SelectItem>
-                <SelectItem value="BRIDGE">Bridge</SelectItem>
-                <SelectItem value="DENTURE">Denture</SelectItem>
-                <SelectItem value="PARTIAL_DENTURE">Partial Denture</SelectItem>
-                <SelectItem value="IMPLANT_CROWN">Implant Crown</SelectItem>
-                <SelectItem value="VENEER">Veneer</SelectItem>
-                <SelectItem value="INLAY_ONLAY">Inlay/Onlay</SelectItem>
-                <SelectItem value="NIGHT_GUARD">Night Guard</SelectItem>
-                <SelectItem value="RETAINER">Retainer</SelectItem>
-                <SelectItem value="ALIGNER">Aligner</SelectItem>
-                <SelectItem value="MODEL">Model</SelectItem>
-                <SelectItem value="OTHER">Other</SelectItem>
+                {WORK_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>

@@ -107,7 +107,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.startDate = body.startDate ? new Date(body.startDate) : null
     if (body.expectedEndDate !== undefined)
       updateData.expectedEndDate = body.expectedEndDate ? new Date(body.expectedEndDate) : null
-    if (body.consentGiven !== undefined) updateData.consentGiven = body.consentGiven
+    if (body.consentGiven !== undefined) {
+      updateData.consentGiven = body.consentGiven
+      // `consentDate` was a column nothing ever wrote. A plan could say the
+      // patient had consented without saying when, which is the one thing a
+      // consent record has to be able to answer. Withdrawing consent clears it
+      // rather than leaving the old date standing as if it still applied.
+      if (body.consentGiven && !existingPlan.consentGiven) {
+        updateData.consentDate = new Date()
+      } else if (!body.consentGiven) {
+        updateData.consentDate = null
+      }
+    }
 
     // Handle completion
     if (body.status === 'COMPLETED' && !existingPlan.completedDate) {
@@ -135,10 +146,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         const procedureMap = new Map(procedures.map((p) => [p.id, p]))
 
+        // Settle each line's price once, so the line and the total cannot
+        // disagree — see the same fix in the create route.
         body.items.forEach((item: any) => {
           const proc = procedureMap.get(item.procedureId)
           if (proc) {
-            estimatedCost += item.estimatedCost || Number(proc.basePrice)
+            item.estimatedCost = Number(item.estimatedCost ?? 0) || Number(proc.basePrice)
+            estimatedCost += item.estimatedCost
             estimatedDuration += proc.defaultDuration
           }
         })
@@ -154,7 +168,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           procedureId: item.procedureId,
           toothNumbers: item.toothNumbers || null,
           priority: item.priority || index + 1,
-          estimatedCost: item.estimatedCost || 0,
+          estimatedCost: item.estimatedCost ?? 0,
           notes: item.notes || null,
           status: item.status || 'PENDING',
         })),

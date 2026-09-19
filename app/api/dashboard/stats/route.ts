@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { subDays, subMonths } from 'date-fns'
 import { clinicTimezone, dayRangeIn, localDay, wallClockIn } from '@/lib/appointment-time'
+import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
 
 // Helper function to convert BigInt to Number in query results
 function convertBigIntToNumber(obj: any): any {
@@ -119,7 +120,7 @@ export async function GET(req: NextRequest) {
               gte: monthStart,
               lte: monthEnd,
             },
-            status: 'COMPLETED',
+            status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
           },
           _sum: {
             amount: true,
@@ -134,7 +135,7 @@ export async function GET(req: NextRequest) {
               gte: todayStart,
               lte: todayEnd,
             },
-            status: 'COMPLETED',
+            status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
           },
           _sum: {
             amount: true,
@@ -156,7 +157,7 @@ export async function GET(req: NextRequest) {
         prisma.payment.aggregate({
           where: {
             hospitalId,
-            status: 'COMPLETED',
+            status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
           },
           _sum: {
             amount: true,
@@ -164,28 +165,44 @@ export async function GET(req: NextRequest) {
         }),
 
         // Last 7 days revenue (daily breakdown)
+        // Takings less refunds, by day. A refund is dated by when the money
+        // went back, which is the day whose total it should reduce.
         prisma.$queryRaw`
-        SELECT
-          DATE("createdAt") as "date",
-          COALESCE(SUM(amount), 0)::numeric(10,2) as "revenue"
-        FROM "Payment"
-        WHERE "createdAt" >= ${last7DaysStart}
-        AND status = 'COMPLETED'
-        AND "hospitalId" = ${hospitalId}
-        GROUP BY DATE("createdAt")
+        SELECT "date", SUM("revenue")::numeric(10,2) AS "revenue" FROM (
+          SELECT DATE("createdAt") AS "date", SUM(amount) AS "revenue"
+          FROM "Payment"
+          WHERE "createdAt" >= ${last7DaysStart}
+            AND status IN ('COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED')
+            AND "hospitalId" = ${hospitalId}
+          GROUP BY DATE("createdAt")
+          UNION ALL
+          SELECT DATE("refundedAt") AS "date", -SUM(amount) AS "revenue"
+          FROM "Refund"
+          WHERE "refundedAt" >= ${last7DaysStart}
+            AND "hospitalId" = ${hospitalId}
+          GROUP BY DATE("refundedAt")
+        ) movements
+        GROUP BY "date"
         ORDER BY "date" ASC
       `,
 
         // Last 6 months revenue (monthly breakdown)
         prisma.$queryRaw`
-        SELECT
-          to_char("createdAt", 'YYYY-MM') as "month",
-          COALESCE(SUM(amount), 0)::numeric(10,2) as "revenue"
-        FROM "Payment"
-        WHERE "createdAt" >= ${last6MonthsStart}
-        AND status = 'COMPLETED'
-        AND "hospitalId" = ${hospitalId}
-        GROUP BY to_char("createdAt", 'YYYY-MM')
+        SELECT "month", SUM("revenue")::numeric(10,2) AS "revenue" FROM (
+          SELECT to_char("createdAt", 'YYYY-MM') AS "month", SUM(amount) AS "revenue"
+          FROM "Payment"
+          WHERE "createdAt" >= ${last6MonthsStart}
+            AND status IN ('COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED')
+            AND "hospitalId" = ${hospitalId}
+          GROUP BY to_char("createdAt", 'YYYY-MM')
+          UNION ALL
+          SELECT to_char("refundedAt", 'YYYY-MM') AS "month", -SUM(amount) AS "revenue"
+          FROM "Refund"
+          WHERE "refundedAt" >= ${last6MonthsStart}
+            AND "hospitalId" = ${hospitalId}
+          GROUP BY to_char("refundedAt", 'YYYY-MM')
+        ) movements
+        GROUP BY "month"
         ORDER BY "month" ASC
       `,
 
@@ -301,6 +318,28 @@ export async function GET(req: NextRequest) {
     const topProcedures = convertBigIntToNumber(rawTopProcedures)
     const lowStockItems = convertBigIntToNumber(rawLowStockItems)
 
+    // Refunds never came off any of these figures. A day on which the clinic
+    // took 5,000 and handed 2,000 back reported 5,000 — and once the refund
+    // moved the payment to PARTIALLY_REFUNDED, the status filter above dropped
+    // it entirely and the same day reported nothing. Both are fixed here: the
+    // filter counts settled payments, and what went back is taken off.
+    const [monthRefunds, todayRefunds, allRefunds] = await Promise.all([
+      prisma.refund.aggregate({
+        where: { hospitalId, refundedAt: { gte: monthStart, lte: monthEnd } },
+        _sum: { amount: true },
+      }),
+      prisma.refund.aggregate({
+        where: { hospitalId, refundedAt: { gte: todayStart, lte: todayEnd } },
+        _sum: { amount: true },
+      }),
+      prisma.refund.aggregate({ where: { hospitalId }, _sum: { amount: true } }),
+    ])
+
+    const netOf = (
+      received: { _sum: { amount: unknown } },
+      refunded: { _sum: { amount: unknown } }
+    ) => Number(received._sum.amount || 0) - Number(refunded._sum.amount || 0)
+
     // Calculate growth percentages
     const prevMonthStart = subMonths(monthStart, 1)
     const prevMonthEnd = subDays(monthStart, 1)
@@ -313,7 +352,7 @@ export async function GET(req: NextRequest) {
             gte: prevMonthStart,
             lte: prevMonthEnd,
           },
-          status: 'COMPLETED',
+          status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
         },
         _sum: {
           amount: true,
@@ -340,11 +379,15 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
-    const revenueGrowth = prevMonthRevenue._sum.amount
-      ? ((Number(thisMonthRevenue._sum.amount || 0) - Number(prevMonthRevenue._sum.amount)) /
-          Number(prevMonthRevenue._sum.amount)) *
-        100
-      : 0
+    const prevMonthRefunds = await prisma.refund.aggregate({
+      where: { hospitalId, refundedAt: { gte: prevMonthStart, lte: prevMonthEnd } },
+      _sum: { amount: true },
+    })
+
+    const thisMonthNet = netOf(thisMonthRevenue, monthRefunds)
+    const prevMonthNet = netOf(prevMonthRevenue, prevMonthRefunds)
+
+    const revenueGrowth = prevMonthNet ? ((thisMonthNet - prevMonthNet) / prevMonthNet) * 100 : 0
 
     const patientGrowth = prevMonthPatients
       ? ((newPatientsThisMonth - prevMonthPatients) / prevMonthPatients) * 100
@@ -365,11 +408,11 @@ export async function GET(req: NextRequest) {
         appointmentGrowth: parseFloat(appointmentGrowth.toFixed(1)),
         pendingAppointments,
         completedAppointmentsToday,
-        thisMonthRevenue: Number(thisMonthRevenue._sum.amount || 0),
-        todayRevenue: Number(todayRevenue._sum.amount || 0),
+        thisMonthRevenue: thisMonthNet,
+        todayRevenue: netOf(todayRevenue, todayRefunds),
         revenueGrowth: parseFloat(revenueGrowth.toFixed(1)),
         pendingPayments: Number(pendingPayments._sum.totalAmount || 0),
-        totalRevenue: Number(totalRevenue._sum.amount || 0),
+        totalRevenue: netOf(totalRevenue, allRefunds),
       },
       charts: {
         last7DaysRevenue,

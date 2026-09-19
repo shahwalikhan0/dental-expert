@@ -42,6 +42,25 @@ export const AUDIT_ACTIONS = {
   PURCHASE_ORDER_PLACED: 'purchase_order.placed',
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
 
+  /// Somebody signed in and then reached for something their role does not
+  /// carry. UAT-12 asks that the attempt be "handled correctly", and §10 asks
+  /// for an audit history: a refusal that leaves no trace tells nobody that
+  /// anyone tried. Recorded for the authenticated-but-forbidden case only —
+  /// an unauthenticated request has no user to attribute and no clinic to file
+  /// it under, and logging every one of those would be a denial-of-service
+  /// against the audit table itself.
+  ACCESS_DENIED: 'access.denied',
+
+  /// FR-013 — who let a discount through, and on what grounds. The decision is
+  /// kept on the invoice as well; this is what puts it in the one place an
+  /// auditor reads end to end.
+  DISCOUNT_APPROVED: 'invoice.discount.approved',
+  DISCOUNT_REJECTED: 'invoice.discount.rejected',
+
+  /// FR-014 — money leaving. The one financial movement that is not recoverable
+  /// from the invoice arithmetic alone.
+  REFUND_ISSUED: 'payment.refunded',
+
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
   SECURITY_UPDATED: 'settings.security.updated',

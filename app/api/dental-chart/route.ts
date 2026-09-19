@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
             lastName: true,
           },
         },
+        recordedBy: { select: { id: true, name: true } },
       },
       orderBy: [{ toothNumber: 'asc' }, { diagnosedDate: 'desc' }],
     })
@@ -173,6 +174,9 @@ export async function POST(request: NextRequest) {
         buccal: buccal || false,
         lingual: lingual || false,
         notes: notes || null,
+        // Who charted it. Without this a finding is an assertion about a
+        // patient's mouth that nobody is standing behind.
+        recordedById: session?.user?.id ?? null,
         diagnosedDate: new Date(),
       },
       include: {

@@ -207,15 +207,21 @@ const mockPrismaClient = {
   },
 
   // Refund
+  //
+  // The list/group/aggregate calls default to "no refunds" rather than
+  // undefined. Every financial report now subtracts refunds (lib/collections.ts),
+  // so a bare vi.fn() here makes a report throw on `.reduce` of undefined — a
+  // mock failure that reads exactly like a broken route.
   refund: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
-    findMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    count: vi.fn(),
-    groupBy: vi.fn(),
+    count: vi.fn().mockResolvedValue(0),
+    groupBy: vi.fn().mockResolvedValue([]),
+    aggregate: vi.fn().mockResolvedValue({ _sum: { amount: null }, _count: 0 }),
   },
 
   // CashierSession

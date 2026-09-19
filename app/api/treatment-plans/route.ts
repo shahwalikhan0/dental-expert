@@ -182,10 +182,17 @@ export async function POST(request: NextRequest) {
 
       const procedureMap = new Map(procedures.map((p) => [p.id, p]))
 
+      // The line's own price is settled here, once, and both the line and the
+      // plan total are built from it. They used to be worked out separately:
+      // the total fell back to the procedure's list price where no price was
+      // given, while the line was written as zero. A plan quoting two
+      // procedures at nothing and a total of 4,500 is not an estimate anyone
+      // can hand to a patient.
       items.forEach((item: any) => {
         const proc = procedureMap.get(item.procedureId)
         if (proc) {
-          estimatedCost += item.estimatedCost || Number(proc.basePrice)
+          item.estimatedCost = Number(item.estimatedCost ?? 0) || Number(proc.basePrice)
+          estimatedCost += item.estimatedCost
           estimatedDuration += proc.defaultDuration
         }
       })
@@ -210,7 +217,7 @@ export async function POST(request: NextRequest) {
             procedureId: item.procedureId,
             toothNumbers: item.toothNumbers || null,
             priority: item.priority || index + 1,
-            estimatedCost: item.estimatedCost || 0,
+            estimatedCost: item.estimatedCost ?? 0,
             notes: item.notes || null,
             status: 'PENDING',
           })),

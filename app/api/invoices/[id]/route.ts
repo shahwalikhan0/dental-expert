@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
 import { calculateInvoiceTotals } from '@/lib/billing-utils'
 import { DiscountType, InvoiceStatus } from '@prisma/client'
 
@@ -104,9 +105,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Cannot edit a paid or refunded invoice' }, { status: 400 })
     }
 
-    // Don't allow editing if there are completed payments
-    const completedPayments = existingInvoice.payments.filter((p) => p.status === 'COMPLETED')
-    if (completedPayments.length > 0 && body.items) {
+    // Don't allow editing items once money has been taken against the invoice.
+    // `COMPLETED` alone was not the right test: refunding part of a payment
+    // moves it to PARTIALLY_REFUNDED, which would have unlocked the line items
+    // of an invoice that had been paid and partly refunded — the one case where
+    // the figures most need to stay put.
+    const settledPayments = existingInvoice.payments.filter((p) =>
+      (SETTLED_PAYMENT_STATUSES as readonly string[]).includes(p.status)
+    )
+    if (settledPayments.length > 0 && body.items) {
       return NextResponse.json(
         { error: 'Cannot edit invoice items after payments have been made' },
         { status: 400 }

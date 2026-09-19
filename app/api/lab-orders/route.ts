@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
+import { normaliseWorkType } from '@/lib/lab-orders'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 
@@ -15,10 +16,20 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const search = searchParams.get('search') || ''
     const status = searchParams.get('status') || ''
-    const labVendorId = searchParams.get('vendor_id') || ''
-    const workType = searchParams.get('work_type') || ''
-    const dateFrom = searchParams.get('date_from') || ''
-    const dateTo = searchParams.get('date_to') || ''
+    // Both spellings. The lab screen sends `vendorId`, `workType` and
+    // `priority`; this route only ever read `vendor_id` and `work_type`, and
+    // never read a priority at all — so three of the five filters on that
+    // screen returned the unfiltered list and looked like there was simply
+    // nothing to narrow. Accepting both rather than renaming one side keeps
+    // any saved link working.
+    const param = (...names: string[]) =>
+      names.map((name) => searchParams.get(name)).find((value) => value) || ''
+
+    const labVendorId = param('vendorId', 'vendor_id')
+    const workType = param('workType', 'work_type')
+    const priority = param('priority')
+    const dateFrom = param('dateFrom', 'date_from')
+    const dateTo = param('dateTo', 'date_to')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
@@ -59,7 +70,15 @@ export async function GET(request: NextRequest) {
 
     // Add work type filter
     if (workType) {
-      where.workType = workType
+      // `workType` is an enum, so the value has to be the enum's own spelling;
+      // an unknown one would be a Prisma validation error rather than an empty
+      // result. Normalised here because the lab screen sends UPPER_SNAKE while
+      // the new-order screen sends lower case, and both mean the same thing.
+      where.workType = normaliseWorkType(workType)
+    }
+
+    if (priority) {
+      where.priority = priority
     }
 
     // Add date range filters
@@ -160,6 +179,15 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validation
+    // The column is an enum. Without this the form's lower-case value reached
+    // Prisma unchanged and the request failed with a 500 — which is why no lab
+    // case could be raised from the interface at all.
+    const normalisedWorkType = normaliseWorkType(workType)
+
+    if (workType && !normalisedWorkType) {
+      return NextResponse.json({ error: `"${workType}" is not a work type` }, { status: 400 })
+    }
+
     if (!patientId || !labVendorId || !workType || !orderDate || estimatedCost === undefined) {
       return NextResponse.json(
         {
@@ -212,7 +240,7 @@ export async function POST(request: NextRequest) {
         orderNumber,
         patientId,
         labVendorId,
-        workType,
+        workType: normalisedWorkType!,
         description: description || null,
         toothNumbers: toothNumbers || null,
         shadeGuide: shadeGuide || null,

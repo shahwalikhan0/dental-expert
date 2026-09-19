@@ -35,6 +35,7 @@ import {
   FileText,
   MoreHorizontal,
   Eye,
+  ReceiptText,
   RotateCcw,
   IndianRupee,
 } from 'lucide-react'
@@ -51,6 +52,9 @@ import {
   formatDate,
 } from '@/lib/billing-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
+
+/** Statuses that mean money was actually taken — see lib/cashier.ts. */
+const SETTLED = new Set(['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'])
 
 interface Payment {
   id: string
@@ -424,14 +428,29 @@ export default function PaymentsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => router.push(`/billing/invoices/${payment.invoice.id}`)}
+                            onClick={() =>
+                              router.push(trail.to(`/billing/invoices/${payment.invoice.id}`))
+                            }
                           >
                             <Eye className="h-4 w-4 mr-2" />
                             View Invoice
                           </DropdownMenuItem>
-                          {payment.status === 'COMPLETED' && (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              router.push(trail.to(`/billing/payments/${payment.id}/receipt`))
+                            }
+                          >
+                            <ReceiptText className="h-4 w-4 mr-2" />
+                            Receipt
+                          </DropdownMenuItem>
+                          {/* A payment refunded in part can be refunded again —
+                              gating on COMPLETED alone hid the action on
+                              exactly the payment most likely to need it. */}
+                          {SETTLED.has(payment.status) && payment.status !== 'REFUNDED' && (
                             <DropdownMenuItem
-                              onClick={() => router.push(`/billing/payments/${payment.id}/refund`)}
+                              onClick={() =>
+                                router.push(trail.to(`/billing/payments/${payment.id}/refund`))
+                              }
                             >
                               <RotateCcw className="h-4 w-4 mr-2" />
                               Process Refund

@@ -322,8 +322,12 @@ export default function PatientsPage() {
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          {/* Medical history lives on the overview of the
+                              patient's own record. This used to push at
+                              /patients/<id>/medical-history, a page that has
+                              never existed. */}
                           <DropdownMenuItem
-                            onClick={() => router.push(`/patients/${patient.id}/medical-history`)}
+                            onClick={() => router.push(trail.to(`/patients/${patient.id}`))}
                           >
                             <FileText className="h-4 w-4 mr-2" />
                             Medical History

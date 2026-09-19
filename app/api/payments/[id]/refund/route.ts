@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { PAYMENT_METHODS, generateRefundNo, getOpenSession, round2 } from '@/lib/cashier'
 import { z } from 'zod'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 /**
  * POST /api/payments/[id]/refund — FR-014.
@@ -138,6 +139,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       }),
     ])
+
+    // §10 asks for refunds in the audit history by name. The Refund row carries
+    // the detail; this is what makes it show up alongside every other change to
+    // the clinic's money in one chronological list.
+    await recordAudit({
+      hospitalId,
+      userId: user.id,
+      action: AUDIT_ACTIONS.REFUND_ISSUED,
+      entityType: 'Payment',
+      entityId: payment.id,
+      oldValues: { status: payment.status, refundedTotal: refundedTotal - refundAmount },
+      newValues: {
+        refundNo: refund.refundNo,
+        paymentNo: payment.paymentNo,
+        amount: refundAmount,
+        method: refund.refundMethod,
+        reason: body.refundReason,
+        invoiceId: payment.invoiceId,
+      },
+      ...requestContext(request.headers),
+    })
 
     return NextResponse.json(
       {
