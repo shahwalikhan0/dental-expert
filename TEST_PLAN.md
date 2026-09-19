@@ -912,8 +912,8 @@
 - [x] Set up GitHub Actions workflow (.github/workflows/ci.yml)
 - [x] Lint check on PR (lint-and-type-check job)
 - [x] Type check on PR (lint-and-type-check job)
-- [x] Unit tests on PR (unit-tests job with coverage upload)
-- [x] E2E tests on merge to main (e2e-tests job with PostgreSQL service)
+- [ ] Unit tests on PR — deliberately not run in CI; the pre-push hook runs the full Vitest suite locally before any push
+- [ ] E2E tests on merge to main — the nightly e2e workflow was removed; Playwright runs on demand with `npm run test:e2e`
 - [x] Production build verification (build job)
 - [ ] Auto-deploy to staging on merge (deployment config needed)
 - [ ] Auto-deploy to production on release tag (deployment config needed)
@@ -1008,10 +1008,10 @@
 
 ### 12.2 CI/CD Integration
 
-- [x] GitHub Actions — test workflow file (.github/workflows/ci.yml)
+- [ ] GitHub Actions — test workflow file; tests run locally (pre-push hook) rather than on GitHub
 - [x] Pre-commit hooks — husky pre-commit runs lint-staged (tsc --noEmit + next lint) (.husky/pre-commit, package.json lint-staged config) (tests/deployment/test-maintenance.test.ts — 4 tests)
 - [x] Pre-push hooks — husky pre-push runs npm test (.husky/pre-push) (tests/deployment/test-maintenance.test.ts — 2 tests)
-- [x] PR checks — all tests must pass before merge (ci.yml on PR)
+- [ ] PR checks — ci.yml gates types, lint, formatting and build; the test suites gate locally at pre-push
 - [x] Test result reporting — coverage artifact upload + Playwright HTML report
 
 ### 12.3 Test Coverage Targets

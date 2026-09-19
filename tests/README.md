@@ -116,14 +116,16 @@ Reports are generated in `coverage/` in text, JSON, and HTML formats.
 
 ## CI/CD Integration
 
-Tests run automatically via GitHub Actions (`.github/workflows/ci.yml`):
+The test suites run locally, not in GitHub Actions. The pre-push hook runs the whole
+Vitest suite before any push, so a failing suite never reaches the remote;
+Playwright is on demand (`npm run test:e2e`).
 
-| Job                   | Trigger       | What runs                                    |
-| --------------------- | ------------- | -------------------------------------------- |
-| `lint-and-type-check` | PR            | `next lint` + `tsc --noEmit`                 |
-| `unit-tests`          | PR            | `vitest run` with coverage upload            |
-| `e2e-tests`           | merge to main | Playwright with PostgreSQL service container |
-| `build`               | PR            | `next build` verification                    |
+`.github/workflows/ci.yml` runs only the checks that need no database:
+
+| Job                   | Trigger | What runs                                        |
+| --------------------- | ------- | ------------------------------------------------ |
+| `lint-and-type-check` | PR      | `tsc --noEmit`, `eslint .`, `prettier --check .` |
+| `build`               | PR      | `next build` verification                        |
 
 ### Git Hooks (Husky)
 

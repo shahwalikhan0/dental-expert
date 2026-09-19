@@ -199,12 +199,15 @@ describe('12.3 Test Coverage Targets — Configuration', () => {
     expect(config).toContain('.next')
   })
 
-  it('CI workflow uploads coverage artifacts', () => {
+  // Coverage is produced locally (`npm run test:coverage`), not in CI: the
+  // test suites deliberately have no job in .github/workflows/ci.yml, so there
+  // is no run there to collect it from.
+  it('CI workflow does not run the test suites', () => {
     const ciConfig = readFile('.github/workflows/ci.yml')
     if (ciConfig) {
-      expect(ciConfig).toMatch(/coverage|artifact/)
-    } else {
-      expect(true).toBe(true) // CI file not present locally
+      // A `run:` step, not a mention: the workflow's own comment explains
+      // where the suites do run, and naming them there is not running them.
+      expect(ciConfig).not.toMatch(/run: *(npx |npm run )?(vitest|playwright)/i)
     }
   })
 })
