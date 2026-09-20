@@ -17,6 +17,13 @@ declare module 'next-auth' {
      */
     isPlatformAdmin?: boolean
     image?: string | null
+    /**
+     * The clinic's session timeout, stamped onto the token at sign-in so that
+     * enforcing it costs no database read. See lib/security-settings.ts.
+     */
+    sessionTimeoutMinutes?: number
+    /** Password expired, or set by an administrator. Forces the change form. */
+    mustChangePassword?: boolean
   }
 
   interface Session {
@@ -30,6 +37,7 @@ declare module 'next-auth' {
       hospitalId: string
       isHospitalAdmin: boolean
       isPlatformAdmin?: boolean
+      mustChangePassword?: boolean
     }
   }
 }
@@ -42,5 +50,11 @@ declare module 'next-auth/jwt' {
     staffId?: string
     hospitalId: string
     isHospitalAdmin: boolean
+    isPlatformAdmin?: boolean
+    /** Minutes this session may last, from the clinic's security settings. */
+    sessionTimeoutMinutes?: number
+    /** When the session began, in epoch milliseconds. */
+    signedInAt?: number
+    mustChangePassword?: boolean
   }
 }

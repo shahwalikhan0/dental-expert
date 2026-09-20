@@ -8,13 +8,22 @@ import { Role } from '@prisma/client'
 import { sendVerificationEmail } from '@/lib/email-helpers'
 import { defaultTemplatesFor } from '@/lib/default-templates'
 import { defaultRecareTypesFor } from '@/lib/recare'
+import { validatePassword } from '@/lib/password-policy'
+import { DEFAULT_SECURITY, passwordPolicyOf } from '@/lib/security-settings'
 
 const signupSchema = z.object({
   hospitalName: z.string().min(2, 'Hospital name must be at least 2 characters'),
   adminName: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().min(10, 'Phone number must be at least 10 digits'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  /**
+   * Checked properly below, against the platform defaults.
+   *
+   * There is no clinic yet, so there is no clinic policy to read — this is the
+   * request that creates the clinic. The defaults are the floor every clinic
+   * starts on and may then tighten; see lib/security-settings.ts.
+   */
+  password: z.string().min(1, 'A password is required'),
 })
 
 export async function POST(request: Request) {
@@ -30,6 +39,9 @@ export async function POST(request: Request) {
     }
 
     const { hospitalName, adminName, email, phone, password } = validated.data
+
+    const weak = validatePassword(password, passwordPolicyOf(DEFAULT_SECURITY))
+    if (weak) return NextResponse.json({ error: weak }, { status: 400 })
 
     // A clinic signing up must not collide with an existing *clinic*. The
     // address is checked against Hospital, not User: a person may hold a staff
@@ -82,6 +94,7 @@ export async function POST(request: Request) {
           email,
           name: adminName,
           password: hashedPassword,
+          passwordChangedAt: new Date(),
           phone,
           role: Role.ADMIN,
           isActive: true,

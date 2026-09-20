@@ -6,6 +6,8 @@ import { parseOptionalCNIC } from '@/lib/cnic'
 import { ageInYears } from '@/lib/age'
 import { startDefaultRecare } from '@/lib/recare'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
+import { mayBeScoped, patientScopeFilter } from '@/lib/patient-scope'
+import { readSecuritySettings } from '@/lib/security-settings'
 
 /**
  * The columns the patient list can be sorted by.
@@ -25,9 +27,9 @@ const PATIENT_SORTS: SortMap = {
 
 // GET - List patients
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('patients:read')
+  const { error, hospitalId, user } = await requirePermission('patients:read')
 
-  if (error || !hospitalId) {
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -53,6 +55,30 @@ export async function GET(request: NextRequest) {
         { phone: { contains: search } },
         { email: { contains: search } },
       ]
+    }
+
+    /**
+     * "Own patients only", when the clinic has asked for it (§10).
+     *
+     * ANDed rather than merged into `where.OR`, which the search above already
+     * owns — putting both in one OR would widen the search to the whole
+     * register instead of narrowing the register to the search.
+     *
+     * The setting is read only for the roles it could apply to, so the front
+     * desk pays nothing for it.
+     */
+    if (mayBeScoped(user)) {
+      const { restrictToOwnPatients } = await readSecuritySettings(prisma, hospitalId)
+      const scope = patientScopeFilter(
+        {
+          userId: user.id,
+          staffId: user.staffId,
+          role: user.role,
+          clinicalRole: user.clinicalRole,
+        },
+        restrictToOwnPatients
+      )
+      if (scope) where.AND = [...(where.AND ?? []), scope]
     }
 
     const [patients, total] = await Promise.all([

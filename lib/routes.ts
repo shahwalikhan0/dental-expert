@@ -80,6 +80,7 @@ export const APP_ROUTES = [
   '/settings/procedures',
   '/settings/profile',
   '/settings/recare',
+  '/settings/password',
   '/settings/security',
   '/settings/setup-guide',
   '/settings/system',

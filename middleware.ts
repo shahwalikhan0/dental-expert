@@ -24,7 +24,22 @@ const publicRoutes = [
   '/invite/accept',
   '/portal',
   '/pay',
+  // The patient booking application. It is a separate application that happens
+  // to be served from the same deployment — no staff session, no clinic
+  // navigation, no shared layout. See app/(patient)/layout.tsx.
+  '/book',
 ]
+
+/**
+ * Where somebody whose password must change is sent, and the one page they may
+ * reach while it must.
+ *
+ * Also exempt from the capability check below: `/settings` requires
+ * `settings:read`, which Inventory / Store and Lab Technician do not hold, and
+ * a person who cannot open the page that changes their password cannot change
+ * their password.
+ */
+const CHANGE_PASSWORD_PATH = '/settings/password'
 
 export default auth((req) => {
   const { nextUrl, auth: session } = req
@@ -69,6 +84,25 @@ export default auth((req) => {
   if (pathname.startsWith('/onboarding') || pathname.startsWith('/api/')) {
     return NextResponse.next()
   }
+
+  /**
+   * An expired password, or one an administrator set, stops everything else.
+   *
+   * The person is signed in — turning them away at sign-in would leave them
+   * dependent on somebody else to get back in, and there is no self-service
+   * reset — but they reach nothing until the password is changed. The flag is
+   * on the token, so it is cleared by the change form calling `update()`;
+   * see lib/auth.config.ts.
+   *
+   * This gates pages only. The API is unaffected on purpose: the change-password
+   * request itself has to get through, and the pages are what the person is
+   * actually being stopped from using.
+   */
+  if (session.user.mustChangePassword && pathname !== CHANGE_PASSWORD_PATH) {
+    return NextResponse.redirect(new URL(CHANGE_PASSWORD_PATH, nextUrl))
+  }
+
+  if (pathname === CHANGE_PASSWORD_PATH) return NextResponse.next()
 
   // Check capability-based access. A user may hold a second clinical role, so
   // the check is against the union — see RoleHolder in lib/rbac.

@@ -4,6 +4,9 @@ import { requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
+import { validatePassword } from '@/lib/password-policy'
+import { passwordPolicyFor } from '@/lib/security-settings'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // GET - Get single staff member details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -140,6 +143,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    if (newPassword) {
+      const weak = validatePassword(newPassword, await passwordPolicyFor(prisma, hospitalId))
+      if (weak) return NextResponse.json({ error: weak }, { status: 400 })
+    }
+
     // Update in transaction
     const result = await prisma.$transaction(async (tx) => {
       // Update user if role or password changed
@@ -151,6 +159,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (isActive !== undefined) userUpdateData.isActive = isActive
         if (newPassword) {
           userUpdateData.password = await bcrypt.hash(newPassword, 10)
+          // A password an administrator chose is a password somebody else
+          // knows, so it is temporary by construction: the holder is sent to
+          // the change form at their next sign-in.
+          userUpdateData.passwordChangedAt = new Date()
+          userUpdateData.mustChangePassword = true
         }
         if (firstName || lastName) {
           userUpdateData.name = `${firstName || existingStaff.firstName} ${lastName || existingStaff.lastName}`
@@ -200,6 +213,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       return updatedStaff
     })
+
+    if (newPassword) {
+      // §10 asks for configuration and access changes to be auditable, and one
+      // person setting another person's password is both. The entry records
+      // that it happened and who did it; `recordAudit` redacts anything named
+      // like a password, so nothing about the password itself can reach it.
+      await recordAudit({
+        hospitalId,
+        userId: session?.user?.id,
+        action: AUDIT_ACTIONS.PASSWORD_CHANGED,
+        entityType: 'User',
+        entityId: existingStaff.userId,
+        newValues: { setBy: 'administrator', mustChangePassword: true },
+        ...requestContext(request.headers),
+      })
+    }
 
     return NextResponse.json(result)
   } catch (error) {

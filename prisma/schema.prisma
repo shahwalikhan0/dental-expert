@@ -237,6 +237,14 @@ model User {
   emailVerified   DateTime?
   image           String?
   mustChangePassword Boolean @default(false)
+  /// When the password was last set, for the expiry in Settings → Security.
+  ///
+  /// Backfilled to the moment the column was added rather than to `createdAt`.
+  /// The real date is not recoverable — nothing recorded it — and treating
+  /// every existing password as being as old as its account would have expired
+  /// a whole clinic at once, on deploy, for a policy that was off until that
+  /// same release. The clock starts when the policy became real.
+  passwordChangedAt DateTime?
 
   // Personal locale override, BCP 47. NULL means "inherit from the clinic" and
   // is deliberately NOT defaulted: a default would be indistinguishable from an

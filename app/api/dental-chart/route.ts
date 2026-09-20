@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { noteRecordAccess } from '@/lib/record-access'
+import { requestContext } from '@/lib/audit'
 
 // GET - Get dental chart entries for a patient
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('clinical:read')
+  const { error, hospitalId, user } = await requirePermission('clinical:read')
 
-  if (error || !hospitalId) {
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -29,6 +31,18 @@ export async function GET(request: NextRequest) {
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
+
+    // Reading somebody's chart is the access §4 withholds from the front desk
+    // and §10 asks to be recorded.
+    void noteRecordAccess({
+      db: prisma,
+      hospitalId,
+      userId: user.id,
+      patientId: patient.id,
+      kind: 'clinical',
+      via: 'chart',
+      ...requestContext(request.headers),
+    })
 
     // Build where clause
     const where: any = {

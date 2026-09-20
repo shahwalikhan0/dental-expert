@@ -28,6 +28,7 @@ import { useToast } from '@/hooks/use-toast'
 import { downloadCSV } from '@/lib/export-utils'
 import { TablePageSkeleton } from '@/components/ui/page-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { AUDIT_GROUPS, auditLabel, auditTone } from '@/lib/audit-labels'
 
 interface AuditEntry {
   id: string
@@ -40,14 +41,13 @@ interface AuditEntry {
   user: { name: string; email: string; role: string } | null
 }
 
-const ACTION_COLORS: Record<string, string> = {
-  CREATE: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  UPDATE: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  DELETE: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  LOGIN: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  LOGOUT: 'bg-muted text-muted-foreground',
-  VIEW: 'bg-muted text-muted-foreground',
-}
+/**
+ * The badge colour and wording come from lib/audit-labels.ts.
+ *
+ * They used to be a map of CREATE / UPDATE / DELETE / LOGIN — four values this
+ * application has never written — so every badge fell through to the default
+ * and the filter beside them returned nothing at all.
+ */
 
 const ENTITY_ICONS: Record<string, typeof Activity> = {
   User: UserCog,
@@ -97,7 +97,7 @@ export default function AuditLogPage() {
         Date: format(new Date(l.createdAt), 'yyyy-MM-dd HH:mm:ss'),
         User: l.user?.name || 'System',
         Role: l.user?.role || '-',
-        Action: l.action,
+        Action: auditLabel(l.action),
         Entity: l.entityType,
         'Entity ID': l.entityId || '-',
         Details: l.details || '-',
@@ -148,11 +148,12 @@ export default function AuditLogPage() {
             <SelectValue placeholder="Action" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Actions</SelectItem>
-            <SelectItem value="CREATE">Create</SelectItem>
-            <SelectItem value="UPDATE">Update</SelectItem>
-            <SelectItem value="DELETE">Delete</SelectItem>
-            <SelectItem value="LOGIN">Login</SelectItem>
+            <SelectItem value="all">Everything</SelectItem>
+            {AUDIT_GROUPS.map((group) => (
+              <SelectItem key={group.key} value={group.actions.join(',')}>
+                {group.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select
@@ -200,11 +201,8 @@ export default function AuditLogPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{log.user?.name || 'System'}</span>
-                        <Badge
-                          variant="outline"
-                          className={ACTION_COLORS[log.action] || 'bg-muted text-muted-foreground'}
-                        >
-                          {log.action}
+                        <Badge variant="outline" className={auditTone(log.action)}>
+                          {auditLabel(log.action)}
                         </Badge>
                         <Badge variant="outline">{log.entityType}</Badge>
                       </div>

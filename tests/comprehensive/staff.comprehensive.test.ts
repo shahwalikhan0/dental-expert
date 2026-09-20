@@ -37,6 +37,11 @@ vi.mock('@/lib/prisma', () => ({
     hospital: {
       findUnique: vi.fn(),
     },
+    // Security settings: none stored, so the clinic gets the documented
+    // defaults — which is what the password policy is checked against.
+    setting: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     $transaction: vi.fn(),
   },
 }))
@@ -361,14 +366,14 @@ describe('Staff API - Comprehensive Tests', () => {
           email: 'jane@example.com',
           phone: '9876543210',
           role: 'DOCTOR',
-          password: 'PlainTextPassword',
+          password: 'PlainText123!',
         }),
       })
       await POST(request)
 
       // bcrypt.hash should have been called
       const bcrypt = await import('bcryptjs')
-      expect(bcrypt.default.hash).toHaveBeenCalledWith('PlainTextPassword', 10)
+      expect(bcrypt.default.hash).toHaveBeenCalledWith('PlainText123!', 10)
     })
 
     it('should generate unique employee ID', async () => {

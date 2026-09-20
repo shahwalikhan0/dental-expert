@@ -56,6 +56,10 @@ describe('GET /api/patients/[id]/timeline', () => {
     mockAuth.requireAuthAndRole.mockResolvedValue({
       error: null,
       hospitalId: 'hospital-1',
+      // `requirePermission` hands back the user as well as the session, and
+      // the route needs it: reading a patient's history is recorded against
+      // whoever read it (lib/record-access.ts).
+      user: { id: 'user-1', role: 'DOCTOR', staffId: 'staff-1' },
       session: { user: { id: 'user-1', role: 'DOCTOR' } },
     })
   })

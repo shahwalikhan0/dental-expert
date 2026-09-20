@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { ALL_SITES, summarise, validDepth, validRecession, validTooth } from '@/lib/perio'
+import { noteRecordAccess } from '@/lib/record-access'
+import { requestContext } from '@/lib/audit'
 
 /** GET — a patient's perio exams, newest first. */
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('clinical:read')
-  if (error || !hospitalId) {
+  const { error, hospitalId, user } = await requirePermission('clinical:read')
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -25,6 +27,16 @@ export async function GET(request: NextRequest) {
         measurements: true,
         toothFindings: true,
       },
+    })
+
+    void noteRecordAccess({
+      db: prisma,
+      hospitalId,
+      userId: user.id,
+      patientId,
+      kind: 'clinical',
+      via: 'perio',
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json({

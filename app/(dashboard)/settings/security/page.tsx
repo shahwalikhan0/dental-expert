@@ -7,91 +7,65 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { Shield, Lock, Clock, UserX, AlertTriangle } from 'lucide-react'
+import { Shield, Lock, Clock, UserX, AlertTriangle, Users } from 'lucide-react'
 import { AuditMonitor } from '@/components/ai/audit-monitor'
 import { useToast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
+import { DEFAULT_SECURITY, type SecuritySettings } from '@/lib/security-settings'
+import { MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
 
+/**
+ * Settings → Security.
+ *
+ * Every control on this page is now read by something. That was not true of a
+ * single one of them before — the page collected twelve settings and the
+ * application consulted none, so a clinic could require two-factor
+ * authentication, watch it save, and be protected by a password with no
+ * minimum length and unlimited guesses at it.
+ *
+ * Two changes follow from making them real:
+ *
+ *  - **Two-factor authentication is gone**, rather than implemented. The switch
+ *    was the only part of it that existed; enrolment, a stored secret, recovery
+ *    codes and a second step at sign-in are the feature, and a switch on its
+ *    own is the same false statement in a smaller font.
+ *  - **The defaults shown here are the defaults enforced.** They are read from
+ *    the server rather than invented by this component, which is how the page
+ *    came to display a sixty-minute session timeout for an application that
+ *    issued eight-hour ones.
+ */
 export default function SecuritySettingsPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [settings, setSettings] = useState<SecuritySettings>(DEFAULT_SECURITY)
 
-  // Password Policy
-  const [passwordMinLength, setPasswordMinLength] = useState(8)
-  const [passwordRequireUppercase, setPasswordRequireUppercase] = useState(true)
-  const [passwordRequireLowercase, setPasswordRequireLowercase] = useState(true)
-  const [passwordRequireNumbers, setPasswordRequireNumbers] = useState(true)
-  const [passwordRequireSpecialChars, setPasswordRequireSpecialChars] = useState(true)
-  const [passwordExpiryDays, setPasswordExpiryDays] = useState(90)
-
-  // Session Management
-  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(60)
-
-  // Login Security
-  const [maxLoginAttempts, setMaxLoginAttempts] = useState(5)
-  const [lockoutDurationMinutes, setLockoutDurationMinutes] = useState(30)
-
-  // Two-Factor Authentication
-  const [requireTwoFactor, setRequireTwoFactor] = useState(false)
-
-  // IP Management
-  const [allowedIPs, setAllowedIPs] = useState('')
-  const [blockedIPs, setBlockedIPs] = useState('')
+  const set = <K extends keyof SecuritySettings>(key: K, value: SecuritySettings[K]) =>
+    setSettings((current) => ({ ...current, [key]: value }))
 
   useEffect(() => {
-    loadSettings()
-  }, [])
+    const load = async () => {
+      try {
+        const response = await fetch('/api/settings/security')
+        if (!response.ok) throw new Error('Failed to load settings')
 
-  const loadSettings = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/settings/security')
-
-      if (!response.ok) throw new Error('Failed to load settings')
-
-      const data = await response.json()
-      const settings = data.data || {}
-
-      // Load password policy settings
-      if (settings.passwordMinLength !== undefined) setPasswordMinLength(settings.passwordMinLength)
-      if (settings.passwordRequireUppercase !== undefined)
-        setPasswordRequireUppercase(settings.passwordRequireUppercase)
-      if (settings.passwordRequireLowercase !== undefined)
-        setPasswordRequireLowercase(settings.passwordRequireLowercase)
-      if (settings.passwordRequireNumbers !== undefined)
-        setPasswordRequireNumbers(settings.passwordRequireNumbers)
-      if (settings.passwordRequireSpecialChars !== undefined)
-        setPasswordRequireSpecialChars(settings.passwordRequireSpecialChars)
-      if (settings.passwordExpiryDays !== undefined)
-        setPasswordExpiryDays(settings.passwordExpiryDays)
-
-      // Load session settings
-      if (settings.sessionTimeoutMinutes !== undefined)
-        setSessionTimeoutMinutes(settings.sessionTimeoutMinutes)
-
-      // Load login security settings
-      if (settings.maxLoginAttempts !== undefined) setMaxLoginAttempts(settings.maxLoginAttempts)
-      if (settings.lockoutDurationMinutes !== undefined)
-        setLockoutDurationMinutes(settings.lockoutDurationMinutes)
-
-      // Load 2FA settings
-      if (settings.requireTwoFactor !== undefined) setRequireTwoFactor(settings.requireTwoFactor)
-
-      // Load IP management settings
-      if (settings.allowedIPs !== undefined) setAllowedIPs(settings.allowedIPs)
-      if (settings.blockedIPs !== undefined) setBlockedIPs(settings.blockedIPs)
-    } catch (error) {
-      console.error('Error loading settings:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load security settings',
-        variant: 'destructive',
-      })
-    } finally {
-      setLoading(false)
+        const data = await response.json()
+        // The server returns stored values merged over the defaults, so
+        // whatever comes back is the whole truth about what is in force.
+        if (data?.data) setSettings(data.data as SecuritySettings)
+      } catch {
+        toast({
+          title: 'Could not load',
+          description: 'Security settings could not be loaded.',
+          variant: 'destructive',
+        })
+      } finally {
+        setLoading(false)
+      }
     }
-  }
+
+    load()
+  }, [toast])
 
   const handleSaveSettings = async () => {
     setSaving(true)
@@ -99,32 +73,26 @@ export default function SecuritySettingsPage() {
       const response = await fetch('/api/settings/security', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          passwordMinLength,
-          passwordRequireUppercase,
-          passwordRequireLowercase,
-          passwordRequireNumbers,
-          passwordRequireSpecialChars,
-          passwordExpiryDays,
-          sessionTimeoutMinutes,
-          maxLoginAttempts,
-          lockoutDurationMinutes,
-          requireTwoFactor,
-          allowedIPs,
-          blockedIPs,
-        }),
+        body: JSON.stringify(settings),
       })
 
-      if (!response.ok) throw new Error('Failed to save settings')
+      const data = await response.json().catch(() => ({}))
 
+      if (!response.ok) {
+        toast({
+          title: 'Not saved',
+          description: data.error || 'Security settings were not saved.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      if (data?.data) setSettings(data.data as SecuritySettings)
+      toast({ title: 'Saved', description: 'Security settings are in force now.' })
+    } catch {
       toast({
-        title: 'Success',
-        description: 'Security settings saved successfully',
-      })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save security settings',
+        title: 'Not saved',
+        description: 'Security settings were not saved.',
         variant: 'destructive',
       })
     } finally {
@@ -136,11 +104,11 @@ export default function SecuritySettingsPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">Security Settings</h1>
-          <p className="text-muted-foreground">Configure security policies and access controls</p>
+          <h1 className="text-3xl font-bold">Security</h1>
+          <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
         </div>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Loading settings...</p>
+        <div className="flex h-64 items-center justify-center">
+          <p className="text-muted-foreground">Loading settings…</p>
         </div>
       </div>
     )
@@ -149,88 +117,94 @@ export default function SecuritySettingsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Shield className="w-8 h-8" />
-          Security Settings
+        <h1 className="flex items-center gap-2 text-3xl font-bold">
+          <Shield className="h-8 w-8" />
+          Security
         </h1>
-        <p className="text-muted-foreground">Configure security policies and access controls</p>
+        <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
       </div>
 
       <div className="space-y-6">
-        {/* Password Policy */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Lock className="w-5 h-5" />
-              Password Policy
+              <Lock className="h-5 w-5" />
+              Password policy
             </CardTitle>
-            <CardDescription>Configure password requirements for all users</CardDescription>
+            <CardDescription>
+              Checked wherever a password is set — signing up, accepting an invitation, creating a
+              staff account, and changing your own.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Minimum Password Length</Label>
+              <Label htmlFor="passwordMinLength">Minimum length</Label>
               <Input
+                id="passwordMinLength"
                 type="number"
-                value={passwordMinLength}
-                onChange={(e) => setPasswordMinLength(parseInt(e.target.value) || 8)}
-                min="6"
-                max="32"
+                value={settings.passwordMinLength}
+                onChange={(e) =>
+                  set('passwordMinLength', parseInt(e.target.value) || MINIMUM_PASSWORD_LENGTH)
+                }
+                min={MINIMUM_PASSWORD_LENGTH}
+                max={64}
               />
-              <p className="text-sm text-muted-foreground">
-                Minimum: 6 characters, Maximum: 32 characters
+              <p className="text-muted-foreground text-sm">
+                {MINIMUM_PASSWORD_LENGTH} characters is the lowest this can be set to. These
+                accounts open medical records.
               </p>
             </div>
 
             <Separator />
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label>Require Uppercase Letters</Label>
-                  <p className="text-sm text-muted-foreground">
-                    At least one uppercase letter (A-Z)
-                  </p>
+                  <Label htmlFor="requireUppercase">Require a capital letter</Label>
+                  <p className="text-muted-foreground text-sm">At least one A–Z</p>
                 </div>
                 <Switch
-                  checked={passwordRequireUppercase}
-                  onCheckedChange={setPasswordRequireUppercase}
+                  id="requireUppercase"
+                  checked={settings.passwordRequireUppercase}
+                  onCheckedChange={(v) => set('passwordRequireUppercase', v)}
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label>Require Lowercase Letters</Label>
-                  <p className="text-sm text-muted-foreground">
-                    At least one lowercase letter (a-z)
-                  </p>
+                  <Label htmlFor="requireLowercase">Require a small letter</Label>
+                  <p className="text-muted-foreground text-sm">At least one a–z</p>
                 </div>
                 <Switch
-                  checked={passwordRequireLowercase}
-                  onCheckedChange={setPasswordRequireLowercase}
+                  id="requireLowercase"
+                  checked={settings.passwordRequireLowercase}
+                  onCheckedChange={(v) => set('passwordRequireLowercase', v)}
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label>Require Numbers</Label>
-                  <p className="text-sm text-muted-foreground">At least one number (0-9)</p>
+                  <Label htmlFor="requireNumbers">Require a number</Label>
+                  <p className="text-muted-foreground text-sm">At least one 0–9</p>
                 </div>
                 <Switch
-                  checked={passwordRequireNumbers}
-                  onCheckedChange={setPasswordRequireNumbers}
+                  id="requireNumbers"
+                  checked={settings.passwordRequireNumbers}
+                  onCheckedChange={(v) => set('passwordRequireNumbers', v)}
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label>Require Special Characters</Label>
-                  <p className="text-sm text-muted-foreground">
-                    At least one special character (!@#$%)
+                  <Label htmlFor="requireSpecial">Require a symbol</Label>
+                  <p className="text-muted-foreground text-sm">
+                    Anything that is not a letter, a number or a space
                   </p>
                 </div>
                 <Switch
-                  checked={passwordRequireSpecialChars}
-                  onCheckedChange={setPasswordRequireSpecialChars}
+                  id="requireSpecial"
+                  checked={settings.passwordRequireSpecialChars}
+                  onCheckedChange={(v) => set('passwordRequireSpecialChars', v)}
                 />
               </div>
             </div>
@@ -238,173 +212,203 @@ export default function SecuritySettingsPage() {
             <Separator />
 
             <div className="space-y-2">
-              <Label>Password Expiry (days)</Label>
+              <Label htmlFor="passwordExpiryDays">Expire passwords after (days)</Label>
               <Input
+                id="passwordExpiryDays"
                 type="number"
-                value={passwordExpiryDays}
-                onChange={(e) => setPasswordExpiryDays(parseInt(e.target.value) || 90)}
-                min="0"
-                max="365"
+                value={settings.passwordExpiryDays}
+                onChange={(e) => set('passwordExpiryDays', parseInt(e.target.value) || 0)}
+                min={0}
+                max={365}
               />
-              <p className="text-sm text-muted-foreground">Set to 0 to disable password expiry</p>
+              <p className="text-muted-foreground text-sm">
+                0 — the default — never expires. Someone whose password has expired is signed in and
+                sent straight to the change-password form, not turned away. Scheduled rotation is
+                offered because auditors ask for it; it is not recommended, and NIST withdrew the
+                advice in 2017.
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Session Management */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Session Management
+              <Clock className="h-5 w-5" />
+              Sessions
             </CardTitle>
-            <CardDescription>Configure user session timeout and security</CardDescription>
+            <CardDescription>How long a sign-in lasts</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Session Timeout (minutes)</Label>
+              <Label htmlFor="sessionTimeoutMinutes">Sign-in lasts (minutes)</Label>
               <Input
+                id="sessionTimeoutMinutes"
                 type="number"
-                value={sessionTimeoutMinutes}
-                onChange={(e) => setSessionTimeoutMinutes(parseInt(e.target.value) || 60)}
-                min="5"
-                max="1440"
+                value={settings.sessionTimeoutMinutes}
+                onChange={(e) => set('sessionTimeoutMinutes', parseInt(e.target.value) || 480)}
+                min={5}
+                max={1440}
               />
-              <p className="text-sm text-muted-foreground">
-                Users will be logged out after this period of inactivity
+              <p className="text-muted-foreground text-sm">
+                Measured from signing in, not from the last click — a session ends at this age
+                whether or not anybody was using it. The default is 480 (eight hours), a working
+                day. A change applies to sessions started after it is saved.
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Login Security */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <UserX className="w-5 h-5" />
-              Login Security
+              <UserX className="h-5 w-5" />
+              Wrong passwords
             </CardTitle>
-            <CardDescription>Protect against brute force attacks</CardDescription>
+            <CardDescription>Locking an account after repeated failures</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Maximum Login Attempts</Label>
+                <Label htmlFor="maxLoginAttempts">Attempts allowed</Label>
                 <Input
+                  id="maxLoginAttempts"
                   type="number"
-                  value={maxLoginAttempts}
-                  onChange={(e) => setMaxLoginAttempts(parseInt(e.target.value) || 5)}
-                  min="1"
-                  max="10"
+                  value={settings.maxLoginAttempts}
+                  onChange={(e) => set('maxLoginAttempts', parseInt(e.target.value) || 5)}
+                  min={1}
+                  max={20}
                 />
-                <p className="text-sm text-muted-foreground">
-                  Account will be locked after this many failed attempts
+                <p className="text-muted-foreground text-sm">
+                  Counted since the last successful sign-in, so getting it right clears the count.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label>Lockout Duration (minutes)</Label>
+                <Label htmlFor="lockoutDurationMinutes">Locked for (minutes)</Label>
                 <Input
+                  id="lockoutDurationMinutes"
                   type="number"
-                  value={lockoutDurationMinutes}
-                  onChange={(e) => setLockoutDurationMinutes(parseInt(e.target.value) || 30)}
-                  min="1"
-                  max="1440"
+                  value={settings.lockoutDurationMinutes}
+                  onChange={(e) => set('lockoutDurationMinutes', parseInt(e.target.value) || 30)}
+                  min={1}
+                  max={1440}
                 />
-                <p className="text-sm text-muted-foreground">How long the account remains locked</p>
+                <p className="text-muted-foreground text-sm">
+                  The lock lifts by itself. Trying again while locked does not extend it.
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Two-Factor Authentication */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5" />
-              Two-Factor Authentication
+              <Users className="h-5 w-5" />
+              Who sees which patients
             </CardTitle>
-            <CardDescription>Add an extra layer of security to user accounts</CardDescription>
+            <CardDescription>
+              Narrowing the register to the people a clinician treats
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <Label>Require Two-Factor Authentication</Label>
-                <p className="text-sm text-muted-foreground">
-                  Force all users to enable 2FA for their accounts
+                <Label htmlFor="restrictToOwnPatients">
+                  Clinicians see only their own patients
+                </Label>
+                <p className="text-muted-foreground text-sm">
+                  A dentist or assistant sees the patients they have an appointment with, have
+                  treated, or have charted — and nobody else. The front desk, management, accounts
+                  and administrators keep the whole register, because booking, billing and oversight
+                  cannot be done on a partial one. Off by default.
                 </p>
               </div>
-              <Switch checked={requireTwoFactor} onCheckedChange={setRequireTwoFactor} />
+              <Switch
+                id="restrictToOwnPatients"
+                checked={settings.restrictToOwnPatients}
+                onCheckedChange={(v) => set('restrictToOwnPatients', v)}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* IP Management */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              IP Address Management
+              <AlertTriangle className="h-5 w-5" />
+              Where staff may sign in from
             </CardTitle>
-            <CardDescription>Control access based on IP addresses (optional)</CardDescription>
+            <CardDescription>Optional. One address or CIDR range per line.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Allowed IP Addresses</Label>
+              <Label htmlFor="allowedIPs">Allowed addresses</Label>
               <Textarea
-                value={allowedIPs}
-                onChange={(e) => setAllowedIPs(e.target.value)}
+                id="allowedIPs"
+                value={settings.allowedIPs}
+                onChange={(e) => set('allowedIPs', e.target.value)}
                 placeholder="192.168.1.100&#10;10.0.0.0/24"
                 rows={4}
               />
-              <p className="text-sm text-muted-foreground">
-                Enter one IP address or CIDR range per line. Leave empty to allow all IPs.
+              <p className="text-muted-foreground text-sm">
+                Empty means anywhere. Filling this in refuses everywhere else, so check your own
+                address before you save it.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Blocked IP Addresses</Label>
+              <Label htmlFor="blockedIPs">Blocked addresses</Label>
               <Textarea
-                value={blockedIPs}
-                onChange={(e) => setBlockedIPs(e.target.value)}
+                id="blockedIPs"
+                value={settings.blockedIPs}
+                onChange={(e) => set('blockedIPs', e.target.value)}
                 placeholder="192.168.1.200&#10;203.0.113.0/24"
                 rows={4}
               />
-              <p className="text-sm text-muted-foreground">
-                Enter one IP address or CIDR range per line. These IPs will be denied access.
+              <p className="text-muted-foreground text-sm">
+                Refused even if the list above allows them.
               </p>
             </div>
+
+            <p className="text-muted-foreground text-sm">
+              Checked when somebody signs in, not on every request afterwards — a session already
+              issued runs to its end. The address is the one your hosting reports, so behind a proxy
+              that does not forward it, these lists cannot see anything to match.
+            </p>
           </CardContent>
         </Card>
 
-        {/* Audit Log Intelligence */}
         <Card>
           <CardContent className="pt-6">
             <AuditMonitor />
           </CardContent>
         </Card>
 
-        {/* Security Warning */}
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-amber-200 bg-amber-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-yellow-800">
-              <AlertTriangle className="w-5 h-5" />
-              Important Security Notice
+            <CardTitle className="flex items-center gap-2 text-amber-900">
+              <AlertTriangle className="h-5 w-5" />
+              Before you save
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-yellow-700 space-y-2">
-            <p>• Changes to security settings affect all users immediately</p>
-            <p>• Stricter password policies may require users to reset their passwords</p>
-            <p>• Be careful with IP restrictions to avoid locking yourself out</p>
-            <p>• Always test security changes in a non-production environment first</p>
-            <p>• Enabling 2FA is highly recommended for admin accounts</p>
+          <CardContent className="space-y-2 text-sm text-amber-800">
+            <p>
+              • A stricter password policy applies to the next password anybody sets, not to the
+              ones already in use.
+            </p>
+            <p>
+              • An allowed-address list that does not include you will lock you out at your next
+              sign-in.
+            </p>
+            <p>• Sessions already signed in keep the timeout they were issued with.</p>
           </CardContent>
         </Card>
 
-        {/* Save Button */}
         <div className="flex justify-end">
-          <Button onClick={handleSaveSettings} disabled={saving} size="lg">
-            {saving ? 'Saving...' : 'Save Security Settings'}
+          <Button onClick={handleSaveSettings} disabled={saving}>
+            {saving ? 'Saving…' : 'Save security settings'}
           </Button>
         </div>
       </div>

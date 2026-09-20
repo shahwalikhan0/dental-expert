@@ -18,7 +18,11 @@ vi.mock('@/lib/prisma', () => ({
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
     user: { findMany: vi.fn() },
-    auditLog: { create: vi.fn() },
+    // The lockout counts failed sign-ins out of the audit log and the security
+    // settings come from `Setting`; empty means "nothing configured, nothing
+    // failed yet", which is the state these tests are about.
+    auditLog: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
+    setting: { findMany: vi.fn() },
   },
 }))
 
@@ -73,7 +77,14 @@ async function getAuthorize() {
   vi.doMock('@/lib/prisma', () => ({
     prisma: {
       user: { findMany: vi.fn() },
-      auditLog: { create: vi.fn() },
+      // The lockout counts failed sign-ins out of the audit log, and the
+      // security settings that govern it come from `Setting`.
+      auditLog: {
+        create: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      setting: { findMany: vi.fn().mockResolvedValue([]) },
     },
   }))
 
@@ -126,6 +137,12 @@ describe('NextAuth — POST /api/auth/[...nextauth]', () => {
       mockPrisma = result.prisma
       mockBcrypt = result.bcrypt
       vi.clearAllMocks()
+      // Defaults reinstated after clearAllMocks: no security settings stored
+      // and nothing in the audit log, so every case below exercises the
+      // documented defaults rather than a configured clinic.
+      mockPrisma.setting.findMany.mockResolvedValue([])
+      mockPrisma.auditLog.findMany.mockResolvedValue([])
+      mockPrisma.auditLog.findFirst.mockResolvedValue(null)
     })
 
     it('should return null for invalid email format', async () => {
@@ -135,8 +152,21 @@ describe('NextAuth — POST /api/auth/[...nextauth]', () => {
       expect(mockPrisma.user.findMany).not.toHaveBeenCalled()
     })
 
-    it('should return null for password shorter than 6 characters', async () => {
+    it('should still try a short password rather than refusing to look', async () => {
+      // There is no minimum length on the sign-in schema, deliberately. The
+      // minimum is the clinic's policy and it is enforced where passwords are
+      // *set*; refusing to even try a short one here would make an account
+      // whose password predates a policy change unreachable, with nobody able
+      // to fix it. An empty password is still rejected without a lookup.
+      vi.mocked(mockPrisma.user.findMany).mockResolvedValue([])
+
       const result = await authorize({ email: 'user@test.com', password: '12345' })
+      expect(result).toBeNull()
+      expect(mockPrisma.user.findMany).toHaveBeenCalled()
+    })
+
+    it('should return null for an empty password without a lookup', async () => {
+      const result = await authorize({ email: 'user@test.com', password: '' })
       expect(result).toBeNull()
       expect(mockPrisma.user.findMany).not.toHaveBeenCalled()
     })
@@ -294,6 +324,12 @@ describe('NextAuth — POST /api/auth/[...nextauth]', () => {
       mockPrisma = result.prisma
       mockBcrypt = result.bcrypt
       vi.clearAllMocks()
+      // Defaults reinstated after clearAllMocks: no security settings stored
+      // and nothing in the audit log, so every case below exercises the
+      // documented defaults rather than a configured clinic.
+      mockPrisma.setting.findMany.mockResolvedValue([])
+      mockPrisma.auditLog.findMany.mockResolvedValue([])
+      mockPrisma.auditLog.findFirst.mockResolvedValue(null)
     })
 
     it('should reject empty email', async () => {
@@ -306,7 +342,7 @@ describe('NextAuth — POST /api/auth/[...nextauth]', () => {
       expect(result).toBeNull()
     })
 
-    it('should accept valid email with 6+ char password', async () => {
+    it('should accept a valid email and a password', async () => {
       vi.mocked(mockPrisma.user.findMany).mockResolvedValue([
         {
           id: 'u1',

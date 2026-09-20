@@ -4,12 +4,16 @@ import { parseOptionalCNIC } from '@/lib/cnic'
 import prisma from '@/lib/prisma'
 import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 import { Prisma } from '@prisma/client'
+import { mayBeScoped, patientScopeFilter, OUT_OF_SCOPE_MESSAGE } from '@/lib/patient-scope'
+import { readSecuritySettings } from '@/lib/security-settings'
+import { noteRecordAccess } from '@/lib/record-access'
+import { requestContext } from '@/lib/audit'
 
 // GET /api/patients/[id] - Get a specific patient with all details
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('patients:read')
+  const { error, hospitalId, user } = await requirePermission('patients:read')
 
-  if (error || !hospitalId) {
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -77,6 +81,51 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
+
+    /**
+     * "Own patients only" (§10), when the clinic has turned it on.
+     *
+     * Checked after the record is found rather than folded into the query, so
+     * that the refusal can say *why*. A 403 with a reason is the right answer
+     * here and a 404 would be wrong: this patient exists, the person asking is
+     * a clinician at the same clinic, and pretending the record is not there
+     * would send them to reception to report a missing patient.
+     */
+    if (mayBeScoped(user)) {
+      const { restrictToOwnPatients } = await readSecuritySettings(prisma, hospitalId)
+      const scope = patientScopeFilter(
+        {
+          userId: user.id,
+          staffId: user.staffId,
+          role: user.role,
+          clinicalRole: user.clinicalRole,
+        },
+        restrictToOwnPatients
+      )
+
+      if (scope) {
+        const mine = await prisma.patient.findFirst({
+          where: { id, hospitalId, ...scope },
+          select: { id: true },
+        })
+        if (!mine) {
+          return NextResponse.json({ error: OUT_OF_SCOPE_MESSAGE }, { status: 403 })
+        }
+      }
+    }
+
+    // Who read whose record, and when. See lib/record-access.ts for why this
+    // is here and not on the list endpoint. Not awaited: the record has already
+    // been fetched, and a log write must never be what stops it being shown.
+    void noteRecordAccess({
+      db: prisma,
+      hospitalId,
+      userId: user.id,
+      patientId: patient.id,
+      kind: 'patient',
+      via: 'record',
+      ...requestContext(req.headers),
+    })
 
     const timezone = await clinicTimezone(prisma, hospitalId)
 

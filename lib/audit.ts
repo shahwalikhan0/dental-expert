@@ -31,6 +31,35 @@ export const AUDIT_ACTIONS = {
   LOGIN_FAILED_USER_INACTIVE: 'login.failed.user_inactive',
   LOGIN_FAILED_CLINIC_INACTIVE: 'login.failed.clinic_inactive',
 
+  /// Refused before the password was even checked, because the account had
+  /// already used up its attempts (Settings → Security). Distinct from a wrong
+  /// password on purpose: a run of lockouts is somebody being kept out, a run
+  /// of wrong passwords is somebody trying, and the trail should not merge the
+  /// two.
+  LOGIN_BLOCKED_LOCKOUT: 'login.blocked.lockout',
+  /// Refused because of where it came from — the address allow/block lists.
+  LOGIN_BLOCKED_IP: 'login.blocked.ip',
+
+  /// Somebody changed their own password, or an administrator changed theirs.
+  /// The entry never carries the password, old or new; see rule 2 above.
+  PASSWORD_CHANGED: 'user.password.changed',
+
+  /// Spec §10 asks for "patient record access where supported". Opening a
+  /// record is the access — a list of names is not, and logging every list
+  /// would bury the entries that matter under a row per page of the register.
+  /// See lib/record-access.ts for what is recorded and what is deliberately
+  /// not.
+  PATIENT_RECORD_VIEWED: 'patient.record.viewed',
+  /// The clinical chart, treatment history and notes specifically, which §4
+  /// withholds from the front desk and §10 singles out.
+  CLINICAL_RECORD_VIEWED: 'clinical.record.viewed',
+
+  /// A booking made by a patient on the clinic's public page, rather than by
+  /// the desk. Nobody was signed in, so there is no user to attribute it to,
+  /// and the trail should say that rather than leave it looking like staff
+  /// work.
+  PUBLIC_BOOKING_CREATED: 'booking.public.created',
+
   /// A lab case moving through the laboratory (§5.8). Was its own
   /// `LabOrderHistory` table recording exactly this and nothing else.
   LAB_ORDER_STATUS_CHANGED: 'lab_order.status_changed',

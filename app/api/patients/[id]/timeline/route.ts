@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
+import { noteRecordAccess } from '@/lib/record-access'
+import { requestContext } from '@/lib/audit'
 
 interface TimelineEvent {
   id: string
@@ -14,9 +16,9 @@ interface TimelineEvent {
 
 // GET /api/patients/[id]/timeline - Get patient timeline events
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('patients:read')
+  const { error, hospitalId, user } = await requirePermission('patients:read')
 
-  if (error || !hospitalId) {
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -32,6 +34,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
+
+    // The timeline is the patient's history on one screen, which is record
+    // access (§10) whichever tab it is reached from.
+    void noteRecordAccess({
+      db: prisma,
+      hospitalId,
+      userId: user.id,
+      patientId: patient.id,
+      kind: 'patient',
+      via: 'timeline',
+      ...requestContext(req.headers),
+    })
 
     const { searchParams } = new URL(req.url)
     const limitParam = searchParams.get('limit')

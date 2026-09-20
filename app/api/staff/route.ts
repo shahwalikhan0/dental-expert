@@ -5,6 +5,8 @@ import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
 import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
+import { validatePassword } from '@/lib/password-policy'
+import { passwordPolicyFor } from '@/lib/security-settings'
 
 // GET - List staff members
 export async function GET(request: NextRequest) {
@@ -207,6 +209,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // The clinic's own password rules (Settings → Security). This screen used
+    // to accept any six characters while signup demanded eight and the policy
+    // screen claimed whatever it had been set to — three answers to one
+    // question.
+    const weak = validatePassword(password, await passwordPolicyFor(prisma, hospitalId))
+    if (weak) return NextResponse.json({ error: weak }, { status: 400 })
+
     // Generate employee ID
     const employeeId = await generateEmployeeId(hospitalId)
 
@@ -220,6 +229,7 @@ export async function POST(request: NextRequest) {
         data: {
           email,
           password: hashedPassword,
+          passwordChangedAt: new Date(),
           name: `${firstName} ${lastName}`,
           phone,
           role,

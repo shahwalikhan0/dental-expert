@@ -7,7 +7,14 @@ import { resolveLogin } from './login'
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  /**
+   * No minimum here. This schema describes what a sign-in *request* looks
+   * like, not what a password must be — that is the clinic's policy, checked
+   * where passwords are set (lib/password-policy.ts). A length rule at this
+   * point would refuse to even try an existing password that predates a change
+   * of policy, which is an account nobody can sign in to and nobody can fix.
+   */
+  password: z.string().min(1),
   /**
    * Which clinic to sign in to, when the address alone does not say.
    *
@@ -55,7 +62,17 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 hours
+    /**
+     * The outer bound, not the policy.
+     *
+     * What a session is actually allowed to last is the clinic's
+     * `sessionTimeoutMinutes`, enforced in the `jwt` callback — this is one
+     * number for the whole deployment and cannot be per clinic. It is set to
+     * the largest a clinic may configure (24 hours) so that the cookie never
+     * expires before the setting does; anything shorter here would silently
+     * override a clinic that asked for longer.
+     */
+    maxAge: 24 * 60 * 60,
   },
 })
 

@@ -290,10 +290,17 @@ const mockPrismaClient = {
   },
 
   // Setting
+  // Setting — per-clinic configuration.
+  //
+  // `findMany` answers with an empty list by default. Security settings are
+  // read on every sign-in and wherever a password is set (lib/security-settings
+  // .ts), and an empty list means "this clinic has configured nothing", which
+  // resolves to the documented defaults — the right starting point for a test
+  // that is not about configuration. A test that cares sets its own rows.
   setting: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
-    findMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     upsert: vi.fn(),
@@ -327,10 +334,16 @@ const mockPrismaClient = {
   },
 
   // AuditLog
+  // AuditLog
+  //
+  // The two reads answer empty by default. The account lockout counts failed
+  // sign-ins out of this table (lib/lockout.ts) and record access de-duplicates
+  // against it (lib/record-access.ts); "nothing recorded yet" is what both want
+  // in a test that is about something else.
   auditLog: {
     findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
+    findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     count: vi.fn(),
   },

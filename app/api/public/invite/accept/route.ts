@@ -3,10 +3,14 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { invitationStatus, isInvitation, inviteeName } from '@/lib/invitations'
+import { validatePassword } from '@/lib/password-policy'
+import { passwordPolicyFor } from '@/lib/security-settings'
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  // Checked against the inviting clinic's own policy below, once the token
+  // has told us which clinic that is.
+  password: z.string().min(1, 'A password is required'),
   phone: z.string().min(10, 'Phone number must be at least 10 digits'),
 })
 
@@ -73,6 +77,9 @@ export async function POST(request: Request) {
       )
     }
 
+    const weak = validatePassword(password, await passwordPolicyFor(prisma, invite.hospitalId))
+    if (weak) return NextResponse.json({ error: weak }, { status: 400 })
+
     const hashedPassword = await bcrypt.hash(password, 10)
     const fullName = inviteeName(invite.name, invite.email)
 
@@ -88,6 +95,7 @@ export async function POST(request: Request) {
       where: { id: invite.id, inviteToken: token, password: null },
       data: {
         password: hashedPassword,
+        passwordChangedAt: new Date(),
         phone,
         name: fullName,
         isActive: true,

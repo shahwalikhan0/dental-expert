@@ -97,30 +97,49 @@ function LoginForm() {
       }
 
       /**
-       * A refusal has two quite different causes, and the credentials provider
-       * cannot tell us which: the password was wrong, or it was right at
-       * several clinics and we were not told which one. Asking is safe — the
-       * endpoint answers nothing without the correct password, so it can only
-       * name clinics this person can already sign in to.
+       * A refusal has several quite different causes and the credentials
+       * provider cannot tell us which: the password was wrong, it was right at
+       * several clinics and we were not told which one, the account is locked
+       * after too many wrong attempts, or the clinic does not allow signing in
+       * from this address. Asking is safe — see the endpoint's own note.
        */
-      if (!clinicHint) {
-        const choices = await fetch('/api/public/login-clinics', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: data.email, password: data.password }),
-        })
-          .then((res) => (res.ok ? res.json() : { clinics: [] }))
-          .catch(() => ({ clinics: [] }))
+      const help = await fetch('/api/public/login-clinics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email, password: data.password, clinic: clinicHint }),
+      })
+        .then((res) => (res.ok ? res.json() : { clinics: [], reason: null }))
+        .catch(() => ({ clinics: [], reason: null }))
 
-        if (Array.isArray(choices.clinics) && choices.clinics.length > 1) {
-          setClinicChoices(choices.clinics)
-          setChosenClinic(choices.clinics[0].slug)
-          toast({
-            title: 'Which clinic?',
-            description: 'You have an account at more than one. Choose one and sign in again.',
-          })
-          return
-        }
+      if (Array.isArray(help.clinics) && help.clinics.length > 1) {
+        setClinicChoices(help.clinics)
+        setChosenClinic(help.clinics[0].slug)
+        toast({
+          title: 'Which clinic?',
+          description: 'You have an account at more than one. Choose one and sign in again.',
+        })
+        return
+      }
+
+      if (help.reason === 'locked_out') {
+        toast({
+          variant: 'destructive',
+          title: 'Account locked',
+          description: `Too many incorrect passwords. Try again in ${help.minutes} minute${
+            help.minutes === 1 ? '' : 's'
+          }, or ask an administrator at your clinic to reset it.`,
+        })
+        return
+      }
+
+      if (help.reason === 'ip_refused') {
+        toast({
+          variant: 'destructive',
+          title: 'Not permitted from here',
+          description:
+            'Your clinic only allows sign-in from certain locations. Contact your administrator.',
+        })
+        return
       }
 
       toast({

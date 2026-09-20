@@ -61,33 +61,56 @@ describe('Settings Security & Subscription API', () => {
 
   // ─── GET /api/settings/security ───────────────────
   describe('GET /api/settings/security', () => {
-    it('returns security settings parsed from JSON', async () => {
+    it('returns what is stored, merged over the defaults', async () => {
       ;(prisma.setting.findMany as any).mockResolvedValue([
-        { key: 'passwordMinLength', value: '8', category: 'security' },
-        { key: 'requireTwoFactor', value: 'true', category: 'security' },
+        { key: 'passwordMinLength', value: '12', category: 'security' },
         { key: 'sessionTimeoutMinutes', value: '30', category: 'security' },
-        { key: 'maxLoginAttempts', value: '5', category: 'security' },
+        { key: 'maxLoginAttempts', value: '3', category: 'security' },
       ])
 
       const res = await securityModule.GET(makeSecurityRequest('GET'))
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.success).toBe(true)
-      expect(body.data.passwordMinLength).toBe(8)
-      expect(body.data.requireTwoFactor).toBe(true)
+      expect(body.data.passwordMinLength).toBe(12)
       expect(body.data.sessionTimeoutMinutes).toBe(30)
+      expect(body.data.maxLoginAttempts).toBe(3)
+      // Not stored, so the default — and the screen renders what is enforced
+      // rather than a default of its own invention.
+      expect(body.data.lockoutDurationMinutes).toBe(30)
+      expect(body.data.passwordExpiryDays).toBe(0)
     })
 
-    it('returns empty object when no security settings exist', async () => {
+    it('returns the defaults, not an empty object, when nothing is stored', async () => {
       ;(prisma.setting.findMany as any).mockResolvedValue([])
 
       const res = await securityModule.GET(makeSecurityRequest('GET'))
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.data).toEqual({})
+
+      // An empty object would leave the page free to invent its own defaults,
+      // which is how it came to display a 60-minute session timeout for an
+      // application that issued 8-hour ones.
+      expect(body.data.passwordMinLength).toBe(8)
+      expect(body.data.sessionTimeoutMinutes).toBe(480)
+      expect(body.data.restrictToOwnPatients).toBe(false)
     })
 
-    it('returns 401 when not ADMIN', async () => {
+    it('does not offer two-factor authentication', async () => {
+      ;(prisma.setting.findMany as any).mockResolvedValue([
+        // A row left behind by an older version, which the migration deletes.
+        { key: 'requireTwoFactor', value: 'true', category: 'security' },
+      ])
+
+      const res = await securityModule.GET(makeSecurityRequest('GET'))
+      const body = await res.json()
+
+      // The switch never did anything. Reporting it would go on telling a
+      // clinic it has a second factor that does not exist.
+      expect(body.data.requireTwoFactor).toBeUndefined()
+    })
+
+    it('returns 403 when the role may not read settings', async () => {
       mockAuth.requireAuthAndRole.mockResolvedValue({
         error: Response.json({ error: 'Forbidden' }, { status: 403 }),
         hospitalId: null,
@@ -100,15 +123,16 @@ describe('Settings Security & Subscription API', () => {
 
   // ─── POST /api/settings/security ──────────────────
   describe('POST /api/settings/security', () => {
-    it('updates security settings via upsert', async () => {
+    it('stores each setting', async () => {
       ;(prisma.setting.upsert as any).mockResolvedValue({})
+      ;(prisma.setting.findMany as any).mockResolvedValue([])
 
       const res = await securityModule.POST(
         makeSecurityRequest('POST', {
           passwordMinLength: 10,
-          requireTwoFactor: true,
           sessionTimeoutMinutes: 60,
           maxLoginAttempts: 3,
+          restrictToOwnPatients: true,
         })
       )
       expect(res.status).toBe(200)
@@ -117,22 +141,36 @@ describe('Settings Security & Subscription API', () => {
       expect(prisma.setting.upsert).toHaveBeenCalledTimes(4)
     })
 
-    it('validates min/max constraints', async () => {
-      const res = await securityModule.POST(
-        makeSecurityRequest('POST', {
-          passwordMinLength: 2, // min is 6
-        })
-      )
-      expect(res.status).toBe(500) // Zod throws, caught by catch block
+    it('refuses a password minimum below the platform floor', async () => {
+      const res = await securityModule.POST(makeSecurityRequest('POST', { passwordMinLength: 6 }))
+
+      // 400 with the reason, not a 500 from an uncaught Zod throw: this is a
+      // number a person typed and can correct.
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/8/)
     })
 
-    it('validates session timeout min 5 minutes', async () => {
+    it('refuses a session timeout under five minutes', async () => {
       const res = await securityModule.POST(
-        makeSecurityRequest('POST', {
-          sessionTimeoutMinutes: 1, // min is 5
-        })
+        makeSecurityRequest('POST', { sessionTimeoutMinutes: 1 })
       )
-      expect(res.status).toBe(500) // Zod throws
+      expect(res.status).toBe(400)
+    })
+
+    it('will not store a two-factor setting', async () => {
+      ;(prisma.setting.upsert as any).mockResolvedValue({})
+      ;(prisma.setting.findMany as any).mockResolvedValue([])
+
+      const res = await securityModule.POST(
+        makeSecurityRequest('POST', { requireTwoFactor: true, maxLoginAttempts: 4 })
+      )
+      expect(res.status).toBe(200)
+
+      const keys = (prisma.setting.upsert as any).mock.calls.map(
+        (call: any[]) => call[0].create.key
+      )
+      expect(keys).toContain('maxLoginAttempts')
+      expect(keys).not.toContain('requireTwoFactor')
     })
   })
 

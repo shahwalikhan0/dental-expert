@@ -72,6 +72,9 @@ describe('Dental Chart API', () => {
     mockAuth.requireAuthAndRole.mockResolvedValue({
       error: null,
       hospitalId: 'hospital-1',
+      // Reading a chart is recorded against whoever read it, so the route
+      // needs the user `requirePermission` really does return.
+      user: { id: 'user-1', role: 'DOCTOR', staffId: 'staff-1' },
       session: { user: { id: 'user-1', role: 'DOCTOR' } },
     })
   })

@@ -47,6 +47,12 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   ready: 'readiness probe, no data',
   onboarding: 'gated on isHospitalAdmin, which is stricter than any capability',
   'settings/profile': "a user's own profile",
+  // Every role must be able to change its own password, including the two that
+  // hold no settings capability at all — gating this would leave Inventory /
+  // Store and Lab Technician unable to change theirs. The route authenticates
+  // and acts only on the caller's own account: it offers no way to name
+  // anybody else's, and it requires the current password.
+  'settings/password': "authenticated; acts only on the caller's own account",
   'settings/communications/test': 'sends a test message to the caller',
   'communications/triggers': 'CRON_SECRET bearer token',
 }

@@ -18,7 +18,23 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('q') || undefined
 
     const where: Record<string, unknown> = { hospitalId }
-    if (action) where.action = action
+    /**
+     * One action, or several separated by commas.
+     *
+     * The screen filters by *group* — "signing in", "records read" — which is
+     * the question somebody actually has of an audit trail, and a group is a
+     * handful of actions. Sending the list rather than a group name keeps the
+     * grouping in one place (lib/audit-labels.ts) instead of duplicating it
+     * here where it could drift.
+     */
+    if (action) {
+      const actions = action
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+      if (actions.length === 1) where.action = actions[0]
+      else if (actions.length > 1) where.action = { in: actions }
+    }
     if (userId) where.userId = userId
     if (entity) where.entityType = entity
     if (search) {
