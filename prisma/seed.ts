@@ -258,18 +258,6 @@ async function main() {
     console.log(`Created ${person.role} user:`, created.email)
   }
 
-  // Chairs (FR-025). Appointments cannot be assigned a chair until some exist,
-  // and FR-004's chair conflict check has nothing to compare against.
-  for (const [index, name] of ['Chair 1', 'Chair 2', 'Chair 3'].entries()) {
-    await prisma.chair.upsert({
-      where: { hospitalId_name: { hospitalId: hospital.id, name } },
-      update: {},
-      create: { hospitalId: hospital.id, name, sortOrder: index },
-    })
-  }
-
-  console.log('Created 3 chairs')
-
   // Create sample patients
   const patients = [
     {

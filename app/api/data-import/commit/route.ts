@@ -440,19 +440,9 @@ async function importAppointments(
     staffLookup.set(s.firstName.toLowerCase(), s.id)
   })
 
-  // Chairs are matched by name. An unrecognised chair is left unassigned rather
-  // than failing the row — the column is optional, and a historical import
-  // whose chair no longer exists is still worth keeping.
-  const chairs = await prisma.chair.findMany({
-    where: { hospitalId },
-    select: { id: true, name: true },
-  })
-  const chairLookup = new Map<string, string>()
-  chairs.forEach((c) => {
-    chairLookup.set(c.name.toLowerCase(), c.id)
-    // "3" should also find "Chair 3", which is how the old numeric column read.
-    chairLookup.set(c.name.toLowerCase().replace(/^chair\s*/, ''), c.id)
-  })
+  // A `chair` column in an import file is now ignored rather than rejected.
+  // The clinic runs a token queue and chairs no longer exist, but a file
+  // exported before that change should still import its appointments.
 
   for (const row of rows) {
     try {
@@ -514,7 +504,6 @@ async function importAppointments(
           status: row.status || 'COMPLETED',
           chiefComplaint: row.chiefComplaint || undefined,
           notes: row.notes || undefined,
-          chairId: row.chair ? chairLookup.get(String(row.chair).toLowerCase()) : undefined,
         },
       })
       successCount++

@@ -1,28 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { nextPatientId } from '@/lib/numbering'
 import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import { ageInYears } from '@/lib/age'
-
-// Generate unique patient ID for the hospital
-async function generatePatientId(hospitalId: string): Promise<string> {
-  const prefix = `PAT${new Date().getFullYear()}`
-
-  return nextInSeries(prisma, {
-    hospitalId,
-    prefix,
-    width: 5,
-    currentMax: async () => {
-      const last = await prisma.patient.findFirst({
-        where: { hospitalId, patientId: { startsWith: prefix } },
-        orderBy: { patientId: 'desc' },
-        select: { patientId: true },
-      })
-      return trailingNumber(last?.patientId, 5)
-    },
-  })
-}
+import { startDefaultRecare } from '@/lib/recare'
 
 // GET - List patients
 export async function GET(request: NextRequest) {
@@ -193,7 +175,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate patient ID for this hospital
-    const patientId = await generatePatientId(hospitalId)
+    const patientId = await nextPatientId(prisma, hospitalId)
 
     // Create patient with medical history
     const patient = await prisma.patient.create({
@@ -228,6 +210,11 @@ export async function POST(request: NextRequest) {
         medicalHistory: true,
       },
     })
+
+    // A newly registered patient joins the recall list straight away, on the
+    // clinic's default interval. A practice that has set no default gets
+    // nothing — see lib/recare.ts; that is a policy decision, not an oversight.
+    await startDefaultRecare(prisma, hospitalId, patient.id)
 
     return NextResponse.json(patient, { status: 201 })
   } catch (error) {

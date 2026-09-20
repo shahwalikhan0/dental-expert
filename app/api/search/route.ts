@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, formatCalendarDay, wallClockIn } from '@/lib/appointment-time'
+import { subjectName } from '@/lib/visitors'
 
 interface SearchResult {
   id: string
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest) {
       })),
       appointments: appointments.map((a): SearchResult => ({
         id: a.id,
-        label: `${a.appointmentNo} — ${a.patient.firstName} ${a.patient.lastName}`,
+        label: `${a.appointmentNo} — ${subjectName(a)}`,
         sublabel: `${formatCalendarDay(a.startsAt, timezone)} ${wallClockIn(a.startsAt, timezone).scheduledTime} · Dr. ${a.doctor.firstName} ${a.doctor.lastName} · ${a.status}`,
         href: `/appointments/${a.id}`,
       })),

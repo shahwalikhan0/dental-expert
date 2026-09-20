@@ -14,6 +14,7 @@ import {
   localDay,
   withWallClock,
 } from '@/lib/appointment-time'
+import { validateVisitor } from '@/lib/visitors'
 
 // GET - List appointments with filters
 export async function GET(request: NextRequest) {
@@ -44,9 +45,14 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { appointmentNo: { contains: search } },
-        { patient: { firstName: { contains: search } } },
-        { patient: { lastName: { contains: search } } },
+        { patient: { firstName: { contains: search, mode: 'insensitive' } } },
+        { patient: { lastName: { contains: search, mode: 'insensitive' } } },
         { patient: { phone: { contains: search } } },
+        // A walk-in is searched for by the same box. Somebody asking for
+        // "Bilal" does not know whether he was registered.
+        { visitor: { name: { contains: search, mode: 'insensitive' } } },
+        { visitor: { phone: { contains: search } } },
+        { tokenNumber: { contains: search } },
       ]
     }
 
@@ -109,7 +115,7 @@ export async function GET(request: NextRequest) {
               specialization: true,
             },
           },
-          chair: { select: { id: true, name: true } },
+          visitor: { select: { id: true, name: true, phone: true, convertedPatientId: true } },
         },
         orderBy: { startsAt: 'asc' },
         skip: view === 'list' ? skip : undefined,
@@ -149,19 +155,37 @@ export async function POST(request: NextRequest) {
       scheduledDate,
       scheduledTime,
       duration = 30,
-      chairId,
+      visitor,
       appointmentType = 'CONSULTATION',
       priority = 'NORMAL',
       chiefComplaint,
       notes,
     } = body
 
-    // Validate required fields
-    if (!patientId || !doctorId || !scheduledDate || !scheduledTime) {
+    // A patient or a walk-in, and exactly one of the two. The database says the
+    // same thing in a CHECK constraint; this is so the desk gets a sentence
+    // rather than a constraint violation.
+    if (!patientId && !visitor) {
       return NextResponse.json(
-        { error: 'Patient, doctor, date, and time are required' },
+        { error: 'An appointment needs a patient, or a name for a walk-in' },
         { status: 400 }
       )
+    }
+
+    if (patientId && visitor) {
+      return NextResponse.json(
+        { error: 'An appointment belongs to a patient or to a walk-in, not both' },
+        { status: 400 }
+      )
+    }
+
+    if (!doctorId || !scheduledDate || !scheduledTime) {
+      return NextResponse.json({ error: 'Doctor, date, and time are required' }, { status: 400 })
+    }
+
+    const visitorError = visitor ? validateVisitor(visitor) : null
+    if (visitorError) {
+      return NextResponse.json({ error: visitorError }, { status: 400 })
     }
 
     // Validate time format (HH:MM)
@@ -199,12 +223,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if patient exists and belongs to this hospital
-    const patient = await prisma.patient.findFirst({
-      where: { id: patientId, hospitalId },
-    })
-    if (!patient) {
-      return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+    if (patientId) {
+      const patient = await prisma.patient.findFirst({
+        where: { id: patientId, hospitalId },
+        select: { id: true },
+      })
+      if (!patient) {
+        return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+      }
     }
 
     // Check if doctor exists and belongs to this hospital
@@ -215,30 +241,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
     }
 
-    // Check the chair belongs to this clinic and is in service
-    if (chairId) {
-      const chair = await prisma.chair.findFirst({
-        where: { id: chairId, hospitalId },
-        select: { id: true, isActive: true },
-      })
-      if (!chair) {
-        return NextResponse.json({ error: 'Chair not found' }, { status: 404 })
-      }
-      if (!chair.isActive) {
-        return NextResponse.json({ error: 'That chair is out of service' }, { status: 400 })
-      }
-    }
-
-    // FR-004: refuse (or warn about) an overlap on either the doctor or the
-    // chair. This compares intervals, not start times — see
-    // lib/appointment-conflicts.ts.
+    // FR-004: refuse (or warn about) an overlap on the doctor. This compares
+    // intervals, not start times — see lib/appointment-conflicts.ts.
     const conflicts = await findAppointmentConflicts({
       hospitalId,
       startsAt,
       duration,
       timezone,
       doctorId,
-      chairId,
     })
 
     let conflictWarnings: typeof conflicts = []
@@ -254,40 +264,54 @@ export async function POST(request: NextRequest) {
     const appointmentNo = await nextAppointmentNo(prisma, hospitalId)
 
     // Create appointment
-    const appointment = await prisma.appointment.create({
-      data: {
-        appointmentNo,
-        patientId,
-        doctorId,
-        hospitalId,
-        startsAt,
-        duration,
-        chairId,
-        appointmentType,
-        priority,
-        chiefComplaint,
-        notes,
-        status: 'SCHEDULED',
-      },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
+    // The walk-in and the appointment are written together. A visitor row with
+    // no appointment is a name the clinic cannot account for, so if the second
+    // write fails the first is rolled back with it.
+    const appointment = await prisma.$transaction(async (tx) => {
+      let visitorId: string | null = null
+
+      if (!patientId) {
+        const created = await tx.visitor.create({
+          data: {
+            hospitalId,
+            name: String(visitor.name).trim(),
+            phone: visitor.phone ? String(visitor.phone).trim() : null,
+            notes: visitor.notes ? String(visitor.notes).trim() : null,
           },
+          select: { id: true },
+        })
+        visitorId = created.id
+      }
+
+      return tx.appointment.create({
+        data: {
+          appointmentNo,
+          hospitalId,
+          patientId: patientId ?? null,
+          visitorId,
+          doctorId,
+          startsAt,
+          duration,
+          appointmentType,
+          priority,
+          chiefComplaint,
+          notes,
+          status: 'SCHEDULED',
         },
-        doctor: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
+        include: {
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+            },
           },
+          visitor: { select: { id: true, name: true, phone: true } },
+          doctor: { select: { id: true, firstName: true, lastName: true } },
         },
-        chair: { select: { id: true, name: true } },
-      },
+      })
     })
 
     // Under the WARN policy the booking stands, but the caller is told exactly

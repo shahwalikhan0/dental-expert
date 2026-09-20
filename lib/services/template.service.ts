@@ -65,10 +65,10 @@ class TemplateService {
       example: 'Dr. Smith',
     },
     {
-      key: 'chair',
-      label: 'Chair',
-      description: 'Assigned chair / operatory',
-      example: 'Chair 3',
+      key: 'tokenNumber',
+      label: 'Token Number',
+      description: 'The queue token, once the patient has checked in',
+      example: '200926004',
     },
 
     {
@@ -332,7 +332,7 @@ class TemplateService {
         category: 'APPOINTMENT' as TemplateCategory,
         channel: 'SMS' as CommunicationChannel,
         content:
-          'Dear {{patientName}}, your appointment is confirmed for {{appointmentDate}} at {{appointmentTime}} with {{doctorName}}. Chair: {{chair}}. - {{clinicName}}',
+          'Dear {{patientName}}, your appointment is confirmed for {{appointmentDate}} at {{appointmentTime}} with {{doctorName}}. - {{clinicName}}',
         language: 'en',
         isDefault: true,
       },
@@ -414,7 +414,6 @@ class TemplateService {
             <li><strong>Date:</strong> {{appointmentDate}}</li>
             <li><strong>Time:</strong> {{appointmentTime}}</li>
             <li><strong>Doctor:</strong> {{doctorName}}</li>
-            <li><strong>Chair:</strong> {{chair}}</li>
             <li><strong>Appointment No:</strong> {{appointmentNo}}</li>
           </ul>
           <p>Please arrive 10 minutes before your scheduled time.</p>

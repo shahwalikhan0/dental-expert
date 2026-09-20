@@ -37,7 +37,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             phone: true,
           },
         },
-        chair: { select: { id: true, name: true, room: true } },
+        visitor: {
+          select: { id: true, name: true, phone: true, convertedPatientId: true },
+        },
         treatments: {
           include: {
             procedure: true,
@@ -73,7 +75,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       scheduledDate,
       scheduledTime,
       duration,
-      chairId,
       appointmentType,
       status,
       priority,
@@ -116,7 +117,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.startsAt = startsAt
     }
     if (duration !== undefined) updateData.duration = duration
-    if (chairId !== undefined) updateData.chairId = chairId
     if (appointmentType !== undefined) updateData.appointmentType = appointmentType
     if (status !== undefined) updateData.status = status
     if (priority !== undefined) updateData.priority = priority
@@ -124,23 +124,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (notes !== undefined) updateData.notes = notes
     if (doctorId !== undefined) updateData.doctorId = doctorId
 
-    // Check any newly assigned chair belongs to this clinic and is in service
-    if (chairId) {
-      const chair = await prisma.chair.findFirst({
-        where: { id: chairId, hospitalId },
-        select: { id: true, isActive: true },
-      })
-      if (!chair) {
-        return NextResponse.json({ error: 'Chair not found' }, { status: 404 })
-      }
-      // An appointment already in a chair that has since been retired can stay
-      // there; only moving one *into* a retired chair is refused.
-      if (!chair.isActive && existingAppointment.chairId !== chairId) {
-        return NextResponse.json({ error: 'That chair is out of service' }, { status: 400 })
-      }
-    }
-
-    // FR-004 on the reschedule path. Duration and chair changes move the
+    // FR-004 on the reschedule path. Duration changes move the
     // interval just as a time change does, so they have to re-check too — the
     // previous version only looked at date, time and doctor, so stretching a
     // 30-minute appointment to 90 minutes over a colleague's slot went through.
@@ -149,8 +133,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       (scheduledDate !== undefined ||
         scheduledTime !== undefined ||
         doctorId !== undefined ||
-        duration !== undefined ||
-        chairId !== undefined) &&
+        duration !== undefined) &&
       status !== 'CANCELLED' &&
       status !== 'NO_SHOW'
     ) {
@@ -160,7 +143,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         timezone,
         duration: duration ?? existingAppointment.duration,
         doctorId: doctorId || existingAppointment.doctorId,
-        chairId: chairId !== undefined ? chairId : existingAppointment.chairId,
         excludeAppointmentId: id,
       })
 
@@ -201,7 +183,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             lastName: true,
           },
         },
-        chair: { select: { id: true, name: true } },
+        visitor: { select: { id: true, name: true, phone: true } },
       },
     })
 

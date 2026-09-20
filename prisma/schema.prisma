@@ -83,7 +83,10 @@ model Hospital {
   staff               Staff[]
   patients            Patient[]
   appointments        Appointment[]
-  chairs              Chair[]
+  visitors            Visitor[]
+  recareTypes         RecareType[]
+  recares             Recare[]
+  perioExams          PerioExam[]
   refunds             Refund[]
   cashierSessions     CashierSession[]
   treatmentAmendments TreatmentAmendment[]
@@ -267,6 +270,9 @@ model User {
   cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
   treatmentsSigned        Treatment[]          @relation("TreatmentsSigned")
   chartEntriesRecorded    DentalChartEntry[]   @relation("ChartEntriesRecorded")
+  perioExamsRecorded      PerioExam[]          @relation("PerioExamsRecorded")
+  visitorsConverted       Visitor[]            @relation("VisitorsConverted")
+  visitorsDiscarded       Visitor[]            @relation("VisitorsDiscarded")
   treatmentAmendments     TreatmentAmendment[] @relation("TreatmentAmendments")
 
   @@unique([hospitalId, email])
@@ -456,6 +462,9 @@ model Patient {
   treatments      Treatment[]
   treatmentPlans  TreatmentPlan[]
   dentalChart     DentalChartEntry[]
+  recares         Recare[]
+  perioExams      PerioExam[]
+  convertedFrom   Visitor[]          @relation("VisitorConvertedTo")
   prescriptions   Prescription[]
   invoices        Invoice[]
   documents       Document[]
@@ -560,7 +569,13 @@ model Appointment {
   id              String            @id @default(cuid())
   hospitalId      String
   appointmentNo   String
-  patientId       String
+
+  /// Exactly one of these is set — see the CHECK constraint in the migration.
+  /// A walk-in is a `Visitor` until somebody decides to register them, which is
+  /// the whole point: the desk should not have to invent a patient record for
+  /// someone who may never come back.
+  patientId       String?
+  visitorId       String?
   doctorId        String
 
   /// The instant the appointment starts, in UTC. A clinic books a wall-clock
@@ -570,7 +585,13 @@ model Appointment {
   /// reassembly of a date column and a free-text string.
   startsAt        DateTime          @db.Timestamptz(3)
   duration        Int               @default(30)
-  chairId         String?
+
+  /// The queue number for the day, as DDMMYY then a three-digit sequence —
+  /// 200926001 is the first arrival on 20 September 2026. Issued on check-in
+  /// and not before: a number handed out at booking says nothing about who is
+  /// waiting, and the queue a clinic actually runs is arrival order.
+  tokenNumber     String?
+  tokenIssuedAt   DateTime?
 
   appointmentType AppointmentType   @default(CONSULTATION)
   status          AppointmentStatus @default(SCHEDULED)
@@ -591,41 +612,20 @@ model Appointment {
   updatedAt       DateTime          @updatedAt
 
   hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient           @relation(fields: [patientId], references: [id])
+  patient         Patient?          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  visitor         Visitor?          @relation(fields: [visitorId], references: [id], onDelete: Restrict)
   doctor          Staff             @relation("DoctorAppointments", fields: [doctorId], references: [id])
-  chair           Chair?            @relation(fields: [chairId], references: [id], onDelete: SetNull)
   treatments      Treatment[]
 
   @@unique([hospitalId, appointmentNo])
+  @@unique([hospitalId, tokenNumber])
   @@index([hospitalId, startsAt])
   @@index([hospitalId, status, startsAt])
   @@index([hospitalId, doctorId, startsAt])
   @@index([hospitalId, patientId, startsAt(sort: Desc)])
-  @@index([chairId, startsAt])
+  @@index([hospitalId, visitorId])
 }
 
-/// A treatment chair / operatory. FR-025 lists chairs among the master data a
-/// clinic maintains, and FR-004 requires double-booking to be caught on the
-/// chair as well as the doctor — neither is possible while a chair is only a
-/// free-typed integer on the appointment.
-model Chair {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  name            String
-  room            String?
-  notes           String?
-  isActive        Boolean   @default(true)
-  sortOrder       Int       @default(0)
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  appointments    Appointment[]
-
-  @@unique([hospitalId, name])
-  @@index([hospitalId, isActive, sortOrder])
-}
 
 
 enum AppointmentType {
@@ -2151,4 +2151,199 @@ enum DataImportStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+/// Somebody who walked in and has not been registered.
+///
+/// A clinic that insists on a full patient record before it will see anyone
+/// ends up with a register full of half-entered people who came once. A visitor
+/// is a name and a number — enough to issue a token and see them — and stays
+/// that way until the desk decides they are worth keeping, at which point they
+/// are converted into a real `Patient` and their appointments follow them.
+///
+/// Discarding is soft. The visit happened, and a clinic that saw someone should
+/// still be able to answer for the appointment afterwards.
+model Visitor {
+  id                String    @id @default(cuid())
+  hospitalId        String
+
+  name              String
+  phone             String?
+  notes             String?    @db.Text
+
+  /// Set when the visitor becomes a patient. The row is kept so the conversion
+  /// itself is a fact on the record rather than a rename.
+  convertedPatientId String?
+  convertedAt       DateTime?
+  convertedById     String?
+
+  discardedAt       DateTime?
+  discardedById     String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  hospital          Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  convertedPatient  Patient?  @relation("VisitorConvertedTo", fields: [convertedPatientId], references: [id])
+  convertedBy       User?     @relation("VisitorsConverted", fields: [convertedById], references: [id])
+  discardedBy       User?     @relation("VisitorsDiscarded", fields: [discardedById], references: [id])
+  appointments      Appointment[]
+
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([hospitalId, phone])
+  @@index([hospitalId, discardedAt, convertedAt])
+}
+
+/// A kind of recurring visit, and how often it comes round.
+///
+/// A dental practice lives on people coming back. "Prophy every six months",
+/// "perio every three" — the interval is clinical policy, so it is configuration
+/// rather than a constant.
+model RecareType {
+  id              String    @id @default(cuid())
+  hospitalId      String
+
+  name            String
+  /// Months between visits of this kind.
+  intervalMonths  Int       @default(6)
+  description     String?
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+
+  /// Assigned to a newly registered patient unless the desk picks another.
+  isDefault       Boolean   @default(false)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  recares         Recare[]
+
+  @@unique([hospitalId, name])
+  @@index([hospitalId, isActive, sortOrder])
+}
+
+/// One patient's standing appointment with the future.
+///
+/// `dueDate` is the question the whole module exists to answer: who should be
+/// in the chair this month and is not booked. Completing a recare visit moves
+/// the date on by the type's interval rather than deleting the row, so the
+/// history of when somebody was last seen survives.
+model Recare {
+  id              String       @id @default(cuid())
+  hospitalId      String
+  patientId       String
+  recareTypeId    String
+
+  dueDate         DateTime     @db.Date
+  lastDoneAt      DateTime?
+  /// Set when the desk defers somebody — "ring me after Ramadan". Hidden from
+  /// the due list until this date, and never silently dropped.
+  snoozedUntil    DateTime?    @db.Date
+  snoozeReason    String?
+
+  status          RecareStatus @default(ACTIVE)
+  notes           String?      @db.Text
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient         Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recareType      RecareType   @relation(fields: [recareTypeId], references: [id])
+
+  /// One standing recare of each kind per patient.
+  @@unique([patientId, recareTypeId])
+  @@index([hospitalId, status, dueDate])
+  @@index([hospitalId, patientId])
+}
+
+enum RecareStatus {
+  ACTIVE
+  /// The patient asked not to be contacted about this again.
+  OPTED_OUT
+  /// The patient has left the practice.
+  INACTIVE
+}
+
+/// A periodontal examination — one full pass around the mouth on one date.
+///
+/// §3 puts "periodontal findings where required" in scope. The tooth chart
+/// records what a tooth *is*; this records what the gum around it is doing, and
+/// the two are read together.
+model PerioExam {
+  id              String              @id @default(cuid())
+  hospitalId      String
+  patientId       String
+
+  examDate        DateTime            @default(now())
+  recordedById    String?
+  notes           String?             @db.Text
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient         Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedBy      User?               @relation("PerioExamsRecorded", fields: [recordedById], references: [id])
+  measurements    PerioMeasurement[]
+  toothFindings   PerioToothFinding[] @relation("PerioToothFindings")
+
+  @@index([hospitalId, patientId, examDate(sort: Desc)])
+}
+
+/// One site on one tooth.
+///
+/// Six sites per tooth is the standard full-mouth chart: three buccal, three
+/// lingual. Stored one row per site rather than six columns on a tooth, because
+/// a chart is read site by site — "which sites are 5mm or deeper" is the
+/// question, and it should be a WHERE rather than six ORs.
+model PerioMeasurement {
+  id              String    @id @default(cuid())
+  examId          String
+
+  toothNumber     Int
+  /// MB, B, DB, ML, L, DL.
+  site            PerioSite
+
+  /// Millimetres. Null means the site was not probed, which is not the same as
+  /// zero — an unprobed site must not read as healthy.
+  pocketDepth     Int?
+  /// Negative where the margin sits coronal to the CEJ.
+  recession       Int?
+  bleeding        Boolean   @default(false)
+  suppuration     Boolean   @default(false)
+  plaque          Boolean   @default(false)
+
+  exam            PerioExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, toothNumber, site])
+  @@index([examId, toothNumber])
+}
+
+enum PerioSite {
+  MB
+  B
+  DB
+  ML
+  L
+  DL
+}
+
+/// Whole-tooth findings that are not per-site.
+model PerioToothFinding {
+  id              String    @id @default(cuid())
+  examId          String
+  toothNumber     Int
+
+  /// Miller 0-3.
+  mobility        Int?
+  /// Furcation involvement, Glickman I-III.
+  furcation       Int?
+  isMissing       Boolean   @default(false)
+  isImplant       Boolean   @default(false)
+
+  exam            PerioExam @relation("PerioToothFindings", fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, toothNumber])
 }

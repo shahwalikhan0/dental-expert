@@ -1,15 +1,19 @@
 import { prisma } from '@/lib/prisma'
 import { endsAt, wallClockIn } from '@/lib/appointment-time'
+import { subjectName } from '@/lib/visitors'
 
 /**
- * FR-004 — "Prevent or clearly warn against double-booking a doctor/chair
- * beyond configured rules."
+ * FR-004 — "Prevent or clearly warn against double-booking a doctor beyond
+ * configured rules."
  *
  * Before this module the check was a string equality on `scheduledTime`, which
  * only caught appointments starting at the exact same minute. A 60-minute
  * appointment at 09:00 and a 30-minute one at 09:15 did not collide, so the
- * commonest form of double-booking — an overlap, not a tie — went through. The
- * chair was never checked at all.
+ * commonest form of double-booking — an overlap, not a tie — went through.
+ *
+ * The chair half of FR-004 went with the chairs themselves: the clinic runs a
+ * token queue, not a set of numbered operatories, and a chair clash could only
+ * ever occur where a dentist clash already had.
  *
  * Appointments are instants now, so the overlap test is arithmetic on
  * milliseconds rather than on minutes-since-midnight parsed out of a string.
@@ -83,13 +87,12 @@ export interface ConflictQuery {
   /** Only to word the clash — the overlap test itself is timezone-free. */
   timezone: string
   doctorId?: string | null
-  chairId?: string | null
   /** The appointment being rescheduled, which must not clash with itself. */
   excludeAppointmentId?: string | null
 }
 
 export interface AppointmentConflict {
-  resource: 'doctor' | 'chair'
+  resource: 'doctor'
   appointmentId: string
   appointmentNo: string
   scheduledTime: string
@@ -101,19 +104,15 @@ export interface AppointmentConflict {
 }
 
 /**
- * Every appointment that overlaps the proposed slot on the same doctor or the
- * same chair. Empty means the slot is free.
+ * Every appointment that overlaps the proposed slot on the same doctor. Empty
+ * means the slot is free.
  */
 export async function findAppointmentConflicts(
   query: ConflictQuery
 ): Promise<AppointmentConflict[]> {
-  const { hospitalId, startsAt, duration, timezone, doctorId, chairId } = query
+  const { hospitalId, startsAt, duration, timezone, doctorId } = query
 
-  if (!doctorId && !chairId) return []
-
-  const resourceFilters: Record<string, unknown>[] = []
-  if (doctorId) resourceFilters.push({ doctorId })
-  if (chairId) resourceFilters.push({ chairId })
+  if (!doctorId) return []
 
   const candidates = await prisma.appointment.findMany({
     where: {
@@ -123,7 +122,7 @@ export async function findAppointmentConflicts(
         lt: endsAt(startsAt, duration),
       },
       status: { notIn: [...BLOCKING_STATUSES_EXCLUDED] as never },
-      OR: resourceFilters,
+      doctorId,
       ...(query.excludeAppointmentId ? { id: { not: query.excludeAppointmentId } } : {}),
     },
     select: {
@@ -132,10 +131,9 @@ export async function findAppointmentConflicts(
       startsAt: true,
       duration: true,
       doctorId: true,
-      chairId: true,
       patient: { select: { firstName: true, lastName: true } },
+      visitor: { select: { name: true } },
       doctor: { select: { firstName: true, lastName: true } },
-      chair: { select: { name: true } },
     },
   })
 
@@ -146,44 +144,26 @@ export async function findAppointmentConflicts(
       continue
     }
 
-    const patientName = `${existing.patient.firstName} ${existing.patient.lastName}`.trim()
+    // A clashing appointment may belong to a walk-in who has no patient record.
+    const patientName = subjectName(existing)
     const startTime = wallClockIn(existing.startsAt, timezone).scheduledTime
     const endTime = wallClockIn(
       endsAt(existing.startsAt, existing.duration),
       timezone
     ).scheduledTime
 
-    // One appointment can clash on both resources — the same dentist *and* the
-    // same chair. Report each, so the message names what actually needs moving.
-    if (doctorId && existing.doctorId === doctorId) {
-      const doctorName = `Dr. ${existing.doctor.firstName} ${existing.doctor.lastName}`.trim()
-      conflicts.push({
-        resource: 'doctor',
-        appointmentId: existing.id,
-        appointmentNo: existing.appointmentNo,
-        scheduledTime: startTime,
-        endTime,
-        duration: existing.duration,
-        patientName,
-        resourceName: doctorName,
-        message: `${doctorName} is with ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
-      })
-    }
-
-    if (chairId && existing.chairId === chairId) {
-      const chairName = existing.chair?.name ?? 'This chair'
-      conflicts.push({
-        resource: 'chair',
-        appointmentId: existing.id,
-        appointmentNo: existing.appointmentNo,
-        scheduledTime: startTime,
-        endTime,
-        duration: existing.duration,
-        patientName,
-        resourceName: chairName,
-        message: `${chairName} is occupied by ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
-      })
-    }
+    const doctorName = `Dr. ${existing.doctor.firstName} ${existing.doctor.lastName}`.trim()
+    conflicts.push({
+      resource: 'doctor',
+      appointmentId: existing.id,
+      appointmentNo: existing.appointmentNo,
+      scheduledTime: startTime,
+      endTime,
+      duration: existing.duration,
+      patientName,
+      resourceName: doctorName,
+      message: `${doctorName} is with ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
+    })
   }
 
   return conflicts

@@ -61,6 +61,11 @@ export const AUDIT_ACTIONS = {
   /// from the invoice arithmetic alone.
   REFUND_ISSUED: 'payment.refunded',
 
+  /// A walk-in became a patient, or was written off. Both are decisions about
+  /// somebody's record that the clinic should be able to account for later.
+  VISITOR_CONVERTED: 'visitor.converted',
+  VISITOR_DISCARDED: 'visitor.discarded',
+
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
   SECURITY_UPDATED: 'settings.security.updated',

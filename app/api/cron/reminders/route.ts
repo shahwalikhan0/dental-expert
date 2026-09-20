@@ -80,12 +80,18 @@ export async function GET(req: Request) {
   const alreadyQueued = (appointmentId: string, at: Date) =>
     existingReminders.has(`${appointmentId}@${at.toISOString()}`)
 
-  // Gather no-show history for risk assessment
-  const patientIds = [...new Set(appointments.map((a) => a.patientId))]
+  // Gather no-show history for risk assessment.
+  //
+  // Walk-ins are excluded rather than given a risk of zero: a visitor has no
+  // history to have a rate over, and reminding somebody who left a name at the
+  // desk about a booking they did not make is how a clinic gets a reputation
+  // for texting strangers.
+  const patientIds = appointments.map((a) => a.patientId).filter((id): id is string => id !== null)
+  const uniquePatientIds = [...new Set(patientIds)]
   const noShowCounts = await prisma.appointment.groupBy({
     by: ['patientId'],
     where: {
-      patientId: { in: patientIds },
+      patientId: { in: uniquePatientIds },
       status: 'NO_SHOW',
     },
     _count: true,
@@ -93,24 +99,29 @@ export async function GET(req: Request) {
   const totalCounts = await prisma.appointment.groupBy({
     by: ['patientId'],
     where: {
-      patientId: { in: patientIds },
+      patientId: { in: uniquePatientIds },
       startsAt: { lt: now },
     },
     _count: true,
   })
   const noShowMap: Record<string, number> = {}
   const totalMap: Record<string, number> = {}
-  for (const ns of noShowCounts) noShowMap[ns.patientId] = ns._count
-  for (const t of totalCounts) totalMap[t.patientId] = t._count
+  for (const ns of noShowCounts) if (ns.patientId) noShowMap[ns.patientId] = ns._count
+  for (const t of totalCounts) if (t.patientId) totalMap[t.patientId] = t._count
 
   let created = 0
   let extraReminders = 0
   for (const appt of appointments) {
+    // No patient record, no reminder. See the note on `patientIds` above.
+    const patientId = appt.patientId
+    const patient = appt.patient
+    if (!patientId || !patient) continue
+
     const startsAt = appt.startsAt
 
     // Assess no-show risk: high if >30% no-show rate with at least 2 past appointments
-    const total = totalMap[appt.patientId] || 0
-    const noShows = noShowMap[appt.patientId] || 0
+    const total = totalMap[patientId] ?? 0
+    const noShows = noShowMap[patientId] ?? 0
     const isHighRisk = total >= 2 && noShows / total > 0.3
 
     // Everybody gets the day-before reminder; patients with a history of not
@@ -134,7 +145,10 @@ export async function GET(req: Request) {
       if (reminder.when <= now) continue
       if (alreadyQueued(appt.id, reminder.when)) continue
 
-      await queueReminder(appt, reminder.when)
+      await queueReminder(
+        { id: appt.id, hospitalId: appt.hospitalId, patientId, patient },
+        reminder.when
+      )
       if (reminder.extra) extraReminders++
       else created++
     }

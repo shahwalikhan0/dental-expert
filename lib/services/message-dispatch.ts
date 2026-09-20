@@ -79,27 +79,37 @@ function kindOf(message: {
 export function appointmentVariables(appointment: {
   appointmentNo: string
   startsAt: Date
-  patient: { firstName: string; lastName: string }
+  tokenNumber?: string | null
+  patient: { firstName: string; lastName: string } | null
+  visitor?: { name: string } | null
   doctor: { firstName: string; lastName: string } | null
-  chair: { name: string } | null
   hospital: { name: string; phone: string | null; timezone: string }
 }): Record<string, string> {
   // The day and time a patient is told to come in are the clinic's, read off
   // the clinic's own wall clock — not the server's, wherever it happens to run.
   const timezone = appointment.hospital.timezone
+  const fullName = appointment.patient
+    ? `${appointment.patient.firstName} ${appointment.patient.lastName}`
+    : (appointment.visitor?.name ?? '')
+
   return {
-    patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
-    firstName: appointment.patient.firstName,
+    patientName: fullName,
+    firstName: appointment.patient?.firstName ?? fullName.split(' ')[0] ?? '',
     appointmentDate: formatCalendarDay(appointment.startsAt, timezone),
     appointmentTime: wallClockIn(appointment.startsAt, timezone).scheduledTime,
     appointmentNo: appointment.appointmentNo,
     doctorName: appointment.doctor
       ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
       : 'your dentist',
-    chair: appointment.chair?.name || 'TBA',
-    // Kept as an alias so templates written against the old variable name keep
-    // rendering; only `chair` is offered in the variable picker.
-    chairNumber: appointment.chair?.name || 'TBA',
+    // Issued at check-in, so a reminder sent the day before has none — and says
+    // nothing rather than promising a number that does not exist yet.
+    tokenNumber: appointment.tokenNumber ?? '',
+    // Chairs are gone. These two stay, resolving to nothing, because
+    // `replaceVariables` leaves an unknown variable in the message as literal
+    // text — dropping them would send "Chair: {{chair}}" to every patient of a
+    // clinic that had written its own template.
+    chair: '',
+    chairNumber: '',
     clinicName: appointment.hospital.name,
     clinicPhone: appointment.hospital.phone || '',
   }
@@ -298,9 +308,10 @@ async function renderMessage(message: QueuedMessage, hospitalId: string): Promis
       appointmentNo: true,
       startsAt: true,
       status: true,
+      tokenNumber: true,
       patient: { select: { firstName: true, lastName: true } },
+      visitor: { select: { name: true } },
       doctor: { select: { firstName: true, lastName: true } },
-      chair: { select: { name: true } },
       hospital: { select: { name: true, phone: true, timezone: true } },
     },
   })

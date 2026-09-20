@@ -104,3 +104,27 @@ export async function nextAppointmentNo(db: Db, hospitalId: string, at = new Dat
     },
   })
 }
+
+/**
+ * The next patient number for a clinic — PAT{year}00001.
+ *
+ * Lived inside the patients route until converting a walk-in needed one too.
+ * Two copies of a numbering scheme is how a clinic ends up with two PAT202600042.
+ */
+export async function nextPatientId(db: Db, hospitalId: string, at = new Date()) {
+  const prefix = `PAT${at.getFullYear()}`
+
+  return nextInSeries(db, {
+    hospitalId,
+    prefix,
+    width: 5,
+    currentMax: async () => {
+      const last = await db.patient.findFirst({
+        where: { hospitalId, patientId: { startsWith: prefix } },
+        orderBy: { patientId: 'desc' },
+        select: { patientId: true },
+      })
+      return trailingNumber(last?.patientId, 5)
+    },
+  })
+}
