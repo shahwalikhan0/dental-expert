@@ -359,6 +359,9 @@ Compose plugin. Building or developing from source needs:
 - [Infrastructure Roadmap](docs/INFRASTRUCTURE.md) — how DentalERP is packaged and deployed, and what is planned next. Feedback welcome, especially on the phases not yet built.
 - [File storage](docs/STORAGE.md) — local disk vs S3, and how to move between them without losing files.
 - [Localization](docs/LOCALIZATION.md) — locale support and the message catalogue.
+- [Scheduling](docs/SCHEDULING.md) — the four background jobs, what runs them, and the shared secret they authenticate on.
+- [What is outstanding](docs/ROADMAP.md) — the running list of work this application needs and does not have, including subscriptions, payments and backups.
+- [Deferred decisions](docs/DEFERRED.md) — the choices that are yours to make, with the groundwork already written.
 
 ## Contributing
 

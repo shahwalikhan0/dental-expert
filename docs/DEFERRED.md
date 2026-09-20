@@ -4,7 +4,14 @@ Parked on 2026-09-15 at your request. Nothing here blocks the clinic from
 running — the desk can invoice, take money, refund and reconcile today. What is
 parked is **online** payment and one policy number.
 
-Everything else outstanding is in `CHANGES.md` §11 and §18.3.
+**Everything else outstanding is in [ROADMAP.md](./ROADMAP.md)**, which is the
+running list. This file keeps the detail on the one decision below, because it
+is a decision rather than a task and the groundwork for it is already written.
+
+Note that ROADMAP.md §1.1 covers a _different_ payment problem that is easy to
+confuse with this one: this file is about a clinic taking money from its
+patients; §1.1 is about us taking money from the clinic, for which nothing at
+all is built and which needs a merchant account in our name, not theirs.
 
 ---
 
