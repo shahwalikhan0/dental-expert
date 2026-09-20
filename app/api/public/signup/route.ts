@@ -7,6 +7,7 @@ import { initialSubscription } from '@/lib/tenant'
 import { Role } from '@prisma/client'
 import { sendVerificationEmail } from '@/lib/email-helpers'
 import { defaultTemplatesFor } from '@/lib/default-templates'
+import { defaultRecareTypesFor } from '@/lib/recare'
 
 const signupSchema = z.object({
   hospitalName: z.string().min(2, 'Hospital name must be at least 2 characters'),
@@ -103,6 +104,11 @@ export async function POST(request: Request) {
       // looks up a default template, finds none, and silently does nothing —
       // which is what happened to every clinic that ever signed up.
       await tx.communicationTemplate.createMany({ data: defaultTemplatesFor(hospital.id) })
+
+      // The recall types, for the same reason. A clinic with none registers
+      // patients, puts nobody on a recall list, and gives no hint that the
+      // module is switched off.
+      await tx.recareType.createMany({ data: defaultRecareTypesFor(hospital.id) })
 
       return { hospital, user }
     })

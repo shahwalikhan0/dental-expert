@@ -3,11 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock modules with inline factories - these get hoisted
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const client: any = {
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
+    // Registering a patient also starts their recall date, in the same
+    // transaction — see app/api/patients/route.ts.
+    recareType: { findFirst: vi.fn().mockResolvedValue(null) },
+    recare: { upsert: vi.fn() },
     patient: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -17,8 +21,12 @@ vi.mock('@/lib/prisma', () => ({
     hospital: {
       findUnique: vi.fn(),
     },
-  },
-}))
+  }
+
+  client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
+
+  return { prisma: client }
+})
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),

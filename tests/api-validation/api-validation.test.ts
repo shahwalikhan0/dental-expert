@@ -41,8 +41,13 @@ vi.mock('@/lib/api-helpers', () => mockAuth)
 
 // ── Prisma mock ────────────────────────────────────────────────────────────────
 vi.mock('@/lib/prisma', () => {
-  const prismaMock = {
+  const prismaMock: any = {
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
+    // Registering a patient also starts their recall date, in the same
+    // transaction — see app/api/patients/route.ts.
+    recareType: { findFirst: vi.fn().mockResolvedValue(null) },
+    recare: { upsert: vi.fn() },
+    visitor: { create: vi.fn().mockResolvedValue({ id: 'visitor-1' }) },
     patient: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),

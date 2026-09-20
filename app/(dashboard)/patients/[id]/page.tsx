@@ -72,6 +72,7 @@ import {
   History,
   Pill,
   TestTube,
+  Activity,
   Smile,
   Pen,
 } from 'lucide-react'
@@ -85,6 +86,7 @@ import { uploadUrl } from '@/lib/storage/keys'
 import { formatDate, formatTime } from '@/lib/appointment-utils'
 import { ClickableRow } from '@/components/ui/data-grid'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { PerioPanel } from '@/components/clinical/perio-panel'
 
 interface Patient {
   id: string
@@ -483,6 +485,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <Smile className="h-4 w-4" />
             <span className="hidden sm:inline">Dental Chart</span>
           </TabsTrigger>
+          <TabsTrigger value="perio" className="gap-2">
+            <Activity className="h-4 w-4" />
+            <span className="hidden sm:inline">Perio</span>
+          </TabsTrigger>
           <TabsTrigger value="timeline" className="gap-2">
             <History className="h-4 w-4" />
             <span className="hidden sm:inline">Timeline</span>
@@ -670,6 +676,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         {/* Dental Chart Tab */}
         <TabsContent value="dental-chart" className="space-y-6">
           <DentalChart patientId={patient.id} />
+        </TabsContent>
+
+        {/* The tooth chart says what a tooth is; this says what the gum around
+            it is doing. Adjacent tabs because they are read together. */}
+        <TabsContent value="perio" className="space-y-6">
+          <PerioPanel patientId={patient.id} />
         </TabsContent>
 
         {/* Timeline Tab */}

@@ -67,10 +67,9 @@ function existingAppointment(overrides: Record<string, unknown> = {}) {
     startsAt: at('09:00'),
     duration: 60,
     doctorId: 'doc-1',
-    chairId: 'chair-1',
     patient: { firstName: 'Sana', lastName: 'Khalid' },
+    visitor: null,
     doctor: { firstName: 'Imran', lastName: 'Shah' },
-    chair: { name: 'Chair 1' },
     ...overrides,
   }
 }
@@ -99,7 +98,10 @@ describe('findAppointmentConflicts', () => {
     expect(conflicts[0].endTime).toBe('10:00')
   })
 
-  it('reports an overlap on the chair even with a different doctor', async () => {
+  // Chairs are gone: the clinic runs a token queue, not numbered operatories,
+  // and a chair clash could only ever happen where a dentist clash already had.
+  // What remains is that a *different* dentist in the same slot is not a clash.
+  it('ignores an overlap on a different dentist', async () => {
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
       existingAppointment({ doctorId: 'doc-2' }),
     ] as never)
@@ -110,18 +112,17 @@ describe('findAppointmentConflicts', () => {
       timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
-      chairId: 'chair-1',
     })
 
-    expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].resource).toBe('chair')
-    expect(conflicts[0].message).toContain('Chair 1')
+    expect(conflicts).toEqual([])
   })
 
-  // Booking the same dentist into the same chair twice is one appointment but
-  // two distinct problems, and a message naming only one of them is confusing.
-  it('reports the doctor and the chair separately when both clash', async () => {
-    vi.mocked(prisma.appointment.findMany).mockResolvedValue([existingAppointment()] as never)
+  // A walk-in has no patient record, and the clash message still has to name
+  // whoever is in the chair.
+  it('names a walk-in in the clash message', async () => {
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      existingAppointment({ patient: null, visitor: { name: 'Bilal Ahmed' } }),
+    ] as never)
 
     const conflicts = await findAppointmentConflicts({
       hospitalId: 'h1',
@@ -129,10 +130,10 @@ describe('findAppointmentConflicts', () => {
       timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
-      chairId: 'chair-1',
     })
 
-    expect(conflicts.map((c) => c.resource).sort()).toEqual(['chair', 'doctor'])
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].message).toContain('Bilal Ahmed')
   })
 
   it('returns nothing when the slots merely touch', async () => {
@@ -146,7 +147,6 @@ describe('findAppointmentConflicts', () => {
       timezone: KARACHI,
       duration: 30,
       doctorId: 'doc-1',
-      chairId: 'chair-1',
     })
 
     expect(conflicts).toEqual([])
@@ -258,9 +258,11 @@ describe('findAppointmentConflicts', () => {
     expect(prisma.appointment.findMany).not.toHaveBeenCalled()
   })
 
-  it('survives an appointment whose chair record is missing', async () => {
+  // A clash is worded from the appointment it clashes with, and that
+  // appointment may belong to a walk-in with no name on file at all.
+  it('survives an appointment with neither a patient nor a named visitor', async () => {
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
-      existingAppointment({ chair: null }),
+      existingAppointment({ patient: null, visitor: null }),
     ] as never)
 
     const conflicts = await findAppointmentConflicts({
@@ -268,10 +270,11 @@ describe('findAppointmentConflicts', () => {
       startsAt: at('09:15'),
       timezone: KARACHI,
       duration: 30,
-      chairId: 'chair-1',
+      doctorId: 'doc-1',
     })
 
-    expect(conflicts[0].message).toContain('This chair')
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].message).toContain('Unknown')
   })
 })
 

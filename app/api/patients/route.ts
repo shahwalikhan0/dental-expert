@@ -177,44 +177,54 @@ export async function POST(request: NextRequest) {
     // Generate patient ID for this hospital
     const patientId = await nextPatientId(prisma, hospitalId)
 
-    // Create patient with medical history
-    const patient = await prisma.patient.create({
-      data: {
-        patientId,
-        firstName,
-        lastName,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        gender,
-        bloodGroup,
-        phone,
-        alternatePhone,
-        email,
-        address,
-        city,
-        state,
-        postalCode,
-        cnic: parsedCnic,
-        occupation,
-        referredBy,
-        emergencyContactName,
-        emergencyContactPhone,
-        emergencyContactRelation,
-        hospitalId,
-        medicalHistory: medicalHistory
-          ? {
-              create: medicalHistory,
-            }
-          : undefined,
-      },
-      include: {
-        medicalHistory: true,
-      },
-    })
+    // Registration and the first recall date are written together.
+    //
+    // Not one after the other: the patient row would already exist when the
+    // recare write failed, so the 500 would tell the front desk that
+    // registration had failed when it had in fact succeeded — and they would
+    // register the person again.
+    const patient = await prisma.$transaction(async (tx) => {
+      const created = await tx.patient.create({
+        data: {
+          patientId,
+          firstName,
+          lastName,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+          gender,
+          bloodGroup,
+          phone,
+          alternatePhone,
+          email,
+          address,
+          city,
+          state,
+          postalCode,
+          cnic: parsedCnic,
+          occupation,
+          referredBy,
+          emergencyContactName,
+          emergencyContactPhone,
+          emergencyContactRelation,
+          hospitalId,
+          medicalHistory: medicalHistory
+            ? {
+                create: medicalHistory,
+              }
+            : undefined,
+        },
+        include: {
+          medicalHistory: true,
+        },
+      })
 
-    // A newly registered patient joins the recall list straight away, on the
-    // clinic's default interval. A practice that has set no default gets
-    // nothing — see lib/recare.ts; that is a policy decision, not an oversight.
-    await startDefaultRecare(prisma, hospitalId, patient.id)
+      // A newly registered patient joins the recall list straight away, on the
+      // clinic's default interval. A practice that has set no default gets
+      // nothing — see lib/recare.ts; that is a policy decision, not an
+      // oversight.
+      await startDefaultRecare(tx, hospitalId, created.id)
+
+      return created
+    })
 
     return NextResponse.json(patient, { status: 201 })
   } catch (error) {

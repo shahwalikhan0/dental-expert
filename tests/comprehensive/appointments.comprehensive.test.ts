@@ -7,8 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock Prisma
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  // Booking writes the walk-in and the appointment together, inside a
+  // transaction whose callback gets this same client.
+  const client: any = {
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
@@ -29,8 +31,8 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
-    chair: {
-      findFirst: vi.fn(),
+    visitor: {
+      create: vi.fn().mockResolvedValue({ id: 'visitor-1' }),
     },
     setting: {
       findUnique: vi.fn(),
@@ -47,8 +49,12 @@ vi.mock('@/lib/prisma', () => ({
     hospital: {
       findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
-  },
-}))
+  }
+
+  client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
+
+  return { prisma: client }
+})
 
 // Mock auth
 vi.mock('@/lib/api-helpers', async () => {
@@ -268,11 +274,16 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(mockPrisma.appointment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
+            // One box finds registered patients and walk-ins alike. Somebody
+            // asking for "John" does not know whether he was ever registered.
             OR: expect.arrayContaining([
               { appointmentNo: { contains: 'John' } },
-              { patient: { firstName: { contains: 'John' } } },
-              { patient: { lastName: { contains: 'John' } } },
+              { patient: { firstName: { contains: 'John', mode: 'insensitive' } } },
+              { patient: { lastName: { contains: 'John', mode: 'insensitive' } } },
               { patient: { phone: { contains: 'John' } } },
+              { visitor: { name: { contains: 'John', mode: 'insensitive' } } },
+              { visitor: { phone: { contains: 'John' } } },
+              { tokenNumber: { contains: 'John' } },
             ]),
           }),
         })
@@ -605,7 +616,6 @@ describe('Appointments API - Comprehensive Tests', () => {
 
     it('should include optional fields in appointment', async () => {
       mockPrisma.appointment.create.mockResolvedValue({ id: 'apt-1' })
-      mockPrisma.chair.findFirst.mockResolvedValue({ id: 'chair-1', isActive: true })
 
       const request = new NextRequest('http://localhost/api/appointments', {
         method: 'POST',
@@ -615,7 +625,6 @@ describe('Appointments API - Comprehensive Tests', () => {
           scheduledDate: '2030-06-15',
           scheduledTime: '10:00',
           duration: 45,
-          chairId: 'chair-1',
           appointmentType: 'TREATMENT',
           priority: 'HIGH',
           chiefComplaint: 'Tooth pain',
@@ -627,7 +636,6 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(mockPrisma.appointment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            chairId: 'chair-1',
             chiefComplaint: 'Tooth pain',
             notes: 'Patient requested early morning slot',
           }),

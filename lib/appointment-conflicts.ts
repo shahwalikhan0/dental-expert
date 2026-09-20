@@ -140,6 +140,11 @@ export async function findAppointmentConflicts(
   const conflicts: AppointmentConflict[] = []
 
   for (const existing of candidates) {
+    // The SQL narrows to this dentist already; the check is repeated here so
+    // the function is correct on the rows it is given rather than only on the
+    // rows the query happens to return.
+    if (existing.doctorId !== doctorId) continue
+
     if (!intervalsOverlap(startsAt, duration, existing.startsAt, existing.duration)) {
       continue
     }

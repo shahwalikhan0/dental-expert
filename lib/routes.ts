@@ -64,6 +64,7 @@ export const APP_ROUTES = [
   '/prescriptions/[id]',
   '/prescriptions/new',
   '/pricing',
+  '/recare',
   '/reports',
   '/reports/audit-log',
   '/settings',
@@ -78,6 +79,7 @@ export const APP_ROUTES = [
   '/settings/pricing',
   '/settings/procedures',
   '/settings/profile',
+  '/settings/recare',
   '/settings/security',
   '/settings/setup-guide',
   '/settings/system',
@@ -97,6 +99,8 @@ export const APP_ROUTES = [
   '/treatments/plans/[id]/edit',
   '/treatments/plans/new',
   '/verify-email',
+  '/walk-ins',
+  '/walk-ins/[id]',
 ] as const
 
 /** Does this path match a page, treating [segments] as wildcards? */

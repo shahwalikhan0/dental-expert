@@ -98,6 +98,11 @@ const prismaMock = vi.hoisted(() => {
     cashierSession: {
       findFirst: vi.fn(),
     },
+    // Registering a patient also starts their recall date, in the same
+    // transaction — see app/api/patients/route.ts.
+    recareType: { findFirst: vi.fn().mockResolvedValue(null) },
+    recare: { upsert: vi.fn() },
+    visitor: { create: vi.fn().mockResolvedValue({ id: 'visitor-1' }) },
     $transaction: vi.fn((fn: any) => {
       if (typeof fn === 'function') return fn(mock)
       return Promise.resolve(fn)

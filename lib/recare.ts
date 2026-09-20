@@ -22,6 +22,50 @@ import type { PrismaClient, Prisma, RecareStatus } from '@prisma/client'
  *    the row, so when somebody was last seen survives.
  */
 
+/**
+ * What a clinic starts with.
+ *
+ * The migration that added recare inserted these for every clinic that already
+ * existed. A clinic created *afterwards* — by signup, or by a fresh database —
+ * would have had none, and a recall module with no types is inert: every
+ * patient registers, nobody is ever put on a list, and nothing says why. So the
+ * list lives here and every path that creates a clinic uses it.
+ *
+ * The intervals are a starting point, not a clinical instruction. They are
+ * configuration precisely so the practice can set its own.
+ */
+export const DEFAULT_RECARE_TYPES = [
+  {
+    name: 'Scale and polish',
+    intervalMonths: 6,
+    description: 'Routine hygiene visit',
+    isDefault: true,
+  },
+  {
+    name: 'Child check-up',
+    intervalMonths: 6,
+    description: 'Routine examination for a child',
+    isDefault: false,
+  },
+  {
+    name: 'Periodontal maintenance',
+    intervalMonths: 3,
+    description: 'For patients under periodontal care',
+    isDefault: false,
+  },
+] as const
+
+export function defaultRecareTypesFor(hospitalId: string) {
+  return DEFAULT_RECARE_TYPES.map((type, index) => ({
+    hospitalId,
+    name: type.name,
+    intervalMonths: type.intervalMonths,
+    description: type.description,
+    isDefault: type.isDefault,
+    sortOrder: index,
+  }))
+}
+
 export type DueBand = 'OVERDUE' | 'DUE_SOON' | 'UPCOMING' | 'SNOOZED' | 'NOT_DUE'
 
 /** How far ahead "due soon" reaches. A month is what a recall list is worked in. */

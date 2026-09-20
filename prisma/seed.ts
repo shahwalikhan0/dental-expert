@@ -21,6 +21,7 @@ import {
 import bcrypt from 'bcryptjs'
 import { reconcileStockAlerts } from '../lib/stock-alerts'
 import { defaultTemplatesFor } from '../lib/default-templates'
+import { defaultRecareTypesFor, nextDueDate } from '../lib/recare'
 import { instantAt, localDay } from '../lib/appointment-time'
 
 const prisma = new PrismaClient()
@@ -1455,6 +1456,56 @@ async function main() {
   if (templateCount === 0) {
     await prisma.communicationTemplate.createMany({ data: defaultTemplatesFor(hospital.id) })
     console.log('Created default communication templates')
+  }
+
+  // Recall types, for the same reason as the templates above. The migration
+  // that introduced recare inserted these for clinics that already existed; a
+  // database created from scratch runs that migration before any clinic exists,
+  // so it inserts nothing and the module would sit inert.
+  const recareTypeCount = await prisma.recareType.count({ where: { hospitalId: hospital.id } })
+
+  if (recareTypeCount === 0) {
+    await prisma.recareType.createMany({ data: defaultRecareTypesFor(hospital.id) })
+    console.log('Created default recare types')
+  }
+
+  // Put the demo patients on a recall, with dates spread either side of today.
+  // A recall list that is empty on a fresh demo looks like a module that does
+  // not work — and the band that matters, overdue, is the one nobody would see.
+  const defaultRecareType = await prisma.recareType.findFirst({
+    where: { hospitalId: hospital.id, isDefault: true },
+  })
+
+  if (defaultRecareType) {
+    const seededPatients = await prisma.patient.findMany({
+      where: { hospitalId: hospital.id },
+      orderBy: { patientId: 'asc' },
+      select: { id: true },
+    })
+
+    for (const [index, patient] of seededPatients.entries()) {
+      // Months since the last visit, cycling: some long overdue, some due this
+      // month, some not for a while yet.
+      const monthsAgo = [9, 7, 6, 5, 3, 1][index % 6]
+      const lastDone = new Date()
+      lastDone.setMonth(lastDone.getMonth() - monthsAgo)
+
+      await prisma.recare.upsert({
+        where: {
+          patientId_recareTypeId: { patientId: patient.id, recareTypeId: defaultRecareType.id },
+        },
+        update: {},
+        create: {
+          hospitalId: hospital.id,
+          patientId: patient.id,
+          recareTypeId: defaultRecareType.id,
+          lastDoneAt: lastDone,
+          dueDate: nextDueDate(lastDone, defaultRecareType.intervalMonths),
+        },
+      })
+    }
+
+    console.log(`Put ${seededPatients.length} patients on recall`)
   }
 
   console.log('Created suppliers, inventory items, batches, movements and alerts')

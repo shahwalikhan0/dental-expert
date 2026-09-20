@@ -145,6 +145,9 @@ describe('POST /api/public/signup', () => {
       // automated message looks up a default template, finds none, and does
       // nothing — which is what happened to every clinic that signed up.
       communicationTemplate: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
+      // A new clinic is provisioned with recall types too, or its recall list
+      // sits inert with nothing to say why — see lib/recare.ts.
+      recareType: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },
     }
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(mockTx as any))
 
@@ -191,6 +194,9 @@ describe('POST /api/public/signup', () => {
       hospital: { create: vi.fn().mockResolvedValue({ id: 'h1' }) },
       user: { create: vi.fn().mockResolvedValue({ id: 'u1' }) },
       communicationTemplate: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
+      // A new clinic is provisioned with recall types too, or its recall list
+      // sits inert with nothing to say why — see lib/recare.ts.
+      recareType: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },
     }
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(mockTx as any))
 

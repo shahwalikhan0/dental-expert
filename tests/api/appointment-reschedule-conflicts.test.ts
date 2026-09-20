@@ -3,8 +3,8 @@
  *
  * The reschedule check had the same exact-start-time flaw as booking, plus one
  * of its own: it re-checked only when the date, time or doctor changed. Making
- * an appointment longer, or moving it into a different chair, moves the
- * interval just as much and went entirely unchecked.
+ * an appointment longer moves the interval just as much and went entirely
+ * unchecked.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -55,27 +55,21 @@ const EXISTING = {
   id: 'apt-1',
   hospitalId: 'h1',
   doctorId: 'doc-1',
-  chairId: 'chair-1',
   startsAt: at('09:00'),
   duration: 30,
   status: 'SCHEDULED',
 }
 
-/**
- * Another patient occupying 09:45–10:15 with the same doctor, in a different
- * chair — so these fixtures exercise the doctor clash on its own. The chair
- * test below puts the clash in the chair instead.
- */
+/** Another patient occupying 09:45–10:15 with the same doctor. */
 const COLLEAGUE = {
   id: 'apt-2',
   appointmentNo: 'APT00002',
   startsAt: at('09:45'),
   duration: 30,
   doctorId: 'doc-1',
-  chairId: 'chair-3',
   patient: { firstName: 'Nadia', lastName: 'Aslam' },
+  visitor: null,
   doctor: { firstName: 'Imran', lastName: 'Shah' },
-  chair: { name: 'Chair 3' },
 }
 
 function put(body: unknown) {
@@ -122,25 +116,15 @@ describe('PUT /api/appointments/[id] — conflicts', () => {
     expect(prisma.appointment.update).not.toHaveBeenCalled()
   })
 
-  it('re-checks when only the chair changes', async () => {
-    vi.mocked(prisma.chair.findFirst).mockResolvedValue({
-      id: 'chair-2',
-      isActive: true,
-    } as never)
+  it('re-checks when only the dentist changes', async () => {
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([
-      {
-        ...COLLEAGUE,
-        doctorId: 'doc-9',
-        chairId: 'chair-2',
-        chair: { name: 'Chair 2' },
-        startsAt: at('09:15'),
-      },
+      { ...COLLEAGUE, doctorId: 'doc-9', startsAt: at('09:15') },
     ] as never)
 
-    const res = await PUT(put({ chairId: 'chair-2' }), params)
+    const res = await PUT(put({ doctorId: 'doc-9' }), params)
 
     expect(res.status).toBe(409)
-    await expect(res.json()).resolves.toMatchObject({ conflicts: [{ resource: 'chair' }] })
+    await expect(res.json()).resolves.toMatchObject({ conflicts: [{ resource: 'doctor' }] })
   })
 
   it('does not clash with itself when nothing really moves', async () => {
@@ -193,41 +177,5 @@ describe('PUT /api/appointments/[id] — WARN policy', () => {
     expect(body.conflicts).toHaveLength(1)
     expect(body.conflicts[0].message).toContain('Nadia Aslam')
     expect(prisma.appointment.update).toHaveBeenCalled()
-  })
-})
-
-describe('PUT /api/appointments/[id] — chair validation', () => {
-  it('404s for a chair belonging to another clinic', async () => {
-    vi.mocked(prisma.chair.findFirst).mockResolvedValue(null as never)
-
-    const res = await PUT(put({ chairId: 'someone-elses' }), params)
-
-    expect(res.status).toBe(404)
-    expect(prisma.appointment.update).not.toHaveBeenCalled()
-  })
-
-  it('refuses to move an appointment into a retired chair', async () => {
-    vi.mocked(prisma.chair.findFirst).mockResolvedValue({
-      id: 'chair-9',
-      isActive: false,
-    } as never)
-
-    const res = await PUT(put({ chairId: 'chair-9' }), params)
-
-    expect(res.status).toBe(400)
-  })
-
-  // An appointment already sitting in a chair that has since been retired must
-  // still be editable — otherwise retiring a chair freezes its history.
-  it('lets an appointment stay in a chair retired under it', async () => {
-    vi.mocked(prisma.chair.findFirst).mockResolvedValue({
-      id: 'chair-1',
-      isActive: false,
-    } as never)
-    vi.mocked(prisma.appointment.findMany).mockResolvedValue([] as never)
-
-    const res = await PUT(put({ chairId: 'chair-1', notes: 'Running late' }), params)
-
-    expect(res.status).toBe(200)
   })
 })

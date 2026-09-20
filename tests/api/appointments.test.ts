@@ -3,8 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock modules with inline factories - these get hoisted
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  // Booking writes the walk-in and the appointment together, so the create path
+  // runs inside a transaction; the callback gets this same client.
+  const client: any = {
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
@@ -20,8 +22,8 @@ vi.mock('@/lib/prisma', () => ({
     staff: {
       findFirst: vi.fn(),
     },
-    chair: {
-      findFirst: vi.fn(),
+    visitor: {
+      create: vi.fn().mockResolvedValue({ id: 'visitor-1' }),
     },
     setting: {
       findUnique: vi.fn(),
@@ -31,8 +33,12 @@ vi.mock('@/lib/prisma', () => ({
     hospital: {
       findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
-  },
-}))
+  }
+
+  client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
+
+  return { prisma: client }
+})
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
