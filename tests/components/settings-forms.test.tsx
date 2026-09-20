@@ -373,7 +373,12 @@ describe('ClinicSettingsPage', () => {
         expect(screen.getByDisplayValue('Demo Dental Clinic')).toBeInTheDocument()
       })
 
-      const saveButton = screen.getAllByRole('button').find((b) => b.textContent?.includes('Save'))
+      // By name, not by "contains Save": the online-booking card has a save of
+      // its own, and finding whichever button comes first would post the wrong
+      // form to the wrong endpoint.
+      const saveButton = screen
+        .getAllByRole('button')
+        .find((b) => b.textContent?.includes('Save Clinic Information'))
       fireEvent.click(saveButton!)
 
       await waitFor(() => {
@@ -406,7 +411,12 @@ describe('ClinicSettingsPage', () => {
         expect(screen.getByDisplayValue('Demo Dental Clinic')).toBeInTheDocument()
       })
 
-      const saveButton = screen.getAllByRole('button').find((b) => b.textContent?.includes('Save'))
+      // By name, not by "contains Save": the online-booking card has a save of
+      // its own, and finding whichever button comes first would post the wrong
+      // form to the wrong endpoint.
+      const saveButton = screen
+        .getAllByRole('button')
+        .find((b) => b.textContent?.includes('Save Clinic Information'))
       fireEvent.click(saveButton!)
 
       await waitFor(() => {
@@ -455,22 +465,50 @@ describe('ClinicSettingsPage', () => {
     })
   })
 
-  describe('Patient portal toggle', () => {
-    it('renders patient portal switch', async () => {
-      ;(global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(clinicData({ patientPortalEnabled: false })),
+  describe('Online booking', () => {
+    it('offers online booking, not the portal that was never built', async () => {
+      // The card here used to be "Patient Portal", with a login URL at
+      // /portal/login and copy about viewing records and paying bills. No
+      // /portal page has ever existed, so the address a clinic was invited to
+      // send its patients was a 404. The same switch really controls the
+      // booking page, and that is what it says now.
+      ;(global.fetch as any).mockImplementation((url: string) => {
+        if (String(url).includes('/api/settings/booking')) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: {
+                  enabled: true,
+                  slug: 'demo-dental-clinic',
+                  minimumNoticeHours: 2,
+                  horizonDays: 60,
+                  maxOpenPerPhone: 3,
+                },
+              }),
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(clinicData({ patientPortalEnabled: true })),
+        })
       })
 
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getAllByText(/Patient Portal/i).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/Online booking/i).length).toBeGreaterThan(0)
       })
 
-      // Should have a switch for the toggle
-      const switches = screen.getAllByRole('switch')
-      expect(switches.length).toBeGreaterThan(0)
+      expect(screen.queryByText(/Patient Portal/i)).not.toBeInTheDocument()
+
+      // The address it offers is one you can open.
+      await waitFor(() => {
+        expect(screen.getByText(/\/book\/demo-dental-clinic/)).toBeInTheDocument()
+      })
+
+      expect(screen.getAllByRole('switch').length).toBeGreaterThan(0)
     })
   })
 

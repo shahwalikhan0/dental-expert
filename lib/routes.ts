@@ -29,6 +29,10 @@ export const APP_ROUTES = [
   '/billing/payments/[id]/receipt',
   '/billing/payments/[id]/refund',
   '/billing/reports',
+  // The patient-facing booking page. It is not a dashboard route and never
+  // appears in a staff breadcrumb; it is listed because this file is checked
+  // against the filesystem, and an exception would be a hole in that check.
+  '/book/[slug]',
   '/communications',
   '/communications/analytics',
   '/communications/feedback',

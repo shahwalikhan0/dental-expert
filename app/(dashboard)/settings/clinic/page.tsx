@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { Separator } from '@/components/ui/separator'
 import { Building2, Save, Upload, Trash2, Loader2, Copy } from 'lucide-react'
+import { OnlineBookingCard } from '@/components/settings/online-booking-card'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
 const DAY_LABELS: Record<string, string> = {
@@ -615,52 +616,7 @@ export default function ClinicSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Patient Portal */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Patient Portal</CardTitle>
-            <CardDescription>
-              Allow patients to log in, view records, book appointments, and pay bills online
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Enable Patient Portal</p>
-                <p className="text-xs text-muted-foreground">
-                  Patients can access the portal via OTP login
-                </p>
-              </div>
-              <Switch checked={patientPortalEnabled} onCheckedChange={setPatientPortalEnabled} />
-            </div>
-            {patientPortalEnabled && hospitalSlug && (
-              <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                <p className="text-sm font-medium">Portal Login URL</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-background p-2 rounded border break-all">
-                    {typeof window !== 'undefined' ? window.location.origin : ''}
-                    /portal/login?clinic={hospitalSlug}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        `${window.location.origin}/portal/login?clinic=${hospitalSlug}`
-                      )
-                      toast({ title: 'Copied', description: 'Portal URL copied to clipboard' })
-                    }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Share this URL with patients so they can log in with their registered phone number
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <OnlineBookingCard />
 
         {/* Save Button */}
         <div className="flex justify-end">
