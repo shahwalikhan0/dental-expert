@@ -250,3 +250,133 @@ export function usePagedRows<T>(all: T[], initialSize = DEFAULT_PAGE_SIZE): Page
     total,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+export type SortDirection = 'asc' | 'desc'
+
+export interface SortState {
+  /** The column being sorted by, or null for the screen's natural order. */
+  column: string | null
+  direction: SortDirection
+}
+
+export interface SortControl extends SortState {
+  /** Click a header: sorts ascending, then descending, then back to natural. */
+  toggle: (column: string) => void
+  /** For a query string — `undefined` when nothing is being sorted. */
+  params: { sort?: string; direction?: SortDirection }
+}
+
+/**
+ * Column sorting for a list screen.
+ *
+ * Not one header in this application was clickable before this. Order was
+ * hardcoded in each API route, which is invisible with ten seeded patients and
+ * the first complaint anybody makes with four thousand.
+ *
+ * Three states rather than two. A header that only alternates ascending and
+ * descending gives no way back to the order the screen was designed around —
+ * appointments by time, invoices newest first — and that order is usually the
+ * one somebody wants after they have finished looking for something.
+ */
+export function useSort(initial: SortState = { column: null, direction: 'asc' }): SortControl {
+  const [state, setState] = React.useState<SortState>(initial)
+
+  const toggle = React.useCallback((column: string) => {
+    setState((current) => {
+      if (current.column !== column) return { column, direction: 'asc' }
+      if (current.direction === 'asc') return { column, direction: 'desc' }
+      return { column: null, direction: 'asc' }
+    })
+  }, [])
+
+  return {
+    ...state,
+    toggle,
+    params: state.column ? { sort: state.column, direction: state.direction } : {},
+  }
+}
+
+export interface SortableHeaderProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
+  /** The value sent to the API, and the key `useSort` tracks. */
+  column: string
+  sort: SortControl
+  children: React.ReactNode
+}
+
+/**
+ * A column header that sorts.
+ *
+ * A real `<button>` inside the `<th>`, with `aria-sort` on the cell, because
+ * that is the pair a screen reader announces as a sortable column. An arrow
+ * shows the current direction; the header is reachable and operable from the
+ * keyboard without anything extra, being a button.
+ */
+export const SortableHeader = React.forwardRef<HTMLTableCellElement, SortableHeaderProps>(
+  ({ column, sort, children, className, ...props }, ref) => {
+    const active = sort.column === column
+    const ariaSort = !active ? 'none' : sort.direction === 'asc' ? 'ascending' : 'descending'
+
+    return (
+      <th
+        ref={ref}
+        aria-sort={ariaSort}
+        className={cn(
+          'h-12 px-4 text-left align-middle font-medium text-muted-foreground',
+          className
+        )}
+        {...props}
+      >
+        <button
+          type="button"
+          onClick={() => sort.toggle(column)}
+          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {children}
+          <span aria-hidden="true" className={cn('text-xs', active ? 'opacity-100' : 'opacity-30')}>
+            {active && sort.direction === 'desc' ? '▼' : '▲'}
+          </span>
+        </button>
+      </th>
+    )
+  }
+)
+SortableHeader.displayName = 'SortableHeader'
+
+/**
+ * Sort rows already in memory.
+ *
+ * For screens whose list is not paged by the server. `value` pulls the
+ * comparable out of a row, because what a column displays and what it sorts by
+ * are rarely the same thing — a patient row shows a name and sorts on it, an
+ * appointment row shows "9:00 AM" and sorts on an instant.
+ */
+export function sortRows<T>(
+  rows: T[],
+  sort: SortState,
+  value: (row: T, column: string) => string | number | Date | null | undefined
+): T[] {
+  if (!sort.column) return rows
+  const column = sort.column
+  const factor = sort.direction === 'asc' ? 1 : -1
+
+  return [...rows].sort((a, b) => {
+    const left = value(a, column)
+    const right = value(b, column)
+
+    // Empties sort last whichever way the column is pointing: a blank is not a
+    // small value, it is a missing one, and burying them under a descending
+    // sort hides exactly the rows somebody is usually looking for.
+    if (left == null && right == null) return 0
+    if (left == null) return 1
+    if (right == null) return -1
+
+    if (typeof left === 'string' && typeof right === 'string') {
+      return left.localeCompare(right, undefined, { sensitivity: 'base' }) * factor
+    }
+    return (Number(left) - Number(right)) * factor
+  })
+}

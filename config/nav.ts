@@ -1,6 +1,8 @@
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
+  CalendarCheck,
   Calendar,
   Stethoscope,
   Receipt,
@@ -88,12 +90,29 @@ export const navigation: NavSection[] = [
             href: '/appointments',
             icon: Calendar,
           },
+          // The screen a receptionist works all day. It existed, complete, and
+          // nothing in the application linked to it — no menu entry, no button.
+          {
+            title: "Today's Queue",
+            href: '/appointments/queue',
+            icon: Clock,
+          },
           {
             title: 'Waitlist',
             href: '/appointments/waitlist',
             icon: Clock,
           },
         ],
+      },
+      {
+        title: 'Walk-ins',
+        href: '/walk-ins',
+        icon: UserPlus,
+      },
+      {
+        title: 'Recare',
+        href: '/recare',
+        icon: CalendarCheck,
       },
       {
         title: 'Treatments',

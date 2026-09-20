@@ -3,7 +3,17 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, localDay, withWallClock } from '@/lib/appointment-time'
 
-// GET - Get today's appointments for queue management
+/**
+ * GET — the day, for the queue screen.
+ *
+ * `date` reads a different day, which is what a calendar needs; without it the
+ * answer is the clinic's today.
+ *
+ * Those waiting come back in token order, not appointment order. The token is
+ * arrival order, and arrival order is who gets called next — a waiting room
+ * sorted by who was *booked* first calls the person who has been sitting there
+ * longest second.
+ */
 export async function GET(request: NextRequest) {
   const { error, hospitalId } = await requirePermission('appointments:read')
 
@@ -14,14 +24,16 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const doctorId = searchParams.get('doctorId') || ''
+    const requestedDate = searchParams.get('date') || ''
 
     // "Today" is the clinic's today. On a host running in UTC, a Karachi
     // clinic's morning belongs to the server's previous day for its first five
     // hours, and the queue used to empty itself at 05:00 local.
     const timezone = await clinicTimezone(prisma, hospitalId)
+    const day = requestedDate || localDay(new Date(), timezone)
     const where: any = {
       hospitalId,
-      startsAt: dayRangeIn(localDay(new Date(), timezone), timezone),
+      startsAt: dayRangeIn(day, timezone),
     }
 
     if (doctorId) {
@@ -41,6 +53,9 @@ export async function GET(request: NextRequest) {
             email: true,
           },
         },
+        visitor: {
+          select: { id: true, name: true, phone: true, convertedPatientId: true },
+        },
         doctor: {
           select: {
             id: true,
@@ -56,7 +71,12 @@ export async function GET(request: NextRequest) {
     const appointments = rows.map((a) => withWallClock(a, timezone))
 
     // Group appointments by status for queue view
-    const waiting = appointments.filter((a) => a.status === 'CHECKED_IN')
+    // Waiting is a queue, so it is ordered by the number people were given at
+    // the door. Everything else stays in appointment order.
+    const byToken = (a: { tokenNumber: string | null }, b: { tokenNumber: string | null }) =>
+      (a.tokenNumber ?? '').localeCompare(b.tokenNumber ?? '')
+
+    const waiting = appointments.filter((a) => a.status === 'CHECKED_IN').sort(byToken)
     const inProgress = appointments.filter((a) => a.status === 'IN_PROGRESS')
     const upcoming = appointments.filter((a) => ['SCHEDULED', 'CONFIRMED'].includes(a.status))
     const completed = appointments.filter((a) => a.status === 'COMPLETED')
@@ -80,6 +100,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       appointments,
+      day,
       queue: {
         waiting,
         inProgress,

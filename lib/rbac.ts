@@ -449,6 +449,10 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/communications', 'communications:read'],
   ['/crm', 'communications:read'],
   ['/patients', 'patients:read'],
+  // A walk-in is somebody the clinic has seen but not registered, so it is the
+  // patient register's capability that governs them.
+  ['/walk-ins', 'patients:read'],
+  ['/recare', 'appointments:read'],
   ['/appointments', 'appointments:read'],
   ['/sterilization', 'inventory:read'],
   ['/medications', 'clinical:read'],

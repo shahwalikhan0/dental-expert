@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Calendar, Clock, Plus, Trash2, Save, Armchair } from 'lucide-react'
+import { Calendar, Clock, Plus, Save, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function AppointmentSettingsPage() {
@@ -22,8 +22,6 @@ export default function AppointmentSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [holidays, setHolidays] = useState<any[]>([])
   const [newHoliday, setNewHoliday] = useState({ name: '', date: '' })
-  const [chairs, setChairs] = useState<any[]>([])
-  const [newChair, setNewChair] = useState({ name: '', room: '' })
 
   const [settings, setSettings] = useState({
     slotDuration: '30',
@@ -41,7 +39,6 @@ export default function AppointmentSettingsPage() {
   useEffect(() => {
     fetchSettings()
     fetchHolidays()
-    fetchChairs()
   }, [])
 
   const fetchSettings = async () => {
@@ -74,79 +71,6 @@ export default function AppointmentSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch holidays:', error)
-    }
-  }
-
-  const fetchChairs = async () => {
-    try {
-      const response = await fetch('/api/chairs?includeInactive=true')
-      const result = await response.json()
-      if (result.success) setChairs(result.data)
-    } catch (error) {
-      console.error('Failed to fetch chairs:', error)
-    }
-  }
-
-  const handleAddChair = async () => {
-    if (!newChair.name.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter a chair name',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    try {
-      const response = await fetch('/api/chairs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newChair.name.trim(),
-          room: newChair.room.trim() || null,
-          sortOrder: chairs.length,
-        }),
-      })
-      const result = await response.json()
-
-      if (!response.ok) throw new Error(result.error || 'Failed to add chair')
-
-      toast({ title: 'Success', description: `${newChair.name} added` })
-      setNewChair({ name: '', room: '' })
-      fetchChairs()
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
-    }
-  }
-
-  const handleToggleChair = async (id: string, isActive: boolean) => {
-    try {
-      const response = await fetch(`/api/chairs/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive }),
-      })
-      if (!response.ok) throw new Error('Failed to update chair')
-      fetchChairs()
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
-    }
-  }
-
-  const handleDeleteChair = async (id: string) => {
-    try {
-      const response = await fetch(`/api/chairs/${id}`, { method: 'DELETE' })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Failed to delete chair')
-
-      // A chair with appointments against it is retired, not removed.
-      toast({
-        title: result.deactivated ? 'Taken out of service' : 'Deleted',
-        description: result.message || 'Chair removed',
-      })
-      fetchChairs()
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
     }
   }
 
@@ -381,84 +305,12 @@ export default function AppointmentSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Chairs / Operatories — FR-025 master data */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Armchair className="w-5 h-5" />
-              Chairs &amp; Operatories
-            </CardTitle>
-            <CardDescription>
-              The chairs patients can be booked into. Two appointments cannot occupy the same chair
-              at the same time.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                placeholder="Chair name (e.g. Chair 1, Operatory A)"
-                value={newChair.name}
-                onChange={(e) => setNewChair({ ...newChair, name: e.target.value })}
-              />
-              <Input
-                placeholder="Room (optional)"
-                value={newChair.room}
-                onChange={(e) => setNewChair({ ...newChair, room: e.target.value })}
-              />
-              <Button onClick={handleAddChair}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add
-              </Button>
-            </div>
-
-            {chairs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No chairs configured yet. Until one is added, appointments cannot be assigned a
-                chair.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {chairs.map((chair) => (
-                  <div
-                    key={chair.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
-                  >
-                    <div>
-                      <p className="font-medium">{chair.name}</p>
-                      {chair.room && <p className="text-sm text-muted-foreground">{chair.room}</p>}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={chair.isActive}
-                          onCheckedChange={(checked) => handleToggleChair(chair.id, checked)}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {chair.isActive ? 'In service' : 'Out of service'}
-                        </span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteChair(chair.id)}
-                        aria-label={`Remove ${chair.name}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Double-booking policy — FR-004 "beyond configured rules" */}
         <Card>
           <CardHeader>
             <CardTitle>Double Booking</CardTitle>
             <CardDescription>
-              What happens when a booking overlaps one the doctor or chair already has
+              What happens when a booking overlaps one the dentist already has
             </CardDescription>
           </CardHeader>
           <CardContent>

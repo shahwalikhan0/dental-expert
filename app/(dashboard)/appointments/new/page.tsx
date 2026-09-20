@@ -60,18 +60,26 @@ export default function NewAppointmentPage() {
   // Form state
   const [patientSearch, setPatientSearch] = useState('')
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [selectedDoctor, setSelectedDoctor] = useState('')
+  // Clicking an empty slot in the book arrives here with the dentist, the day
+  // and the time already chosen. That is the whole point of the book: booking
+  // should be one click and a name, not a form with four dropdowns.
+  const [selectedDoctor, setSelectedDoctor] = useState(searchParams.get('doctorId') ?? '')
   // A follow-up booked from a treatment arrives with the date it is due, so
   // the day is already chosen and the slot list loads without a second step.
   const [selectedDate, setSelectedDate] = useState(
     /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') ?? '') ? searchParams.get('date')! : ''
   )
-  const [selectedTime, setSelectedTime] = useState('')
+  const [selectedTime, setSelectedTime] = useState(
+    /^\d{2}:\d{2}$/.test(searchParams.get('time') ?? '') ? searchParams.get('time')! : ''
+  )
   const [duration, setDuration] = useState('30')
   const [appointmentType, setAppointmentType] = useState('CONSULTATION')
   const [priority, setPriority] = useState('NORMAL')
-  const [chairId, setChairId] = useState('none')
-  const [chairs, setChairs] = useState<{ id: string; name: string; room: string | null }[]>([])
+  // Booking a walk-in. The front desk should not have to invent a patient
+  // record for somebody who may never come back — see lib/visitors.ts.
+  const [isWalkIn, setIsWalkIn] = useState(searchParams.get('walkIn') === '1')
+  const [visitorName, setVisitorName] = useState('')
+  const [visitorPhone, setVisitorPhone] = useState('')
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -80,10 +88,9 @@ export default function NewAppointmentPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [patientsRes, doctorsRes, chairsRes] = await Promise.all([
+        const [patientsRes, doctorsRes] = await Promise.all([
           fetch('/api/patients?all=true'),
           fetch('/api/staff/doctors'),
-          fetch('/api/chairs'),
         ])
 
         if (patientsRes.ok) {
@@ -102,11 +109,6 @@ export default function NewAppointmentPage() {
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
           setDoctors(data.doctors)
-        }
-
-        if (chairsRes.ok) {
-          const data = await chairsRes.json()
-          setChairs(data.data || [])
         }
       } catch (err) {
         console.error('Error fetching data:', err)
@@ -164,7 +166,12 @@ export default function NewAppointmentPage() {
     e.preventDefault()
     setError('')
 
-    if (!selectedPatient) {
+    if (isWalkIn) {
+      if (visitorName.trim().length < 2) {
+        setError('A walk-in needs a name')
+        return
+      }
+    } else if (!selectedPatient) {
       setError('Please select a patient')
       return
     }
@@ -191,14 +198,15 @@ export default function NewAppointmentPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patientId: selectedPatient.id,
+          ...(isWalkIn
+            ? { visitor: { name: visitorName.trim(), phone: visitorPhone.trim() || null } }
+            : { patientId: selectedPatient!.id }),
           doctorId: selectedDoctor,
           scheduledDate: selectedDate,
           scheduledTime: selectedTime,
           duration: parseInt(duration),
           appointmentType,
           priority,
-          chairId: chairId !== 'none' ? chairId : null,
           chiefComplaint: chiefComplaint || null,
           notes: notes || null,
         }),
@@ -263,10 +271,61 @@ export default function NewAppointmentPage() {
                 <User className="h-5 w-5" />
                 Patient
               </CardTitle>
-              <CardDescription>Select the patient for this appointment</CardDescription>
+              <CardDescription>
+                A registered patient, or a walk-in the clinic has not registered yet
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {selectedPatient ? (
+              {/* Two ways in, because a clinic sees both kinds of person and
+                  should not have to open a patient record to see the second. */}
+              <div className="inline-flex rounded-md border p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isWalkIn ? 'ghost' : 'default'}
+                  onClick={() => setIsWalkIn(false)}
+                >
+                  Registered patient
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isWalkIn ? 'default' : 'ghost'}
+                  onClick={() => {
+                    setIsWalkIn(true)
+                    setSelectedPatient(null)
+                  }}
+                >
+                  Walk-in
+                </Button>
+              </div>
+
+              {isWalkIn ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="visitorName">Name *</Label>
+                    <Input
+                      id="visitorName"
+                      value={visitorName}
+                      onChange={(e) => setVisitorName(e.target.value)}
+                      placeholder="What they gave at the desk"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="visitorPhone">Phone</Label>
+                    <Input
+                      id="visitorPhone"
+                      value={visitorPhone}
+                      onChange={(e) => setVisitorPhone(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    No patient record is created. Register them later from Walk-ins if they come
+                    back, and this visit will follow them.
+                  </p>
+                </div>
+              ) : selectedPatient ? (
                 <div className="rounded-lg border p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -474,25 +533,6 @@ export default function NewAppointmentPage() {
                       <SelectItem value="NORMAL">Normal</SelectItem>
                       <SelectItem value="HIGH">High</SelectItem>
                       <SelectItem value="URGENT">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Chair</Label>
-                  <Select value={chairId} onValueChange={setChairId} disabled={!chairs.length}>
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={chairs.length ? 'Select chair' : 'No chairs configured'}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Not assigned</SelectItem>
-                      {chairs.map((chair) => (
-                        <SelectItem key={chair.id} value={chair.id}>
-                          {chair.room ? `${chair.name} — ${chair.room}` : chair.name}
-                        </SelectItem>
-                      ))}
                     </SelectContent>
                   </Select>
                 </div>

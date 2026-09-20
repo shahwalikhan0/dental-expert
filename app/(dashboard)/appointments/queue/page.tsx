@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -13,525 +13,471 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useToast } from '@/hooks/use-toast'
+import { useTrail } from '@/components/ui/trail'
+import { formatToken } from '@/lib/tokens'
 import {
+  ArrowRight,
+  CheckCircle2,
   Clock,
-  User,
-  Phone,
+  Loader2,
   LogIn,
-  LogOut,
-  Play,
-  CheckCircle,
-  XCircle,
   RefreshCw,
-  Users,
-  Timer,
-  Calendar,
-  AlertCircle,
+  Search,
+  UserPlus,
+  UserX,
 } from 'lucide-react'
-import {
-  appointmentStatusConfig,
-  appointmentTypeConfig,
-  formatTime,
-  getPatientName,
-  getDoctorName,
-} from '@/lib/appointment-utils'
+
+/**
+ * The waiting room.
+ *
+ * This screen existed and nothing in the application linked to it — no sidebar
+ * entry, no button, no link from anywhere. It was reachable only by typing the
+ * URL, which for the screen a receptionist works all day is the same as not
+ * existing.
+ *
+ * Rebuilt around the token. Arrival order is the order people are called, so
+ * the waiting column is sorted by the number they were given at the door rather
+ * than by when they were booked — a queue sorted by booking calls the person
+ * who has been sitting there longest second.
+ *
+ * Walk-ins appear here beside registered patients, marked as such, because the
+ * front desk does not sort the waiting room into two kinds of person.
+ */
 
 interface Appointment {
   id: string
   appointmentNo: string
-  scheduledDate: string
+  tokenNumber: string | null
   scheduledTime: string
-  duration: number
-  chair: { id: string; name: string } | null
-  appointmentType: string
   status: string
-  priority: string
-  chiefComplaint: string | null
-  checkedInAt: string | null
   waitTime: number | null
+  duration: number
+  appointmentType: string
+  chiefComplaint: string | null
   patient: {
     id: string
     patientId: string
     firstName: string
     lastName: string
-    phone: string
-  }
-  doctor: {
-    id: string
-    firstName: string
-    lastName: string
-    specialization: string | null
-  }
+    phone: string | null
+  } | null
+  visitor: { id: string; name: string; phone: string | null } | null
+  doctor: { id: string; firstName: string; lastName: string } | null
 }
 
-interface QueueStats {
-  total: number
-  waiting: number
-  inProgress: number
-  upcoming: number
-  completed: number
-  noShow: number
-  cancelled: number
-  avgWaitTime: number
+interface Queue {
+  waiting: Appointment[]
+  inProgress: Appointment[]
+  upcoming: Appointment[]
+  completed: Appointment[]
+  noShow: Appointment[]
+  cancelled: Appointment[]
 }
 
-interface Doctor {
-  id: string
-  firstName: string
-  lastName: string
-  specialization: string | null
+const EMPTY: Queue = {
+  waiting: [],
+  inProgress: [],
+  upcoming: [],
+  completed: [],
+  noShow: [],
+  cancelled: [],
 }
 
-export default function QueueManagementPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+const subjectOf = (a: Appointment) =>
+  a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : (a.visitor?.name ?? 'Unknown')
 
-  const [queue, setQueue] = useState<{
-    waiting: Appointment[]
-    inProgress: Appointment[]
-    upcoming: Appointment[]
-    completed: Appointment[]
-  }>({
-    waiting: [],
-    inProgress: [],
-    upcoming: [],
-    completed: [],
-  })
-  const [stats, setStats] = useState<QueueStats>({
-    total: 0,
-    waiting: 0,
-    inProgress: 0,
-    upcoming: 0,
-    completed: 0,
-    noShow: 0,
-    cancelled: 0,
-    avgWaitTime: 0,
-  })
+const phoneOf = (a: Appointment) => a.patient?.phone ?? a.visitor?.phone ?? null
 
-  const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [selectedDoctor, setSelectedDoctor] = useState('all')
-
-  const fetchQueue = async () => {
-    try {
-      const params = new URLSearchParams()
-      if (selectedDoctor) params.append('doctorId', selectedDoctor)
-
-      const response = await fetch(`/api/appointments/today?${params}`)
-      if (response.ok) {
-        const data = await response.json()
-        setQueue(data.queue)
-        setStats(data.stats)
-      }
-    } catch (error) {
-      console.error('Error fetching queue:', error)
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }
-
-  const fetchDoctors = async () => {
-    try {
-      const response = await fetch('/api/staff/doctors')
-      if (response.ok) {
-        const data = await response.json()
-        setDoctors(data.doctors)
-      }
-    } catch (error) {
-      console.error('Error fetching doctors:', error)
-    }
-  }
-
-  useEffect(() => {
-    fetchDoctors()
-  }, [])
-
-  useEffect(() => {
-    fetchQueue()
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchQueue, 30000)
-    return () => clearInterval(interval)
-  }, [selectedDoctor])
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    fetchQueue()
-  }
-
-  const handleCheckIn = async (id: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}/check-in`, {
-        method: 'POST',
-      })
-      if (response.ok) fetchQueue()
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const handleCheckOut = async (id: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}/check-out`, {
-        method: 'POST',
-      })
-      if (response.ok) fetchQueue()
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const handleStartProgress = async (id: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'IN_PROGRESS' }),
-      })
-      if (response.ok) fetchQueue()
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const handleNoShow = async (id: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'NO_SHOW' }),
-      })
-      if (response.ok) fetchQueue()
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const config = appointmentStatusConfig[status] || {
-      label: status,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
-  }
-
-  const getTypeBadge = (type: string) => {
-    const config = appointmentTypeConfig[type] || {
-      label: type,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted/50',
-    }
-    return (
-      <Badge variant="outline" className={`${config.bgColor} ${config.color} border-0 text-xs`}>
-        {config.label}
-      </Badge>
-    )
-  }
-
-  const getPriorityIndicator = (priority: string) => {
-    if (priority === 'URGENT') {
-      return <AlertCircle className="h-4 w-4 text-red-500" />
-    }
-    if (priority === 'HIGH') {
-      return <AlertCircle className="h-4 w-4 text-orange-500" />
-    }
-    return null
-  }
-
-  const AppointmentCard = ({
-    appointment,
-    showActions = true,
-  }: {
-    appointment: Appointment
-    showActions?: boolean
-  }) => (
-    <Card className="mb-3">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <User className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="font-semibold">{getPatientName(appointment.patient)}</p>
-                {getPriorityIndicator(appointment.priority)}
-              </div>
-              <p className="text-sm text-muted-foreground">{appointment.patient.patientId}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Phone className="h-3 w-3 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">{appointment.patient.phone}</span>
-              </div>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              {formatTime(appointment.scheduledTime)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {getDoctorName(appointment.doctor)}
-            </p>
-            {appointment.chair && (
-              <p className="text-xs text-muted-foreground">{appointment.chair.name}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 mt-3">
-          {getTypeBadge(appointment.appointmentType)}
-          {getStatusBadge(appointment.status)}
-          {appointment.waitTime !== null && appointment.waitTime > 0 && (
-            <Badge variant="outline" className="text-xs">
-              <Timer className="h-3 w-3 mr-1" />
-              {appointment.waitTime} min wait
-            </Badge>
-          )}
-        </div>
-
-        {appointment.chiefComplaint && (
-          <p className="text-sm text-muted-foreground mt-2 italic">
-            &quot;{appointment.chiefComplaint}&quot;
-          </p>
+/**
+ * Declared at module scope, not inside the page.
+ *
+ * A component created during render is a new component type on every render, so
+ * React unmounts and remounts it — any state inside resets, and the focus a
+ * receptionist had in the search box goes with it.
+ */
+function Person({
+  appointment: a,
+  to,
+}: {
+  appointment: Appointment
+  to: (href: string) => string
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2">
+        {a.patient ? (
+          <Link
+            href={to(`/patients/${a.patient.id}`)}
+            className="font-medium truncate hover:underline"
+          >
+            {subjectOf(a)}
+          </Link>
+        ) : (
+          <span className="font-medium truncate">{subjectOf(a)}</span>
         )}
+        {!a.patient && (
+          <Badge variant="outline" className="shrink-0 text-xs">
+            Walk-in
+          </Badge>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground truncate">
+        {a.scheduledTime}
+        {phoneOf(a) ? ` · ${phoneOf(a)}` : ''}
+        {a.doctor ? ` · Dr. ${a.doctor.firstName} ${a.doctor.lastName}` : ''}
+      </p>
+      {a.chiefComplaint && (
+        <p className="text-xs text-muted-foreground truncate italic">{a.chiefComplaint}</p>
+      )}
+    </div>
+  )
+}
 
-        {showActions && (
-          <div className="flex gap-2 mt-3">
-            {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
-              <>
-                <Button size="sm" onClick={() => handleCheckIn(appointment.id)}>
-                  <LogIn className="h-4 w-4 mr-1" />
-                  Check In
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => handleNoShow(appointment.id)}>
-                  <XCircle className="h-4 w-4 mr-1" />
-                  No Show
-                </Button>
-              </>
-            )}
-            {appointment.status === 'CHECKED_IN' && (
-              <>
-                <Button size="sm" onClick={() => handleStartProgress(appointment.id)}>
-                  <Play className="h-4 w-4 mr-1" />
-                  Start
-                </Button>
-              </>
-            )}
-            {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
-              <Button size="sm" variant="outline" onClick={() => handleCheckOut(appointment.id)}>
-                <LogOut className="h-4 w-4 mr-1" />
-                Complete
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => router.push(`/appointments/${appointment.id}`)}
+function Column({
+  title,
+  description,
+  rows,
+  tone,
+  action,
+  busyId,
+  searching,
+  to,
+}: {
+  title: string
+  description: string
+  rows: Appointment[]
+  tone: string
+  action?: { label: string; icon: React.ReactNode; run: (a: Appointment) => void }
+  busyId: string | null
+  searching: boolean
+  to: (href: string) => string
+}) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <Badge className={tone}>{rows.length}</Badge>
+        </div>
+        <CardDescription className="text-xs">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            {searching ? 'Nothing here matches.' : 'Nobody.'}
+          </p>
+        ) : (
+          rows.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-start gap-3 rounded-lg border px-3 py-2.5 hover:bg-muted/40 transition-colors"
             >
-              View
-            </Button>
-          </div>
+              {/* The number, as large as the name. It is what gets called
+                  across the waiting room and read off a slip. */}
+              <div className="shrink-0 text-center">
+                <div className="text-lg font-bold leading-none tabular-nums">
+                  {formatToken(a.tokenNumber)}
+                </div>
+                {a.waitTime != null && a.waitTime > 0 && (
+                  <div className="text-[10px] text-muted-foreground mt-1">{a.waitTime}m</div>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <Person appointment={a} to={to} />
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                {action && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId === a.id}
+                    onClick={() => action.run(a)}
+                  >
+                    {busyId === a.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      action.icon
+                    )}
+                    <span className="ml-1.5">{action.label}</span>
+                  </Button>
+                )}
+                <Link href={to(`/appointments/${a.id}`)}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    aria-label="Open appointment"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ))
         )}
       </CardContent>
     </Card>
   )
+}
 
-  const today = new Date().toLocaleDateString('en-PK', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+export default function QueuePage() {
+  const { toast } = useToast()
+  const trail = useTrail('Queue')
+
+  const [queue, setQueue] = useState<Queue>(EMPTY)
+  const [stats, setStats] = useState({ waiting: 0, inProgress: 0, completed: 0, avgWaitTime: 0 })
+  const [doctors, setDoctors] = useState<{ id: string; firstName: string; lastName: string }[]>([])
+  const [doctorFilter, setDoctorFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (doctorFilter !== 'all') params.set('doctorId', doctorFilter)
+
+      const res = await fetch(`/api/appointments/today?${params}`)
+      if (!res.ok) throw new Error('The queue could not be loaded')
+      const data = await res.json()
+      setQueue(data.queue ?? EMPTY)
+      setStats(data.stats ?? { waiting: 0, inProgress: 0, completed: 0, avgWaitTime: 0 })
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to load the queue',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [doctorFilter, toast])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useEffect(() => {
+    fetch('/api/staff/doctors')
+      .then((res) => res.json())
+      .then((data) => setDoctors(data.doctors ?? []))
+      .catch(() => setDoctors([]))
+  }, [])
+
+  // A waiting room changes without this screen doing anything — somebody checks
+  // in at the other desk, a dentist finishes. Thirty seconds is short enough
+  // that the list is not stale and long enough not to fight the person using it.
+  useEffect(() => {
+    const timer = setInterval(load, 30000)
+    return () => clearInterval(timer)
+  }, [load])
+
+  const act = async (
+    appointment: Appointment,
+    action: 'check-in' | 'start' | 'complete' | 'no-show'
+  ) => {
+    setBusyId(appointment.id)
+    try {
+      const request =
+        action === 'check-in'
+          ? fetch(`/api/appointments/${appointment.id}/check-in`, { method: 'POST' })
+          : action === 'complete'
+            ? fetch(`/api/appointments/${appointment.id}/check-out`, { method: 'POST' })
+            : fetch(`/api/appointments/${appointment.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: action === 'start' ? 'IN_PROGRESS' : 'NO_SHOW' }),
+              })
+
+      const res = await request
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'That did not work')
+
+      // The token is the point of checking somebody in, so it is what the
+      // confirmation says. A receptionist reads it out; they should not have to
+      // go looking for it.
+      if (action === 'check-in') {
+        toast({
+          title: `Token ${formatToken(data.tokenNumber)}`,
+          description: `${subjectOf(appointment)} is in the queue.`,
+        })
+      }
+
+      await load()
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'That did not work',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const matches = (a: Appointment) => {
+    if (!search.trim()) return true
+    const needle = search.trim().toLowerCase()
+    return (
+      subjectOf(a).toLowerCase().includes(needle) ||
+      (phoneOf(a) ?? '').includes(needle) ||
+      (a.tokenNumber ?? '').includes(needle) ||
+      a.appointmentNo.toLowerCase().includes(needle)
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Today&apos;s Queue</h1>
-          <p className="text-muted-foreground">{today}</p>
+          <h1 className="text-2xl font-bold">Today&rsquo;s queue</h1>
+          <p className="text-muted-foreground">
+            Who is waiting, in the order they arrived. Refreshes on its own.
+          </p>
         </div>
         <div className="flex gap-2">
-          <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All Doctors" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Doctors</SelectItem>
-              {doctors.map((doctor) => (
-                <SelectItem key={doctor.id} value={doctor.id}>
-                  Dr. {doctor.firstName} {doctor.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          <Button variant="outline" onClick={load}>
+            <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Link href="/appointments/new">
+          <Link href={trail.to('/appointments/new?walkIn=1')}>
             <Button>
-              <Calendar className="h-4 w-4 mr-2" />
-              New Appointment
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add a walk-in
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Total</span>
-            </div>
-            <p className="text-2xl font-bold">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-600" />
-              <span className="text-sm text-amber-700">Waiting</span>
-            </div>
-            <p className="text-2xl font-bold text-amber-700">{stats.waiting}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-purple-50 border-purple-200">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-purple-600" />
-              <span className="text-sm text-purple-700">In Progress</span>
-            </div>
-            <p className="text-2xl font-bold text-purple-700">{stats.inProgress}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-600" />
-              <span className="text-sm text-blue-700">Upcoming</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-700">{stats.upcoming}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-green-50 border-green-200">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm text-green-700">Completed</span>
-            </div>
-            <p className="text-2xl font-bold text-green-700">{stats.completed}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-red-50 border-red-200">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-600" />
-              <span className="text-sm text-red-700">No Show</span>
-            </div>
-            <p className="text-2xl font-bold text-red-700">{stats.noShow}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Timer className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Avg Wait</span>
-            </div>
-            <p className="text-2xl font-bold">{stats.avgWaitTime} min</p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Waiting', value: stats.waiting, icon: Clock },
+          { label: 'In the chair', value: stats.inProgress, icon: LogIn },
+          { label: 'Finished today', value: stats.completed, icon: CheckCircle2 },
+          { label: 'Average wait', value: `${stats.avgWaitTime}m`, icon: Clock },
+        ].map((card) => (
+          <Card key={card.label}>
+            <CardContent className="flex items-center gap-3 py-4">
+              <card.icon className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">{card.label}</p>
+                <p className="text-xl font-bold">{card.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-pulse text-muted-foreground">Loading queue...</div>
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a name, number or token…"
+            className="pl-9"
+            aria-label="Search the queue"
+          />
         </div>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Waiting */}
-          <Card className="border-amber-200">
-            <CardHeader className="bg-amber-50 border-b border-amber-200">
-              <CardTitle className="flex items-center gap-2 text-amber-700">
-                <Clock className="h-5 w-5" />
-                Waiting ({queue.waiting.length})
-              </CardTitle>
-              <CardDescription>Patients checked in and waiting</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-4 max-h-[500px] overflow-y-auto">
-              {queue.waiting.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No patients waiting</p>
-              ) : (
-                queue.waiting.map((apt) => <AppointmentCard key={apt.id} appointment={apt} />)
-              )}
-            </CardContent>
-          </Card>
+        <Select value={doctorFilter} onValueChange={setDoctorFilter}>
+          <SelectTrigger className="w-[220px]" aria-label="Filter by dentist">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All dentists</SelectItem>
+            {doctors.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                Dr. {d.firstName} {d.lastName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-          {/* In Progress */}
-          <Card className="border-purple-200">
-            <CardHeader className="bg-purple-50 border-b border-purple-200">
-              <CardTitle className="flex items-center gap-2 text-purple-700">
-                <Play className="h-5 w-5" />
-                In Progress ({queue.inProgress.length})
-              </CardTitle>
-              <CardDescription>Currently being attended</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-4 max-h-[500px] overflow-y-auto">
-              {queue.inProgress.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No treatments in progress</p>
-              ) : (
-                queue.inProgress.map((apt) => <AppointmentCard key={apt.id} appointment={apt} />)
-              )}
-            </CardContent>
-          </Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Column
+          title="Expected"
+          description="Booked for today and not yet arrived"
+          rows={queue.upcoming.filter(matches)}
+          busyId={busyId}
+          searching={Boolean(search.trim())}
+          to={trail.to}
+          tone="bg-slate-500/15 text-slate-700 dark:text-slate-300"
+          action={{
+            label: 'Check in',
+            icon: <LogIn className="h-3.5 w-3.5" />,
+            run: (a) => act(a, 'check-in'),
+          }}
+        />
+        <Column
+          title="Waiting"
+          description="Arrived, in token order"
+          rows={queue.waiting.filter(matches)}
+          busyId={busyId}
+          searching={Boolean(search.trim())}
+          to={trail.to}
+          tone="bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          action={{
+            label: 'Call in',
+            icon: <ArrowRight className="h-3.5 w-3.5" />,
+            run: (a) => act(a, 'start'),
+          }}
+        />
+        <Column
+          title="In the chair"
+          description="Being seen now"
+          rows={queue.inProgress.filter(matches)}
+          busyId={busyId}
+          searching={Boolean(search.trim())}
+          to={trail.to}
+          tone="bg-blue-500/15 text-blue-700 dark:text-blue-300"
+          action={{
+            label: 'Finish',
+            icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+            run: (a) => act(a, 'complete'),
+          }}
+        />
+      </div>
 
-          {/* Upcoming */}
-          <Card className="border-blue-200">
-            <CardHeader className="bg-blue-50 border-b border-blue-200">
-              <CardTitle className="flex items-center gap-2 text-blue-700">
-                <Calendar className="h-5 w-5" />
-                Upcoming ({queue.upcoming.length})
-              </CardTitle>
-              <CardDescription>Scheduled appointments today</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-4 max-h-[500px] overflow-y-auto">
-              {queue.upcoming.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No more appointments today</p>
-              ) : (
-                queue.upcoming.map((apt) => <AppointmentCard key={apt.id} appointment={apt} />)
-              )}
-            </CardContent>
-          </Card>
+      {(queue.completed.length > 0 || queue.noShow.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Column
+            title="Finished"
+            description="Seen and checked out"
+            rows={queue.completed.filter(matches)}
+            busyId={busyId}
+            searching={Boolean(search.trim())}
+            to={trail.to}
+            tone="bg-green-500/15 text-green-700 dark:text-green-300"
+          />
+          <Column
+            title="Did not attend"
+            description="Booked, never arrived"
+            rows={queue.noShow.filter(matches)}
+            busyId={busyId}
+            searching={Boolean(search.trim())}
+            to={trail.to}
+            tone="bg-red-500/15 text-red-700 dark:text-red-300"
+          />
         </div>
       )}
 
-      {/* Completed Section */}
-      {queue.completed.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-700">
-              <CheckCircle className="h-5 w-5" />
-              Completed Today ({queue.completed.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {queue.completed.slice(0, 6).map((apt) => (
-                <AppointmentCard key={apt.id} appointment={apt} showActions={false} />
-              ))}
-            </div>
-            {queue.completed.length > 6 && (
-              <div className="text-center mt-4">
-                <Link href="/appointments?status=COMPLETED">
-                  <Button variant="outline">View All Completed ({queue.completed.length})</Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {queue.upcoming.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Marking somebody as a no-show is on their appointment.{' '}
+          <UserX className="inline h-3 w-3" /> Nobody is marked automatically.
+        </p>
       )}
     </div>
   )

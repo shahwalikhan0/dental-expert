@@ -14,6 +14,7 @@ import {
   Calendar,
   Clock,
   User,
+  UserPlus,
   Phone,
   Mail,
   MapPin,
@@ -48,6 +49,7 @@ import {
   getDoctorName,
 } from '@/lib/appointment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { formatToken } from '@/lib/tokens'
 
 interface Appointment {
   id: string
@@ -55,7 +57,13 @@ interface Appointment {
   scheduledDate: string
   scheduledTime: string
   duration: number
-  chair: { id: string; name: string; room: string | null } | null
+  tokenNumber: string | null
+  visitor: {
+    id: string
+    name: string
+    phone: string | null
+    convertedPatientId: string | null
+  } | null
   appointmentType: string
   status: string
   priority: string
@@ -84,7 +92,7 @@ interface Appointment {
       currentMedications: string[]
       isPregnant: boolean
     } | null
-  }
+  } | null
   doctor: {
     id: string
     firstName: string
@@ -352,8 +360,19 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <p className="font-medium">{appointment.duration} minutes</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Chair</p>
-                <p className="font-medium">{appointment.chair?.name || 'Not assigned'}</p>
+                <p className="text-sm text-muted-foreground">Token</p>
+                <p className="font-medium tabular-nums">
+                  {appointment.tokenNumber ? (
+                    <>
+                      {formatToken(appointment.tokenNumber)}{' '}
+                      <span className="text-xs text-muted-foreground font-normal">
+                        ({appointment.tokenNumber})
+                      </span>
+                    </>
+                  ) : (
+                    'Issued at check-in'
+                  )}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Type</p>
@@ -430,89 +449,124 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
 
-        {/* Patient Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Patient Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                <User className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold">{getPatientName(appointment.patient)}</h3>
-                <p className="text-muted-foreground">{appointment.patient.patientId}</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{appointment.patient.phone}</span>
-              </div>
-              {appointment.patient.email && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{appointment.patient.email}</span>
+        {/* Who this appointment is for — a registered patient, or a walk-in the
+            clinic has not registered. Both get a card; only one has a record
+            behind it. */}
+        {appointment.patient ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Patient Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                  <User className="h-8 w-8 text-primary" />
                 </div>
-              )}
-              {(appointment.patient.address || appointment.patient.city) && (
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {[appointment.patient.address, appointment.patient.city]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {appointment.patient.medicalHistory && (
-              <>
-                <Separator />
                 <div>
-                  <h4 className="font-medium mb-2">Medical Alerts</h4>
-                  {/*
+                  <h3 className="text-xl font-semibold">{getPatientName(appointment.patient)}</h3>
+                  <p className="text-muted-foreground">{appointment.patient.patientId}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>{appointment.patient.phone}</span>
+                </div>
+                {appointment.patient.email && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span>{appointment.patient.email}</span>
+                  </div>
+                )}
+                {(appointment.patient.address || appointment.patient.city) && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span>
+                      {[appointment.patient.address, appointment.patient.city]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {appointment.patient.medicalHistory && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="font-medium mb-2">Medical Alerts</h4>
+                    {/*
                     Named the alerts rather than four hardcoded badges. Those
                     badges could only ever show the four conditions somebody
                     picked in advance — a patient on warfarin got no badge at
                     all, and their allergy badge said "Allergies" without saying
                     to what.
                   */}
-                  <div className="flex flex-wrap gap-2">
-                    {medicalAlerts(appointment.patient.medicalHistory).map((alert, i) => (
-                      <Badge
-                        key={i}
-                        variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}
-                      >
-                        {alert.label}
-                      </Badge>
-                    ))}
+                    <div className="flex flex-wrap gap-2">
+                      {medicalAlerts(appointment.patient.medicalHistory).map((alert, i) => (
+                        <Badge
+                          key={i}
+                          variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}
+                        >
+                          {alert.label}
+                        </Badge>
+                      ))}
+                    </div>
+                    {appointment.patient.medicalHistory.currentMedications.length > 0 && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Current medications:{' '}
+                        {appointment.patient.medicalHistory.currentMedications.join(', ')}
+                      </p>
+                    )}
                   </div>
-                  {appointment.patient.medicalHistory.currentMedications.length > 0 && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Current medications:{' '}
-                      {appointment.patient.medicalHistory.currentMedications.join(', ')}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
+                </>
+              )}
 
-            <div className="pt-2">
-              <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
-                <Button variant="outline" className="w-full">
-                  View Full Patient Profile
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="pt-2">
+                <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
+                  <Button variant="outline" className="w-full">
+                    View Full Patient Profile
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Walk-in
+              </CardTitle>
+              <CardDescription>
+                Not registered. Nothing clinical can be recorded against a walk-in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold">{appointment.visitor?.name ?? 'Unknown'}</h3>
+                {appointment.visitor?.phone && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                    <Phone className="h-4 w-4" />
+                    {appointment.visitor.phone}
+                  </p>
+                )}
+              </div>
+              {appointment.visitor && (
+                <Link href={trail.to(`/walk-ins/${appointment.visitor.id}`)}>
+                  <Button variant="outline" className="w-full">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Register as a patient
+                  </Button>
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Doctor Info */}
         <Card>
