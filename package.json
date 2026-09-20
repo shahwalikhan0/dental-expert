@@ -1,7 +1,7 @@
 {
   "name": "dental-erp",
   "version": "1.0.0",
-  "description": "Open-source dental hospital management system for Indian dental clinics — AI-powered, GST billing, patient portal, tele-dentistry",
+  "description": "Open-source dental hospital management system for Indian dental clinics \u2014 AI-powered, GST billing, patient portal, tele-dentistry",
   "private": true,
   "keywords": [
     "dental-software",
@@ -45,6 +45,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "npx tsx prisma/seed.ts",
     "storage:migrate": "npx tsx scripts/migrate-storage.ts",
+    "scheduler": "npx tsx --env-file-if-exists=.env scripts/scheduler.ts",
+    "jobs:vercel": "npx tsx scripts/write-vercel-crons.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "test": "vitest run",

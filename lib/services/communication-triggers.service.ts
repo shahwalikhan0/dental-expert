@@ -7,6 +7,48 @@ import { emailService } from './email.service'
 import { templateService } from './template.service'
 import { addDays, startOfDay, endOfDay, format, subDays } from 'date-fns'
 
+/** What a birthday message is recorded as being about. */
+const BIRTHDAY_RELATED_TYPE = 'PatientBirthday'
+
+/**
+ * How often the same overdue invoice may be chased.
+ *
+ * Every one of these triggers used to resend on every run, which did not
+ * matter while nothing ran them. Put on an hourly schedule, an overdue invoice
+ * would have produced twenty-four text messages a day until it was paid, and
+ * the patient would have blocked the clinic's number long before that.
+ */
+const PAYMENT_REMINDER_INTERVAL_DAYS = 7
+
+/**
+ * Which of these records have already been messaged about since `since`.
+ *
+ * Read from the message log rather than from a flag on the record, because the
+ * log is the record of what was actually sent — and because the alternative
+ * was tried here and did not work: the lab-ready trigger appended a line to
+ * the lab case's clinical notes "to prevent duplicate notifications", and
+ * nothing ever read it back. It scribbled in a clinical record once per run
+ * and prevented nothing.
+ */
+async function alreadyMessagedAbout(
+  relatedType: string,
+  relatedIds: string[],
+  since?: Date
+): Promise<Set<string | null>> {
+  if (relatedIds.length === 0) return new Set()
+
+  const rows = await prisma.messageLog.findMany({
+    where: {
+      relatedType,
+      relatedId: { in: relatedIds },
+      ...(since ? { createdAt: { gte: since } } : {}),
+    },
+    select: { relatedId: true },
+  })
+
+  return new Set(rows.map((row) => row.relatedId))
+}
+
 class CommunicationTriggersService {
   // Appointment reminders are not here any more.
   //
@@ -44,7 +86,24 @@ class CommunicationTriggersService {
 
     console.log(`Found ${birthdayPatients.length} patients with birthday today`)
 
+    /**
+     * Who has already been wished today.
+     *
+     * Without this the job is not safe to run twice, and a job that is not safe
+     * to run twice cannot be put on a simple schedule — a restart, a retry, or
+     * two schedulers overlapping would send the same person two birthday
+     * messages. Keyed off the message log rather than off a flag somewhere,
+     * because the log is the record of what was actually sent.
+     */
+    const alreadyWished = await alreadyMessagedAbout(
+      BIRTHDAY_RELATED_TYPE,
+      birthdayPatients.map((patient) => patient.id),
+      startOfDay(today)
+    )
+
     for (const patient of birthdayPatients) {
+      if (alreadyWished.has(patient.id)) continue
+
       try {
         const clinicInfo = await prisma.hospital.findUnique({
           where: { id: patient.hospitalId },
@@ -76,6 +135,10 @@ class CommunicationTriggersService {
               patientId: patient.id,
               templateId: smsTemplate.id,
               kind: 'birthdayWishes',
+              // What the message was about, which is also what makes the job
+              // safe to run twice — see `alreadyWished` above.
+              relatedType: BIRTHDAY_RELATED_TYPE,
+              relatedId: patient.id,
             })
           }
         }
@@ -109,7 +172,18 @@ class CommunicationTriggersService {
 
     console.log(`Found ${overdueInvoices.length} overdue invoices`)
 
+    // Chased at most once a week. An invoice stays overdue until it is paid,
+    // so without this the reminder repeats on every run for as long as the
+    // debt exists.
+    const chasedRecently = await alreadyMessagedAbout(
+      'Invoice',
+      overdueInvoices.map((invoice) => invoice.id),
+      subDays(today, PAYMENT_REMINDER_INTERVAL_DAYS)
+    )
+
     for (const invoice of overdueInvoices) {
+      if (chasedRecently.has(invoice.id)) continue
+
       try {
         const clinicInfo = await prisma.hospital.findUnique({
           where: { id: invoice.hospitalId },
@@ -171,7 +245,16 @@ class CommunicationTriggersService {
 
     console.log(`Found ${labOrders.length} ready lab orders`)
 
+    // Told once. A case stays READY until somebody marks it delivered, which
+    // may be days, and "your crown is ready" is not news twice.
+    const alreadyTold = await alreadyMessagedAbout(
+      'LabOrder',
+      labOrders.map((order) => order.id)
+    )
+
     for (const order of labOrders) {
+      if (alreadyTold.has(order.id)) continue
+
       try {
         const clinicInfo = await prisma.hospital.findUnique({
           where: { id: order.hospitalId },
@@ -213,16 +296,10 @@ class CommunicationTriggersService {
           }
         }
 
-        // Update status to prevent duplicate notifications
-        await prisma.labOrder.update({
-          where: { id: order.id },
-          data: {
-            notes:
-              (order.notes || '') +
-              '\nReady notification sent on ' +
-              format(new Date(), 'dd-MMM-yyyy HH:mm'),
-          },
-        })
+        // The line this used to append to the case's notes is gone. It was
+        // there "to prevent duplicate notifications" and nothing read it, so
+        // it prevented none — it only added a timestamp to a clinical record
+        // on every run. `alreadyTold` above is the thing that actually does it.
       } catch (error) {
         console.error(`Error sending lab work notification for order ${order.orderNumber}:`, error)
       }

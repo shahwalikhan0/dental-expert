@@ -110,6 +110,29 @@ describe('CommunicationTriggersService', () => {
       await communicationTriggersService.sendBirthdayWishes()
       expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
     })
+
+    it('does not wish the same patient twice in one day', async () => {
+      // This job runs on a schedule now. Before, it resent on every run — and
+      // on a daily schedule that never showed, because nothing ran it at all.
+      const today = new Date()
+      const dob = new Date(1990, today.getMonth(), today.getDate())
+
+      ;(prisma.patient.findMany as any).mockResolvedValue([
+        {
+          id: 'pat-1',
+          hospitalId: 'h1',
+          firstName: 'John',
+          lastName: 'Doe',
+          phone: '9876543210',
+          dateOfBirth: dob,
+          isActive: true,
+        },
+      ])
+      ;(prisma.messageLog.findMany as any).mockResolvedValue([{ relatedId: 'pat-1' }])
+
+      await communicationTriggersService.sendBirthdayWishes()
+      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
+    })
   })
 
   describe('sendPaymentReminders', () => {
@@ -167,6 +190,28 @@ describe('CommunicationTriggersService', () => {
         })
       )
     })
+
+    it('does not chase the same invoice again within the week', async () => {
+      // An invoice stays overdue until it is paid. On an hourly schedule the
+      // old behaviour would have sent the patient twenty-four texts a day
+      // about the same debt.
+      ;(prisma.invoice.findMany as any).mockResolvedValue([
+        {
+          id: 'inv-1',
+          hospitalId: 'h1',
+          patientId: 'pat-1',
+          invoiceNo: 'INV-001',
+          totalAmount: 5000,
+          balanceAmount: 2000,
+          dueDate: new Date('2026-01-01'),
+          patient: { firstName: 'John', lastName: 'Doe', phone: '9876543210' },
+        },
+      ])
+      ;(prisma.messageLog.findMany as any).mockResolvedValue([{ relatedId: 'inv-1' }])
+
+      await communicationTriggersService.sendPaymentReminders()
+      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
+    })
   })
 
   describe('sendLabWorkReadyNotifications', () => {
@@ -190,20 +235,32 @@ describe('CommunicationTriggersService', () => {
         content: 'Your lab work is ready',
       })
 
-      ;(prisma.labOrder.update as any).mockResolvedValue({})
-
       await communicationTriggersService.sendLabWorkReadyNotifications()
 
       expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
         expect.objectContaining({ phone: '9876543210', patientId: 'pat-1' })
       )
-      expect(prisma.labOrder.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            notes: expect.stringContaining('Ready notification sent'),
-          }),
-        })
+
+      // The message says what it is about, which is what makes the job safe to
+      // run twice — see the next test.
+      expect(mockSmsService.sendSMS).toHaveBeenCalledWith(
+        expect.objectContaining({ relatedType: 'LabOrder', relatedId: 'lab-1' })
       )
+
+      // It no longer scribbles in the case's clinical notes. That line was
+      // there "to prevent duplicate notifications" and nothing ever read it
+      // back, so it prevented none and added a timestamp on every run.
+      expect(prisma.labOrder.update).not.toHaveBeenCalled()
+    })
+
+    it('does not tell the same patient twice about the same case', async () => {
+      // A case stays READY until somebody marks it delivered, which may be
+      // days. Before the job was put on a schedule this resent on every run.
+      ;(prisma.messageLog.findMany as any).mockResolvedValue([{ relatedId: 'lab-1' }])
+
+      await communicationTriggersService.sendLabWorkReadyNotifications()
+
+      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
     })
   })
 

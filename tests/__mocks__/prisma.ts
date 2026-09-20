@@ -45,11 +45,15 @@ const mockPrismaClient = {
     count: vi.fn(),
   },
 
-  // MessageLog — every message the clinic sent, whatever the channel
+  // MessageLog — every message the clinic sent, whatever the channel.
+  //
+  // `findMany` answers empty by default: the scheduled triggers read it to
+  // work out who has already been messaged today, and "nobody yet" is the
+  // state a test about sending wants.
   messageLog: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
-    findMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     groupBy: vi.fn(),
     aggregate: vi.fn(),
     create: vi.fn(),

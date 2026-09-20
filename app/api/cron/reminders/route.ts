@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { cronAuthorised, cronUnauthorised } from '@/lib/cron-auth'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -25,17 +26,13 @@ const DAY = 24 * HOUR
  * The one route in the application that deliberately reads across clinics: it
  * authenticates on CRON_SECRET, and no clinic can call it.
  *
- * TODO — nothing schedules this yet. The endpoint is complete and can be called
- * by hand; what is missing is the thing that calls it every hour. There is no
- * scheduler config anywhere in the repository (no `vercel.json` crons, no
- * timer unit, no CI schedule), so on a fresh deployment this route never runs.
- * Whatever runs it must send `Authorization: Bearer $CRON_SECRET`.
+ * Scheduled hourly. `npm run scheduler` runs it on a plain host; `vercel.json`
+ * carries the same schedule for a Vercel deployment. Both are generated from
+ * lib/jobs.ts, and whatever calls it must send
+ * `Authorization: Bearer $CRON_SECRET`. See docs/SCHEDULING.md.
  */
 export async function GET(req: Request) {
-  const secret = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!cronAuthorised(req)) return cronUnauthorised()
 
   const now = new Date()
 

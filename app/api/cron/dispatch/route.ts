@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { dispatchDueMessages } from '@/lib/services/message-dispatch'
+import { cronAuthorised, cronUnauthorised } from '@/lib/cron-auth'
 
 /**
  * GET /api/cron/dispatch — meant to run every 15 minutes.
@@ -11,18 +12,12 @@ import { dispatchDueMessages } from '@/lib/services/message-dispatch'
  * Reads across clinics deliberately, like the other cron routes, and is
  * authenticated on CRON_SECRET. No clinic can call it.
  *
- * TODO — nothing schedules this yet. The endpoint is complete and can be called
- * by hand; what is missing is the thing that calls it every fifteen minutes.
- * There is no scheduler config anywhere in the repository (no `vercel.json`
- * crons, no timer unit, no CI schedule), so on a fresh deployment this route
- * never runs.
- * Whatever runs it must send `Authorization: Bearer $CRON_SECRET`.
+ * Scheduled every fifteen minutes. See lib/jobs.ts for the schedule and
+ * docs/SCHEDULING.md for what runs it; whatever does must send
+ * `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(req: Request) {
-  const secret = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!cronAuthorised(req)) return cronUnauthorised()
 
   const result = await dispatchDueMessages()
 
