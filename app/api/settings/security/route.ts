@@ -24,16 +24,44 @@ const securitySettingsSchema = z.object({
   // The floor is the platform's, not the clinic's. Records behind an account
   // with a six-character password are not something a settings form should be
   // able to arrange.
-  passwordMinLength: z.number().int().min(MINIMUM_PASSWORD_LENGTH).max(64).optional(),
+  passwordMinLength: z
+    .number()
+    .int()
+    .min(
+      MINIMUM_PASSWORD_LENGTH,
+      `A password minimum below ${MINIMUM_PASSWORD_LENGTH} is not allowed — these accounts open medical records`
+    )
+    .max(64, 'A password minimum above 64 characters is not allowed')
+    .optional(),
   passwordRequireUppercase: z.boolean().optional(),
   passwordRequireLowercase: z.boolean().optional(),
   passwordRequireNumbers: z.boolean().optional(),
   passwordRequireSpecialChars: z.boolean().optional(),
   /** 0 is never, and is the default. */
-  passwordExpiryDays: z.number().int().min(0).max(365).optional(),
-  sessionTimeoutMinutes: z.number().int().min(5).max(1440).optional(),
-  maxLoginAttempts: z.number().int().min(1).max(20).optional(),
-  lockoutDurationMinutes: z.number().int().min(1).max(1440).optional(),
+  passwordExpiryDays: z
+    .number()
+    .int()
+    .min(0, 'Use 0 for never')
+    .max(365, 'Expiry cannot be more than a year')
+    .optional(),
+  sessionTimeoutMinutes: z
+    .number()
+    .int()
+    .min(5, 'A session shorter than five minutes would sign people out mid-task')
+    .max(1440, 'A session cannot last more than a day')
+    .optional(),
+  maxLoginAttempts: z
+    .number()
+    .int()
+    .min(1, 'At least one attempt has to be allowed')
+    .max(20, 'More than twenty attempts is not a lockout')
+    .optional(),
+  lockoutDurationMinutes: z
+    .number()
+    .int()
+    .min(1, 'A lockout has to last at least a minute')
+    .max(1440, 'A lockout cannot last more than a day')
+    .optional(),
   allowedIPs: z.string().max(4000).optional(),
   blockedIPs: z.string().max(4000).optional(),
   restrictToOwnPatients: z.boolean().optional(),

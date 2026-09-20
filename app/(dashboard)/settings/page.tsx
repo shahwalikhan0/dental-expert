@@ -19,6 +19,7 @@ import {
   Upload,
   BookOpen,
   Languages,
+  KeyRound,
 } from 'lucide-react'
 
 const settingsCategories = [
@@ -98,6 +99,16 @@ const settingsCategories = [
     icon: Languages,
     href: '/settings/profile',
     color: 'text-sky-600 bg-sky-50',
+  },
+  {
+    // Listed for everybody, not gated on a settings capability: Inventory /
+    // Store and Lab Technician hold none, and somebody who cannot open the page
+    // that changes their password cannot change their password.
+    title: 'My Password',
+    description: 'Change your own sign-in password',
+    icon: KeyRound,
+    href: '/settings/password',
+    color: 'text-rose-600 bg-rose-50',
   },
 ]
 
