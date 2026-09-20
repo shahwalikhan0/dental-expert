@@ -58,7 +58,10 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
           {/* Main content */}
           <div className="flex flex-1 flex-col overflow-hidden">
             <Header user={user} />
-            <main className="flex-1 overflow-auto bg-muted/30 p-4 md:p-6">
+            {/* The floating chat button sits at bottom-right over this area.
+                The extra bottom padding is what stops it covering the last row
+                of a list — on a phone it was landing on top of one. */}
+            <main className="flex-1 overflow-auto bg-muted/30 p-4 pb-24 md:p-6 md:pb-24">
               <Breadcrumb className="mb-4" />
               {children}
             </main>

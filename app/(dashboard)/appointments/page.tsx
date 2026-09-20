@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Calendar,
@@ -137,6 +137,7 @@ export default function AppointmentsPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  const sort = useSort()
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('')
@@ -241,6 +242,10 @@ export default function AppointmentsPage() {
         view: 'list',
       })
 
+      if (sort.column) {
+        params.append('sort', sort.column)
+        params.append('direction', sort.direction)
+      }
       if (search) params.append('search', search)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (typeFilter && typeFilter !== 'all') params.append('type', typeFilter)
@@ -261,7 +266,7 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     fetchAppointments()
-  }, [pagination.page, search, statusFilter, typeFilter, dateFilter])
+  }, [pagination.page, search, statusFilter, typeFilter, dateFilter, sort.column, sort.direction])
 
   // The book reads a whole day at once rather than a page of rows — a calendar
   // showing twenty of the day's thirty appointments is not a calendar.
@@ -677,7 +682,7 @@ export default function AppointmentsPage() {
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" aria-label="More actions">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>

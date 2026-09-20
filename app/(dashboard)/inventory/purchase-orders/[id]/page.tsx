@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface OrderLine {
   id: string
@@ -70,6 +71,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default function PurchaseOrderPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [order, setOrder] = useState<Order | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(order?.orderNumber ?? null)
@@ -169,7 +171,13 @@ export default function PurchaseOrderPage() {
   }
 
   const remove = async () => {
-    if (!confirm('Delete this draft order?')) return
+    const ok = await confirm({
+      title: 'Delete this draft order?',
+      description: 'Nothing has been ordered or received against it, so it can be removed.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!ok) return
     const response = await fetch(`/api/inventory/purchase-orders/${params.id}`, {
       method: 'DELETE',
     })
@@ -184,6 +192,7 @@ export default function PurchaseOrderPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
+      {ConfirmDialogComponent}
       <div className="flex justify-between items-start mb-6">
         <div>
           <div className="flex items-center gap-3">

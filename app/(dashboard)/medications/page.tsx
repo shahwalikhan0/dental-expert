@@ -337,6 +337,7 @@ export default function MedicationsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Edit"
                           className="h-8 w-8"
                           onClick={() => openEdit(med)}
                         >
@@ -345,6 +346,7 @@ export default function MedicationsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Delete"
                           className="h-8 w-8 text-destructive"
                           onClick={() => handleDelete(med)}
                         >

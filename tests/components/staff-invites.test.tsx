@@ -254,8 +254,11 @@ describe('an existing invitation', () => {
     )
   })
 
+  // The screen used the browser's own `confirm()` — blocking, unstyled, and
+  // invisible in dark mode where the rest of the application uses a themed
+  // dialog. What matters is unchanged: nothing is cancelled until somebody
+  // says so.
   it('asks before cancelling, because the link stops working', async () => {
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
     const calls: [string, RequestInit | undefined][] = []
     vi.stubGlobal(
       'fetch',
@@ -268,7 +271,9 @@ describe('an existing invitation', () => {
     render(<StaffInvitesPage />)
     fireEvent.click(await screen.findByRole('button', { name: /^cancel$/i }))
 
-    await waitFor(() => expect(confirm).toHaveBeenCalled())
+    // The dialog names the address, so the person can see who they are cutting
+    // off before they do it.
+    expect(await screen.findByText(/cancel the invitation to/i)).toBeInTheDocument()
     expect(calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
   })
 })

@@ -18,6 +18,7 @@ import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/compone
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Search, UserPlus } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 /**
  * Walk-ins — people the clinic has seen but not registered.
@@ -47,9 +48,6 @@ const STATES = [
   { value: 'converted', label: 'Registered' },
   { value: 'discarded', label: 'Discarded' },
 ]
-
-const shortDate = (value: string) =>
-  new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 export default function WalkInsPage() {
   const trail = useTrail('Walk-ins')
@@ -190,7 +188,7 @@ export default function WalkInsPage() {
                     <TableCell className="font-medium">{visitor.name}</TableCell>
                     <TableCell>{visitor.phone || '—'}</TableCell>
                     <TableCell>{visitor._count.appointments}</TableCell>
-                    <TableCell>{shortDate(visitor.createdAt)}</TableCell>
+                    <TableCell>{displayDate(visitor.createdAt)}</TableCell>
                     <TableCell>
                       {visitor.convertedPatient ? (
                         <Badge variant="outline">

@@ -196,7 +196,12 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setShowPreview(false)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Go back"
+              onClick={() => setShowPreview(false)}
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
@@ -229,7 +234,12 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/settings/forms')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Go back"
+            onClick={() => router.push('/settings/forms')}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -336,6 +346,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Collapse"
                         className="h-7 w-7"
                         onClick={() => moveField(index, -1)}
                         disabled={index === 0}
@@ -345,6 +356,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Expand"
                         className="h-7 w-7"
                         onClick={() => moveField(index, 1)}
                         disabled={index === fields.length - 1}
@@ -354,6 +366,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="View"
                         className="h-7 w-7"
                         onClick={() => setEditingField(editingField === field.id ? null : field.id)}
                       >
@@ -362,6 +375,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Delete"
                         className="h-7 w-7 text-destructive"
                         onClick={() => removeField(field.id)}
                       >
@@ -408,6 +422,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label="Delete"
                                 className="h-8 w-8 shrink-0"
                                 onClick={() => removeOption(field.id, oi)}
                                 disabled={(field.options?.length || 0) <= 1}

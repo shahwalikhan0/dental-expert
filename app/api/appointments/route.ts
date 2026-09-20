@@ -15,6 +15,23 @@ import {
   withWallClock,
 } from '@/lib/appointment-time'
 import { validateVisitor } from '@/lib/visitors'
+import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
+
+/**
+ * A walk-in has no patient record, so sorting by patient puts every walk-in
+ * together at one end rather than interleaving them by the name on screen.
+ * Prisma cannot order across a union of two relations; the alternative is
+ * sorting the page in memory, which would order the page rather than the list.
+ */
+const APPOINTMENT_SORTS: SortMap = {
+  appointmentNo: (direction) => ({ appointmentNo: direction }),
+  startsAt: (direction) => ({ startsAt: direction }),
+  status: (direction) => ({ status: direction }),
+  type: (direction) => ({ appointmentType: direction }),
+  token: (direction) => ({ tokenNumber: direction }),
+  patient: (direction) => [{ patient: { lastName: direction } }, { startsAt: 'asc' }],
+  doctor: (direction) => ({ doctor: { lastName: direction } }),
+}
 
 // GET - List appointments with filters
 export async function GET(request: NextRequest) {
@@ -117,7 +134,9 @@ export async function GET(request: NextRequest) {
           },
           visitor: { select: { id: true, name: true, phone: true, convertedPatientId: true } },
         },
-        orderBy: { startsAt: 'asc' },
+        orderBy: orderByFrom(sortFromParams(searchParams), APPOINTMENT_SORTS, {
+          startsAt: 'asc',
+        }) as never,
         skip: view === 'list' ? skip : undefined,
         take: view === 'list' ? limit : undefined,
       }),

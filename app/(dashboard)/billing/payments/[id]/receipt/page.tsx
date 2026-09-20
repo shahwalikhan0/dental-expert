@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
 import { Loader2, Printer } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 /**
  * A receipt for one payment — UAT-07, "receive partial payment and issue
@@ -72,13 +73,6 @@ const METHOD_LABELS: Record<string, string> = {
   WALLET: 'Wallet',
   ONLINE: 'Online',
 }
-
-const longDate = (value: string) =>
-  new Date(value).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
 
 export default function PaymentReceiptPage() {
   const params = useParams()
@@ -157,7 +151,7 @@ export default function PaymentReceiptPage() {
           </div>
           <div className="text-right">
             <p className="text-muted-foreground">Date</p>
-            <p className="font-medium">{longDate(payment.paymentDate)}</p>
+            <p className="font-medium">{displayDate(payment.paymentDate)}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Received from</p>
@@ -207,7 +201,7 @@ export default function PaymentReceiptPage() {
             {payment.refunds.map((refund) => (
               <div key={refund.id} className="flex justify-between">
                 <span className="text-muted-foreground">
-                  {refund.refundNo} · {longDate(refund.refundedAt)} · {refund.reason}
+                  {refund.refundNo} · {displayDate(refund.refundedAt)} · {refund.reason}
                 </span>
                 <span>−{formatCurrency(Number(refund.amount))}</span>
               </div>

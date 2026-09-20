@@ -19,17 +19,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { DuplicateDetector } from '@/components/patients/duplicate-detector'
-
-const BLOOD_GROUPS = [
-  { value: 'A_POSITIVE', label: 'A+' },
-  { value: 'A_NEGATIVE', label: 'A-' },
-  { value: 'B_POSITIVE', label: 'B+' },
-  { value: 'B_NEGATIVE', label: 'B-' },
-  { value: 'AB_POSITIVE', label: 'AB+' },
-  { value: 'AB_NEGATIVE', label: 'AB-' },
-  { value: 'O_POSITIVE', label: 'O+' },
-  { value: 'O_NEGATIVE', label: 'O-' },
-]
+import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
 
 export default function NewPatientPage() {
   const router = useRouter()
@@ -136,7 +126,7 @@ export default function NewPatientPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link href="/patients">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
@@ -215,7 +205,7 @@ export default function NewPatientPage() {
                   <SelectValue placeholder="Select blood group" />
                 </SelectTrigger>
                 <SelectContent>
-                  {BLOOD_GROUPS.map((bg) => (
+                  {BLOOD_GROUP_OPTIONS.map((bg) => (
                     <SelectItem key={bg.value} value={bg.value}>
                       {bg.label}
                     </SelectItem>

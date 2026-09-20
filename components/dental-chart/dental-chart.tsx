@@ -27,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 interface DentalChartEntry {
   id: string
@@ -580,7 +581,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
                             {getConditionLabel(entry.condition)}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(entry.diagnosedDate), 'PP')}
+                            {displayDate(entry.diagnosedDate)}
                           </span>
                         </div>
                         {entry.notes && (

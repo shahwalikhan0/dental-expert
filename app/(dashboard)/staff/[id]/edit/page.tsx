@@ -253,7 +253,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href={`/staff/${resolvedParams.id}`}>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
@@ -356,6 +356,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                     type="button"
                     variant="ghost"
                     size="icon"
+                    aria-label="View"
                     className="absolute right-0 top-0 h-full px-3"
                     onClick={() => setShowPassword(!showPassword)}
                   >

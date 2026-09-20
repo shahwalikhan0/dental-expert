@@ -39,6 +39,8 @@ import {
   Banknote,
 } from 'lucide-react'
 import { dateRangePresets, formatCurrency, formatDate } from '@/lib/billing-utils'
+import { ExportMenu } from '@/components/ui/export-menu'
+import { displayDate } from '@/lib/dates'
 
 interface OutstandingInvoice {
   id: string
@@ -165,9 +167,61 @@ export default function FinancialReportsPage() {
     fetchReport(activeTab)
   }, [activeTab, datePreset, dateFrom, dateTo])
 
-  const handleExport = () => {
-    // TODO: Implement export functionality
-    alert('Export functionality coming soon!')
+  /**
+   * The rows of whichever report is on screen.
+   *
+   * This button used to be an `alert('Export functionality coming soon!')` —
+   * a control whose only function was to announce that it had none. The export
+   * machinery already existed and every other list screen used it.
+   */
+  const exportRows = (): Record<string, unknown>[] => {
+    switch (activeTab) {
+      case 'outstanding':
+        return (outstandingData?.invoices ?? []).map((invoice) => ({
+          Invoice: invoice.invoiceNo,
+          Patient: `${invoice.patient.firstName} ${invoice.patient.lastName}`,
+          'Patient ID': invoice.patient.patientId,
+          Phone: invoice.patient.phone ?? '',
+          Raised: displayDate(invoice.createdAt),
+          Due: displayDate(invoice.dueDate),
+          Total: Number(invoice.totalAmount),
+          Outstanding: Number(invoice.balanceAmount),
+          Status: invoice.status,
+        }))
+
+      case 'procedure_revenue':
+        return (procedureData?.byProcedure ?? []).map((row) => ({
+          Code: row.code,
+          Procedure: row.name,
+          Category: row.category,
+          Treatments: row.count,
+          Revenue: row.totalRevenue,
+          'Average per treatment': row.avgRevenue,
+        }))
+
+      case 'doctor_revenue':
+        return (doctorData?.byDoctor ?? []).map((row) => ({
+          Doctor: row.name,
+          Specialisation: row.specialization ?? '',
+          Treatments: row.treatmentCount,
+          Revenue: row.totalRevenue,
+          'Average per treatment': row.avgPerTreatment,
+        }))
+
+      case 'daily_collection':
+        return (dailyData?.dailyData ?? []).map((day) => ({
+          Date: displayDate(day.date),
+          Cash: day.cash,
+          Card: day.card,
+          'Bank transfer': day.bankTransfer,
+          Wallet: day.wallet,
+          Payments: day.count,
+          Total: day.total,
+        }))
+
+      default:
+        return []
+    }
   }
 
   return (
@@ -214,10 +268,7 @@ export default function FinancialReportsPage() {
               />
             </>
           )}
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+          <ExportMenu filename={`billing-${activeTab}`} getData={exportRows} />
         </div>
       </div>
 

@@ -36,6 +36,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Clock, Plus, Trash2, Users, Bell, CheckCircle2, Loader2, Search } from 'lucide-react'
 import { format } from 'date-fns'
+import { displayDate } from '@/lib/dates'
 
 interface WaitlistEntry {
   id: string
@@ -487,21 +488,26 @@ export default function WaitlistPage() {
                     <TableCell>
                       <Badge className={STATUS_COLORS[entry.status] || ''}>{entry.status}</Badge>
                     </TableCell>
-                    <TableCell>{format(new Date(entry.createdAt), 'PP')}</TableCell>
+                    <TableCell>{displayDate(entry.createdAt)}</TableCell>
                     <TableCell className="text-right">
                       {entry.status === 'ACTIVE' && (
-                        <Button variant="ghost" size="icon" onClick={() => handleRemove(entry.id)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Delete"
+                          onClick={() => handleRemove(entry.id)}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                       {entry.notifiedAt && (
                         <span className="text-xs text-muted-foreground block">
-                          Notified {format(new Date(entry.notifiedAt), 'PP')}
+                          Notified {displayDate(entry.notifiedAt)}
                         </span>
                       )}
                       {entry.bookedAt && (
                         <span className="text-xs text-green-600 block">
-                          Booked {format(new Date(entry.bookedAt), 'PP')}
+                          Booked {displayDate(entry.bookedAt)}
                         </span>
                       )}
                     </TableCell>

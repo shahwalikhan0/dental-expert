@@ -249,7 +249,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href={`/appointments/${id}`}>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>

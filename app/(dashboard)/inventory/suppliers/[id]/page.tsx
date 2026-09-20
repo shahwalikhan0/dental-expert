@@ -17,6 +17,7 @@ import {
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
 import { Edit, Loader2, Package, Phone, Mail, MapPin } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 /**
  * A supplier's record.
@@ -66,9 +67,6 @@ interface Supplier {
     status: string
   }[]
 }
-
-const formatDate = (value: string | null) =>
-  value ? new Date(value).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : '—'
 
 export default function SupplierDetailPage() {
   const params = useParams()
@@ -310,8 +308,8 @@ export default function SupplierDetailPage() {
                         {order.orderNumber ?? 'Draft'}
                       </Link>
                     </TableCell>
-                    <TableCell>{formatDate(order.orderDate)}</TableCell>
-                    <TableCell>{formatDate(order.expectedDate)}</TableCell>
+                    <TableCell>{displayDate(order.orderDate)}</TableCell>
+                    <TableCell>{displayDate(order.expectedDate)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
                         {order.status.toLowerCase().replace('_', ' ')}

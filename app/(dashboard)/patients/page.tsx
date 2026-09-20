@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { Plus, Search, User, MoreHorizontal, Eye, Edit, FileText, Phone, Mail } from 'lucide-react'
 import {
@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { bloodGroupLabel, genderLabel } from '@/lib/labels'
 
 interface Patient {
   id: string
@@ -70,6 +71,7 @@ export default function PatientsPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  const sort = useSort()
   const [genderFilter, setGenderFilter] = useState('all')
   const [bloodGroupFilter, setBloodGroupFilter] = useState('all')
 
@@ -81,6 +83,10 @@ export default function PatientsPage() {
         limit: pagination.limit.toString(),
       })
 
+      if (sort.column) {
+        params.append('sort', sort.column)
+        params.append('direction', sort.direction)
+      }
       if (search) params.append('search', search)
       if (genderFilter && genderFilter !== 'all') params.append('gender', genderFilter)
       if (bloodGroupFilter && bloodGroupFilter !== 'all')
@@ -101,7 +107,7 @@ export default function PatientsPage() {
 
   useEffect(() => {
     fetchPatients()
-  }, [pagination.page, search, genderFilter, bloodGroupFilter])
+  }, [pagination.page, search, genderFilter, bloodGroupFilter, sort.column, sort.direction])
 
   const getGenderBadge = (gender: string) => {
     const colors = {
@@ -113,7 +119,7 @@ export default function PatientsPage() {
       <Badge
         className={`${colors[gender as keyof typeof colors] || 'bg-muted text-muted-foreground'} border-0`}
       >
-        {gender}
+        {genderLabel(gender)}
       </Badge>
     )
   }
@@ -204,13 +210,26 @@ export default function PatientsPage() {
           <Table className="min-w-[800px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Patient ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Contact</TableHead>
+                <SortableHeader column="patientId" sort={sort}>
+                  Patient ID
+                </SortableHeader>
+                <SortableHeader column="name" sort={sort}>
+                  Name
+                </SortableHeader>
+                <SortableHeader column="phone" sort={sort}>
+                  Contact
+                </SortableHeader>
                 <TableHead>Gender</TableHead>
-                <TableHead>Age</TableHead>
+                {/* Age is derived from the date of birth, so it sorts on that —
+                    and inverted, because the oldest patient has the earliest
+                    date. */}
+                <SortableHeader column="dateOfBirth" sort={sort}>
+                  Age
+                </SortableHeader>
                 <TableHead>Blood Group</TableHead>
-                <TableHead>Location</TableHead>
+                <SortableHeader column="city" sort={sort}>
+                  Location
+                </SortableHeader>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -298,15 +317,15 @@ export default function PatientsPage() {
                       <div className="text-sm">{patient.age} years</div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{patient.bloodGroup || 'N/A'}</Badge>
+                      <Badge variant="outline">{bloodGroupLabel(patient.bloodGroup)}</Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm text-muted-foreground">{patient.city || 'N/A'}</div>
+                      <div className="text-sm text-muted-foreground">{patient.city || '—'}</div>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" aria-label="More actions">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

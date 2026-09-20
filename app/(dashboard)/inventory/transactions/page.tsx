@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { GridPagination } from '@/components/ui/data-grid'
+import { useToast } from '@/hooks/use-toast'
 
 interface Transaction {
   id: number
@@ -20,6 +21,7 @@ interface Transaction {
 }
 
 export default function TransactionsPage() {
+  const { toast } = useToast()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -135,7 +137,7 @@ export default function TransactionsPage() {
       const data = await response.json()
 
       if (data.success) {
-        alert('Transaction recorded successfully!')
+        toast({ title: 'Recorded', description: 'The stock movement has been saved.' })
         setShowAddModal(false)
         fetchTransactions()
         // Reset form
@@ -149,11 +151,19 @@ export default function TransactionsPage() {
           notes: '',
         })
       } else {
-        alert(data.error || 'Failed to record transaction')
+        toast({
+          title: 'Error',
+          description: data.error || 'The stock movement could not be recorded',
+          variant: 'destructive',
+        })
       }
     } catch (error) {
       console.error('Error recording transaction:', error)
-      alert('Failed to record transaction')
+      toast({
+        title: 'Error',
+        description: 'The stock movement could not be recorded',
+        variant: 'destructive',
+      })
     }
   }
 

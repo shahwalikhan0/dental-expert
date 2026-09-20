@@ -129,7 +129,12 @@ export default function FeedbackAnalyticsPage() {
               <SelectItem value="all">All time</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={() => fetchData(period)}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Refresh"
+            onClick={() => fetchData(period)}
+          >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>

@@ -26,6 +26,7 @@ import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { DUE_BAND_LABELS, daysUntil, type DueBand } from '@/lib/recare'
 import { CalendarPlus, Check, Clock, Loader2, Search, Settings2 } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 /**
  * The recall list — who should be in the chair and is not booked.
@@ -55,9 +56,6 @@ interface Recare {
 }
 
 const BANDS: DueBand[] = ['OVERDUE', 'DUE_SOON', 'UPCOMING', 'SNOOZED']
-
-const shortDate = (value: string) =>
-  new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 function dueLabel(dueDate: string): string {
   const days = daysUntil(dueDate)
@@ -294,19 +292,19 @@ export default function RecarePage() {
                     </TableCell>
                     <TableCell>
                       <div className={recare.band === 'OVERDUE' ? 'text-red-600 font-medium' : ''}>
-                        {shortDate(recare.dueDate)}
+                        {displayDate(recare.dueDate)}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {dueLabel(recare.dueDate)}
                       </div>
                       {recare.snoozedUntil && (
                         <div className="text-xs text-muted-foreground">
-                          deferred to {shortDate(recare.snoozedUntil)}
+                          deferred to {displayDate(recare.snoozedUntil)}
                         </div>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {recare.lastDoneAt ? shortDate(recare.lastDoneAt) : 'Never'}
+                      {recare.lastDoneAt ? displayDate(recare.lastDoneAt) : 'Never'}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

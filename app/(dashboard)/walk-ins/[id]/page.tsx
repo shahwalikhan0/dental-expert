@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast'
 import { formatToken } from '@/lib/tokens'
 import { splitName } from '@/lib/visitors'
 import { Loader2, Trash2, UserPlus } from 'lucide-react'
+import { displayDate, displayDateTime } from '@/lib/dates'
 
 /**
  * One walk-in, and the decision about them.
@@ -228,12 +229,7 @@ export default function WalkInPage() {
             )}
           </div>
           <p className="text-muted-foreground">
-            {visitor.phone || 'No phone number'} · first seen{' '}
-            {new Date(visitor.createdAt).toLocaleDateString('en-GB', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            })}
+            {visitor.phone || 'No phone number'} · first seen {displayDate(visitor.createdAt)}
           </p>
         </div>
         {!decided && (
@@ -296,15 +292,7 @@ export default function WalkInPage() {
                         {appointment.appointmentNo}
                       </Link>
                     </TableCell>
-                    <TableCell>
-                      {new Date(appointment.startsAt).toLocaleString('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </TableCell>
+                    <TableCell>{displayDateTime(appointment.startsAt)}</TableCell>
                     <TableCell>
                       {appointment.doctor
                         ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`

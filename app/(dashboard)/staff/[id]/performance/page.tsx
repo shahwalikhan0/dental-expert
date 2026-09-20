@@ -197,7 +197,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
           <Link href={`/staff/${resolvedParams.id}`}>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" aria-label="Go back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>

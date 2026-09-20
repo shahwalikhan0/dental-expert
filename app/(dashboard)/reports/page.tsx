@@ -48,6 +48,7 @@ import {
 } from 'recharts'
 
 import { ReportBuilder } from '@/components/ai/report-builder'
+import { useToast } from '@/hooks/use-toast'
 
 // Chart colors
 const CHART_COLORS = [
@@ -157,6 +158,7 @@ interface OperationalAnalytics {
 }
 
 export default function ReportsPage() {
+  const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [datePreset, setDatePreset] = useState('this_month')
   const [dateFrom, setDateFrom] = useState('')
@@ -240,7 +242,11 @@ export default function ReportsPage() {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Export error:', error)
-      alert('Failed to export report')
+      toast({
+        title: 'Export failed',
+        description: 'The report could not be exported. Try again in a moment.',
+        variant: 'destructive',
+      })
     }
   }
 

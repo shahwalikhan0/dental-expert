@@ -42,6 +42,39 @@ async function verifyMobileToken(): Promise<any | null> {
 }
 
 /**
+ * Is this token's clinic still there?
+ *
+ * A session carries its `hospitalId` for eight hours. A clinic deleted in that
+ * window — or a user moved to another one — leaves a token pointing at nothing,
+ * and the application answered every read with an empty result: a fully
+ * navigable dashboard, every figure zero, the clinic's name replaced by a
+ * generic fallback. It looked like a working application belonging to a clinic
+ * with no patients, which is the worst thing it could have looked like.
+ *
+ * One lookup on a primary key. `tenantWriteBlock` already pays this on every
+ * write; this is the same cost extended to reads, and the alternative is an
+ * interface that lies about what it is showing.
+ */
+async function clinicStillExists(hospitalId: string): Promise<boolean> {
+  const hospital = await prisma.hospital.findUnique({
+    where: { id: hospitalId },
+    select: { id: true },
+  })
+  return hospital !== null
+}
+
+/** 401 rather than 403: the session is the problem, so signing in again fixes it. */
+function staleSession() {
+  return NextResponse.json(
+    {
+      error: 'Your session is for a clinic that no longer exists. Please sign in again.',
+      code: 'STALE_SESSION',
+    },
+    { status: 401 }
+  )
+}
+
+/**
  * Get authenticated user's hospital context for API routes.
  * Supports both NextAuth session cookies (web) and Bearer tokens (mobile).
  */
@@ -50,6 +83,10 @@ export async function getAuthenticatedHospital() {
   const session = await auth()
 
   if (session?.user) {
+    if (!(await clinicStillExists(session.user.hospitalId))) {
+      return { error: staleSession(), user: null, hospitalId: null }
+    }
+
     return {
       error: null,
       user: session.user,
@@ -60,6 +97,10 @@ export async function getAuthenticatedHospital() {
   // Fallback: try mobile Bearer token
   const mobileUser = await verifyMobileToken()
   if (mobileUser) {
+    if (!(await clinicStillExists(mobileUser.hospitalId))) {
+      return { error: staleSession(), user: null, hospitalId: null }
+    }
+
     return {
       error: null,
       user: mobileUser,
@@ -157,7 +198,12 @@ async function tenantWriteBlock(
   if (permissions.every(isReadOnlyPermission)) return null
 
   const tenant = await getTenant(hospitalId)
-  if (!tenant || tenant.writable) return null
+  // A missing tenant used to read as writable. It cannot be: the clinic is
+  // gone, and every write would fail on a foreign key with an error nobody
+  // could act on. `getAuthenticatedHospital` catches this first now; this is
+  // the belt to that pair of braces.
+  if (!tenant) return staleSession()
+  if (tenant.writable) return null
 
   return NextResponse.json(
     {

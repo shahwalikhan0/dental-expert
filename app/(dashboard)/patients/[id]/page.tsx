@@ -87,6 +87,8 @@ import { formatDate, formatTime } from '@/lib/appointment-utils'
 import { ClickableRow } from '@/components/ui/data-grid'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PerioPanel } from '@/components/clinical/perio-panel'
+import { bloodGroupLabel, genderLabel } from '@/lib/labels'
+import { displayDate } from '@/lib/dates'
 
 interface Patient {
   id: string
@@ -453,8 +455,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             </h1>
             <p className="text-muted-foreground">Patient ID: {patient.patientId}</p>
             <div className="flex items-center gap-2 mt-2">
-              <Badge variant="outline">{patient.gender}</Badge>
-              {patient.bloodGroup && <Badge variant="secondary">{patient.bloodGroup}</Badge>}
+              <Badge variant="outline">{genderLabel(patient.gender)}</Badge>
+              {patient.bloodGroup && (
+                <Badge variant="secondary">{bloodGroupLabel(patient.bloodGroup)}</Badge>
+              )}
             </div>
           </div>
         </div>
@@ -573,15 +577,15 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Date of Birth</p>
-                    <p>{format(new Date(patient.dateOfBirth), 'PPP')}</p>
+                    <p>{displayDate(patient.dateOfBirth)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Gender</p>
-                    <p>{patient.gender}</p>
+                    <p>{genderLabel(patient.gender)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Blood Group</p>
-                    <p>{patient.bloodGroup || 'N/A'}</p>
+                    <p>{bloodGroupLabel(patient.bloodGroup)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Occupation</p>
@@ -794,7 +798,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                               </div>
                               <div className="text-right">
                                 <p className="text-sm text-muted-foreground">
-                                  {format(new Date(event.date), 'PPP')}
+                                  {displayDate(event.date)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {format(new Date(event.date), 'p')}
@@ -1022,11 +1026,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                             </Badge>
                           </TableCell>
                           <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
-                          <TableCell>{format(new Date(doc.createdAt), 'PP')}</TableCell>
+                          <TableCell>{displayDate(doc.createdAt)}</TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" aria-label="More actions">
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -1127,12 +1131,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               before={{
                 src: uploadUrl(compareSelection[0].filePath),
                 title: compareSelection[0].originalName,
-                date: format(new Date(compareSelection[0].createdAt), 'PP'),
+                date: displayDate(compareSelection[0].createdAt),
               }}
               after={{
                 src: uploadUrl(compareSelection[1].filePath),
                 title: compareSelection[1].originalName,
-                date: format(new Date(compareSelection[1].createdAt), 'PP'),
+                date: displayDate(compareSelection[1].createdAt),
               }}
             />
           )}
@@ -1243,7 +1247,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                         href={trail.to(`/treatments/${treatment.id}`)}
                         label={`Open ${treatment.procedure.name}`}
                       >
-                        <TableCell>{format(new Date(treatment.createdAt), 'PP')}</TableCell>
+                        <TableCell>{displayDate(treatment.createdAt)}</TableCell>
                         <TableCell className="font-medium">{treatment.procedure.name}</TableCell>
                         <TableCell>
                           <Badge variant="outline">{treatment.procedure.category}</Badge>
@@ -1312,7 +1316,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                           label={`Open invoice ${invoice.invoiceNumber}`}
                         >
                           <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                          <TableCell>{format(new Date(invoice.createdAt), 'PP')}</TableCell>
+                          <TableCell>{displayDate(invoice.createdAt)}</TableCell>
                           <TableCell>Rs {Number(invoice.totalAmount).toLocaleString()}</TableCell>
                           <TableCell>Rs {totalPaid.toLocaleString()}</TableCell>
                           <TableCell>

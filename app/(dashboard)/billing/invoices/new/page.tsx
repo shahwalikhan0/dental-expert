@@ -318,7 +318,7 @@ export default function NewInvoicePage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/billing/invoices">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
@@ -540,7 +540,12 @@ export default function NewInvoicePage() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete"
+                            onClick={() => removeItem(item.id)}
+                          >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </TableCell>

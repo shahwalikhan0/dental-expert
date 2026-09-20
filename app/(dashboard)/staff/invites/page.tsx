@@ -37,6 +37,7 @@ import { useToast } from '@/hooks/use-toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
 import { MailPlus, RotateCw, X, ArrowLeft } from 'lucide-react'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 
 /**
  * An outstanding invitation.
@@ -70,6 +71,7 @@ function label(status: string) {
 
 export default function StaffInvitesPage() {
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
@@ -154,7 +156,13 @@ export default function StaffInvitesPage() {
   }
 
   const cancel = async (invite: Invite) => {
-    if (!confirm(`Cancel the invitation to ${invite.email}? Their link will stop working.`)) return
+    const ok = await confirm({
+      title: `Cancel the invitation to ${invite.email}?`,
+      description: 'Their link will stop working. They can be invited again afterwards.',
+      confirmLabel: 'Cancel invitation',
+      variant: 'destructive',
+    })
+    if (!ok) return
 
     const response = await fetch(`/api/staff-invites/${invite.id}`, { method: 'DELETE' })
     const data = await response.json()
@@ -170,6 +178,7 @@ export default function StaffInvitesPage() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialogComponent}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invitations</h1>

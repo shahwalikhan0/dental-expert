@@ -232,7 +232,7 @@ export default function NewTreatmentPlanPage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/treatments/plans">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
@@ -485,6 +485,7 @@ export default function NewTreatmentPlanPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
+                            aria-label="Delete"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />

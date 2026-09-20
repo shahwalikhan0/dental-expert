@@ -5,6 +5,23 @@ import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import { ageInYears } from '@/lib/age'
 import { startDefaultRecare } from '@/lib/recare'
+import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
+
+/**
+ * The columns the patient list can be sorted by.
+ *
+ * A name sorts on the family name first, which is how a register is read —
+ * sorting on the given name puts every Muhammad together and tells nobody
+ * anything.
+ */
+const PATIENT_SORTS: SortMap = {
+  name: (direction) => [{ lastName: direction }, { firstName: direction }],
+  patientId: (direction) => ({ patientId: direction }),
+  phone: (direction) => ({ phone: direction }),
+  dateOfBirth: (direction) => ({ dateOfBirth: direction }),
+  createdAt: (direction) => ({ createdAt: direction }),
+  city: (direction) => ({ city: direction }),
+}
 
 // GET - List patients
 export async function GET(request: NextRequest) {
@@ -53,7 +70,9 @@ export async function GET(request: NextRequest) {
           bloodGroup: true,
           city: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: orderByFrom(sortFromParams(searchParams), PATIENT_SORTS, {
+          createdAt: 'desc',
+        }) as never,
         skip: all ? undefined : skip,
         take: all ? undefined : limit,
       }),

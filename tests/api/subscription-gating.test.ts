@@ -84,12 +84,26 @@ describe('a suspended clinic', () => {
     expect((await requirePermission('reports:export')).error).toBeNull()
   })
 
-  it('does not even look up the subscription for a read', async () => {
+  // A read no longer skips the clinic lookup entirely: every request now
+  // confirms the clinic in the token still exists, because a session that
+  // outlived its clinic used to render a fully navigable application with every
+  // figure at zero. What a read still skips is the *subscription* — a
+  // suspended clinic can always be read.
+  it('does not refuse a read for a suspended clinic', async () => {
     subscriptionIs('SUSPENDED')
 
-    await requirePermission('billing:read')
+    const { error } = await requirePermission('billing:read')
 
-    expect(prisma.hospital.findUnique).not.toHaveBeenCalled()
+    expect(error).toBeNull()
+  })
+
+  it('refuses any request whose clinic has gone', async () => {
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue(null as never)
+
+    const { error } = await requirePermission('billing:read')
+
+    expect(error?.status).toBe(401)
+    await expect(error?.json()).resolves.toMatchObject({ code: 'STALE_SESSION' })
   })
 
   it('is refused when only one of several capabilities writes', async () => {
@@ -144,8 +158,12 @@ describe('ordering', () => {
 
     const { error } = await requirePermission('billing:refund')
 
+    // The status is the whole point: 403, not 402. Every request now confirms
+    // the clinic exists before anything else, so the row *is* read — but the
+    // subscription on it is never consulted, and the answer says nothing about
+    // the clinic's commercial standing.
     expect(error?.status).toBe(403)
-    expect(prisma.hospital.findUnique).not.toHaveBeenCalled()
+    await expect(error?.json()).resolves.toEqual({ error: 'Forbidden' })
   })
 })
 

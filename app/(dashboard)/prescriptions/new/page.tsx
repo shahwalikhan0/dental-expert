@@ -410,6 +410,7 @@ export default function NewPrescriptionPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label="Delete"
                       className="h-7 w-7 text-destructive"
                       onClick={() => removeMedRow(index)}
                     >

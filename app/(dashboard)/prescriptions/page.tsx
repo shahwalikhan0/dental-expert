@@ -237,6 +237,7 @@ export default function PrescriptionsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="View"
                           className="h-8 w-8"
                           onClick={() => router.push(`/prescriptions/${rx.id}`)}
                         >
@@ -245,6 +246,7 @@ export default function PrescriptionsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Delete"
                           className="h-8 w-8 text-destructive"
                           onClick={() => handleDelete(rx)}
                         >

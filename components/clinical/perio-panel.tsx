@@ -17,6 +17,7 @@ import { PerioChart } from '@/components/clinical/perio-chart'
 import { ALL_SITES, ALL_TEETH, summarise, type Measurement } from '@/lib/perio'
 import type { PerioSite } from '@prisma/client'
 import { Loader2, Plus, Save, X } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 
 /**
  * Periodontal charting on the patient record.
@@ -45,8 +46,7 @@ interface Exam {
   }
 }
 
-const longDate = (value: string) =>
-  new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+const longDate = (value: string) => displayDate(value)
 
 function emptyChart(): Measurement[] {
   return ALL_TEETH.flatMap((toothNumber) =>
