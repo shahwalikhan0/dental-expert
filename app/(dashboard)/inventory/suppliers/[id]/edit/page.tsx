@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,8 @@ const EMPTY = {
 
 export default function EditSupplierPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const params = useParams()
   const supplierId = params.id as string
   const { toast } = useToast()
@@ -161,7 +164,7 @@ export default function EditSupplierPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
       <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
 
       <h1 className="text-2xl font-bold">Edit {form.name || 'supplier'}</h1>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -23,6 +24,8 @@ import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
 
 export default function NewPatientPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
 
@@ -136,7 +139,7 @@ export default function NewPatientPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Personal Information */}
         <Card>
           <CardHeader>

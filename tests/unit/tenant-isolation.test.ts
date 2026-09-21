@@ -132,6 +132,7 @@ const ACCEPTED: Record<string, string> = {
   'inventory/items/[id] GET prisma.stockTransaction.findMany': 'same',
   'inventory/items/[id] DELETE prisma.stockTransaction.count': 'same',
   'inventory/items/[id] DELETE prisma.inventoryBatch.deleteMany': 'same',
+
   // The only genuinely cross-clinic handler in the application, and the reason
   // it is safe is that no clinic can call it: it authenticates on CRON_SECRET,
   // and it sends each clinic's reminders to that clinic's own patients.

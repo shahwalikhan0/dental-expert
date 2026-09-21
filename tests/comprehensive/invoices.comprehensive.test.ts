@@ -244,7 +244,9 @@ describe('Invoices API - Comprehensive Tests', () => {
       expect(mockPrisma.invoice.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            OR: expect.arrayContaining([{ invoiceNo: { contains: 'INV2025' } }]),
+            OR: expect.arrayContaining([
+              { invoiceNo: { contains: 'INV2025', mode: 'insensitive' } },
+            ]),
           }),
         })
       )

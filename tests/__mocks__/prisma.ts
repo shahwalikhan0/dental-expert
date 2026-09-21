@@ -56,11 +56,15 @@ const mockPrismaClient = {
     findMany: vi.fn().mockResolvedValue([]),
     groupBy: vi.fn(),
     aggregate: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
+    // Resolved rather than bare: callers that queue a message and deliberately
+    // do not await it still attach a `.catch`, so a mock returning `undefined`
+    // throws inside the very handler it is meant to be standing in for.
+    create: vi.fn().mockResolvedValue({ id: 'message-1' }),
+    update: vi.fn().mockResolvedValue({ id: 'message-1' }),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    delete: vi.fn().mockResolvedValue({ id: 'message-1' }),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    count: vi.fn().mockResolvedValue(0),
   },
 
   // TreatmentAmendment — addenda and corrections to a signed note

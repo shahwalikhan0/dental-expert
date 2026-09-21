@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -95,6 +96,8 @@ export default function ProceduresSettingsPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [activeFilter, setActiveFilter] = useState('all')
 
@@ -120,7 +123,17 @@ export default function ProceduresSettingsPage() {
     isActive: true,
   })
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchProcedures = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -128,7 +141,7 @@ export default function ProceduresSettingsPage() {
         limit: pagination.limit.toString(),
       })
 
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (categoryFilter && categoryFilter !== 'all') params.append('category', categoryFilter)
       if (activeFilter && activeFilter !== 'all') params.append('isActive', activeFilter)
 
@@ -136,6 +149,8 @@ export default function ProceduresSettingsPage() {
       if (!response.ok) throw new Error('Failed to fetch procedures')
 
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setProcedures(data.data || [])
       setPagination(data.pagination)
     } catch (error) {
@@ -146,13 +161,27 @@ export default function ProceduresSettingsPage() {
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which is usually empty, so the screen said
+   * there was nothing to find while the row sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [debouncedSearch, categoryFilter, activeFilter])
+
   useEffect(() => {
     fetchProcedures()
-  }, [pagination.page, search, categoryFilter, activeFilter])
+  }, [pagination.page, pagination.limit, debouncedSearch, categoryFilter, activeFilter])
 
   const resetForm = () => {
     setFormData({

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -71,11 +72,23 @@ export default function PatientsPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const sort = useSort()
   const [genderFilter, setGenderFilter] = useState('all')
   const [bloodGroupFilter, setBloodGroupFilter] = useState('all')
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchPatients = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -87,7 +100,7 @@ export default function PatientsPage() {
         params.append('sort', sort.column)
         params.append('direction', sort.direction)
       }
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (genderFilter && genderFilter !== 'all') params.append('gender', genderFilter)
       if (bloodGroupFilter && bloodGroupFilter !== 'all')
         params.append('bloodGroup', bloodGroupFilter)
@@ -96,18 +109,43 @@ export default function PatientsPage() {
       if (!response.ok) throw new Error('Failed to fetch patients')
 
       const data = await response.json()
+      if (requestId !== latestRequest.current) return
       setPatients(data.patients)
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching patients:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which for most searches is empty, so the
+   * screen said "No patients found" while the patient sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [debouncedSearch, genderFilter, bloodGroupFilter, sort.column, sort.direction])
+
   useEffect(() => {
     fetchPatients()
-  }, [pagination.page, search, genderFilter, bloodGroupFilter, sort.column, sort.direction])
+    // `pagination.limit` belongs here: without it, choosing a different page
+    // size on page one changed nothing, because no dependency had changed.
+  }, [
+    pagination.page,
+    pagination.limit,
+    debouncedSearch,
+    genderFilter,
+    bloodGroupFilter,
+    sort.column,
+    sort.direction,
+  ])
 
   const getGenderBadge = (gender: string) => {
     const colors = {

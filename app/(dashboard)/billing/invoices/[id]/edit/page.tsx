@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,8 @@ const DISCOUNT_TYPES = [
 
 export default function EditInvoicePage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const params = useParams()
   const invoiceId = params.id as string
   const { toast } = useToast()
@@ -220,7 +223,7 @@ export default function EditInvoicePage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
       <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
 
       <div>

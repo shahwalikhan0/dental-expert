@@ -27,12 +27,12 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { paymentNo: { contains: search } },
-        { transactionId: { contains: search } },
-        { invoice: { invoiceNo: { contains: search } } },
-        { invoice: { patient: { firstName: { contains: search } } } },
-        { invoice: { patient: { lastName: { contains: search } } } },
-        { invoice: { patient: { patientId: { contains: search } } } },
+        { paymentNo: { contains: search, mode: 'insensitive' } },
+        { transactionId: { contains: search, mode: 'insensitive' } },
+        { invoice: { invoiceNo: { contains: search, mode: 'insensitive' } } },
+        { invoice: { patient: { firstName: { contains: search, mode: 'insensitive' } } } },
+        { invoice: { patient: { lastName: { contains: search, mode: 'insensitive' } } } },
+        { invoice: { patient: { patientId: { contains: search, mode: 'insensitive' } } } },
       ]
     }
 

@@ -180,9 +180,9 @@ describe('GET /api/inventory/suppliers', () => {
 
     const where = vi.mocked(prisma.vendor.findMany).mock.calls[0][0].where
     expect(where.OR).toEqual([
-      { name: { contains: 'acme' } },
-      { code: { contains: 'acme' } },
-      { contactPerson: { contains: 'acme' } },
+      { name: { contains: 'acme', mode: 'insensitive' } },
+      { code: { contains: 'acme', mode: 'insensitive' } },
+      { contactPerson: { contains: 'acme', mode: 'insensitive' } },
     ])
   })
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useToast } from '@/hooks/use-toast'
@@ -8,6 +9,8 @@ import { EMPTY_ITEM, ItemForm, type ItemFormValues } from '@/components/inventor
 
 export default function NewInventoryItemPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
 
@@ -36,7 +39,7 @@ export default function NewInventoryItemPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div ref={formRef} className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Add New Inventory Item</h1>
         <Link

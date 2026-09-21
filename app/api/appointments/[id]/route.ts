@@ -113,6 +113,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Build update data
     const updateData: any = {}
 
+    // Somebody at the desk has now dealt with this, which is what takes an
+    // online booking off the "waiting to be called" list. Set once, on the
+    // first staff action of any kind — confirming it, moving it, cancelling
+    // it — because all of them mean a human has seen it.
+    if (existingAppointment.reviewedAt === null) {
+      updateData.reviewedAt = new Date()
+    }
+
     if (scheduledDate !== undefined || scheduledTime !== undefined) {
       updateData.startsAt = startsAt
     }
@@ -186,6 +194,32 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         visitor: { select: { id: true, name: true, phone: true } },
       },
     })
+
+    /**
+     * A moved appointment leaves its old reminders behind.
+     *
+     * `/api/cron/reminders` queues a reminder keyed by appointment *and* send
+     * time, so moving an appointment did not replace the reminder that was
+     * already waiting — it added a second one and left the first at PENDING.
+     * The dispatcher only suppresses reminders for appointments that are
+     * cancelled, completed or marked a no-show, and a rescheduled one is none
+     * of those, so it went out: a text arriving at the moment that used to be
+     * a day before the old appointment, about a booking that had moved.
+     *
+     * Only PENDING rows are touched. Anything already sent is a record of what
+     * the patient was actually told, and deleting it would make the clinic
+     * unable to answer "nobody reminded me".
+     */
+    if (startsAt.getTime() !== existingAppointment.startsAt.getTime()) {
+      await prisma.messageLog.deleteMany({
+        where: {
+          hospitalId,
+          relatedType: 'Appointment',
+          relatedId: id,
+          status: 'PENDING',
+        },
+      })
+    }
 
     // Smart Scheduler: When appointment is cancelled, notify matching waitlist patients
     if (status === 'CANCELLED' && existingAppointment.status !== 'CANCELLED') {

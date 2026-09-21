@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -22,12 +23,15 @@ import { Switch } from '@/components/ui/switch'
 import { ArrowLeft, Loader2, Eye, EyeOff, Clock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
+import { isoDay } from '@/lib/dates'
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function EditStaffPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -110,7 +114,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         role: data.user.role || '',
         clinicalRole: data.user.clinicalRole || '',
         newPassword: '',
-        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString().split('T')[0] : '',
+        dateOfBirth: isoDay(data.dateOfBirth),
         gender: data.gender || '',
         address: data.address || '',
         city: data.city || '',
@@ -263,7 +267,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Basic Information */}
           <Card>

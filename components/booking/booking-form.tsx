@@ -70,6 +70,16 @@ export function BookingForm({
   const [closedReason, setClosedReason] = useState<string | null>(null)
   const [time, setTime] = useState('')
 
+  /**
+   * The clinic's next free day, asked for only when the chosen one is empty.
+   *
+   * `'looking'` while the request is out, `'none'` when the scan found nothing
+   * inside the booking window, and `null` when there is no question to answer.
+   */
+  const [nextAvailable, setNextAvailable] = useState<
+    { date: string; time: string } | 'looking' | 'none' | null
+  >(null)
+
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [reason, setReason] = useState('')
@@ -84,6 +94,7 @@ export function BookingForm({
     setSlotsState('loading')
     setTime('')
     setClosedReason(null)
+    setNextAvailable(null)
 
     try {
       const response = await fetch(
@@ -117,6 +128,41 @@ export function BookingForm({
   useEffect(() => {
     void loadSlots()
   }, [loadSlots])
+
+  /**
+   * When the chosen day turns out to be empty, ask where the next one is.
+   *
+   * Only then — the common case is a day with times on it, and that answer
+   * costs nothing extra.
+   */
+  const dayIsEmpty =
+    slotsState === 'closed' || (slotsState === 'ready' && !slots.some((slot) => slot.available))
+
+  useEffect(() => {
+    if (!doctorId || !date || !dayIsEmpty) return
+
+    let current = true
+    setNextAvailable('looking')
+    ;(async () => {
+      try {
+        const response = await fetch(
+          `/api/public/${slug}/next-available?doctorId=${encodeURIComponent(doctorId)}&from=${date}`
+        )
+        if (!current) return
+        const data = await response.json()
+        if (!current) return
+        setNextAvailable(data?.nextAvailable ?? 'none')
+      } catch {
+        // No suggestion is a smaller failure than a wrong one; the day's own
+        // message still stands on its own.
+        if (current) setNextAvailable(null)
+      }
+    })()
+
+    return () => {
+      current = false
+    }
+  }, [slug, doctorId, date, dayIsEmpty])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -153,7 +199,7 @@ export function BookingForm({
       <div className="bg-background rounded-lg border p-6 shadow-sm" role="status">
         <h2 className="text-xl font-semibold">Your appointment is booked</h2>
         <p className="text-muted-foreground mt-1 text-sm">
-          The clinic will telephone you to confirm. Please bring this reference.
+          We have sent these details to your phone. The clinic will telephone you to confirm.
         </p>
 
         <dl className="mt-6 space-y-3 text-sm">
@@ -254,22 +300,48 @@ export function BookingForm({
           <p className="text-muted-foreground text-sm">Loading times…</p>
         )}
 
-        {doctorId && slotsState === 'closed' && <p className="text-sm">{closedReason}</p>}
+        {/*
+          A day with nothing on it used to end in "please try another", which
+          on a phone means picking forward one day at a time until something
+          appears. For a busy dentist that is a dozen taps, and the answer was
+          knowable in one. The clinic is asked for its next free day instead.
+        */}
+        {doctorId && (slotsState === 'closed' || (slotsState === 'ready' && !available.length)) && (
+          <div className="space-y-2 text-sm">
+            <p>{slotsState === 'closed' ? closedReason : 'Nothing free on this day.'}</p>
 
-        {doctorId && slotsState === 'ready' && available.length === 0 && (
-          <p className="text-sm">
-            Nothing free on this day. Please try another.
+            {nextAvailable === 'looking' && (
+              <p className="text-muted-foreground">Looking for the next free day…</p>
+            )}
+
+            {nextAvailable && nextAvailable !== 'looking' && nextAvailable !== 'none' && (
+              <button
+                type="button"
+                className="rounded-md border border-primary px-3 py-2 text-left font-medium text-primary hover:bg-primary/5"
+                onClick={() => setDate(nextAvailable.date)}
+              >
+                Next free: {displayDate(nextAvailable.date)} from {clockLabel(nextAvailable.time)} —
+                show these times
+              </button>
+            )}
+
+            {nextAvailable === 'none' && (
+              <p className="text-muted-foreground">
+                Nothing free in the next few weeks.
+                {clinicPhone ? ' Please telephone the clinic.' : ''}
+              </p>
+            )}
+
             {clinicPhone && (
-              <>
-                {' '}
+              <p className="text-muted-foreground">
                 If it is urgent, telephone{' '}
-                <a className="underline" href={`tel:${clinicPhone}`}>
+                <a className="text-foreground underline" href={`tel:${clinicPhone}`}>
                   {clinicPhone}
                 </a>
                 .
-              </>
+              </p>
             )}
-          </p>
+          </div>
         )}
 
         {doctorId && slotsState === 'ready' && available.length > 0 && (

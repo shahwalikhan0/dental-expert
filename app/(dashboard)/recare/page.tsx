@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -75,11 +76,21 @@ export default function RecarePage() {
   const [band, setBand] = useState<DueBand>('OVERDUE')
   const [typeId, setTypeId] = useState('all')
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0 })
 
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
+
   const load = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -90,11 +101,13 @@ export default function RecarePage() {
         direction: sort.direction,
       })
       if (typeId !== 'all') params.set('typeId', typeId)
-      if (search.trim()) params.set('search', search.trim())
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
 
       const res = await fetch(`/api/recare?${params}`)
       if (!res.ok) throw new Error('The recall list could not be loaded')
       const data = await res.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setRecares(data.recares ?? [])
       setCounts(data.counts ?? {})
       setPagination((p) => ({ ...p, total: data.pagination?.total ?? 0 }))
@@ -105,14 +118,24 @@ export default function RecarePage() {
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [band, typeId, search, pagination.page, pagination.limit, sort.column, sort.direction, toast])
+  }, [
+    band,
+    typeId,
+    debouncedSearch,
+    pagination.page,
+    pagination.limit,
+    sort.column,
+    sort.direction,
+    toast,
+  ])
 
   useEffect(() => {
-    const timer = setTimeout(load, search ? 300 : 0)
-    return () => clearTimeout(timer)
-  }, [load, search])
+    // The wait now lives in `useDebouncedValue` above, which `load` depends on.
+    // This used to hold a second timer of its own, so a keystroke waited twice.
+    load()
+  }, [load])
 
   useEffect(() => {
     fetch('/api/recare/types')

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,28 +65,40 @@ export default function AuditLogPage() {
   const [limit, setLimit] = useState(30)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [actionFilter, setActionFilter] = useState<string>('all')
   const [entityFilter, setEntityFilter] = useState<string>('all')
   const { toast } = useToast()
 
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
+
   const fetchLogs = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
-      if (search) params.set('q', search)
+      if (debouncedSearch) params.set('q', debouncedSearch)
       if (actionFilter !== 'all') params.set('action', actionFilter)
       if (entityFilter !== 'all') params.set('entity', entityFilter)
       const res = await fetch(`/api/audit-log?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setLogs(data.data)
       setTotal(data.pagination.total)
     } catch {
       toast({ title: 'Error', description: 'Failed to load audit logs', variant: 'destructive' })
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [page, limit, search, actionFilter, entityFilter, toast])
+  }, [page, limit, debouncedSearch, actionFilter, entityFilter, toast])
 
   useEffect(() => {
     fetchLogs()

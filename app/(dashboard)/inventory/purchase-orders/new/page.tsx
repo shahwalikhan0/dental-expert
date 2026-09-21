@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/i18n/format'
@@ -29,6 +30,8 @@ interface Line {
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [supplierId, setSupplierId] = useState('')
@@ -106,7 +109,7 @@ export default function NewPurchaseOrderPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <div ref={formRef} className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">New Purchase Order</h1>
         <Link

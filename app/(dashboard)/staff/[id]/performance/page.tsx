@@ -23,6 +23,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { isoDay } from '@/lib/dates'
 
 interface PerformanceData {
   staff: {
@@ -94,10 +95,10 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
   const [startDate, setStartDate] = useState(() => {
     const date = new Date()
     date.setDate(1)
-    return date.toISOString().split('T')[0]
+    return isoDay(date)
   })
   const [endDate, setEndDate] = useState(() => {
-    return new Date().toISOString().split('T')[0]
+    return isoDay(new Date())
   })
 
   const fetchPerformance = async () => {

@@ -30,7 +30,10 @@ interface PrescriptionDetail {
     gender: string | null
     address: string | null
     city: string | null
-    allergies: string | null
+    /** Allergies live on the medical history, not on the patient. This page
+        used to declare `allergies: string | null` here and read it below, so
+        the line it printed was never once reached. */
+    medicalHistory: { allergies: string[] } | null
   }
   doctor: { id: string; name: string; specialization: string | null; registrationNo: string | null }
   medications: {
@@ -235,10 +238,15 @@ export default function PrescriptionDetailPage() {
                 <span className="text-muted-foreground">Phone: </span>
                 <span>{prescription.patient.phone}</span>
               </div>
-              {prescription.patient.allergies && (
+              {prescription.patient.medicalHistory?.allergies?.length ? (
                 <div className="col-span-2 text-destructive font-medium">
-                  Allergies: {prescription.patient.allergies}
+                  Allergies: {prescription.patient.medicalHistory.allergies.join(', ')}
                 </div>
+              ) : (
+                /* Said plainly rather than left blank. A prescription with no
+                   allergy line reads the same whether nobody asked the patient
+                   or the patient has none, and a pharmacist cannot tell which. */
+                <div className="col-span-2 text-muted-foreground">Allergies: none recorded</div>
               )}
             </div>
 

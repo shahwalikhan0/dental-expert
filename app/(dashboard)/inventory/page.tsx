@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -103,6 +104,8 @@ export default function InventoryPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -139,7 +142,17 @@ export default function InventoryPage() {
     }
   }
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchItems = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -147,7 +160,7 @@ export default function InventoryPage() {
         limit: pagination.limit.toString(),
       })
 
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (categoryFilter && categoryFilter !== 'all') params.append('category', categoryFilter)
       if (typeFilter && typeFilter !== 'all') params.append('type', typeFilter)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
@@ -157,12 +170,14 @@ export default function InventoryPage() {
       if (!response.ok) throw new Error('Failed to fetch inventory items')
 
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setItems(data.data)
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching inventory items:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
@@ -170,9 +185,31 @@ export default function InventoryPage() {
     fetchCategories()
   }, [])
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which is usually empty, so the screen said
+   * there was nothing to find while the row sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [debouncedSearch, categoryFilter, typeFilter, statusFilter, lowStockOnly])
+
   useEffect(() => {
     fetchItems()
-  }, [pagination.page, search, categoryFilter, typeFilter, statusFilter, lowStockOnly])
+  }, [
+    pagination.page,
+    pagination.limit,
+    debouncedSearch,
+    categoryFilter,
+    typeFilter,
+    statusFilter,
+    lowStockOnly,
+  ])
 
   // itemType arrives as the InventoryItemType enum (DENTAL_MATERIAL, ...).
   const formatItemType = (type: string) =>

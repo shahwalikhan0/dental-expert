@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -74,6 +75,8 @@ interface InvoiceItem {
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preSelectedPatientId = searchParams.get('patientId')
 
@@ -314,7 +317,7 @@ export default function NewInvoicePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={formRef} className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/billing/invoices">
@@ -379,6 +382,7 @@ export default function NewInvoicePage() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search by name, ID, or phone..."
+                    data-form-guard="ignore"
                     value={patientSearch}
                     onChange={(e) => setPatientSearch(e.target.value)}
                     className="pl-9"

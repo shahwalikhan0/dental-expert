@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -99,12 +100,24 @@ export default function InvoicesPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [statusFilter, setStatusFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [overdueOnly, setOverdueOnly] = useState(false)
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchInvoices = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -112,7 +125,7 @@ export default function InvoicesPage() {
         limit: pagination.limit.toString(),
       })
 
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (dateFrom) params.append('dateFrom', dateFrom)
       if (dateTo) params.append('dateTo', dateTo)
@@ -122,18 +135,42 @@ export default function InvoicesPage() {
       if (!response.ok) throw new Error('Failed to fetch invoices')
 
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setInvoices(data.invoices)
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching invoices:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which is usually empty, so the screen said
+   * there was nothing to find while the row sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [debouncedSearch, statusFilter, dateFrom, dateTo, overdueOnly])
+
   useEffect(() => {
     fetchInvoices()
-  }, [pagination.page, search, statusFilter, dateFrom, dateTo, overdueOnly])
+  }, [
+    pagination.page,
+    pagination.limit,
+    debouncedSearch,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    overdueOnly,
+  ])
 
   const getStatusBadge = (status: string) => {
     const config = invoiceStatusConfig[status as keyof typeof invoiceStatusConfig] || {

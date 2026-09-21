@@ -461,10 +461,23 @@ model Patient {
   aiSummaryAt     DateTime?
 
   isActive        Boolean    @default(true)
+
+  /// Set when this record was merged into another as a duplicate.
+  ///
+  /// The loser of a merge is kept, deactivated, rather than deleted. Its
+  /// patient ID has been written on paper — on a prescription, a receipt, a lab
+  /// docket — and a clinic that looks it up afterwards should be told where the
+  /// record went, not shown nothing. Everything clinical has already moved to
+  /// the surviving record by the time this is set.
+  mergedIntoId    String?
+  mergedAt        DateTime?
+
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   hospital        Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  mergedInto      Patient?   @relation("PatientMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom      Patient[]  @relation("PatientMerge")
   medicalHistory  MedicalHistory?
   appointments    Appointment[]
   treatments      Treatment[]
@@ -615,6 +628,18 @@ model Appointment {
   cancelledAt     DateTime?
   cancellationReason String?
 
+  /// Booked by the patient on the public page, rather than by the desk.
+  ///
+  /// The booking route used to rely on `status: SCHEDULED` to mean "nobody at
+  /// the clinic has seen this yet" — but the desk's own bookings are SCHEDULED
+  /// too, so the two were indistinguishable. Meanwhile the confirmation page
+  /// tells the patient "the clinic will telephone you to confirm", which is a
+  /// promise the software gave nobody the means to keep.
+  bookedOnline    Boolean           @default(false)
+
+  /// When somebody at the desk first dealt with it. Null on an online booking
+  /// nobody has looked at, which is what the review queue is built from.
+  reviewedAt      DateTime?
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -632,6 +657,8 @@ model Appointment {
   @@index([hospitalId, doctorId, startsAt])
   @@index([hospitalId, patientId, startsAt(sort: Desc)])
   @@index([hospitalId, visitorId])
+  /// The desk's "what came in overnight" list: online, not yet looked at.
+  @@index([hospitalId, bookedOnline, reviewedAt])
 }
 
 

@@ -51,12 +51,12 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { treatmentNo: { contains: search } },
-        { chiefComplaint: { contains: search } },
-        { diagnosis: { contains: search } },
-        { patient: { firstName: { contains: search } } },
-        { patient: { lastName: { contains: search } } },
-        { patient: { patientId: { contains: search } } },
+        { treatmentNo: { contains: search, mode: 'insensitive' } },
+        { chiefComplaint: { contains: search, mode: 'insensitive' } },
+        { diagnosis: { contains: search, mode: 'insensitive' } },
+        { patient: { firstName: { contains: search, mode: 'insensitive' } } },
+        { patient: { lastName: { contains: search, mode: 'insensitive' } } },
+        { patient: { patientId: { contains: search, mode: 'insensitive' } } },
       ]
     }
 

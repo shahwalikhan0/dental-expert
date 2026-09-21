@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -128,6 +129,8 @@ export default function LabWorkPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [statusFilter, setStatusFilter] = useState('all')
   const [vendorFilter, setVendorFilter] = useState('all')
   const [workTypeFilter, setWorkTypeFilter] = useState('all')
@@ -144,7 +147,17 @@ export default function LabWorkPage() {
     }
   }
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchOrders = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -152,7 +165,7 @@ export default function LabWorkPage() {
         limit: pagination.limit.toString(),
       })
 
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (vendorFilter && vendorFilter !== 'all') params.append('vendorId', vendorFilter)
       if (workTypeFilter && workTypeFilter !== 'all') params.append('workType', workTypeFilter)
@@ -162,6 +175,8 @@ export default function LabWorkPage() {
       if (!response.ok) throw new Error('Failed to fetch lab orders')
 
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setOrders(data.data)
       setPagination(data.pagination)
 
@@ -170,7 +185,7 @@ export default function LabWorkPage() {
     } catch (error) {
       console.error('Error fetching lab orders:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
@@ -191,9 +206,31 @@ export default function LabWorkPage() {
     fetchVendors()
   }, [])
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which is usually empty, so the screen said
+   * there was nothing to find while the row sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [debouncedSearch, statusFilter, vendorFilter, workTypeFilter, priorityFilter])
+
   useEffect(() => {
     fetchOrders()
-  }, [pagination.page, search, statusFilter, vendorFilter, workTypeFilter, priorityFilter])
+  }, [
+    pagination.page,
+    pagination.limit,
+    debouncedSearch,
+    statusFilter,
+    vendorFilter,
+    workTypeFilter,
+    priorityFilter,
+  ])
 
   const getStatusBadge = (status: string) => {
     const configs: Record<string, { label: string; className: string; icon: any }> = {

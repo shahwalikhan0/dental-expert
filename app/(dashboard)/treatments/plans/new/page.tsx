@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -65,6 +66,8 @@ interface PlanItem {
 
 export default function NewTreatmentPlanPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
 
@@ -251,7 +254,7 @@ export default function NewTreatmentPlanPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Patient Selection */}
         <Card>
           <CardHeader>

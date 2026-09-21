@@ -15,6 +15,7 @@ import {
   Clock,
   User,
   UserPlus,
+  UserX,
   Phone,
   Mail,
   MapPin,
@@ -50,6 +51,7 @@ import {
 } from '@/lib/appointment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface Appointment {
   id: string
@@ -126,6 +128,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   const trail = useTrail(appointment?.appointmentNo ?? null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   // Cancel dialog
   const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -177,6 +180,25 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
     } finally {
       setActionLoading(false)
     }
+  }
+
+  /**
+   * The patient did not come.
+   *
+   * Confirmed first, because it is not a neutral note: a no-show counts
+   * against the patient's record and is what decides whether they get an extra
+   * reminder next time. It is also the kind of thing clicked by accident on a
+   * row somebody meant to check in.
+   */
+  const handleNoShow = async () => {
+    const ok = await confirm({
+      title: 'Mark this appointment as a no-show?',
+      description:
+        'This records that the patient did not attend, and counts towards their no-show rate.',
+      confirmLabel: 'Mark no-show',
+    })
+    if (!ok) return
+    await handleStatusChange('NO_SHOW')
   }
 
   const handleStatusChange = async (status: string) => {
@@ -323,6 +345,20 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               Edit
             </Button>
           </Link>
+          {/*
+            Marking somebody absent belongs here as much as cancelling does.
+            It was only ever on the list screen, so a receptionist who had
+            opened the appointment to deal with a patient who had not arrived
+            had to navigate back to the list to say so — and the no-show rate
+            this application uses to decide who gets an extra reminder is built
+            from exactly this action.
+          */}
+          {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
+            <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
+              <UserX className="h-4 w-4 mr-2" />
+              No-show
+            </Button>
+          )}
           {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(appointment.status) && (
             <Button
               variant="destructive"
@@ -665,6 +701,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {ConfirmDialogComponent}
     </div>
   )
 }

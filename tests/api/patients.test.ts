@@ -142,11 +142,43 @@ describe('Patients API - GET /api/patients', () => {
         where: expect.objectContaining({
           hospitalId: 'hospital-1',
           isActive: true,
-          OR: expect.arrayContaining([
-            expect.objectContaining({ firstName: { contains: 'john' } }),
+          // Case-insensitively: `contains` alone is `LIKE`, which on
+          // PostgreSQL would not have matched "John".
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  firstName: { contains: 'john', mode: 'insensitive' },
+                }),
+              ]),
+            }),
           ]),
         }),
       })
+    )
+  })
+
+  it('matches a full name across both name columns', async () => {
+    vi.mocked(prisma.patient.findMany).mockResolvedValue([])
+    vi.mocked(prisma.patient.count).mockResolvedValue(0)
+
+    const request = new NextRequest('http://localhost:3000/api/patients?search=john%20smith')
+    await GET(request)
+
+    // One clause per word, each of which must match somewhere. Matching the
+    // whole string against each column on its own found nothing at all:
+    // "John Smith" is contained in neither `firstName` nor `lastName`.
+    const where = vi.mocked(prisma.patient.findMany).mock.calls[0][0]?.where as any
+    expect(where.AND).toHaveLength(2)
+    expect(where.AND[0].OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ firstName: { contains: 'john', mode: 'insensitive' } }),
+      ])
+    )
+    expect(where.AND[1].OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ lastName: { contains: 'smith', mode: 'insensitive' } }),
+      ])
     )
   })
 
@@ -241,25 +273,29 @@ describe('Patients API - POST /api/patients', () => {
     expect(data.error).toContain('required')
   })
 
-  it('should return 409 for duplicate phone number', async () => {
+  it('allows a shared phone number, and names who else is on it', async () => {
+    // Families share a number. The CNIC is what identifies a person here, and
+    // that is still unique; this is a warning, not a refusal.
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'existing-patient',
-      phone: '9876543210',
+      patientId: 'P-0001',
+      firstName: 'Fatima',
+      lastName: 'Khan',
     } as any)
 
     const request = new NextRequest('http://localhost:3000/api/patients', {
       method: 'POST',
       body: JSON.stringify({
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Ali',
+        lastName: 'Khan',
         phone: '9876543210',
       }),
     })
     const response = await POST(request)
 
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(201)
     const data = await response.json()
-    expect(data.error).toContain('phone number already exists')
+    expect(data.sharedPhoneWith.name).toBe('Fatima Khan')
   })
 
   it('should return 403 when patient limit is reached', async () => {

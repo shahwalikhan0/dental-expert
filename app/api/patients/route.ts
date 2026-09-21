@@ -48,21 +48,44 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      where.OR = [
-        { patientId: { contains: search } },
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { phone: { contains: search } },
-        { email: { contains: search } },
+      /**
+       * Two things this used to get wrong, both of which end with the desk
+       * being told a registered patient does not exist.
+       *
+       * `contains` without `mode` is `LIKE`, which on PostgreSQL is
+       * case-sensitive: a search for "muhammad" did not match "Muhammad".
+       * Half the routes in this application already passed `insensitive`;
+       * this one did not, so the same query behaved differently depending on
+       * which screen you typed it into.
+       *
+       * And each word was matched against each column on its own, so a full
+       * name found nothing: "John Smith" is not contained in `firstName`
+       * ("John") nor in `lastName` ("Smith"). Typing somebody's whole name is
+       * the first thing anybody does, so every term now has to match
+       * *somewhere*, which lets the surname narrow the forename.
+       */
+      const terms = search.trim().split(/\s+/).filter(Boolean)
+
+      where.AND = [
+        ...(where.AND ?? []),
+        ...terms.map((term) => ({
+          OR: [
+            { patientId: { contains: term, mode: 'insensitive' as const } },
+            { firstName: { contains: term, mode: 'insensitive' as const } },
+            { lastName: { contains: term, mode: 'insensitive' as const } },
+            { phone: { contains: term } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+          ],
+        })),
       ]
     }
 
     /**
      * "Own patients only", when the clinic has asked for it (§10).
      *
-     * ANDed rather than merged into `where.OR`, which the search above already
-     * owns — putting both in one OR would widen the search to the whole
-     * register instead of narrowing the register to the search.
+     * Appended to `where.AND`, alongside whatever the search above put there —
+     * folding it into an OR would widen the query to the whole register
+     * instead of narrowing the register to this user's own patients.
      *
      * The setting is read only for the roles it could apply to, so the front
      * desk pays nothing for it.
@@ -95,6 +118,14 @@ export async function GET(request: NextRequest) {
           dateOfBirth: true,
           bloodGroup: true,
           city: true,
+          // Carried on the list, not only on the full record, because every
+          // screen that picks a patient out of a search box is a screen where
+          // somebody is about to prescribe, treat or anaesthetise them. The
+          // prescription form showed an allergy warning against a field this
+          // route never sent, so the warning never appeared.
+          medicalHistory: {
+            select: { allergies: true, conditions: true, isPregnant: true },
+          },
         },
         orderBy: orderByFrom(sortFromParams(searchParams), PATIENT_SORTS, {
           createdAt: 'desc',
@@ -179,17 +210,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for duplicate phone within this hospital
-    const existingPatient = await prisma.patient.findFirst({
+    /**
+     * A repeated phone number is no longer refused.
+     *
+     * It used to be a hard 409 — "A patient with this phone number already
+     * exists" — which is a statement about households, not about people. A
+     * mother registering three children gives one number; a husband and wife
+     * share one; a grandparent who does not own a phone gives their son's.
+     * Every one of those is a real registration the desk could not complete,
+     * and the way round it was to invent a number, which puts a wrong number
+     * in a medical record and silently breaks every reminder sent to it.
+     *
+     * The identifier this clinic actually has is the CNIC, and that is still
+     * unique below. A shared number is instead surfaced as a warning — the
+     * same soft check the registration form already runs while it is being
+     * filled in (`/api/patients/duplicates`), which scores name, date of
+     * birth, phone, email and CNIC together and offers the existing record.
+     * That catches the real duplicate this block never could: the same person
+     * returning with a new number.
+     */
+    const sharesPhoneWith = await prisma.patient.findFirst({
       where: { hospitalId, phone },
+      select: { id: true, patientId: true, firstName: true, lastName: true },
     })
-
-    if (existingPatient) {
-      return NextResponse.json(
-        { error: 'A patient with this phone number already exists' },
-        { status: 409 }
-      )
-    }
 
     // A CNIC that is wrong is worse than one that is absent: it is what tells
     // two patients of the same name apart. Blank stays acceptable — children
@@ -271,7 +314,22 @@ export async function POST(request: NextRequest) {
       return created
     })
 
-    return NextResponse.json(patient, { status: 201 })
+    // Registered. If the number is shared with somebody already on the books,
+    // the desk is told who — after the fact, because it is a thing worth
+    // knowing and not a reason to have refused.
+    return NextResponse.json(
+      sharesPhoneWith
+        ? {
+            ...patient,
+            sharedPhoneWith: {
+              id: sharesPhoneWith.id,
+              patientId: sharesPhoneWith.patientId,
+              name: `${sharesPhoneWith.firstName} ${sharesPhoneWith.lastName}`,
+            },
+          }
+        : patient,
+      { status: 201 }
+    )
   } catch (error) {
     console.error('Error creating patient:', error)
     return NextResponse.json({ error: 'Failed to create patient' }, { status: 500 })

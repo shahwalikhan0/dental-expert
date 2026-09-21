@@ -1,11 +1,15 @@
 /**
  * FR-001 / UAT-01 — "Register a new patient and detect a likely duplicate".
  *
- * The hard blocks live in the create route: a repeated phone number or CNIC is
- * refused outright. They are not enough. The duplicate a busy front desk
- * actually creates is the same person walking in with a new phone number, and
- * no unique index will ever catch that. This is the soft half — a warning while
- * the form is being filled, offering the record that already exists.
+ * One hard block lives in the create route: a repeated CNIC is refused, because
+ * a CNIC identifies a person. A repeated *phone number* used to be refused too
+ * and is not any more — families share a number, and refusing the second child
+ * of the same household was refusing a real registration.
+ *
+ * So this is now the whole of the duplicate check that matters, and it catches
+ * what no unique index ever could: the same person walking back in with a new
+ * number. A warning while the form is being filled, offering the record that
+ * already exists.
  *
  * Deliberately deterministic. The desk is being asked to decide whether two
  * records are one person, so it is shown which fields matched and how closely;

@@ -67,6 +67,7 @@ import {
   numberToWords,
 } from '@/lib/billing-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { isoDay } from '@/lib/dates'
 
 interface Invoice {
   id: string
@@ -155,7 +156,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentDate, setPaymentDate] = useState(isoDay(new Date()))
   const [transactionId, setTransactionId] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
 

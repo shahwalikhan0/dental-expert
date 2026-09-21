@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { MergeDialog } from '@/components/patients/merge-dialog'
 import {
   ArrowLeft,
   Calendar,
@@ -75,6 +76,7 @@ import {
   Activity,
   Smile,
   Pen,
+  Merge,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { Patient360 } from '@/components/ai/patient-360'
@@ -109,6 +111,13 @@ interface Patient {
   emergencyContactName?: string
   emergencyContactPhone?: string
   emergencyContactRelation?: string
+  /** Set when this record was merged away as a duplicate. */
+  mergedInto?: {
+    id: string
+    patientId: string
+    firstName: string
+    lastName: string
+  } | null
   medicalHistory?: {
     allergies?: string[]
     conditions?: string[]
@@ -189,6 +198,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter()
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const [mergeOpen, setMergeOpen] = useState(false)
   const [patient, setPatient] = useState<Patient | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(patient ? `${patient.firstName} ${patient.lastName}` : null)
@@ -469,6 +479,16 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               Edit
             </Button>
           </Link>
+          {/*
+            Two records for one person is the commonest mess a front desk makes.
+            The registration form has always warned about a likely duplicate
+            before it is created; this is what to do about the ones already in
+            the register, of which there was previously nothing at all.
+          */}
+          <Button variant="outline" onClick={() => setMergeOpen(true)}>
+            <Merge className="h-4 w-4 mr-2" />
+            Merge duplicate
+          </Button>
           <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
             <Button>
               <Calendar className="h-4 w-4 mr-2" />
@@ -477,6 +497,31 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </Link>
         </div>
       </div>
+
+      {/*
+        A record that was merged away. Its patient ID is printed on
+        prescriptions and receipts the clinic has already handed out, so opening
+        it must say where the history went rather than show an empty record.
+      */}
+      {patient.mergedInto && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <p className="text-sm">
+              This record was merged into{' '}
+              <span className="font-medium">
+                {patient.mergedInto.firstName} {patient.mergedInto.lastName} (
+                {patient.mergedInto.patientId})
+              </span>
+              . The history is there.
+            </p>
+            <Link href={trail.to(`/patients/${patient.mergedInto.id}`)}>
+              <Button size="sm" variant="outline">
+                Open that record
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1347,6 +1392,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <PatientFormSubmissions patientId={patient.id} />
         </TabsContent>
       </Tabs>
+      <MergeDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        patient={patient}
+        onMerged={() => fetchPatient()}
+      />
       {ConfirmDialogComponent}
     </div>
   )

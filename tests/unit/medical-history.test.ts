@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest'
 import {
   COMMON_ALLERGIES,
   COMMON_CONDITIONS,
+  allergyClashes,
   medicalAlerts,
   normalizeList,
 } from '@/lib/medical-history'
@@ -104,5 +105,68 @@ describe('medicalAlerts', () => {
   it('returns nothing for a patient with nothing recorded', () => {
     expect(medicalAlerts({})).toEqual([])
     expect(medicalAlerts({ allergies: [], conditions: [], isPregnant: false })).toEqual([])
+  })
+})
+
+describe('allergyClashes', () => {
+  const clash = (allergies: string[], name: string, genericName: string | null = null) =>
+    allergyClashes(allergies, { name, genericName })
+
+  it('catches the mistake it exists to catch', () => {
+    // Amoxicillin to a penicillin-allergic patient.
+    const found = clash(['Penicillin'], 'Amoxicillin 500mg')
+    expect(found).toHaveLength(1)
+    expect(found[0].allergy).toBe('Penicillin')
+    expect(found[0].note).toBeUndefined()
+  })
+
+  it('catches a brand name as readily as a generic', () => {
+    expect(clash(['Penicillin'], 'Augmentin 625')).toHaveLength(1)
+    expect(clash(['Aspirin / NSAIDs'], 'Brufen 400')).toHaveLength(1)
+  })
+
+  it('matches on the generic when the brand alone would not', () => {
+    expect(clash(['Penicillin'], 'Curam', 'co-amoxiclav')).toHaveLength(1)
+  })
+
+  it('flags a cephalosporin as a possibility, not a clash', () => {
+    const found = clash(['Penicillin'], 'Cefixime 400mg')
+    expect(found).toHaveLength(1)
+    expect(found[0].note).toBe('possible cross-reaction')
+  })
+
+  it('reports an allergy once, not once per pattern that fired', () => {
+    expect(clash(['Penicillin', 'penicillin'], 'Amoxicillin')).toHaveLength(1)
+  })
+
+  it('reads an allergy written as a sentence', () => {
+    expect(clash(['allergic to penicillins'], 'Amoxicillin')).toHaveLength(1)
+  })
+
+  it('stays quiet when there is nothing to say', () => {
+    expect(clash(['Penicillin'], 'Paracetamol 500mg')).toEqual([])
+    expect(clash(['Latex'], 'Amoxicillin')).toEqual([])
+    expect(clash([], 'Amoxicillin')).toEqual([])
+    expect(clash(['Penicillin'], '')).toEqual([])
+  })
+
+  it('does not mistake one drug family for another', () => {
+    expect(clash(['Sulfa drugs'], 'Amoxicillin')).toEqual([])
+    expect(clash(['Penicillin'], 'Metronidazole')).toEqual([])
+    expect(clash(['Aspirin / NSAIDs'], 'Paracetamol')).toEqual([])
+  })
+
+  it('covers the other families a dental clinic prescribes from', () => {
+    expect(clash(['Local anaesthetic'], 'Lignocaine 2%')).toHaveLength(1)
+    expect(clash(['Sulfa drugs'], 'Co-trimoxazole')).toHaveLength(1)
+    expect(clash(['Metronidazole'], 'Flagyl 400')).toHaveLength(1)
+    expect(clash(['Erythromycin'], 'Azithromycin 500')).toHaveLength(1)
+    expect(clash(['Codeine'], 'Tramadol 50mg')).toHaveLength(1)
+  })
+
+  it('tolerates missing input rather than throwing', () => {
+    expect(allergyClashes(null, { name: 'Amoxicillin' })).toEqual([])
+    expect(allergyClashes(undefined, { name: 'Amoxicillin' })).toEqual([])
+    expect(allergyClashes(['Penicillin'], { name: null, genericName: null })).toEqual([])
   })
 })

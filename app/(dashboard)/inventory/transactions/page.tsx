@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { GridPagination } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
+import { isoDay } from '@/lib/dates'
 
 interface Transaction {
   id: number
@@ -42,7 +43,7 @@ export default function TransactionsPage() {
     itemId: '',
     quantity: 0,
     unitPrice: 0,
-    transactionDate: new Date().toISOString().split('T')[0],
+    transactionDate: isoDay(new Date()),
     supplierId: '',
     notes: '',
   })
@@ -146,7 +147,7 @@ export default function TransactionsPage() {
           itemId: '',
           quantity: 0,
           unitPrice: 0,
-          transactionDate: new Date().toISOString().split('T')[0],
+          transactionDate: isoDay(new Date()),
           supplierId: '',
           notes: '',
         })
@@ -220,7 +221,11 @@ export default function TransactionsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <select
             value={transactionType}
-            onChange={(e) => setTransactionType(e.target.value)}
+            onChange={(e) => {
+              setTransactionType(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Types</option>
@@ -235,7 +240,11 @@ export default function TransactionsPage() {
           <input
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Start Date"
           />
@@ -243,7 +252,11 @@ export default function TransactionsPage() {
           <input
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => {
+              setEndDate(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="End Date"
           />

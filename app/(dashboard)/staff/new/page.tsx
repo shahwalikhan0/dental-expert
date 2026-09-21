@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -20,9 +21,12 @@ import { Separator } from '@/components/ui/separator'
 import { ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
+import { isoDay } from '@/lib/dates'
 
 export default function NewStaffPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -54,7 +58,7 @@ export default function NewStaffPage() {
     qualification: '',
     specialization: '',
     licenseNumber: '',
-    joiningDate: new Date().toISOString().split('T')[0],
+    joiningDate: isoDay(new Date()),
 
     // Financial
 
@@ -147,7 +151,7 @@ export default function NewStaffPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Account Information */}
           <Card>

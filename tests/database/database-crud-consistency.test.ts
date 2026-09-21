@@ -799,11 +799,15 @@ describe('8.2 Data Consistency', () => {
   // ── Unique Constraints ─────────────────────────────────────────────────────
 
   describe('Unique Constraints', () => {
-    it('Duplicate phone in same hospital — returns 409 conflict', async () => {
-      // Simulate existing patient with same phone
+    it('Duplicate phone in same hospital — allowed, and says whose number it is', async () => {
+      // A phone number is not an identifier here: households share one, and
+      // refusing the second member of a family was refusing a real
+      // registration. The CNIC is the unique key — see the case below.
       prismaMock.patient.findFirst.mockResolvedValue({
         id: 'existing-patient',
-        phone: '8887776666',
+        patientId: 'P-0001',
+        firstName: 'Fatima',
+        lastName: 'Khan',
         hospitalId: HOSPITAL_A,
       })
 
@@ -818,10 +822,9 @@ describe('8.2 Data Consistency', () => {
       })
       const res = await createPatient(req)
 
-      // Should reject with 409 conflict
-      expect(res.status).toBe(409)
+      expect(res.status).toBe(201)
       const body = await res.json()
-      expect(body.error).toContain('already exists')
+      expect(body.sharedPhoneWith).toMatchObject({ patientId: 'P-0001' })
     })
 
     it('Duplicate phone in different hospital — allowed (no conflict)', async () => {

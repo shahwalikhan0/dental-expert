@@ -242,9 +242,9 @@ describe('Treatments API - Comprehensive Tests', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             OR: expect.arrayContaining([
-              { treatmentNo: { contains: 'cavity' } },
-              { chiefComplaint: { contains: 'cavity' } },
-              { diagnosis: { contains: 'cavity' } },
+              { treatmentNo: { contains: 'cavity', mode: 'insensitive' } },
+              { chiefComplaint: { contains: 'cavity', mode: 'insensitive' } },
+              { diagnosis: { contains: 'cavity', mode: 'insensitive' } },
             ]),
           }),
         })

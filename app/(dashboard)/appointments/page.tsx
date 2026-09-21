@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ import {
   Eye,
   Edit,
   CalendarDays,
+  Globe,
   ChevronLeft,
   ChevronRight,
   List,
@@ -137,10 +139,15 @@ export default function AppointmentsPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const sort = useSort()
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('')
+  // Online bookings the desk has not yet dealt with — see the banner below.
+  const [needsReview, setNeedsReview] = useState(false)
+  const [pendingReview, setPendingReview] = useState(0)
   // The view lives in the URL, so a book somebody is looking at can be sent to
   // a colleague and survives a refresh. It used to be state nothing read, which
   // is why the Calendar button highlighted itself and changed nothing.
@@ -233,7 +240,17 @@ export default function AppointmentsPage() {
     )
   }
 
+  /**
+   * Which request is the current one.
+   *
+   * Responses are not guaranteed to arrive in the order they were asked for,
+   * and this list used to render whichever came back last. Anything but the
+   * newest request is now discarded on arrival.
+   */
+  const latestRequest = useRef(0)
+
   const fetchAppointments = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -246,27 +263,63 @@ export default function AppointmentsPage() {
         params.append('sort', sort.column)
         params.append('direction', sort.direction)
       }
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (typeFilter && typeFilter !== 'all') params.append('type', typeFilter)
       if (dateFilter) params.append('date', dateFilter)
+      if (needsReview) params.append('needsReview', 'true')
 
       const response = await fetch(`/api/appointments?${params}`)
       if (!response.ok) throw new Error('Failed to fetch appointments')
 
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       setAppointments(data.appointments)
       setPagination(data.pagination)
+      setPendingReview(data.pendingReview ?? 0)
     } catch (error) {
       console.error('Error fetching appointments:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
+  /**
+   * Back to the first page whenever what we are filtering by changes.
+   *
+   * Without this, searching from page three asked the server for page three of
+   * the results for that search — which is usually empty, so the screen said
+   * there was nothing to find while the row sat in the list behind it.
+   */
+  useEffect(() => {
+    // The cascading render this causes is the point, and it is bounded: one
+    // extra pass, only when a filter changes while the list is off page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
+  }, [
+    debouncedSearch,
+    statusFilter,
+    typeFilter,
+    dateFilter,
+    needsReview,
+    sort.column,
+    sort.direction,
+  ])
+
   useEffect(() => {
     fetchAppointments()
-  }, [pagination.page, search, statusFilter, typeFilter, dateFilter, sort.column, sort.direction])
+  }, [
+    pagination.page,
+    pagination.limit,
+    debouncedSearch,
+    statusFilter,
+    typeFilter,
+    dateFilter,
+    needsReview,
+    sort.column,
+    sort.direction,
+  ])
 
   // The book reads a whole day at once rather than a page of rows — a calendar
   // showing twenty of the day's thirty appointments is not a calendar.
@@ -434,6 +487,52 @@ export default function AppointmentsPage() {
             </Link>
           </div>
         </div>
+
+        {/*
+          What came in overnight.
+
+          The public booking page tells the patient "the clinic will telephone
+          you to confirm". Until now nothing in the application said which
+          appointments those were — an online booking and a desk booking were
+          both SCHEDULED and looked identical — so the call depended on somebody
+          happening to notice. This is the list that makes the promise keepable.
+        */}
+        {pendingReview > 0 && !needsReview && (
+          <Card className="border-amber-500/50 bg-amber-500/5">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-amber-600" />
+                <p className="text-sm">
+                  <span className="font-medium">
+                    {pendingReview} online booking{pendingReview === 1 ? '' : 's'}
+                  </span>{' '}
+                  {pendingReview === 1 ? 'is' : 'are'} waiting to be called. The patient was told
+                  the clinic would telephone to confirm.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setNeedsReview(true)}>
+                Show them
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {needsReview && (
+          <Card className="border-amber-500/50 bg-amber-500/5">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-amber-600" />
+                <p className="text-sm">
+                  Showing online bookings nobody has dealt with yet. Confirming, moving or
+                  cancelling one takes it off this list.
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setNeedsReview(false)}>
+                Show all appointments
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <Card>

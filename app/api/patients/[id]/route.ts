@@ -23,6 +23,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const patient = await prisma.patient.findFirst({
       where: { id, hospitalId },
       include: {
+        // Where this record went, if it was merged away as a duplicate. Its
+        // patient ID is on paper the clinic has already handed out, so opening
+        // it has to say where the history is rather than show an empty record.
+        mergedInto: {
+          select: { id: true, patientId: true, firstName: true, lastName: true },
+        },
         medicalHistory: true,
         appointments: {
           take: 10,

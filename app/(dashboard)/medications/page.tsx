@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -101,6 +102,8 @@ export default function MedicationsPage() {
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [categoryFilter, setCategoryFilter] = useState('')
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 })
 
@@ -110,7 +113,15 @@ export default function MedicationsPage() {
   const [formData, setFormData] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
 
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
+
   const fetchMedications = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -118,11 +129,13 @@ export default function MedicationsPage() {
         limit: String(pagination.limit),
         active: 'true',
       })
-      if (search) params.set('search', search)
+      if (debouncedSearch) params.set('search', debouncedSearch)
       if (categoryFilter) params.set('category', categoryFilter)
 
       const res = await fetch(`/api/medications?${params}`)
       const result = await res.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       if (result.success) {
         setMedications(result.data)
         setPagination((prev) => ({
@@ -134,9 +147,9 @@ export default function MedicationsPage() {
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to load medications' })
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [search, categoryFilter, pagination.page, pagination.limit])
+  }, [debouncedSearch, categoryFilter, pagination.page, pagination.limit])
 
   const fetchCategories = async () => {
     try {

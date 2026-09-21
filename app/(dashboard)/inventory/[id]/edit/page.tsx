@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
@@ -16,6 +17,8 @@ import { Loader2 } from 'lucide-react'
  */
 export default function EditInventoryItemPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const params = useParams()
   const itemId = params.id as string
   const { toast } = useToast()
@@ -107,7 +110,7 @@ export default function EditInventoryItemPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
+    <div ref={formRef} className="container mx-auto px-4 py-8 space-y-6">
       <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
 
       <h1 className="text-3xl font-bold">Edit {name ?? 'item'}</h1>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
@@ -37,20 +38,32 @@ export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [statusFilter, setStatusFilter] = useState('all')
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 })
 
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
+
   const fetchOrders = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
         page: String(pagination.page),
         limit: String(pagination.limit),
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(statusFilter !== 'all' && { status: statusFilter }),
       })
       const response = await fetch(`/api/inventory/purchase-orders?${params}`)
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       if (data.success) {
         setOrders(data.data)
         setPagination((p) => ({ ...p, total: data.pagination.total }))
@@ -58,9 +71,9 @@ export default function PurchaseOrdersPage() {
     } catch (error) {
       console.error('Error fetching purchase orders:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [search, statusFilter, pagination.page, pagination.limit])
+  }, [debouncedSearch, statusFilter, pagination.page, pagination.limit])
 
   useEffect(() => {
     fetchOrders()
@@ -97,12 +110,20 @@ export default function PurchaseOrdersPage() {
             type="text"
             placeholder="Search by order number or supplier..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All orders</option>

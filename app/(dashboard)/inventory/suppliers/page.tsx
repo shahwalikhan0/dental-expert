@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GridPagination } from '@/components/ui/data-grid'
@@ -24,6 +25,8 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [pagination, setPagination] = useState({
@@ -35,20 +38,30 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     fetchSuppliers()
-  }, [search, statusFilter, pagination.page])
+  }, [debouncedSearch, statusFilter, pagination.page, pagination.limit])
+
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
 
   const fetchSuppliers = async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(statusFilter !== 'all' && { status: statusFilter }),
       })
 
       const response = await fetch(`/api/inventory/suppliers?${params}`)
       const data = await response.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
 
       if (data.success) {
         setSuppliers(data.data)
@@ -57,7 +70,7 @@ export default function SuppliersPage() {
     } catch (error) {
       console.error('Error fetching suppliers:', error)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
@@ -112,13 +125,21 @@ export default function SuppliersPage() {
             type="text"
             placeholder="Search by name, code, contact person..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              // A new filter is a new list; page three of the old one means nothing.
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Status</option>

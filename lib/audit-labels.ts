@@ -33,6 +33,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.VISITOR_CONVERTED]: 'Walk-in registered',
   [AUDIT_ACTIONS.VISITOR_DISCARDED]: 'Walk-in discarded',
   [AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED]: 'Booked online',
+  [AUDIT_ACTIONS.PATIENTS_MERGED]: 'Patient records merged',
 
   [AUDIT_ACTIONS.LAB_ORDER_STATUS_CHANGED]: 'Lab case moved',
   [AUDIT_ACTIONS.GOODS_RECEIVED]: 'Goods received',

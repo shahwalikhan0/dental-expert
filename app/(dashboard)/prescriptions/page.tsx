@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,20 +52,32 @@ export default function PrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // What is in the box, and what we are willing to ask the server about.
+  const debouncedSearch = useDebouncedValue(search)
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 })
 
+  /**
+   * Which request is the current one. Responses are not guaranteed to arrive in
+   * the order they were asked for, and this list used to render whichever came
+   * back last.
+   */
+  const latestRequest = useRef(0)
+
   const fetchPrescriptions = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
         page: String(pagination.page),
         limit: String(pagination.limit),
       })
-      if (search) params.set('search', search)
+      if (debouncedSearch) params.set('search', debouncedSearch)
       if (patientId) params.set('patientId', patientId)
 
       const res = await fetch(`/api/prescriptions?${params}`)
       const result = await res.json()
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
       if (result.success) {
         setPrescriptions(result.data)
         setPagination((prev) => ({
@@ -76,9 +89,9 @@ export default function PrescriptionsPage() {
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to load prescriptions' })
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [search, patientId, pagination.page, pagination.limit])
+  }, [debouncedSearch, patientId, pagination.page, pagination.limit])
 
   useEffect(() => {
     fetchPrescriptions()

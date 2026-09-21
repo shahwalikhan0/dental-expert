@@ -158,13 +158,20 @@ describe('Patients API - Comprehensive Tests', () => {
           where: expect.objectContaining({
             hospitalId: mockHospitalId,
             isActive: true,
-            OR: expect.arrayContaining([
-              { patientId: { contains: 'John' } },
-              { firstName: { contains: 'John' } },
-              { lastName: { contains: 'John' } },
-              { phone: { contains: 'John' } },
-              { email: { contains: 'John' } },
-            ]),
+            // One clause per word, matched case-insensitively across the
+            // columns a person would type into a search box. A phone number
+            // has no case, so it is the one field left alone.
+            AND: [
+              {
+                OR: [
+                  { patientId: { contains: 'John', mode: 'insensitive' } },
+                  { firstName: { contains: 'John', mode: 'insensitive' } },
+                  { lastName: { contains: 'John', mode: 'insensitive' } },
+                  { phone: { contains: 'John' } },
+                  { email: { contains: 'John', mode: 'insensitive' } },
+                ],
+              },
+            ],
           }),
         })
       )
@@ -311,25 +318,32 @@ describe('Patients API - Comprehensive Tests', () => {
       expect(data.error).toBe('First name, last name, and phone are required')
     })
 
-    it('should reject duplicate phone numbers within the same hospital', async () => {
+    it('registers a second patient on a shared phone number, and says whose it is', async () => {
+      // A household shares one number. Refusing this was refusing a real
+      // registration; the desk is told who else is on it instead.
       mockPrisma.patient.findFirst.mockResolvedValue({
         id: 'existing-patient',
-        phone: '9876543210',
+        patientId: 'P-0001',
+        firstName: 'Fatima',
+        lastName: 'Khan',
       })
 
       const request = new NextRequest('http://localhost/api/patients', {
         method: 'POST',
         body: JSON.stringify({
-          firstName: 'John',
-          lastName: 'Doe',
+          firstName: 'Ali',
+          lastName: 'Khan',
           phone: '9876543210',
         }),
       })
       const response = await POST(request)
 
-      expect(response.status).toBe(409)
+      expect(response.status).toBe(201)
       const data = await response.json()
-      expect(data.error).toBe('A patient with this phone number already exists')
+      expect(data.sharedPhoneWith).toMatchObject({
+        patientId: 'P-0001',
+        name: 'Fatima Khan',
+      })
     })
 
     it('should enforce patient limit for the hospital plan', async () => {

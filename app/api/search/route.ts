@@ -37,11 +37,11 @@ export async function GET(req: NextRequest) {
           hospitalId,
           isActive: true,
           OR: [
-            { patientId: { contains: q } },
-            { firstName: { contains: q } },
-            { lastName: { contains: q } },
-            { phone: { contains: q } },
-            { email: { contains: q } },
+            { patientId: { contains: q, mode: 'insensitive' } },
+            { firstName: { contains: q, mode: 'insensitive' } },
+            { lastName: { contains: q, mode: 'insensitive' } },
+            { phone: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
           ],
         },
         select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
@@ -54,10 +54,10 @@ export async function GET(req: NextRequest) {
         where: {
           hospitalId,
           OR: [
-            { appointmentNo: { contains: q } },
-            { patient: { firstName: { contains: q } } },
-            { patient: { lastName: { contains: q } } },
-            { patient: { phone: { contains: q } } },
+            { appointmentNo: { contains: q, mode: 'insensitive' } },
+            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
+            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
+            { patient: { phone: { contains: q, mode: 'insensitive' } } },
           ],
         },
         select: {
@@ -77,10 +77,10 @@ export async function GET(req: NextRequest) {
         where: {
           hospitalId,
           OR: [
-            { invoiceNo: { contains: q } },
-            { patient: { firstName: { contains: q } } },
-            { patient: { lastName: { contains: q } } },
-            { patient: { patientId: { contains: q } } },
+            { invoiceNo: { contains: q, mode: 'insensitive' } },
+            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
+            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
+            { patient: { patientId: { contains: q, mode: 'insensitive' } } },
           ],
         },
         select: {
@@ -100,11 +100,11 @@ export async function GET(req: NextRequest) {
           hospitalId,
           isActive: true,
           OR: [
-            { firstName: { contains: q } },
-            { lastName: { contains: q } },
-            { phone: { contains: q } },
-            { email: { contains: q } },
-            { employeeId: { contains: q } },
+            { firstName: { contains: q, mode: 'insensitive' } },
+            { lastName: { contains: q, mode: 'insensitive' } },
+            { phone: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+            { employeeId: { contains: q, mode: 'insensitive' } },
           ],
         },
         select: {
@@ -124,10 +124,10 @@ export async function GET(req: NextRequest) {
         where: {
           hospitalId,
           OR: [
-            { treatmentNo: { contains: q } },
-            { patient: { firstName: { contains: q } } },
-            { patient: { lastName: { contains: q } } },
-            { patient: { patientId: { contains: q } } },
+            { treatmentNo: { contains: q, mode: 'insensitive' } },
+            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
+            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
+            { patient: { patientId: { contains: q, mode: 'insensitive' } } },
           ],
         },
         select: {

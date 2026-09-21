@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
     const patientId = searchParams.get('patientId') || ''
     const type = searchParams.get('type') || ''
     const view = searchParams.get('view') || 'list' // list, day, week, month
+    // Online bookings nobody at the desk has dealt with yet.
+    const needsReview = searchParams.get('needsReview') === 'true'
 
     const skip = (page - 1) * limit
     const timezone = await clinicTimezone(prisma, hospitalId)
@@ -106,11 +108,25 @@ export async function GET(request: NextRequest) {
       where.patientId = patientId
     }
 
+    /**
+     * "What came in overnight."
+     *
+     * The patient's confirmation page says the clinic will telephone them. This
+     * is the list that makes that possible: booked on the website, not yet
+     * touched by anybody at the desk, and still worth calling about — a booking
+     * that has already been cancelled or attended needs no call.
+     */
+    if (needsReview) {
+      where.bookedOnline = true
+      where.reviewedAt = null
+      where.status = { in: ['SCHEDULED', 'CONFIRMED'] }
+    }
+
     if (type) {
       where.appointmentType = type
     }
 
-    const [appointments, total] = await Promise.all([
+    const [appointments, total, pendingReview] = await Promise.all([
       prisma.appointment.findMany({
         where,
         include: {
@@ -141,10 +157,22 @@ export async function GET(request: NextRequest) {
         take: view === 'list' ? limit : undefined,
       }),
       prisma.appointment.count({ where }),
+      // How many online bookings are still waiting to be called, whatever this
+      // particular query was filtering for. Returned on every list so the
+      // screen can say so without asking a second time.
+      prisma.appointment.count({
+        where: {
+          hospitalId,
+          bookedOnline: true,
+          reviewedAt: null,
+          status: { in: ['SCHEDULED', 'CONFIRMED'] },
+        },
+      }),
     ])
 
     return NextResponse.json({
       appointments: appointments.map((a) => withWallClock(a, timezone)),
+      pendingReview,
       pagination: {
         page,
         limit,

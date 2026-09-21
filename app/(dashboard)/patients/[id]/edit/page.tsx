@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -19,9 +20,12 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
+import { isoDay } from '@/lib/dates'
 
 export default function EditPatientPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const params = useParams()
   const patientId = params.id as string
   const { toast } = useToast()
@@ -61,7 +65,7 @@ export default function EditPatientPage() {
         setForm({
           firstName: p.firstName || '',
           lastName: p.lastName || '',
-          dateOfBirth: p.dateOfBirth ? new Date(p.dateOfBirth).toISOString().split('T')[0] : '',
+          dateOfBirth: isoDay(p.dateOfBirth),
           age: p.age != null ? String(p.age) : '',
           gender: p.gender || '',
           bloodGroup: p.bloodGroup || '',
@@ -185,7 +189,7 @@ export default function EditPatientPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Personal Information */}
         <Card>
           <CardHeader>

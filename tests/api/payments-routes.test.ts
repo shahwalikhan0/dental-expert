@@ -160,7 +160,7 @@ describe('GET /api/payments', () => {
     expect(prisma.payment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: expect.arrayContaining([{ paymentNo: { contains: 'PAY001' } }]),
+          OR: expect.arrayContaining([{ paymentNo: { contains: 'PAY001', mode: 'insensitive' } }]),
         }),
       })
     )

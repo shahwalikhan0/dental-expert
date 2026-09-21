@@ -78,7 +78,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
     const hospital = await prisma.hospital.findUnique({
       where: { slug },
-      select: { id: true, isActive: true, patientPortalEnabled: true, timezone: true },
+      // `name` and `phone` are for the confirmation message below: a text from
+      // an unidentified number telling somebody they have an appointment is
+      // indistinguishable from a scam.
+      select: {
+        id: true,
+        isActive: true,
+        patientPortalEnabled: true,
+        timezone: true,
+        name: true,
+        phone: true,
+      },
     })
 
     if (!hospital || !hospital.isActive) {
@@ -178,13 +188,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           startsAt,
           duration: DEFAULT_APPOINTMENT_DURATION,
           appointmentType: 'CONSULTATION',
-          // SCHEDULED, not CONFIRMED. Nobody at the clinic has seen this yet,
-          // and the distinction is what lets the desk work through what came in
-          // overnight.
+          // SCHEDULED, not CONFIRMED: nobody at the clinic has seen this yet.
+          //
+          // That distinction used to be carried by the status alone, which did
+          // not work — the desk's own bookings are SCHEDULED too. `bookedOnline`
+          // and an unset `reviewedAt` are what the review queue reads, so the
+          // "we will telephone you to confirm" on the patient's screen is a
+          // promise somebody can actually keep.
           status: 'SCHEDULED',
+          bookedOnline: true,
+          reviewedAt: null,
           chiefComplaint: reason || null,
         },
-        select: { id: true, appointmentNo: true, startsAt: true },
+        select: { id: true, appointmentNo: true, startsAt: true, patientId: true },
       })
     })
 
@@ -201,6 +217,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     })
 
     const wall = wallClockIn(appointment.startsAt, hospital.timezone)
+
+    /**
+     * Tell the patient, in writing.
+     *
+     * The confirmation used to exist only on the screen in front of them: close
+     * the tab and the reference was gone, with nothing to bring to the desk and
+     * no record that anything had happened. Every clinic that takes bookings
+     * online sends this.
+     *
+     * Queued rather than sent inline, through the same path as every other
+     * message, so it inherits the consent check, the clinic's own sending
+     * window and its own gateway credentials, and so a gateway that is down
+     * cannot fail the booking itself. `/api/cron/dispatch` picks it up within
+     * fifteen minutes.
+     *
+     * The body is written here rather than left to the clinic's appointment
+     * template. That template is worded as a reminder — "your appointment is
+     * tomorrow" — which is not what this is, and it has no variable for the
+     * booking reference, which is the one thing this message exists to carry.
+     */
+    void prisma.messageLog
+      .create({
+        data: {
+          hospitalId,
+          channel: 'SMS',
+          patientId: appointment.patientId,
+          recipient: phone,
+          body: [
+            `${hospital.name}: your appointment is booked for ${wall.scheduledDate} at ${wall.scheduledTime}`,
+            `with Dr. ${doctor.firstName} ${doctor.lastName}`.trimEnd() + '.',
+            `Reference ${appointment.appointmentNo}.`,
+            hospital.phone ? `To change it, call ${hospital.phone}.` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          relatedType: 'Appointment',
+          relatedId: appointment.id,
+          scheduledFor: new Date(),
+          status: 'PENDING',
+          metadata: { kind: 'appointmentReminders' },
+        },
+      })
+      .catch((err) => {
+        // A confirmation that could not be queued must not lose the booking.
+        console.error('Could not queue the booking confirmation:', err)
+      })
 
     return NextResponse.json(
       {

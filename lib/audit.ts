@@ -60,6 +60,11 @@ export const AUDIT_ACTIONS = {
   /// work.
   PUBLIC_BOOKING_CREATED: 'booking.public.created',
 
+  /// Two records for one person, made one. Irreversible in practice — the
+  /// clinical history has moved — so it is recorded with both patient IDs and
+  /// who decided.
+  PATIENTS_MERGED: 'patient.merged',
+
   /// A lab case moving through the laboratory (§5.8). Was its own
   /// `LabOrderHistory` table recording exactly this and nothing else.
   LAB_ORDER_STATUS_CHANGED: 'lab_order.status_changed',

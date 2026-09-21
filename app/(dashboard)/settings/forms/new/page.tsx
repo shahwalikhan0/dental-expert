@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,6 +58,8 @@ function generateId() {
 
 export default function NewFormTemplatePage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [type, setType] = useState('CUSTOM')
@@ -194,7 +197,7 @@ export default function NewFormTemplatePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={formRef} className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button

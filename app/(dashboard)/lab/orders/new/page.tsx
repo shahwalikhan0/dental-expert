@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { WORK_TYPES } from '@/lib/lab-orders'
 import { ArrowLeft, Search, User, FlaskConical, Save, Loader2 } from 'lucide-react'
+import { isoDay } from '@/lib/dates'
 
 interface Patient {
   id: string
@@ -38,6 +40,8 @@ interface LabVendor {
 
 export default function NewLabOrderPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
   const { toast } = useToast()
@@ -55,7 +59,7 @@ export default function NewLabOrderPage() {
     description: '',
     toothNumbers: '',
     shadeGuide: '',
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: isoDay(new Date()),
     expectedDate: '',
     estimatedCost: '',
     notes: '',
@@ -192,7 +196,7 @@ export default function NewLabOrderPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Patient Selection */}
         <Card>
           <CardHeader>

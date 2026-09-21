@@ -189,11 +189,11 @@ describe('Staff API - Comprehensive Tests', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             OR: [
-              { firstName: { contains: 'john' } },
-              { lastName: { contains: 'john' } },
-              { phone: { contains: 'john' } },
-              { email: { contains: 'john' } },
-              { employeeId: { contains: 'john' } },
+              { firstName: { contains: 'john', mode: 'insensitive' } },
+              { lastName: { contains: 'john', mode: 'insensitive' } },
+              { phone: { contains: 'john', mode: 'insensitive' } },
+              { email: { contains: 'john', mode: 'insensitive' } },
+              { employeeId: { contains: 'john', mode: 'insensitive' } },
             ],
           }),
         })

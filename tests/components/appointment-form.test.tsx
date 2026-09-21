@@ -189,6 +189,27 @@ function setupFetchMock(options: { patients?: any[]; doctors?: any[]; slots?: an
   })
 }
 
+/**
+ * Find and choose a patient.
+ *
+ * The picker used to be handed every patient in the register on mount and
+ * filtered in the browser, so a test could click a name without typing. It
+ * searches the server now — two characters, debounced — which is what a clinic
+ * with twenty thousand records needs and what these tests have to do too.
+ */
+async function pickPatient(name = 'John Doe', term = 'John') {
+  fireEvent.change(screen.getByPlaceholderText(/Search patient/i), {
+    target: { value: term },
+  })
+  await waitFor(() => {
+    expect(screen.getByText(name)).toBeInTheDocument()
+  })
+  fireEvent.click(screen.getByText(name))
+  await waitFor(() => {
+    expect(screen.getByText('Change')).toBeInTheDocument()
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -257,17 +278,9 @@ describe('NewAppointmentPage', () => {
         expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
       })
 
-      // Patients are displayed in list
-      await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument()
-      })
+      await pickPatient()
 
-      fireEvent.click(screen.getByText('John Doe'))
-
-      await waitFor(() => {
-        expect(screen.getByText('Change')).toBeInTheDocument()
-        expect(screen.getByText('PAT001')).toBeInTheDocument()
-      })
+      expect(screen.getByText('PAT001')).toBeInTheDocument()
     })
 
     it('shows "No patients found" when no match', async () => {
@@ -309,15 +322,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
       })
 
-      // Select patient
-      fireEvent.click(screen.getByText('John Doe'))
-
-      await waitFor(() => {
-        expect(screen.getByText('Change')).toBeInTheDocument()
-      })
+      await pickPatient()
 
       fireEvent.click(screen.getByText('Book Appointment'))
 
@@ -331,11 +339,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
       })
 
-      // Select patient
-      fireEvent.click(screen.getByText('John Doe'))
+      await pickPatient()
 
       // Select doctor
       const doctorItem = screen.getByTestId('select-item-d1')
@@ -353,11 +360,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
       })
 
-      // Select patient
-      fireEvent.click(screen.getByText('John Doe'))
+      await pickPatient()
 
       // Select doctor
       fireEvent.click(screen.getByTestId('select-item-d1'))
@@ -443,11 +449,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
       })
 
-      // Select patient
-      fireEvent.click(screen.getByText('John Doe'))
+      await pickPatient()
 
       // Select doctor
       fireEvent.click(screen.getByTestId('select-item-d1'))

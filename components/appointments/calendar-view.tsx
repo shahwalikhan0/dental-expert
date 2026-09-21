@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ChevronLeft, ChevronRight, Calendar, Clock, User } from 'lucide-react'
+import { isoDay } from '@/lib/dates'
 import {
   appointmentStatusConfig,
   formatTime,
@@ -53,7 +54,7 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
   const fetchAppointments = async () => {
     try {
       setLoading(true)
-      const dateStr = currentDate.toISOString().split('T')[0]
+      const dateStr = isoDay(currentDate)
       const response = await fetch(`/api/appointments?view=${viewMode}&date=${dateStr}`)
       if (response.ok) {
         const data = await response.json()
@@ -173,7 +174,7 @@ export function CalendarView({ initialDate = new Date() }: CalendarViewProps) {
   }
 
   const getAppointmentsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0]
+    const dateStr = isoDay(date)
     return appointments.filter(
       // `scheduledDate` is the clinic's calendar day as `YYYY-MM-DD`; round-
       // tripping it through `Date` only reintroduced a timezone to get wrong.

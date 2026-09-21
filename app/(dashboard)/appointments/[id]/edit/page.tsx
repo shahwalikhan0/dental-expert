@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -61,6 +62,8 @@ interface Appointment {
 export default function EditAppointmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -259,7 +262,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Patient Info (Read-only) */}
           <Card>

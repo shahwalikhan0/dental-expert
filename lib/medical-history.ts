@@ -110,3 +110,133 @@ export function medicalAlerts(history: {
 
   return alerts
 }
+
+/**
+ * Drug families, and the names a clinic actually types.
+ *
+ * Keyed by the allergy as it is recorded — `COMMON_ALLERGIES` above is what the
+ * intake form offers, so those spellings come up most, but the match is on a
+ * pattern rather than an exact string because a clinician is free to write
+ * "penicillins" or "allergic to penicillin" and mean the same thing.
+ *
+ * Brand names are included beside generics deliberately. A prescription in this
+ * clinic is as likely to say Augmentin as co-amoxiclav, and a check that only
+ * knew generic names would stay silent on the commoner spelling.
+ */
+const DRUG_FAMILIES: { allergy: RegExp; drugs: RegExp; note?: string }[] = [
+  {
+    allergy: /penicillin|amoxicillin|augmentin/i,
+    drugs:
+      /penicillin|amoxicillin|amoxycillin|ampicillin|augmentin|co-?amoxiclav|clavulan|cloxacillin|flucloxacillin|piperacillin|dicloxacillin/i,
+  },
+  {
+    // Kept separate and worded as a possibility rather than a clash, because
+    // that is what it is: cross-reactivity is real but uncommon, and a warning
+    // that overstates it is a warning people learn to click through.
+    allergy: /penicillin/i,
+    drugs:
+      /cephalexin|cefixime|ceftriaxone|cefuroxime|cefadroxil|cefpodoxime|cephradine|\bcef|\bceph/i,
+    note: 'possible cross-reaction',
+  },
+  {
+    allergy: /aspirin|nsaid|ibuprofen|diclofenac/i,
+    drugs:
+      /aspirin|acetylsalicylic|ibuprofen|brufen|diclofenac|voltaren|naproxen|ketorolac|mefenamic|ponstan|aceclofenac|piroxicam|indomethacin|celecoxib|nimesulide/i,
+  },
+  {
+    allergy: /sulfa|sulpha|cotrimoxazole|co-trimoxazole/i,
+    drugs:
+      /sulfamethoxazole|sulphamethoxazole|co-?trimoxazole|septran|bactrim|sulfadiazine|sulfasalazine/i,
+  },
+  {
+    allergy: /local an(a)?esthetic|lidocaine|lignocaine|articaine|xylocaine/i,
+    drugs:
+      /lidocaine|lignocaine|xylocaine|articaine|mepivacaine|bupivacaine|prilocaine|septocaine/i,
+  },
+  {
+    allergy: /iodine|povidone|betadine/i,
+    drugs: /iodine|povidone|betadine/i,
+  },
+  {
+    allergy: /metronidazole|flagyl/i,
+    drugs: /metronidazole|flagyl|tinidazole|ornidazole/i,
+  },
+  {
+    allergy: /erythromycin|macrolide|azithromycin|clarithromycin/i,
+    drugs: /erythromycin|azithromycin|clarithromycin|roxithromycin/i,
+  },
+  {
+    allergy: /codeine|opioid|morphine|tramadol/i,
+    drugs: /codeine|tramadol|morphine|dihydrocodeine|oxycodone|pethidine/i,
+  },
+  {
+    allergy: /paracetamol|acetaminophen|panadol/i,
+    drugs: /paracetamol|acetaminophen|panadol|calpol/i,
+  },
+  {
+    allergy: /tetracycline|doxycycline/i,
+    drugs: /tetracycline|doxycycline|minocycline/i,
+  },
+  {
+    allergy: /clindamycin|lincomycin/i,
+    drugs: /clindamycin|lincomycin|dalacin/i,
+  },
+]
+
+export interface AllergyClash {
+  /** The allergy as the record spells it, so the clinician recognises it. */
+  allergy: string
+  /** The medication as the prescription spells it. */
+  drug: string
+  note?: string
+}
+
+/**
+ * Does this medication clash with anything the patient is allergic to?
+ *
+ * Deliberately conservative in both directions. It matches on drug *families*,
+ * so an allergy to penicillin catches amoxicillin, which is the mistake worth
+ * catching — but it will not catch an allergy this list has never heard of, and
+ * it is therefore a second pair of eyes rather than a guarantee. Nothing here
+ * blocks a prescription: a clinician may have a reason, and software that
+ * refuses outright gets worked around.
+ *
+ * Both the brand name and the generic are checked, because either may be the
+ * one written down.
+ */
+export function allergyClashes(
+  allergies: string[] | null | undefined,
+  medication: { name?: string | null; genericName?: string | null }
+): AllergyClash[] {
+  const recorded = normalizeList(allergies)
+  if (recorded.length === 0) return []
+
+  const written = [medication.name, medication.genericName]
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    .join(' ')
+  if (!written.trim()) return []
+
+  const clashes: AllergyClash[] = []
+  const seen = new Set<string>()
+
+  for (const allergy of recorded) {
+    for (const family of DRUG_FAMILIES) {
+      if (!family.allergy.test(allergy)) continue
+      if (!family.drugs.test(written)) continue
+
+      // One line per allergy, not one per pattern that happened to fire. The
+      // penicillin entries below would otherwise report the same allergy twice.
+      const key = `${allergy.toLowerCase()}|${family.note ?? ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      clashes.push({
+        allergy,
+        drug: medication.name?.trim() || medication.genericName?.trim() || written.trim(),
+        note: family.note,
+      })
+    }
+  }
+
+  return clashes
+}

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -19,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ArrowLeft, Calendar, Clock, User, Search, Check, Loader2, Video } from 'lucide-react'
 import { formatTime } from '@/lib/appointment-utils'
+import { isoDay } from '@/lib/dates'
 
 interface Patient {
   id: string
@@ -44,12 +47,18 @@ interface TimeSlot {
 
 export default function NewAppointmentPage() {
   const router = useRouter()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Kept apart from `error` above: why a day has no times is a statement about
+  // the diary, not a complaint about the form, and it clears on its own when
+  // the next day is picked.
+  const [slotsError, setSlotsError] = useState('')
 
   // Data
   const [patients, setPatients] = useState<Patient[]>([])
@@ -59,6 +68,10 @@ export default function NewAppointmentPage() {
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('')
+  const debouncedPatientSearch = useDebouncedValue(patientSearch)
+  const [searchingPatients, setSearchingPatients] = useState(false)
+  // How many the register actually holds, so a list capped at eight can say so.
+  const [patientCount, setPatientCount] = useState(0)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   // Clicking an empty slot in the book arrives here with the dentist, the day
   // and the time already chosen. That is the whole point of the book: booking
@@ -88,27 +101,26 @@ export default function NewAppointmentPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [patientsRes, doctorsRes] = await Promise.all([
-          fetch('/api/patients?all=true'),
-          fetch('/api/staff/doctors'),
-        ])
+        // The dentists, and the one patient we were told to start with.
+        //
+        // This used to fetch `/api/patients?all=true` — every patient in the
+        // register, into the browser, to be filtered there. A practice with
+        // twenty thousand records downloaded all twenty thousand to book one
+        // appointment. The register is searched on the server now, as it is
+        // everywhere else in this application.
+        const requests: Promise<Response>[] = [fetch('/api/staff/doctors')]
+        if (preselectedPatientId) requests.push(fetch(`/api/patients/${preselectedPatientId}`))
 
-        if (patientsRes.ok) {
-          const data = await patientsRes.json()
-          setPatients(data.patients)
-
-          // If preselected patient
-          if (preselectedPatientId) {
-            const patient = data.patients.find((p: Patient) => p.id === preselectedPatientId)
-            if (patient) {
-              setSelectedPatient(patient)
-            }
-          }
-        }
+        const [doctorsRes, patientRes] = await Promise.all(requests)
 
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
           setDoctors(data.doctors)
+        }
+
+        if (patientRes?.ok) {
+          const patient = await patientRes.json()
+          if (patient?.id) setSelectedPatient(patient)
         }
       } catch (err) {
         console.error('Error fetching data:', err)
@@ -120,9 +132,71 @@ export default function NewAppointmentPage() {
     fetchData()
   }, [preselectedPatientId])
 
-  // Fetch available time slots when doctor and date are selected
+  /**
+   * Finding a patient, on the server.
+   *
+   * Matching used to happen here, against the whole register, one column at a
+   * time — so "John Smith" matched nothing, because neither the forename nor
+   * the surname contains both words. The server does it now, and knows how to
+   * read a full name.
+   */
   useEffect(() => {
+    if (debouncedPatientSearch.trim().length < 2) {
+      setPatients([])
+      setPatientCount(0)
+      return
+    }
+
+    let current = true
+    setSearchingPatients(true)
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/patients?search=${encodeURIComponent(debouncedPatientSearch.trim())}&limit=8`
+        )
+        if (!current) return
+        if (!res.ok) throw new Error('search failed')
+        const data = await res.json()
+        if (!current) return
+        setPatients(data.patients ?? [])
+        setPatientCount(data.pagination?.total ?? (data.patients ?? []).length)
+      } catch {
+        if (current) {
+          setPatients([])
+          setPatientCount(0)
+        }
+      } finally {
+        if (current) setSearchingPatients(false)
+      }
+    })()
+
+    return () => {
+      current = false
+    }
+  }, [debouncedPatientSearch])
+
+  /**
+   * The times this dentist has free on this day, for an appointment this long.
+   *
+   * Three things here used to go wrong, all of them ending with the form
+   * showing times that were not on offer:
+   *
+   * - A time chosen before the dentist or the duration changed stayed chosen.
+   *   Picking 10:00 for one dentist and then switching to another who is busy
+   *   at ten left "10:00" selected and submittable.
+   * - A failed request left the previous day's slots on screen. Nothing said
+   *   so, and every one of them was bookable.
+   * - "No slots available" was set and never cleared, so it survived onto the
+   *   next date the receptionist tried.
+   */
+  useEffect(() => {
+    let current = true
+
     const fetchSlots = async () => {
+      // Anything already chosen belongs to the previous question.
+      setSelectedTime('')
+      setSlotsError('')
+
       if (!selectedDoctor || !selectedDate) {
         setTimeSlots([])
         return
@@ -133,34 +207,38 @@ export default function NewAppointmentPage() {
         const response = await fetch(
           `/api/appointments/slots?doctorId=${selectedDoctor}&date=${selectedDate}&duration=${duration}`
         )
+        if (!current) return
 
-        if (response.ok) {
-          const data = await response.json()
-          if (data.available) {
-            setTimeSlots(data.slots)
-          } else {
-            setTimeSlots([])
-            setError(data.reason || 'No slots available')
-          }
+        if (!response.ok) {
+          setTimeSlots([])
+          setSlotsError('Those times could not be loaded. Try again.')
+          return
+        }
+
+        const data = await response.json()
+        if (!current) return
+
+        if (data.available) {
+          setTimeSlots(data.slots)
+        } else {
+          setTimeSlots([])
+          setSlotsError(data.reason || 'No slots available')
         }
       } catch (err) {
         console.error('Error fetching slots:', err)
+        if (!current) return
+        setTimeSlots([])
+        setSlotsError('Those times could not be loaded. Try again.')
       } finally {
-        setLoadingSlots(false)
+        if (current) setLoadingSlots(false)
       }
     }
 
     fetchSlots()
+    return () => {
+      current = false
+    }
   }, [selectedDoctor, selectedDate, duration])
-
-  // Filter patients based on search
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.firstName.toLowerCase().includes(patientSearch.toLowerCase()) ||
-      p.lastName.toLowerCase().includes(patientSearch.toLowerCase()) ||
-      p.phone.includes(patientSearch) ||
-      p.patientId.toLowerCase().includes(patientSearch.toLowerCase())
-  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -225,10 +303,17 @@ export default function NewAppointmentPage() {
     }
   }
 
-  const getMinDate = () => {
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  }
+  /**
+   * The earliest day this form will accept.
+   *
+   * `toISOString` answers in UTC, which is not the day anybody at the desk is
+   * having. In Pakistan that is yesterday until five in the morning, so a
+   * clinic working an early shift could book into a day that had already gone;
+   * west of Greenwich the same line refuses to book the evening that is
+   * happening. The server decides "now" in the clinic's own timezone, and this
+   * agrees with it.
+   */
+  const getMinDate = () => isoDay(new Date())
 
   if (loading) {
     return (
@@ -262,7 +347,7 @@ export default function NewAppointmentPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Patient Selection */}
           <Card>
@@ -351,13 +436,23 @@ export default function NewAppointmentPage() {
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Search patient by name, phone, or ID..."
+                      data-form-guard="ignore"
                       value={patientSearch}
                       onChange={(e) => setPatientSearch(e.target.value)}
                       className="pl-9"
                     />
                   </div>
                   <div className="max-h-48 overflow-y-auto rounded-lg border">
-                    {filteredPatients.length === 0 ? (
+                    {patientSearch.trim().length < 2 ? (
+                      <p className="p-4 text-center text-sm text-muted-foreground">
+                        Type two letters of a name, a phone number or a patient ID.
+                      </p>
+                    ) : searchingPatients ? (
+                      <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Searching…
+                      </p>
+                    ) : patients.length === 0 ? (
                       <div className="p-4 text-center text-muted-foreground">
                         <p>No patients found</p>
                         <Link href="/patients/new">
@@ -367,25 +462,45 @@ export default function NewAppointmentPage() {
                         </Link>
                       </div>
                     ) : (
-                      filteredPatients.slice(0, 5).map((patient) => (
-                        <div
-                          key={patient.id}
-                          className="flex cursor-pointer items-center justify-between border-b p-3 last:border-0 hover:bg-muted/50"
-                          onClick={() => {
-                            setSelectedPatient(patient)
-                            setPatientSearch('')
-                          }}
-                        >
-                          <div>
-                            <p className="font-medium">
-                              {patient.firstName} {patient.lastName}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {patient.patientId} | {patient.phone}
-                            </p>
-                          </div>
-                        </div>
-                      ))
+                      <>
+                        {/*
+                          Real buttons, not clickable divs. The front desk works
+                          at a keyboard: this list could previously only be
+                          reached with a mouse, so finding a patient meant
+                          typing a name and then letting go of the keyboard.
+                        */}
+                        {patients.map((patient) => (
+                          <button
+                            key={patient.id}
+                            type="button"
+                            className="flex w-full items-center justify-between border-b p-3 text-left last:border-0 hover:bg-muted/50 focus:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={() => {
+                              setSelectedPatient(patient)
+                              setPatientSearch('')
+                            }}
+                          >
+                            <span>
+                              <span className="block font-medium">
+                                {patient.firstName} {patient.lastName}
+                              </span>
+                              <span className="block text-sm text-muted-foreground">
+                                {patient.patientId} | {patient.phone}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                        {/*
+                          The list stops at eight. It used to stop at five and
+                          say nothing, so a common surname could hide the right
+                          patient behind a cut-off nobody could see.
+                        */}
+                        {patientCount > patients.length && (
+                          <p className="p-3 text-center text-xs text-muted-foreground">
+                            Showing {patients.length} of {patientCount}. Narrow the search — add a
+                            surname, or type the phone number.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </>
@@ -463,6 +578,8 @@ export default function NewAppointmentPage() {
                   <p className="p-4 text-sm text-muted-foreground">
                     Select doctor and date to see available slots
                   </p>
+                ) : slotsError ? (
+                  <p className="p-4 text-sm text-muted-foreground">{slotsError}</p>
                 ) : timeSlots.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">
                     No available slots for this date

@@ -39,9 +39,9 @@ export async function GET(req: NextRequest) {
     if (entity) where.entityType = entity
     if (search) {
       where.OR = [
-        { action: { contains: search } },
-        { entityType: { contains: search } },
-        { oldValues: { contains: search } },
+        { action: { contains: search, mode: 'insensitive' } },
+        { entityType: { contains: search, mode: 'insensitive' } },
+        { oldValues: { contains: search, mode: 'insensitive' } },
       ]
     }
 
