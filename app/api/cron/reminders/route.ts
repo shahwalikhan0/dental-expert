@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { cronAuthorised, cronUnauthorised } from '@/lib/cron-auth'
+import { APPOINTMENT_KEYS } from '@/lib/appointment-settings'
 
 const HOUR = 60 * 60 * 1000
+/** What a clinic that has set nothing gets. */
+const DEFAULT_LEAD_HOURS = 24
 const DAY = 24 * HOUR
 
 /**
@@ -44,10 +47,45 @@ export async function GET(req: Request) {
   // against a column holding midnight means every appointment later today was
   // skipped: a 4pm appointment was never found by a cron running at 9am. The
   // column is an instant now, so the window says what it means.
+  /**
+   * How many hours before the appointment each clinic wants its reminder.
+   *
+   * `appointments.reminderHoursBefore` was written by Settings → Appointments
+   * and read by nothing: every clinic got a day's notice whatever it had set.
+   * Read here in one query, across clinics, because this job is a cron and not
+   * a request — see the note on `CRON_SECRET` above.
+   */
+  const leadRows = await prisma.setting.findMany({
+    where: { key: APPOINTMENT_KEYS.reminderHoursBefore },
+    select: { hospitalId: true, value: true },
+  })
+
+  const leadByClinic = new Map<string, number>()
+  for (const row of leadRows) {
+    let parsed: unknown = row.value
+    try {
+      parsed = JSON.parse(row.value)
+    } catch {
+      /* a bare value */
+    }
+    const hours = typeof parsed === 'number' ? parsed : Number(parsed)
+    if (Number.isFinite(hours)) {
+      leadByClinic.set(row.hospitalId, Math.min(Math.max(Math.round(hours), 1), 168))
+    }
+  }
+
+  const leadFor = (hospitalId: string) => leadByClinic.get(hospitalId) ?? DEFAULT_LEAD_HOURS
+
+  // The window has to reach past the longest lead any clinic has set, or that
+  // clinic's reminder would never be queued in time. It used to be a flat two
+  // days, which was exactly right for a fixed 24-hour reminder and wrong the
+  // moment the setting started being honoured.
+  const furthest = Math.max(DEFAULT_LEAD_HOURS, ...leadByClinic.values())
+
   const appointments = await prisma.appointment.findMany({
     where: {
       status: { in: ['SCHEDULED', 'CONFIRMED'] },
-      startsAt: { gte: now, lte: new Date(now.getTime() + 2 * DAY) },
+      startsAt: { gte: now, lte: new Date(now.getTime() + furthest * HOUR + DAY) },
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -133,9 +171,16 @@ export async function GET(req: Request) {
     // A reminder whose moment has already gone is not queued. The dispatcher
     // would send it the instant it ran, which for an appointment starting in
     // twenty minutes is a message arriving after the patient has left home.
+    const lead = leadFor(appt.hospitalId)
     const at = [
-      { when: new Date(startsAt.getTime() - 24 * HOUR), extra: false },
-      ...(isHighRisk ? [{ when: new Date(startsAt.getTime() - 3 * HOUR), extra: true }] : []),
+      { when: new Date(startsAt.getTime() - lead * HOUR), extra: false },
+      // The extra nudge for somebody with a history of not turning up stays at
+      // three hours, and is dropped when it would land after the main one —
+      // a clinic that reminds two hours before does not want two messages in
+      // the same hour, in the wrong order.
+      ...(isHighRisk && lead > 3
+        ? [{ when: new Date(startsAt.getTime() - 3 * HOUR), extra: true }]
+        : []),
     ]
 
     for (const reminder of at) {

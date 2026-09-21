@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 import { availableSlots, hoursOn } from '@/lib/working-hours'
+import { readAppointmentSettings } from '@/lib/appointment-settings'
 import { closureOn, obstaclesOn, shiftOn, type AvailabilityRow } from '@/lib/availability'
 import { bookableDays, readBookingSettings } from '@/lib/booking/rules'
 
@@ -75,6 +76,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const settings = await readBookingSettings(prisma, hospitalId)
     const window = bookableDays(settings, (at) => wallClockIn(at, timezone).scheduledDate)
 
+    // The clinic's own slot grid and turnaround gap, so this scan cannot point
+    // at a time the slot list would then decline to offer.
+    const scheduling = await readAppointmentSettings(prisma, hospitalId)
+    const lunch =
+      scheduling.lunchBreakStart && scheduling.lunchBreakEnd
+        ? [{ start: scheduling.lunchBreakStart, end: scheduling.lunchBreakEnd }]
+        : []
+
     const start = from < window.first ? window.first : from
     const days: string[] = []
     for (let i = 0; i < MAX_DAYS; i++) {
@@ -146,8 +155,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         shift: shiftOn(availability, day, doctorId),
         duration,
         booked: bookedByDay.get(day) ?? [],
-        blocked: obstaclesOn(workingHours, availability, day),
+        blocked: [...obstaclesOn(workingHours, availability, day), ...lunch],
         day,
+        step: scheduling.slotDuration,
+        buffer: scheduling.bufferTime,
         now: { day: now.scheduledDate, time: now.scheduledTime },
       })
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, formatCalendarDay, wallClockIn } from '@/lib/appointment-time'
 import { subjectName } from '@/lib/visitors'
+import { everyTermMatches, like } from '@/lib/search-terms'
 
 interface SearchResult {
   id: string
@@ -36,13 +37,15 @@ export async function GET(req: NextRequest) {
         where: {
           hospitalId,
           isActive: true,
-          OR: [
-            { patientId: { contains: q, mode: 'insensitive' } },
-            { firstName: { contains: q, mode: 'insensitive' } },
-            { lastName: { contains: q, mode: 'insensitive' } },
-            { phone: { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
-          ],
+          // Every word has to match somewhere, so a full name narrows
+          // rather than contradicting itself — see lib/search-terms.ts.
+          ...everyTermMatches(q, (term) => [
+            { patientId: like(term) },
+            { firstName: like(term) },
+            { lastName: like(term) },
+            { phone: { contains: term } },
+            { email: like(term) },
+          ]),
         },
         select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
         take: 5,
@@ -53,12 +56,14 @@ export async function GET(req: NextRequest) {
       prisma.appointment.findMany({
         where: {
           hospitalId,
-          OR: [
-            { appointmentNo: { contains: q, mode: 'insensitive' } },
-            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
-            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
-            { patient: { phone: { contains: q, mode: 'insensitive' } } },
-          ],
+          ...everyTermMatches(q, (term) => [
+            { appointmentNo: like(term) },
+            { patient: { firstName: like(term) } },
+            { patient: { lastName: like(term) } },
+            { patient: { phone: { contains: term } } },
+            // A walk-in is looked for in the same box, and has no patient row.
+            { visitor: { name: like(term) } },
+          ]),
         },
         select: {
           id: true,
@@ -76,12 +81,12 @@ export async function GET(req: NextRequest) {
       prisma.invoice.findMany({
         where: {
           hospitalId,
-          OR: [
-            { invoiceNo: { contains: q, mode: 'insensitive' } },
-            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
-            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
-            { patient: { patientId: { contains: q, mode: 'insensitive' } } },
-          ],
+          ...everyTermMatches(q, (term) => [
+            { invoiceNo: like(term) },
+            { patient: { firstName: like(term) } },
+            { patient: { lastName: like(term) } },
+            { patient: { patientId: like(term) } },
+          ]),
         },
         select: {
           id: true,
@@ -99,13 +104,13 @@ export async function GET(req: NextRequest) {
         where: {
           hospitalId,
           isActive: true,
-          OR: [
-            { firstName: { contains: q, mode: 'insensitive' } },
-            { lastName: { contains: q, mode: 'insensitive' } },
-            { phone: { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
-            { employeeId: { contains: q, mode: 'insensitive' } },
-          ],
+          ...everyTermMatches(q, (term) => [
+            { firstName: like(term) },
+            { lastName: like(term) },
+            { phone: { contains: term } },
+            { email: like(term) },
+            { employeeId: like(term) },
+          ]),
         },
         select: {
           id: true,
@@ -123,12 +128,12 @@ export async function GET(req: NextRequest) {
       prisma.treatment.findMany({
         where: {
           hospitalId,
-          OR: [
-            { treatmentNo: { contains: q, mode: 'insensitive' } },
-            { patient: { firstName: { contains: q, mode: 'insensitive' } } },
-            { patient: { lastName: { contains: q, mode: 'insensitive' } } },
-            { patient: { patientId: { contains: q, mode: 'insensitive' } } },
-          ],
+          ...everyTermMatches(q, (term) => [
+            { treatmentNo: like(term) },
+            { patient: { firstName: like(term) } },
+            { patient: { lastName: like(term) } },
+            { patient: { patientId: like(term) } },
+          ]),
         },
         select: {
           id: true,

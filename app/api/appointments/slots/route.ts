@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 import { availableSlots, hoursOn } from '@/lib/working-hours'
+import { readAppointmentSettings } from '@/lib/appointment-settings'
 import {
   closureOn,
   obstaclesOn,
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
     })
 
     const timezone = hospital?.timezone || (await clinicTimezone(prisma, hospitalId))
+
+    // Settings → Appointments, which until now wrote rows nothing read.
+    const settings = await readAppointmentSettings(prisma, hospitalId)
 
     // The clinic's hours for this weekday. This used to parse the stored JSON
     // into a shape nothing writes — see lib/working-hours.ts.
@@ -108,8 +112,19 @@ export async function GET(request: NextRequest) {
         start: wallClockIn(apt.startsAt, timezone).scheduledTime,
         duration: apt.duration,
       })),
-      blocked: obstaclesOn(workingHours, availability, date),
+      blocked: [
+        ...obstaclesOn(workingHours, availability, date),
+        // The clinic's lunch break, when it has recorded one on the
+        // appointments screen. `Hospital.workingHours` can also carry a
+        // per-weekday break, and `obstaclesOn` already honours that; this is
+        // the simple clinic-wide one the settings page offers.
+        ...(settings.lunchBreakStart && settings.lunchBreakEnd
+          ? [{ start: settings.lunchBreakStart, end: settings.lunchBreakEnd }]
+          : []),
+      ],
       day: date.slice(0, 10),
+      step: settings.slotDuration,
+      buffer: settings.bufferTime,
       now: {
         day: wallClockIn(new Date(), timezone).scheduledDate,
         time: wallClockIn(new Date(), timezone).scheduledTime,

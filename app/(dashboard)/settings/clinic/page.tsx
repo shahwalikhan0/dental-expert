@@ -23,7 +23,22 @@ const DAY_LABELS: Record<string, string> = {
   sunday: 'Sunday',
 }
 
-type DaySchedule = { open: string; close: string; closed: boolean }
+/**
+ * `lunch` is carried through but never edited here.
+ *
+ * `lib/working-hours.ts` reads a per-weekday `{ lunch: { start, end } }` out of
+ * this column, and this screen used to parse the schedule without it and
+ * re-serialise — so saving opening hours silently destroyed any lunch break
+ * that was there, and the slot list quietly started offering midday. Nothing on
+ * this screen sets it; the clinic-wide one is at Settings → Appointments. It is
+ * preserved so that editing one thing does not delete another.
+ */
+type DaySchedule = {
+  open: string
+  close: string
+  closed: boolean
+  lunch?: { start: string; end: string }
+}
 type WeekSchedule = Record<string, DaySchedule>
 
 const DEFAULT_SCHEDULE: WeekSchedule = {
@@ -44,7 +59,12 @@ function parseSchedule(raw: string | null | undefined): WeekSchedule {
     for (const day of DAYS) {
       const d = parsed[day]
       if (d && d.open && d.close) {
-        schedule[day] = { open: d.open, close: d.close, closed: false }
+        schedule[day] = {
+          open: d.open,
+          close: d.close,
+          closed: false,
+          ...(d.lunch?.start && d.lunch?.end ? { lunch: d.lunch } : {}),
+        }
       } else {
         schedule[day] = { open: '', close: '', closed: true }
       }
@@ -56,10 +76,15 @@ function parseSchedule(raw: string | null | undefined): WeekSchedule {
 }
 
 function serializeSchedule(schedule: WeekSchedule): string {
-  const obj: Record<string, { open: string | null; close: string | null }> = {}
+  const obj: Record<
+    string,
+    { open: string | null; close: string | null; lunch?: { start: string; end: string } }
+  > = {}
   for (const day of DAYS) {
     const d = schedule[day]
-    obj[day] = d.closed ? { open: null, close: null } : { open: d.open, close: d.close }
+    obj[day] = d.closed
+      ? { open: null, close: null }
+      : { open: d.open, close: d.close, ...(d.lunch ? { lunch: d.lunch } : {}) }
   }
   return JSON.stringify(obj)
 }

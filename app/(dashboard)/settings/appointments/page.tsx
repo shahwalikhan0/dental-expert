@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,8 +27,6 @@ export default function AppointmentSettingsPage() {
   const [settings, setSettings] = useState({
     slotDuration: '30',
     bufferTime: '10',
-    startTime: '09:00',
-    endTime: '20:00',
     lunchBreakStart: '13:00',
     lunchBreakEnd: '14:00',
     maxAdvanceBookingDays: '30',
@@ -186,61 +185,71 @@ export default function AppointmentSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Time Slot Configuration</CardTitle>
-            <CardDescription>Set default appointment duration and buffer time</CardDescription>
+            <CardDescription>
+              How often the appointment book offers a time, and how long to leave clear afterwards
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="slotDuration">Default Slot Duration (minutes)</Label>
+                <Label htmlFor="slotDuration">Offer a slot every (minutes)</Label>
                 <Input
                   id="slotDuration"
                   type="number"
+                  min={5}
+                  max={120}
                   value={settings.slotDuration}
                   onChange={(e) => setSettings({ ...settings, slotDuration: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The spacing of the times offered, not the length of an appointment — the desk
+                  still chooses that per booking. At 15, the book offers 09:00, 09:15, 09:30.
+                </p>
               </div>
 
               <div>
-                <Label htmlFor="bufferTime">Buffer Time Between Appointments (minutes)</Label>
+                <Label htmlFor="bufferTime">Leave clear afterwards (minutes)</Label>
                 <Input
                   id="bufferTime"
                   type="number"
+                  min={0}
+                  max={60}
                   value={settings.bufferTime}
                   onChange={(e) => setSettings({ ...settings, bufferTime: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Turning the chair round and writing the note. No time is offered inside this gap
+                  after an appointment.
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Working Hours */}
+        {/*
+          Opening hours are not here.
+
+          This card used to offer one clinic-wide start and end time, which
+          duplicated `Hospital.workingHours` — the per-weekday schedule on
+          Settings → Clinic that every slot query actually reads. Two screens
+          setting one thing is how a clinic ends up with a book that disagrees
+          with its own front door, so the flat pair was removed rather than
+          wired into a second source of truth. The lunch break stays, because
+          nothing else offers one.
+        */}
         <Card>
           <CardHeader>
-            <CardTitle>Working Hours</CardTitle>
-            <CardDescription>Set clinic operating hours</CardDescription>
+            <CardTitle>Lunch break</CardTitle>
+            <CardDescription>
+              No appointment is offered during this. Opening hours are set per weekday at{' '}
+              <Link href="/settings/clinic" className="underline hover:text-foreground">
+                Settings → Clinic
+              </Link>
+              .
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="startTime">Clinic Start Time</Label>
-                <Input
-                  id="startTime"
-                  type="time"
-                  value={settings.startTime}
-                  onChange={(e) => setSettings({ ...settings, startTime: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="endTime">Clinic End Time</Label>
-                <Input
-                  id="endTime"
-                  type="time"
-                  value={settings.endTime}
-                  onChange={(e) => setSettings({ ...settings, endTime: e.target.value })}
-                />
-              </div>
-
               <div>
                 <Label htmlFor="lunchBreakStart">Lunch Break Start</Label>
                 <Input

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { nextPatientId } from '@/lib/numbering'
 import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
+import { everyTermMatches, like } from '@/lib/search-terms'
 import { ageInYears } from '@/lib/age'
 import { startDefaultRecare } from '@/lib/recare'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
@@ -64,20 +65,16 @@ export async function GET(request: NextRequest) {
        * the first thing anybody does, so every term now has to match
        * *somewhere*, which lets the surname narrow the forename.
        */
-      const terms = search.trim().split(/\s+/).filter(Boolean)
+      const matched = everyTermMatches(search, (term) => [
+        { patientId: like(term) },
+        { firstName: like(term) },
+        { lastName: like(term) },
+        // A phone number has no case, so it is the one field left literal.
+        { phone: { contains: term } },
+        { email: like(term) },
+      ])
 
-      where.AND = [
-        ...(where.AND ?? []),
-        ...terms.map((term) => ({
-          OR: [
-            { patientId: { contains: term, mode: 'insensitive' as const } },
-            { firstName: { contains: term, mode: 'insensitive' as const } },
-            { lastName: { contains: term, mode: 'insensitive' as const } },
-            { phone: { contains: term } },
-            { email: { contains: term, mode: 'insensitive' as const } },
-          ],
-        })),
-      ]
+      where.AND = [...(where.AND ?? []), ...(matched?.AND ?? [])]
     }
 
     /**

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 import { availableSlots, hoursOn } from '@/lib/working-hours'
+import { readAppointmentSettings } from '@/lib/appointment-settings'
 import {
   closureOn,
   obstaclesOn,
@@ -41,6 +42,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     const hospitalId = hospital.id
     const timezone = hospital.timezone
+
+    // The same scheduling rules the desk books under — see
+    // lib/appointment-settings.ts. A public page offering times the book would
+    // refuse is worse than one offering none.
+    const scheduling = await readAppointmentSettings(prisma, hospitalId)
 
     // The clinic's hours for this weekday — see lib/working-hours.ts for what
     // this used to parse the stored JSON into.
@@ -106,8 +112,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         start: wallClockIn(apt.startsAt, timezone).scheduledTime,
         duration: apt.duration,
       })),
-      blocked: obstaclesOn(workingHours, availability, date),
+      blocked: [
+        ...obstaclesOn(workingHours, availability, date),
+        ...(scheduling.lunchBreakStart && scheduling.lunchBreakEnd
+          ? [{ start: scheduling.lunchBreakStart, end: scheduling.lunchBreakEnd }]
+          : []),
+      ],
       day: date.slice(0, 10),
+      step: scheduling.slotDuration,
+      buffer: scheduling.bufferTime,
       now: {
         // The clinic's clock, not the host's — this page is served to patients
         // from wherever the application happens to be running.

@@ -15,6 +15,7 @@ import {
   withWallClock,
 } from '@/lib/appointment-time'
 import { validateVisitor } from '@/lib/visitors'
+import { readAppointmentSettings } from '@/lib/appointment-settings'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 
 /**
@@ -266,6 +267,29 @@ export async function POST(request: NextRequest) {
     if (localDay(startsAt, timezone) < localDay(new Date(), timezone)) {
       return NextResponse.json(
         { error: 'Cannot schedule appointments in the past' },
+        { status: 400 }
+      )
+    }
+
+    /**
+     * How far ahead the desk may book.
+     *
+     * `appointments.maxAdvanceBookingDays` was stored by Settings →
+     * Appointments and read by nothing, so the only horizon in the application
+     * was the public page's. A diary with no far end is one where a mistyped
+     * year puts a patient in 2036 and the clinic carries the row until somebody
+     * notices.
+     *
+     * Counted in the clinic's own calendar days, so it agrees with the "in the
+     * past" check above rather than with the server's clock.
+     */
+    const scheduling = await readAppointmentSettings(prisma, hospitalId)
+    const horizon = new Date(Date.now() + scheduling.maxAdvanceBookingDays * 24 * 60 * 60 * 1000)
+    if (localDay(startsAt, timezone) > localDay(horizon, timezone)) {
+      return NextResponse.json(
+        {
+          error: `Appointments can be booked up to ${scheduling.maxAdvanceBookingDays} days ahead. Change this at Settings → Appointments.`,
+        },
         { status: 400 }
       )
     }

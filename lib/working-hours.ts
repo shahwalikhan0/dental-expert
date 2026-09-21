@@ -143,6 +143,22 @@ export interface SlotQuery {
   day: string
   /** Now, on the clinic's wall clock, so a slot already gone is not offered. */
   now: { day: string; time: string }
+  /**
+   * How often to offer a slot, in minutes.
+   *
+   * The granularity of the grid, not the length of an appointment. Was the
+   * hard-coded `SLOT_STEP_MINUTES` below, which is why Settings → Appointments
+   * could set a slot length and change nothing.
+   */
+  step?: number
+  /**
+   * Minutes to leave clear after an appointment before the next may start.
+   *
+   * Applied to what is already booked rather than to the slot being offered, so
+   * it pads the gap after somebody else's appointment without shortening the
+   * day at its end.
+   */
+  buffer?: number
 }
 
 /**
@@ -153,6 +169,11 @@ export interface SlotQuery {
  */
 export function availableSlots(query: SlotQuery): { time: string; available: boolean }[] {
   const { hours, shift, duration, booked, day, now } = query
+
+  // Clamped rather than trusted: a step of zero would not terminate, and a
+  // negative buffer would let appointments overlap.
+  const step = Math.max(5, Math.round(query.step ?? SLOT_STEP_MINUTES))
+  const buffer = Math.max(0, Math.round(query.buffer ?? 0))
 
   const open = minutesOf(time(shift?.startTime) ?? hours.open)
   const close = minutesOf(time(shift?.endTime) ?? hours.close)
@@ -166,13 +187,15 @@ export function availableSlots(query: SlotQuery): { time: string; available: boo
 
   const slots: { time: string; available: boolean }[] = []
 
-  for (let start = open; start + duration <= close; start += SLOT_STEP_MINUTES) {
+  for (let start = open; start + duration <= close; start += step) {
     const end = start + duration
 
     const shut = blocked.some((b) => start < b.end && b.start < end)
     const taken = booked.some((b) => {
       const bStart = minutesOf(b.start)
-      return start < bStart + b.duration && bStart < end
+      // The buffer extends the appointment already in the book, which is what
+      // reserves the gap after it for turning the chair round.
+      return start < bStart + b.duration + buffer && bStart < end
     })
     const past = isToday && start <= nowMinutes
 
