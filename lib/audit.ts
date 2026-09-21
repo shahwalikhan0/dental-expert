@@ -44,6 +44,15 @@ export const AUDIT_ACTIONS = {
   /// The entry never carries the password, old or new; see rule 2 above.
   PASSWORD_CHANGED: 'user.password.changed',
 
+  /// A reset asked for from the sign-in page. Nobody is signed in, so it is
+  /// recorded against no user — the trail should not read as though an
+  /// administrator did it.
+  PASSWORD_RESET_REQUESTED: 'user.password.reset_requested',
+  /// A reset carried through. Distinct from PASSWORD_CHANGED, which is somebody
+  /// changing their own while signed in: this one happened without a session
+  /// and is the entry worth looking at twice.
+  PASSWORD_RESET_COMPLETED: 'user.password.reset_completed',
+
   /// Spec §10 asks for "patient record access where supported". Opening a
   /// record is the access — a list of names is not, and logging every list
   /// would bury the entries that matter under a row per page of the register.

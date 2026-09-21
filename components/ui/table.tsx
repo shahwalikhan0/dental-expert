@@ -12,15 +12,89 @@ import { cn } from '@/lib/utils'
  * the right-hand edge with nothing on screen to suggest they exist. The row
  * simply looked like it ended.
  *
- * A fade at whichever edge has more behind it, and a note under the table the
- * first time it overflows. Cheap, and it fixes every list at once; the fuller
- * answer is a card layout per screen, which is a decision about each screen
- * rather than about tables.
+ * The interim answer was a fade at whichever edge had more behind it and a note
+ * saying to scroll. It is now a card per row below `sm`, which is what a list
+ * on a phone should have been all along: the whole record visible, each value
+ * against the name of its column.
+ *
+ * Done here, in CSS, rather than as a second markup tree per screen. The
+ * alternative — a generic `DataTable` fed column definitions — is the thing
+ * `components/ui/data-grid.tsx` explains at length why this application does
+ * not have: these cells are avatars, two-line contact blocks and badges whose
+ * colour means something clinical, and the tables are readable precisely
+ * because each screen writes its own. So the markup stays one table, and the
+ * labels a card needs are taken from the header row at runtime and stamped onto
+ * each cell as `data-label`, which the stylesheet then draws. Twenty screens
+ * become card layouts without one of them being edited.
+ *
+ * The horizontal scroller and its fades remain for tablet widths, where a table
+ * is still the better shape.
  */
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => {
     const scroller = React.useRef<HTMLDivElement>(null)
+    const table = React.useRef<HTMLTableElement | null>(null)
     const [edges, setEdges] = React.useState({ left: false, right: false })
+
+    // The caller may want the element too, so both refs are fed.
+    const setRefs = React.useCallback(
+      (node: HTMLTableElement | null) => {
+        table.current = node
+        if (typeof ref === 'function') ref(node)
+        else if (ref) (ref as React.MutableRefObject<HTMLTableElement | null>).current = node
+      },
+      [ref]
+    )
+
+    /**
+     * Give every cell the name of its column.
+     *
+     * A stacked card has no header row above it, so each value needs to say
+     * what it is. The names are already on screen — in the `<th>` elements — so
+     * they are copied onto the cells as `data-label` and drawn by the
+     * stylesheet, rather than asking twenty screens to repeat themselves.
+     *
+     * Restamped when the rows change, because a new page of results arrives as
+     * new `<td>` elements that have never been labelled. React does not manage
+     * these attributes and will not remove them.
+     */
+    React.useEffect(() => {
+      const node = table.current
+      if (!node) return
+
+      const stamp = () => {
+        const headers = Array.from(node.querySelectorAll('thead th')).map((th) =>
+          (th.textContent ?? '').trim()
+        )
+        if (headers.length === 0) return
+
+        for (const row of Array.from(node.querySelectorAll('tbody tr'))) {
+          const cells = Array.from(row.children) as HTMLElement[]
+          cells.forEach((cell, index) => {
+            const label = headers[index]
+            // A column with no heading — an actions menu, a checkbox — gets no
+            // label rather than an empty one, and the stylesheet lays those out
+            // differently.
+            if (label) cell.setAttribute('data-label', label)
+            else cell.removeAttribute('data-label')
+          })
+          // A row spanning the whole table is an empty state or a message, not
+          // a record, and must not be drawn as a card's field list. Cleared as
+          // well as set: the same `<tr>` can go from "Loading…" to a record.
+          if (row.children.length === 1) {
+            ;(row as HTMLElement).setAttribute('data-full-row', '')
+          } else {
+            ;(row as HTMLElement).removeAttribute('data-full-row')
+          }
+        }
+      }
+
+      stamp()
+
+      const observer = new MutationObserver(stamp)
+      observer.observe(node, { childList: true, subtree: true })
+      return () => observer.disconnect()
+    }, [])
 
     React.useEffect(() => {
       const element = scroller.current
@@ -52,7 +126,11 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
     return (
       <div className="relative w-full">
         <div ref={scroller} className="w-full overflow-auto">
-          <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
+          <table
+            ref={setRefs}
+            className={cn('table-stacked w-full caption-bottom text-sm', className)}
+            {...props}
+          />
         </div>
 
         {/* Pointer-events-none: the fade is a hint, not a control, and must not
@@ -69,7 +147,7 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
               aria-hidden="true"
               className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
             />
-            <p className="px-4 pt-2 text-xs text-muted-foreground sm:hidden">
+            <p className="hidden px-4 pt-2 text-xs text-muted-foreground sm:block md:hidden">
               Scroll sideways for the rest of each row.
             </p>
           </>

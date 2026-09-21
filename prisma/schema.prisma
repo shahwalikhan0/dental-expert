@@ -260,6 +260,19 @@ model User {
   inviteExpiresAt DateTime?
   invitedById     String?
 
+  /// An outstanding password reset.
+  ///
+  /// Same shape as the invitation above and for the same reason: no second
+  /// table, and a lookup by token cannot reach an account whose reset has been
+  /// used, because using it clears the token. Unique so that two people cannot
+  /// hold the same link, and so the lookup is an index hit rather than a scan.
+  ///
+  /// An account may hold a reset and an invitation at once — a person invited
+  /// to a second clinic who forgets their password at the first — so these are
+  /// deliberately separate columns rather than one reused pair.
+  resetToken      String?   @unique
+  resetExpiresAt  DateTime?
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

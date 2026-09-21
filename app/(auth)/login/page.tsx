@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -195,7 +196,21 @@ function LoginForm() {
             {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-baseline justify-between gap-2">
+              <Label htmlFor="password">Password</Label>
+              {/*
+                The route has been listed as public since before the page
+                existed, and nothing linked to it — so the one screen where
+                somebody realises they have forgotten their password offered no
+                way out of that.
+              */}
+              <Link
+                href="/forgot-password"
+                className="text-sm text-muted-foreground underline hover:text-foreground"
+              >
+                Forgotten it?
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

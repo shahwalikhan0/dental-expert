@@ -123,17 +123,23 @@ nothing is broken on the surface.
 Smaller than §1 and §2, and each one is either a support cost or a question a
 buyer asks.
 
-- **No self-service password reset.** `/forgot-password` is listed as a public
-  route in `middleware.ts` and `lib/auth.config.ts`, and no such page exists. A
-  dentist who forgets their password has no route back in except an
-  administrator changing it for them. Staff _can_ now change their own password
-  (`/settings/password`), which is the half of this that was needed to make the
-  expiry policy honest; the reset-by-email half is not built.
-- **No rate limiting anywhere.** Not on `/api/auth`, not on
-  `/api/public/login-clinics` beside it, not on the public booking endpoint. The
-  account lockout added in `ec64d53` limits guesses against _one account_;
-  somebody spraying one password across many accounts is not slowed at all, and
-  nor is anybody hammering the booking page. This belongs at the edge.
+- ~~**No self-service password reset.**~~ Built. `/forgot-password` asks,
+  `/reset-password` spends a one-hour token, and the sign-in page links to it —
+  it never did, so the one screen where somebody realises they have forgotten
+  their password offered no way out. The request answers identically whether or
+  not the address is known, and an address holding accounts at several clinics
+  gets one link per clinic, because `User.email` is unique within a clinic
+  rather than across the platform. It needs the clinic's SMTP configured; a
+  clinic with no email still needs an administrator.
+- **Rate limiting exists now, and it is per-instance.** Sign-in,
+  `login-clinics`, password reset, signup and public booking are limited in
+  `middleware.ts` — see `lib/rate-limit.ts` for the numbers and the reasoning.
+  What it is is a fixed-window counter in one instance's memory: two instances
+  behind a load balancer each allow the full budget, and a restart forgets
+  everything. Enough for the attacks actually aimed at a small clinic's server,
+  not enough for a hosted product. A shared store — Redis, or the platform's own
+  edge limiter — is the remaining work, and `REDIS_URL` is already in
+  `.env.example` marked "not yet wired up".
 - **No error monitoring.** No Sentry, no OpenTelemetry. When a clinic says "it
   broke this morning", what we have is `console.error` on a server somebody has
   to go and read.
@@ -176,13 +182,14 @@ because it puts visibly broken widgets on the screens a clinic sees most.
 The security page was the worst of these and is fixed. Others remain, and each
 one is the same class of problem: a control a clinic can set that nothing reads.
 
-- **Settings → Appointments.** Only `doubleBookingPolicy` is read by anything
-  (`lib/appointment-conflicts.ts`). `slotDuration`, `bufferTime`, `startTime`,
-  `endTime`, `lunchBreakStart`, `lunchBreakEnd`, `maxAdvanceBookingDays` and
-  `reminderHoursBefore` are stored and consulted by nothing. Note that
-  `maxAdvanceBookingDays` means for staff booking what `booking.horizonDays`
-  now means for the public page — the public one is enforced, the staff one is
-  not.
+- ~~**Settings → Appointments.**~~ Wired. `slotDuration`, `bufferTime`, the
+  lunch break, `maxAdvanceBookingDays` and `reminderHoursBefore` are all read
+  now — see `lib/appointment-settings.ts`. `startTime` and `endTime` were
+  **removed** rather than wired: they duplicated `Hospital.workingHours`, which
+  holds hours per weekday and is what every slot query already reads, and two
+  screens setting one thing is how a clinic gets a book that disagrees with its
+  own front door.
+
 - **The clinic's week is a JSON column; everything else about availability is a
   table.** `Hospital.workingHours` holds the opening hours per weekday as a JSON
   string, read through `lib/working-hours.ts`, while dentists' shifts, leave and
@@ -215,8 +222,13 @@ one is the same class of problem: a control a clinic can set that nothing reads.
 
 ## 7. Smaller, and known
 
-- **Mobile list screens are tables.** The edge fade and the "scroll sideways"
-  hint are an interim fix; card layouts would be the real one.
+- ~~**Mobile list screens are tables.**~~ Below `sm` each row is now a card and
+  each cell a labelled line. Done in CSS against the existing markup — the
+  labels are taken from the table's own header row at runtime — so no screen was
+  rewritten and a list added later gets it for free. See
+  `components/ui/table.tsx` and the `.table-stacked` block in
+  `app/globals.css`. The scroller and its fades remain for tablet widths, where
+  a table is still the right shape.
 - **The allergy check knows the drug families it was told about.**
   `lib/medical-history.ts` catches the mistake that matters — amoxicillin to a
   penicillin-allergic patient — across the families a dental clinic prescribes

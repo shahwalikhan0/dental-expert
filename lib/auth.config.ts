@@ -15,6 +15,7 @@ export const authConfig: NextAuthConfig = {
       const publicRoutes = [
         '/login',
         '/forgot-password',
+        '/reset-password',
         '/signup',
         '/pricing',
         '/verify-email',

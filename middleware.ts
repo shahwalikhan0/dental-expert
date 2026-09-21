@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { holderCan, landingPageFor, permissionForRoute } from '@/lib/rbac'
+import { bucketFor, callerKey, rateLimit } from '@/lib/rate-limit'
 
 // Which capability each dashboard section needs now lives in lib/rbac.ts,
 // alongside the API-side check, so the menu a user can see and the endpoints
@@ -18,6 +19,7 @@ import { holderCan, landingPageFor, permissionForRoute } from '@/lib/rbac'
 const publicRoutes = [
   '/login',
   '/forgot-password',
+  '/reset-password',
   '/signup',
   '/pricing',
   '/verify-email',
@@ -53,13 +55,47 @@ export default auth((req) => {
   const isApiAuth = pathname.startsWith('/api/auth')
   const isPublicApi = pathname.startsWith('/api/public')
 
+  /**
+   * Rate limiting, for the handful of endpoints anybody can reach.
+   *
+   * Here rather than in each route because it has to run before the handler
+   * does any work — and because signing in is NextAuth's route, which is not
+   * ours to edit. See lib/rate-limit.ts for the limits and for the honest
+   * account of what an in-memory counter does and does not cover.
+   *
+   * Only unauthenticated paths are listed. A signed-in user hammering the
+   * appointments list is a different problem with a different answer, and
+   * throttling the desk mid-clinic is its own kind of outage.
+   */
+  const bucket = bucketFor(pathname)
+  if (bucket) {
+    const result = rateLimit(
+      `${bucket.name}:${callerKey(req.headers)}`,
+      bucket.limit,
+      bucket.windowMs
+    )
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Please wait a moment and try again.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(result.retryAfter),
+            'Cache-Control': 'no-store',
+          },
+        }
+      )
+    }
+  }
+
   // API routes are let through so they can authenticate themselves — mobile
   // clients send a Bearer token, which NextAuth's cookie session knows nothing
   // about.
   //
   // The consequence is worth stating plainly: **middleware enforces nothing on
   // the API**. Every route under /api must call requirePermission() itself. A
-  // role map here protects menus, not data.
+  // role map here protects menus, not data. The limiter above is the one
+  // exception, and it guards availability rather than authorisation.
   if (isApiRoute) {
     return NextResponse.next()
   }

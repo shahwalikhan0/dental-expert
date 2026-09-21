@@ -193,3 +193,114 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
+
+/**
+ * List rows as cards, on a phone.
+ *
+ * Every list in this application is a table. On a phone that meant the visible
+ * third was the patient's name and the rest of the row — the dentist, the time,
+ * the status — sat off the right-hand edge behind a horizontal scroll. The
+ * interim fix was a fade and a note saying to scroll sideways, which told
+ * somebody the problem existed without solving it.
+ *
+ * Below `sm` each row becomes a card and each cell a labelled line. The labels
+ * come from the table's own header row, stamped onto the cells as `data-label`
+ * by `components/ui/table.tsx`, so no screen had to be rewritten and a screen
+ * added later gets this for free.
+ *
+ * At `sm` and above nothing here applies and the table is a table.
+ */
+@layer components {
+  @media (max-width: 639px) {
+    .table-stacked thead {
+      /* Not `display: none`: the header is still the accessible name of each
+         cell for a screen reader walking the table. */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    .table-stacked,
+    .table-stacked tbody,
+    .table-stacked tr,
+    .table-stacked td {
+      display: block;
+      width: 100%;
+    }
+
+    .table-stacked tr {
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 0.25rem 0.75rem;
+      margin-bottom: 0.625rem;
+      background: hsl(var(--card));
+    }
+
+    .table-stacked td {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.4rem 0;
+      border: none;
+      text-align: right;
+    }
+
+    .table-stacked td + td {
+      border-top: 1px solid hsl(var(--border) / 0.5);
+    }
+
+    .table-stacked td[data-label]::before {
+      content: attr(data-label);
+      flex: 0 0 auto;
+      max-width: 45%;
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: hsl(var(--muted-foreground));
+    }
+
+    /* The first cell is the record — a name, a number. It reads as the card's
+       heading rather than as the first of a list of fields. */
+    .table-stacked td:first-child {
+      justify-content: flex-start;
+      text-align: left;
+      font-weight: 600;
+      padding-top: 0.6rem;
+    }
+
+    .table-stacked td:first-child::before {
+      display: none;
+    }
+
+    /* A column with no heading is an actions menu or a checkbox. It has nothing
+       to label and belongs at the end of the card, on its own line. */
+    .table-stacked td:not([data-label]) {
+      justify-content: flex-end;
+    }
+
+    /* An empty state or a "no results" message spans the table. It is not a
+       record and must not be drawn as a card's field list. */
+    .table-stacked tr[data-full-row] {
+      border: none;
+      background: none;
+      padding: 0;
+    }
+
+    .table-stacked tr[data-full-row] td {
+      display: block;
+      text-align: center;
+      border-top: none;
+    }
+
+    .table-stacked tr[data-full-row] td::before {
+      display: none;
+    }
+  }
+}
