@@ -15,7 +15,7 @@ Two rules for this file:
    false statement about the product made in writing to a clinic. Anything in
    that state gets removed or finished, not listed.
 
-Last reviewed: 20 September 2026.
+Last reviewed: 21 September 2026.
 
 ---
 
@@ -202,8 +202,10 @@ one is the same class of problem: a control a clinic can set that nothing reads.
   and switches between them at sign-in; what that does not give them is shared
   patient records, cross-branch reporting or one subscription.
 - **Appointment types and status lists are enums**, so FR-025's "maintain …
-  appointment types and status lists" is not configurable by a user. Chairs,
-  procedures, fees, labs and suppliers all are.
+  appointment types and status lists" is not configurable by a user.
+  Procedures, fees, labs and suppliers all are. Chairs are not, and this file
+  used to say they were — they were removed deliberately in favour of the token
+  queue, and the pricing page that still advertised them has been corrected.
 - **A local SMS aggregator.** Twilio works and is configured per clinic. A
   Pakistani bulk-SMS aggregator would cost less per message and is a second
   integration plus a second vendor relationship — a commercial choice, not
@@ -215,9 +217,25 @@ one is the same class of problem: a control a clinic can set that nothing reads.
 
 - **Mobile list screens are tables.** The edge fade and the "scroll sideways"
   hint are an interim fix; card layouts would be the real one.
+- **The allergy check knows the drug families it was told about.**
+  `lib/medical-history.ts` catches the mistake that matters — amoxicillin to a
+  penicillin-allergic patient — across the families a dental clinic prescribes
+  from, and it warns rather than refuses. It is a second pair of eyes, not a
+  drug database: an allergy written in words the list has never seen will not
+  fire. A real interaction database is the proper answer and is a licensing
+  decision, not missing work.
+- **The unsaved-changes guard watches typing, not dropdowns.**
+  `hooks/use-form-guard.ts` listens for `input`, which every text box and
+  textarea raises. A Radix select does not, so changing only a dropdown and
+  navigating away is still silent. Deliberate for now — what the guard exists to
+  protect is a half-written clinical note, and one that cried wolf over a
+  touched dropdown would be dismissed out of hand.
 - **`/api/settings/audit-logs` and `/api/audit-log`** are two routes doing
   nearly the same job, reached from two screens.
 - **The patient booking page has no cancellation.** A patient who books online
   must telephone to change it, which is what the confirmation tells them to do.
   Self-service cancellation needs a way to prove who you are, which is the
-  patient-portal question this project has not answered.
+  patient-portal question this project has not answered. The booking itself is
+  now confirmed by SMS and lands in a review queue the desk can work through
+  (`bookedOnline` / `reviewedAt`), so the "we will telephone you" on that screen
+  is a promise somebody can keep.
