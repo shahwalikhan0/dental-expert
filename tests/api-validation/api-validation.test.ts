@@ -48,6 +48,10 @@ vi.mock('@/lib/prisma', () => {
     recareType: { findFirst: vi.fn().mockResolvedValue(null) },
     recare: { upsert: vi.fn() },
     visitor: { create: vi.fn().mockResolvedValue({ id: 'visitor-1' }) },
+    // Settings → Appointments is read on every booking now. Empty means the
+    // clinic has configured nothing, so the defaults apply and no horizon is
+    // imposed — see lib/appointment-settings.ts.
+    setting: { findUnique: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     patient: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),

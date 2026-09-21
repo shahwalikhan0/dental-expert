@@ -36,6 +36,10 @@ vi.mock('@/lib/prisma', () => {
     },
     setting: {
       findUnique: vi.fn(),
+      // Settings → Appointments is read on every booking now (the horizon, the
+      // slot grid, the buffer). Empty means "this clinic has set nothing", so
+      // the defaults in lib/appointment-settings.ts apply.
+      findMany: vi.fn().mockResolvedValue([]),
     },
     treatment: {
       findMany: vi.fn(),

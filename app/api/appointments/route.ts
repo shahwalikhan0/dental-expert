@@ -284,8 +284,11 @@ export async function POST(request: NextRequest) {
      * past" check above rather than with the server's clock.
      */
     const scheduling = await readAppointmentSettings(prisma, hospitalId)
-    const horizon = new Date(Date.now() + scheduling.maxAdvanceBookingDays * 24 * 60 * 60 * 1000)
-    if (localDay(startsAt, timezone) > localDay(horizon, timezone)) {
+    const horizon =
+      scheduling.maxAdvanceBookingDays === null
+        ? null
+        : new Date(Date.now() + scheduling.maxAdvanceBookingDays * 24 * 60 * 60 * 1000)
+    if (horizon && localDay(startsAt, timezone) > localDay(horizon, timezone)) {
       return NextResponse.json(
         {
           error: `Appointments can be booked up to ${scheduling.maxAdvanceBookingDays} days ahead. Change this at Settings → Appointments.`,

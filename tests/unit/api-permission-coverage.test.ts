@@ -35,6 +35,12 @@ const NON_STAFF_ROUTES: Record<string, string> = {
   // Answers nothing without the correct password, writes nothing, and signs
   // nobody in — it only names the clinics a verified password already opens.
   'public/login-clinics': 'requires the password it is asked about; read-only',
+  // Somebody who cannot sign in is asking for a way back in, so there is no
+  // session to check. The request answers identically whether or not the
+  // address exists, and the confirm route is gated by a single-use token that
+  // is cleared when spent. Both are rate-limited in middleware.ts.
+  'public/password-reset': 'unauthenticated by design — the caller cannot sign in',
+  'public/password-reset/confirm': 'single-use reset token in the URL',
   // Platform administration is not a clinic capability and deliberately holds
   // no Permission: requirePlatformAdmin() re-reads User.isPlatformAdmin from
   // the database on every call, which is stricter than any capability here.

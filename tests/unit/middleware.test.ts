@@ -20,13 +20,21 @@ vi.mock('@/lib/auth', () => ({
 
 import middleware, { config } from '@/middleware'
 
-function makeRequest(pathname: string, session?: any) {
+function makeRequest(pathname: string, session?: any, ip = '203.0.113.1') {
   const url = new URL(`http://localhost:3000${pathname}`)
   return {
     nextUrl: url,
     auth: session,
+    // A real request always has these. The rate limiter reads the caller from
+    // them, and a stub without them stood in for something that cannot exist.
+    // A distinct address per test keeps one test's budget out of another's.
+    headers: new Headers({ 'x-forwarded-for': ip }),
   }
 }
+
+/** An address nothing else in this file will share a rate-limit bucket with. */
+let addresses = 0
+const freshIp = () => `198.51.100.${++addresses % 250}`
 
 describe('middleware', () => {
   beforeEach(() => {
@@ -79,12 +87,12 @@ describe('middleware', () => {
   })
 
   it('allows /api/auth routes through', () => {
-    middleware(makeRequest('/api/auth/signin', null))
+    middleware(makeRequest('/api/auth/signin', null, freshIp()))
     expect(mockNext).toHaveBeenCalled()
   })
 
   it('allows /api/public routes through', () => {
-    middleware(makeRequest('/api/public/signup', null))
+    middleware(makeRequest('/api/public/signup', null, freshIp()))
     expect(mockNext).toHaveBeenCalled()
   })
 

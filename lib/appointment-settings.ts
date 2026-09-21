@@ -39,13 +39,19 @@ export interface AppointmentSettings {
   lunchBreakStart: string | null
   lunchBreakEnd: string | null
   /**
-   * How far ahead the desk may book, in days.
+   * How far ahead the desk may book, in days — or null for no limit.
    *
    * The public page has had a horizon since it shipped (`booking.horizonDays`);
-   * this is the same rule for staff, and it was stored and ignored. Staff get a
-   * longer default because a desk booking a six-month recall is ordinary work.
+   * this is the same rule for staff, and it was stored and ignored.
+   *
+   * Null when the clinic has never set one, and that is deliberate rather than
+   * a missing default. A practice that has been booking two years ahead for a
+   * decade should not discover on upgrade that the software has quietly decided
+   * six months is enough — and dentistry books six-month recalls, so any
+   * default tight enough to be useful is tight enough to refuse ordinary work.
+   * The limit applies once somebody has asked for one.
    */
-  maxAdvanceBookingDays: number
+  maxAdvanceBookingDays: number | null
   /** How many hours before an appointment the reminder goes out. */
   reminderHoursBefore: number
   /** FR-004: BLOCK refuses a clashing booking, WARN records it and flags it. */
@@ -57,7 +63,7 @@ export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
   bufferTime: 0,
   lunchBreakStart: null,
   lunchBreakEnd: null,
-  maxAdvanceBookingDays: 180,
+  maxAdvanceBookingDays: null,
   reminderHoursBefore: 24,
   doubleBookingPolicy: 'BLOCK',
 }
@@ -130,12 +136,10 @@ export async function readAppointmentSettings(
     // Half a break is not a break. Both ends, in order, or neither.
     lunchBreakStart: lunchStart && lunchEnd && lunchEnd > lunchStart ? lunchStart : null,
     lunchBreakEnd: lunchStart && lunchEnd && lunchEnd > lunchStart ? lunchEnd : null,
-    maxAdvanceBookingDays: asNumber(
-      stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays),
-      180,
-      1,
-      730
-    ),
+    maxAdvanceBookingDays:
+      stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays) === undefined
+        ? null
+        : asNumber(stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays), 365, 1, 3650),
     reminderHoursBefore: asNumber(stored.get(APPOINTMENT_KEYS.reminderHoursBefore), 24, 1, 168),
     doubleBookingPolicy:
       stripQuotes(stored.get(APPOINTMENT_KEYS.doubleBookingPolicy)) === 'WARN' ? 'WARN' : 'BLOCK',

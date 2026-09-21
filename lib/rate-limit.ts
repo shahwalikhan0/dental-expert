@@ -101,7 +101,12 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
  * Falling back to a single shared bucket when there is no header is
  * deliberate: an unidentifiable caller should be limited, not exempt.
  */
-export function callerKey(headers: Headers): string {
+export function callerKey(headers: Headers | undefined | null): string {
+  // Defensive because this runs in middleware: throwing here would fail the
+  // request itself, and an odd runtime that hands us no header bag should cost
+  // a shared bucket rather than an outage.
+  if (!headers || typeof headers.get !== 'function') return 'unidentified'
+
   const forwarded = headers.get('x-forwarded-for')
   if (forwarded) {
     const first = forwarded.split(',')[0]?.trim()

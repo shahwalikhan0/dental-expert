@@ -29,7 +29,7 @@ export default function AppointmentSettingsPage() {
     bufferTime: '10',
     lunchBreakStart: '13:00',
     lunchBreakEnd: '14:00',
-    maxAdvanceBookingDays: '30',
+    maxAdvanceBookingDays: '365',
     reminderHoursBefore: '24',
     // FR-004: BLOCK refuses a clashing booking, WARN records it and flags it.
     doubleBookingPolicy: 'BLOCK',
