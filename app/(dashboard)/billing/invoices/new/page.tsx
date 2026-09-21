@@ -389,19 +389,25 @@ export default function NewInvoicePage() {
                   />
                   {showPatientDropdown && patients.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
+                      {/*
+                        Real buttons, not clickable divs. A cashier types a name
+                        and then had to reach for the mouse, because this list
+                        could not be reached with Tab or chosen with Enter.
+                      */}
                       {patients.map((patient) => (
-                        <div
+                        <button
                           key={patient.id}
-                          className="px-4 py-2 hover:bg-muted cursor-pointer"
+                          type="button"
+                          className="block w-full px-4 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
                           onClick={() => selectPatient(patient)}
                         >
-                          <div className="font-medium">
+                          <span className="block font-medium">
                             {patient.firstName} {patient.lastName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
+                          </span>
+                          <span className="block text-sm text-muted-foreground">
                             {patient.patientId} • {patient.phone}
-                          </div>
-                        </div>
+                          </span>
+                        </button>
                       ))}
                     </div>
                   )}

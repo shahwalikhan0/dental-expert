@@ -42,6 +42,7 @@ import {
   Eye,
   Edit,
   CalendarDays,
+  CalendarRange,
   Globe,
   ChevronLeft,
   ChevronRight,
@@ -73,10 +74,18 @@ import {
   type BookAppointment,
   type BookDoctor,
 } from '@/components/appointments/appointment-book'
+import { WeekView, type WeekAppointment } from '@/components/appointments/week-view'
 
 /** The clinic's today, as YYYY-MM-DD, from the browser's own clock. */
 function todayInClinic(): string {
   return new Date().toLocaleDateString('en-CA')
+}
+
+/** The Sunday the week containing `day` runs from — the week the API expects. */
+function weekStartOf(day: string): string {
+  const date = new Date(`${day}T12:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay())
+  return date.toISOString().slice(0, 10)
 }
 
 function shiftDay(day: string, by: number): string {
@@ -151,17 +160,27 @@ export default function AppointmentsPage() {
   // The view lives in the URL, so a book somebody is looking at can be sent to
   // a colleague and survives a refresh. It used to be state nothing read, which
   // is why the Calendar button highlighted itself and changed nothing.
-  const viewMode = (searchParams.get('view') === 'calendar' ? 'calendar' : 'list') as
-    'list' | 'calendar'
+  const requestedView = searchParams.get('view')
+  const viewMode = (
+    requestedView === 'calendar' ? 'calendar' : requestedView === 'week' ? 'week' : 'list'
+  ) as 'list' | 'calendar' | 'week'
   const bookDay = searchParams.get('day') || todayInClinic()
   const [book, setBook] = useState<{ appointments: BookAppointment[]; day: string } | null>(null)
+  /**
+   * The week the book is showing, as its Sunday.
+   *
+   * The API has supported `view=week` since before the day book was written and
+   * nothing ever asked it for one, so the only way to find next Tuesday's gap
+   * was to page forward a day at a time.
+   */
+  const [week, setWeek] = useState<WeekAppointment[] | null>(null)
   const [bookDoctors, setBookDoctors] = useState<BookDoctor[]>([])
   const [bookHours, setBookHours] = useState({ open: '09:00', close: '21:00' })
 
-  const setViewMode = (mode: 'list' | 'calendar') => {
+  const setViewMode = (mode: 'list' | 'calendar' | 'week') => {
     const next = new URLSearchParams(searchParams.toString())
-    if (mode === 'calendar') next.set('view', 'calendar')
-    else next.delete('view')
+    if (mode === 'list') next.delete('view')
+    else next.set('view', mode)
     router.replace(`/appointments?${next.toString()}`, { scroll: false })
   }
 
@@ -321,6 +340,35 @@ export default function AppointmentsPage() {
     sort.direction,
   ])
 
+  /**
+   * A week, read in one request.
+   *
+   * `view=week` on the appointments route returns the whole week unpaged, which
+   * is what a week view needs: a column showing four of a day's nine bookings
+   * would say a day was free when it is not.
+   */
+  useEffect(() => {
+    if (viewMode !== 'week') return
+
+    let cancelled = false
+    setWeek(null)
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/appointments?view=week&date=${weekStartOf(bookDay)}&limit=500`
+        )
+        const data = await res.json()
+        if (!cancelled) setWeek(data.appointments ?? [])
+      } catch {
+        if (!cancelled) setWeek([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [viewMode, bookDay])
+
   // The book reads a whole day at once rather than a page of rows — a calendar
   // showing twenty of the day's thirty appointments is not a calendar.
   useEffect(() => {
@@ -448,7 +496,15 @@ export default function AppointmentsPage() {
               onClick={() => setViewMode('calendar')}
             >
               <CalendarDays className="h-4 w-4 mr-2" />
-              Calendar
+              Day
+            </Button>
+            <Button
+              variant={viewMode === 'week' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('week')}
+            >
+              <CalendarRange className="h-4 w-4 mr-2" />
+              Week
             </Button>
             <ExportMenu
               filename="appointments"
@@ -587,7 +643,61 @@ export default function AppointmentsPage() {
           </CardContent>
         </Card>
 
-        {viewMode === 'calendar' ? (
+        {viewMode === 'week' ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+              <div>
+                <CardTitle className="text-base">
+                  Week of {formatDate(weekStartOf(bookDay))}
+                </CardTitle>
+                <CardDescription>
+                  Click a day to open it in the book. An empty column is a day with room on it.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Previous week"
+                  onClick={() => setBookDay(shiftDay(bookDay, -7))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setBookDay(todayInClinic())}>
+                  This week
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Next week"
+                  onClick={() => setBookDay(shiftDay(bookDay, 7))}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {week === null ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <WeekView
+                  weekStart={weekStartOf(bookDay)}
+                  today={todayInClinic()}
+                  appointments={week}
+                  href={(a) => trail.to(`/appointments/${a.id}`)}
+                  onPickDay={(day) => {
+                    const next = new URLSearchParams(searchParams.toString())
+                    next.set('view', 'calendar')
+                    next.set('day', day)
+                    router.replace(`/appointments?${next.toString()}`, { scroll: false })
+                  }}
+                />
+              )}
+            </CardContent>
+          </Card>
+        ) : viewMode === 'calendar' ? (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
               <div>

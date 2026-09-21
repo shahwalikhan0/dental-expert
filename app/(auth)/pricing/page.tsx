@@ -34,7 +34,11 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
 /** What every plan includes, named once rather than repeated on each card. */
 const CORE_FEATURES = [
   'Patient records and medical history',
-  'Appointment scheduling with chair and dentist conflict checks',
+  // Not "chair and dentist": this clinic runs a token queue rather than a set
+  // of numbered operatories, and chairs were removed deliberately — see
+  // lib/appointment-conflicts.ts. Advertising one is the false claim in writing
+  // that ROADMAP.md's second rule exists to prevent.
+  'Appointment scheduling with dentist conflict checks and a walk-in queue',
   'Clinical notes, charting and treatment plans',
   'Invoicing, payments and daily cashier reconciliation',
   'Inventory and suppliers',

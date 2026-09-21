@@ -147,15 +147,18 @@ export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProp
               {submissions.map((s) => {
                 const sc = statusConfig[s.status] || statusConfig.SUBMITTED
                 return (
-                  <div
+                  // A button, so the row can be reached with Tab and opened
+                  // with Enter. It was a div, which neither could do.
+                  <button
                     key={s.id}
-                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                    type="button"
+                    className="flex w-full items-center gap-3 p-3 border rounded-lg text-left hover:bg-accent/50 focus:bg-accent focus:outline-none transition-colors"
                     onClick={() => handleViewSubmission(s)}
                   >
                     <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium">{s.template.name}</div>
-                      <div className="text-xs text-muted-foreground">
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">{s.template.name}</span>
+                      <span className="block text-xs text-muted-foreground">
                         {new Date(s.createdAt).toLocaleDateString('en-PK', {
                           day: 'numeric',
                           month: 'short',
@@ -164,13 +167,13 @@ export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProp
                           minute: '2-digit',
                         })}
                         {s.signedAt && ' (Signed)'}
-                      </div>
-                    </div>
+                      </span>
+                    </span>
                     <Badge variant={sc.variant} className="flex items-center gap-1">
                       {sc.icon}
                       {sc.label}
                     </Badge>
-                  </div>
+                  </button>
                 )
               })}
             </div>

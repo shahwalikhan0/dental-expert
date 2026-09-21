@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, use } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
@@ -193,6 +193,25 @@ function getDocumentTypeLabel(type: string) {
   return docType?.label || type
 }
 
+/**
+ * The tabs this record has, and the only values `?tab=` will honour.
+ *
+ * Named rather than trusted from the query string: an unknown value would
+ * render a Tabs root with no matching content, which looks like a patient whose
+ * record has gone blank.
+ */
+const PATIENT_TABS = [
+  'overview',
+  'dental-chart',
+  'perio',
+  'timeline',
+  'documents',
+  'appointments',
+  'treatments',
+  'billing',
+  'forms',
+]
+
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
@@ -203,7 +222,27 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(patient ? `${patient.firstName} ${patient.lastName}` : null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('overview')
+  /**
+   * Which tab is open, kept in the URL.
+   *
+   * It was component state, which meant a dentist could not send a colleague a
+   * link to a patient's chart, a refresh dropped back to Overview, and Back
+   * from an invoice returned to Overview rather than to Billing — the tab the
+   * invoice was opened from. Nine tabs make that a real cost.
+   */
+  const searchParams = useSearchParams()
+  const requestedTab = searchParams.get('tab') ?? ''
+  const activeTab = PATIENT_TABS.includes(requestedTab) ? requestedTab : 'overview'
+
+  const setActiveTab = (tab: string) => {
+    const next = new URLSearchParams(searchParams.toString())
+    if (tab === 'overview') next.delete('tab')
+    else next.set('tab', tab)
+    const query = next.toString()
+    // `replace`, not `push`: flicking between tabs should not fill the back
+    // button with steps the user has to press their way out of.
+    router.replace(query ? `?${query}` : '?', { scroll: false })
+  }
 
   // Document upload state
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
