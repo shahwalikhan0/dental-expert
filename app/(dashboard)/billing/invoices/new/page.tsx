@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -88,6 +89,7 @@ export default function NewInvoicePage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [patientSearch, setPatientSearch] = useState('')
+  const debouncedPatientSearch = useDebouncedValue(patientSearch)
   const [showPatientDropdown, setShowPatientDropdown] = useState(false)
 
   // Unbilled treatments
@@ -130,26 +132,44 @@ export default function NewInvoicePage() {
   }, [])
 
   // Fetch patients for search
+  /**
+   * Finding the patient this invoice is for.
+   *
+   * Three things were wrong with the previous version. It asked the server on
+   * every keystroke, so typing a name sent a request per letter. Nothing
+   * discarded a stale answer, so a slow reply for "Mu" could land after — and
+   * overwrite — the reply for "Muhammad". And the term went into the URL
+   * unencoded, so a name containing an ampersand silently truncated the search.
+   */
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const response = await fetch(`/api/patients?search=${patientSearch}&limit=10`)
-        if (!response.ok) throw new Error('Failed to fetch patients')
-        const data = await response.json()
-        setPatients(data.patients)
-      } catch (error) {
-        console.error('Error fetching patients:', error)
-      }
-    }
+    const term = debouncedPatientSearch.trim()
 
-    if (patientSearch.length >= 2) {
-      fetchPatients()
-      setShowPatientDropdown(true)
-    } else {
+    if (term.length < 2) {
       setPatients([])
       setShowPatientDropdown(false)
+      return
     }
-  }, [patientSearch])
+
+    let current = true
+    setShowPatientDropdown(true)
+    ;(async () => {
+      try {
+        const response = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=10`)
+        if (!current) return
+        if (!response.ok) throw new Error('Failed to fetch patients')
+        const data = await response.json()
+        if (!current) return
+        setPatients(data.patients ?? [])
+      } catch (error) {
+        console.error('Error fetching patients:', error)
+        if (current) setPatients([])
+      }
+    })()
+
+    return () => {
+      current = false
+    }
+  }, [debouncedPatientSearch])
 
   // Fetch pre-selected patient if provided
   useEffect(() => {

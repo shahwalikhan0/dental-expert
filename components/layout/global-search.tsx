@@ -85,6 +85,16 @@ export function GlobalSearch() {
     }
   }, [open])
 
+  /**
+   * Which search is the current one.
+   *
+   * The debounce below stops a request per keystroke, but two can still be in
+   * flight when somebody types through the wait — and nothing guaranteed they
+   * came back in order, so the answer for a shorter query could land last and
+   * replace the right one.
+   */
+  const latestSearch = useRef(0)
+
   // Debounced search
   const search = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -92,17 +102,20 @@ export function GlobalSearch() {
       setLoading(false)
       return
     }
+    const requestId = ++latestSearch.current
     setLoading(true)
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
       if (res.ok) {
         const data = await res.json()
+        // A newer search has been sent since; this answer is out of date.
+        if (requestId !== latestSearch.current) return
         setResults(data)
       }
     } catch {
       // silently fail
     } finally {
-      setLoading(false)
+      if (requestId === latestSearch.current) setLoading(false)
     }
   }, [])
 

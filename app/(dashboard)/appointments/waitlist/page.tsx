@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -97,6 +98,7 @@ export default function WaitlistPage() {
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('')
+  const debouncedPatientSearch = useDebouncedValue(patientSearch)
   const [patientResults, setPatientResults] = useState<any[]>([])
   const [selectedPatient, setSelectedPatient] = useState<any>(null)
   const [searchingPatients, setSearchingPatients] = useState(false)
@@ -136,26 +138,41 @@ export default function WaitlistPage() {
       .catch(() => {})
   }, [])
 
-  // Patient search
+  /**
+   * Patient search.
+   *
+   * The wait was a `setTimeout` of its own here; it is `useDebouncedValue` now,
+   * which every other search box in the application uses. Clearing the timer on
+   * cleanup covered a request that had not been sent yet but not one already in
+   * flight, so a slow answer for a shorter term could still land last — hence
+   * the `current` guard.
+   */
   useEffect(() => {
-    if (patientSearch.length < 2) {
+    const term = debouncedPatientSearch.trim()
+    if (term.length < 2) {
       setPatientResults([])
       return
     }
-    const timeout = setTimeout(async () => {
+
+    let current = true
+    setSearchingPatients(true)
+    ;(async () => {
       try {
-        setSearchingPatients(true)
-        const res = await fetch(`/api/patients?search=${encodeURIComponent(patientSearch)}&limit=5`)
+        const res = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=5`)
         const data = await res.json()
+        if (!current) return
         setPatientResults(data.patients || [])
       } catch {
-        // ignore
+        if (current) setPatientResults([])
       } finally {
-        setSearchingPatients(false)
+        if (current) setSearchingPatients(false)
       }
-    }, 300)
-    return () => clearTimeout(timeout)
-  }, [patientSearch])
+    })()
+
+    return () => {
+      current = false
+    }
+  }, [debouncedPatientSearch])
 
   const handleAdd = async () => {
     if (!selectedPatient) {

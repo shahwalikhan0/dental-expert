@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -115,12 +116,14 @@ export default function NewPrescriptionPage() {
 
   // Patient selection
   const [patientSearch, setPatientSearch] = useState('')
+  const debouncedPatientSearch = useDebouncedValue(patientSearch)
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [searchingPatients, setSearchingPatients] = useState(false)
 
   // Medication search
   const [medSearch, setMedSearch] = useState('')
+  const debouncedMedSearch = useDebouncedValue(medSearch)
   const [medOptions, setMedOptions] = useState<MedicationOption[]>([])
   const [searchingMeds, setSearchingMeds] = useState(false)
   const [activeMedRow, setActiveMedRow] = useState<number | null>(null)
@@ -161,49 +164,70 @@ export default function NewPrescriptionPage() {
     }
   }, [searchParams])
 
-  // Patient search
+  /**
+   * Patient search.
+   *
+   * The wait lived in a `setTimeout` here; it is `useDebouncedValue` now, as it
+   * is on every other search box. Clearing that timer covered a request not yet
+   * sent but not one already in flight, so a slow answer for a shorter term
+   * could still land last and overwrite the right one — hence `current`.
+   */
   useEffect(() => {
-    if (patientSearch.length < 2) {
+    const term = debouncedPatientSearch.trim()
+    if (term.length < 2) {
       setPatients([])
       return
     }
-    const timer = setTimeout(async () => {
-      setSearchingPatients(true)
+
+    let current = true
+    setSearchingPatients(true)
+    ;(async () => {
       try {
-        const res = await fetch(
-          `/api/patients?search=${encodeURIComponent(patientSearch)}&limit=10`
-        )
+        const res = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=10`)
         const result = await res.json()
+        if (!current) return
         setPatients(result.data || result.patients || [])
       } catch {
-        /* ignore */
+        if (current) setPatients([])
+      } finally {
+        if (current) setSearchingPatients(false)
       }
-      setSearchingPatients(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [patientSearch])
+    })()
 
-  // Medication search
+    return () => {
+      current = false
+    }
+  }, [debouncedPatientSearch])
+
+  /** Medication search. Same shape as the patient search above. */
   useEffect(() => {
-    if (medSearch.length < 2) {
+    const term = debouncedMedSearch.trim()
+    if (term.length < 2) {
       setMedOptions([])
       return
     }
-    const timer = setTimeout(async () => {
-      setSearchingMeds(true)
+
+    let current = true
+    setSearchingMeds(true)
+    ;(async () => {
       try {
         const res = await fetch(
-          `/api/medications?search=${encodeURIComponent(medSearch)}&limit=10&active=true`
+          `/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true`
         )
         const result = await res.json()
+        if (!current) return
         setMedOptions(result.data || [])
       } catch {
-        /* ignore */
+        if (current) setMedOptions([])
+      } finally {
+        if (current) setSearchingMeds(false)
       }
-      setSearchingMeds(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [medSearch])
+    })()
+
+    return () => {
+      current = false
+    }
+  }, [debouncedMedSearch])
 
   /** What to put in front of the prescriber before they choose anything. */
   const patientAlerts = useMemo(
