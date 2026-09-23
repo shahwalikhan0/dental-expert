@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSession } from 'next-auth/react'
+import { holderCan } from '@/lib/rbac'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,6 +60,10 @@ interface Procedure {
   materials: string | null
   preInstructions: string | null
   postInstructions: string | null
+  defaultDiagnosis: string | null
+  defaultFindings: string | null
+  defaultProcedureNotes: string | null
+  defaultFollowUpDays: number | null
   isActive: boolean
   _count?: {
     treatments: number
@@ -87,6 +93,22 @@ const categories = [
 
 export default function ProceduresSettingsPage() {
   const { toast } = useToast()
+
+  /**
+   * Whether this person may change the catalogue, as opposed to read it.
+   *
+   * The page is open to `masters:read` so a dentist can look up what a
+   * procedure costs and what it involves, but the API guards every write with
+   * `settings:write`. Without this check a dentist would see "Add Procedure",
+   * fill the whole dialog in and get a 403 at the end — a control that
+   * pretends to work. The server remains the authority; this only stops us
+   * offering an action we already know it will refuse.
+   */
+  const { data: session } = useSession()
+  const canEditCatalog = holderCan(
+    { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole },
+    'settings:write'
+  )
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -122,6 +144,10 @@ export default function ProceduresSettingsPage() {
     materials: '',
     preInstructions: '',
     postInstructions: '',
+    defaultDiagnosis: '',
+    defaultFindings: '',
+    defaultProcedureNotes: '',
+    defaultFollowUpDays: '',
     isActive: true,
   })
 
@@ -196,6 +222,10 @@ export default function ProceduresSettingsPage() {
       materials: '',
       preInstructions: '',
       postInstructions: '',
+      defaultDiagnosis: '',
+      defaultFindings: '',
+      defaultProcedureNotes: '',
+      defaultFollowUpDays: '',
       isActive: true,
     })
     setError('')
@@ -219,6 +249,15 @@ export default function ProceduresSettingsPage() {
       materials: procedure.materials || '',
       preInstructions: procedure.preInstructions || '',
       postInstructions: procedure.postInstructions || '',
+      defaultDiagnosis: procedure.defaultDiagnosis || '',
+      defaultFindings: procedure.defaultFindings || '',
+      defaultProcedureNotes: procedure.defaultProcedureNotes || '',
+      // Compared against null rather than `|| ''`: 0 is a real value here
+      // ("follow up the same day") and `||` would blank it on every edit.
+      defaultFollowUpDays:
+        procedure.defaultFollowUpDays === null || procedure.defaultFollowUpDays === undefined
+          ? ''
+          : String(procedure.defaultFollowUpDays),
       isActive: procedure.isActive,
     })
     setDialogMode('edit')
@@ -255,6 +294,12 @@ export default function ProceduresSettingsPage() {
           code: formData.code.toUpperCase(),
           defaultDuration: parseInt(formData.defaultDuration),
           basePrice: parseFloat(formData.basePrice),
+          // The number input holds a string, and '' is how an empty one reads.
+          // Spreading formData alone would post '' where the API's schema wants
+          // a number or null, and the whole save would fail validation on a
+          // field the dentist deliberately left blank.
+          defaultFollowUpDays:
+            formData.defaultFollowUpDays === '' ? null : Number(formData.defaultFollowUpDays),
         }),
       })
 
@@ -355,13 +400,15 @@ export default function ProceduresSettingsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Procedures</h1>
+          <h1 className="page-title">Procedures</h1>
           <p className="text-muted-foreground">Manage dental procedures catalog</p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Procedure
-        </Button>
+        {canEditCatalog && (
+          <Button onClick={openCreateDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Procedure
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -481,10 +528,12 @@ export default function ProceduresSettingsPage() {
                     <div className="flex flex-col items-center gap-2">
                       <Stethoscope className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No procedures found</p>
-                      <Button variant="outline" size="sm" onClick={openCreateDialog}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Procedure
-                      </Button>
+                      {canEditCatalog && (
+                        <Button variant="outline" size="sm" onClick={openCreateDialog}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Procedure
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -518,32 +567,37 @@ export default function ProceduresSettingsPage() {
                       />
                     </TableCell>
                     <TableCell className="text-right row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600 dark:text-red-400"
-                            onClick={() => {
-                              setSelectedProcedure(procedure)
-                              setDeleteDialogOpen(true)
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {/* The menu holds nothing but Edit and Delete, so a
+                          reader gets an empty menu rather than no menu unless
+                          the trigger goes too. */}
+                      {canEditCatalog && (
+                        <DropdownMenu>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 dark:text-red-400"
+                              onClick={() => {
+                                setSelectedProcedure(procedure)
+                                setDeleteDialogOpen(true)
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -695,6 +749,72 @@ export default function ProceduresSettingsPage() {
                 placeholder="Instructions for patients after the procedure"
                 rows={2}
               />
+            </div>
+
+            {/* The "treatment template": the wording a dentist would otherwise
+                retype for every case of this procedure. Copied onto the note
+                when the procedure is chosen and editable there — see the
+                comments on model Procedure for why it is copied rather than
+                read through the relation. */}
+            <div className="space-y-4 rounded-xl border border-border/60 bg-foreground/[0.02] p-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold">Default clinical note</h3>
+                <p className="text-xs text-muted-foreground">
+                  Prefilled when a dentist starts a treatment with this procedure. Always editable
+                  on the treatment, and editing it here never changes notes already written.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="defaultDiagnosis">Default diagnosis</Label>
+                <Input
+                  id="defaultDiagnosis"
+                  value={formData.defaultDiagnosis}
+                  onChange={(e) => setFormData({ ...formData, defaultDiagnosis: e.target.value })}
+                  placeholder="e.g. Irreversible pulpitis"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="defaultFindings">Default findings</Label>
+                <Textarea
+                  id="defaultFindings"
+                  value={formData.defaultFindings}
+                  onChange={(e) => setFormData({ ...formData, defaultFindings: e.target.value })}
+                  placeholder="What is typically observed"
+                  rows={2}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="defaultProcedureNotes">Default procedure notes</Label>
+                <Textarea
+                  id="defaultProcedureNotes"
+                  value={formData.defaultProcedureNotes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, defaultProcedureNotes: e.target.value })
+                  }
+                  placeholder="The steps you write out every time"
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="defaultFollowUpDays">Default follow-up (days)</Label>
+                <Input
+                  id="defaultFollowUpDays"
+                  type="number"
+                  min={0}
+                  value={formData.defaultFollowUpDays}
+                  onChange={(e) =>
+                    setFormData({ ...formData, defaultFollowUpDays: e.target.value })
+                  }
+                  placeholder="Leave blank for no follow-up"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Counted from the treatment date. 0 means the same day.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center space-x-2">

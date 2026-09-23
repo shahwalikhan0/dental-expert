@@ -160,16 +160,20 @@ export default function PrescriptionsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
+    <div className="mx-auto max-w-6xl">
+      {/* `page-header`/`page-actions` rather than a hand-rolled flex row: this
+          page kept its own `flex items-center justify-between`, which does not
+          stack on a phone, so the title and the export/new buttons fought over
+          one line. The shared classes are what every other list header uses. */}
+      <div className="page-header mb-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <ClipboardList className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <ClipboardList className="h-6 w-6" />
             Prescriptions
           </h1>
           <p className="text-muted-foreground">Create and manage patient prescriptions</p>
         </div>
-        <div className="flex gap-2">
+        <div className="page-actions">
           <ExportMenu
             filename="prescriptions"
             getData={() =>

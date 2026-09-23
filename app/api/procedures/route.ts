@@ -119,6 +119,10 @@ export async function POST(request: NextRequest) {
       materials,
       preInstructions,
       postInstructions,
+      defaultDiagnosis,
+      defaultFindings,
+      defaultProcedureNotes,
+      defaultFollowUpDays,
     } = body
 
     // Validate required fields
@@ -162,6 +166,18 @@ export async function POST(request: NextRequest) {
         materials,
         preInstructions,
         postInstructions,
+        defaultDiagnosis,
+        defaultFindings,
+        defaultProcedureNotes,
+        // Coerced, because this arrives from a text input as a string. Passing
+        // it through untouched hands Prisma "7" where it expects a number and
+        // the whole create fails on a field nobody filled in on purpose.
+        defaultFollowUpDays:
+          defaultFollowUpDays === undefined ||
+          defaultFollowUpDays === null ||
+          defaultFollowUpDays === ''
+            ? null
+            : Number(defaultFollowUpDays),
         isActive: true,
       },
     })

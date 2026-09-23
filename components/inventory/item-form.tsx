@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 /**
  * The inventory item form, shared by the create and edit screens.
@@ -21,6 +23,8 @@ export interface ItemFormValues {
   name: string
   category: string
   itemType: string
+  /** The drug catalogue entry this stock is of. Only meaningful for MEDICINE. */
+  medicationId: string
   description: string
   unit: string
   currentStock: number
@@ -44,6 +48,7 @@ export const EMPTY_ITEM: ItemFormValues = {
   name: '',
   category: '',
   itemType: 'DENTAL_MATERIAL',
+  medicationId: '',
   description: '',
   unit: '',
   currentStock: 0,
@@ -82,6 +87,69 @@ export function ItemForm({
   const [formData, setFormData] = useState<ItemFormValues>(initial)
   const [categories, setCategories] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
+
+  // The drug catalogue, searched on the server rather than loaded whole: a
+  // clinic's formulary is longer than a dropdown and the field is only used on
+  // medicine.
+  const [medicationSearch, setMedicationSearch] = useState('')
+  const debouncedMedicationSearch = useDebouncedValue(medicationSearch)
+  const [medicationOptions, setMedicationOptions] = useState<SearchOption[]>([])
+  const [loadingMedications, setLoadingMedications] = useState(false)
+  const [selectedMedicationLabel, setSelectedMedicationLabel] = useState<string | null>(null)
+
+  // The label for an already-linked item, which arrives as an id alone. Without
+  // this the edit screen would open showing an empty search box over a real
+  // link, and saving would look like it had cleared it.
+  useEffect(() => {
+    if (!initial.medicationId) return
+    let current = true
+    fetch(`/api/medications/${initial.medicationId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        const med = result?.data ?? result
+        if (current && med?.name) {
+          setSelectedMedicationLabel(
+            `${med.name}${med.strength ? ` ${med.strength}` : ''}${med.form ? ` (${med.form})` : ''}`
+          )
+        }
+      })
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [initial.medicationId])
+
+  useEffect(() => {
+    const term = debouncedMedicationSearch.trim()
+    if (term.length < 2) {
+      setMedicationOptions([])
+      return
+    }
+    let current = true
+    setLoadingMedications(true)
+    fetch(`/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true&sort=name`)
+      .then((res) => res.json())
+      .then((result) => {
+        if (!current) return
+        setMedicationOptions(
+          (result.data || []).map((med: any) => ({
+            id: med.id,
+            label: `${med.name}${med.strength ? ` ${med.strength}` : ''}`,
+            hint: med.form || undefined,
+            detail: med.genericName || undefined,
+          }))
+        )
+      })
+      .catch(() => {
+        if (current) setMedicationOptions([])
+      })
+      .finally(() => {
+        if (current) setLoadingMedications(false)
+      })
+    return () => {
+      current = false
+    }
+  }, [debouncedMedicationSearch])
 
   // The edit screen loads the item after this mounts, so the form has to take
   // the values when they arrive rather than only at first render.
@@ -196,6 +264,50 @@ export function ItemForm({
             <option value="EQUIPMENT">Equipment</option>
           </select>
         </div>
+
+        {/*
+          Only for medicine, and only here. Linking stock to the drug
+          catalogue is what lets a prescriber see whether what they are about
+          to write for is on the shelf — until this existed, the two tables
+          had nothing in common but a name that rarely matched exactly.
+
+          Shown conditionally rather than always: on a box of gloves the field
+          has no meaning, and a field with no meaning still gets filled in.
+        */}
+        {formData.itemType === 'MEDICINE' && (
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Drug catalogue entry
+            </label>
+            <SearchSelect
+              value={formData.medicationId || null}
+              selectedLabel={selectedMedicationLabel}
+              options={medicationOptions}
+              loading={loadingMedications}
+              onSearchChange={setMedicationSearch}
+              onSelect={(option) => {
+                setFormData((prev) => ({ ...prev, medicationId: option.id }))
+                setSelectedMedicationLabel(option.label)
+              }}
+              onClear={() => {
+                setFormData((prev) => ({ ...prev, medicationId: '' }))
+                setSelectedMedicationLabel(null)
+              }}
+              placeholder="Search the drug catalogue…"
+              emptyMessage="No medication of that name in the catalogue."
+              emptyAction={
+                <Link href="/medications" className="text-sm text-primary hover:underline">
+                  Open the drug catalogue to add it
+                </Link>
+              }
+              aria-label="Drug catalogue entry"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Optional. Linking lets prescribers see this item&rsquo;s stock while writing a
+              prescription.
+            </p>
+          </div>
+        )}
 
         {/* Unit of Measurement */}
         <div>

@@ -10,7 +10,7 @@
  * No teeth here, deliberately. A template says "post-extraction analgesia"; it
  * cannot know it is tooth 46. Teeth belong to the prescription issued from it.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
@@ -23,6 +23,8 @@ import { useToast } from '@/hooks/use-toast'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { templateRefusal } from '@/lib/prescription-templates'
 import { IconTooltip } from '@/components/ui/icon-action'
+import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 export interface TemplateItemDraft {
   key: number
@@ -84,19 +86,74 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
   const setField = (field: keyof TemplateDraft, value: string) =>
     setDraft((d) => ({ ...d, [field]: value }))
 
+  // The drug catalogue, searched server-side as the user types. The same
+  // endpoint and the same debounce as the prescription form, so the two fields
+  // behave identically — they are the same question asked twice.
+  const [medSearch, setMedSearch] = useState('')
+  const debouncedMedSearch = useDebouncedValue(medSearch)
+  const [medOptions, setMedOptions] = useState<SearchOption[]>([])
+  const [searchingMeds, setSearchingMeds] = useState(false)
+
+  useEffect(() => {
+    const term = debouncedMedSearch.trim()
+    if (term.length < 2) {
+      setMedOptions([])
+      return
+    }
+    let current = true
+    setSearchingMeds(true)
+    fetch(`/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true&sort=name`)
+      .then((res) => res.json())
+      .then((result) => {
+        if (!current) return
+        setMedOptions(
+          (result.data || []).map((med: any) => ({
+            id: med.id,
+            label: `${med.name}${med.strength ? ` ${med.strength}` : ''}`,
+            hint: med.form || undefined,
+            detail: med.genericName || undefined,
+          }))
+        )
+      })
+      .catch(() => {
+        if (current) setMedOptions([])
+      })
+      .finally(() => {
+        if (current) setSearchingMeds(false)
+      })
+    return () => {
+      current = false
+    }
+  }, [debouncedMedSearch])
+
   const setItem = (index: number, field: keyof TemplateItemDraft, value: string) =>
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
+    }))
+
+  /** Attach a line to a catalogue entry. The name is stored too, because a
+      template is copied onto prescriptions and the copy has to read correctly
+      even if the catalogue entry is retired later. */
+  const selectMedicine = (index: number, option: SearchOption) =>
     setDraft((d) => ({
       ...d,
       items: d.items.map((item, i) =>
         i === index
           ? {
               ...item,
-              [field]: value,
-              // Typing over a name breaks the link to the catalogue entry it
-              // came from: it is no longer that medicine.
-              ...(field === 'medicationName' ? { medicationId: null } : {}),
+              medicationId: option.id,
+              medicationName: `${option.label}${option.hint ? ` (${option.hint})` : ''}`,
             }
           : item
+      ),
+    }))
+
+  const clearMedicine = (index: number) =>
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((item, i) =>
+        i === index ? { ...item, medicationId: null, medicationName: '' } : item
       ),
     }))
 
@@ -241,11 +298,44 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
 
               <div className="form-grid">
                 <div className="space-y-2">
-                  <Label className="label-required">Medicine</Label>
-                  <Input
-                    value={item.medicationName}
-                    onChange={(e) => setItem(index, 'medicationName', e.target.value)}
-                    placeholder="Amoxicillin 500mg"
+                  <Label className="label-required" htmlFor={`medicine-${item.key}`}>
+                    Medicine
+                  </Label>
+                  {/*
+                    This was a plain text box with no catalogue behind it at
+                    all, so every template line was saved with `medicationId`
+                    null — templates referenced the drug catalogue in the
+                    schema and never in practice. A template is copied onto
+                    real prescriptions, so an unlinked line here became an
+                    unlinked line on every prescription made from it.
+                  */}
+                  <SearchSelect
+                    id={`medicine-${item.key}`}
+                    value={item.medicationId}
+                    selectedLabel={item.medicationName}
+                    options={medOptions}
+                    loading={searchingMeds}
+                    onSearchChange={setMedSearch}
+                    onSelect={(option) => selectMedicine(index, option)}
+                    onClear={() => clearMedicine(index)}
+                    placeholder="Search the drug catalogue…"
+                    emptyMessage={
+                      debouncedMedSearch.trim().length < 2
+                        ? 'Type at least two letters to search.'
+                        : `Nothing in the catalogue matches “${debouncedMedSearch.trim()}”.`
+                    }
+                    emptyAction={
+                      debouncedMedSearch.trim().length >= 2 ? (
+                        <Link
+                          href="/medications"
+                          target="_blank"
+                          className="text-sm text-primary hover:underline"
+                        >
+                          Add it to the drug catalogue
+                        </Link>
+                      ) : null
+                    }
+                    aria-label="Medicine"
                   />
                 </div>
                 <div className="space-y-2">

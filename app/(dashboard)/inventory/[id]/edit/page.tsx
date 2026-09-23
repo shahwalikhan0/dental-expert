@@ -55,6 +55,7 @@ export default function EditInventoryItemPage() {
           taxCode: item.taxCode ?? '',
           taxPercentage: Number(item.taxPercentage ?? 0),
           preferredSupplierId: item.preferredSupplierId ?? '',
+          medicationId: item.medicationId ?? '',
           storageLocation: item.storageLocation ?? '',
           expiryTracking: Boolean(item.expiryTracking),
           batchTracking: Boolean(item.batchTracking),
@@ -110,10 +111,10 @@ export default function EditInventoryItemPage() {
   }
 
   return (
-    <div ref={formRef} className="container mx-auto px-4 py-8 space-y-6">
+    <div ref={formRef} className="space-y-6">
       <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
 
-      <h1 className="text-2xl md:text-3xl font-bold">Edit {name ?? 'item'}</h1>
+      <h1 className="page-title">Edit {name ?? 'item'}</h1>
 
       <ItemForm
         mode="edit"

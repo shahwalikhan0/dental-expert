@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchHandedPatient } from '@/lib/prefill'
 import { usePatientSearch } from '@/hooks/use-patient-search'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { isoDay } from '@/lib/dates'
+import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,6 +51,76 @@ interface Procedure {
   description: string | null
   defaultDuration: number
   basePrice: string | number
+  materials: string | null
+  defaultDiagnosis: string | null
+  defaultFindings: string | null
+  defaultProcedureNotes: string | null
+  defaultFollowUpDays: number | null
+}
+
+/** The note fields a procedure can prefill. */
+interface TreatmentNoteFields {
+  diagnosis: string
+  findings: string
+  procedureNotes: string
+  materialsUsed: string
+  followUpRequired: boolean
+  followUpDate: string
+}
+
+/**
+ * Merge a procedure's boilerplate onto whatever is already typed.
+ *
+ * This is the "treatment template" feature. It lives on Procedure rather than
+ * in a template model of its own because a Procedure already is the template
+ * for a treatment — see the comments on model Procedure.
+ *
+ * Three rules, all deliberate:
+ *
+ * 1. It fills blanks only. Picking a procedure, typing into the findings, then
+ *    realising you picked the wrong one and switching would otherwise throw
+ *    the typing away with no undo. Correcting a mis-click must not cost a
+ *    paragraph.
+ * 2. It copies, and nothing reads through the procedure at render time. A
+ *    Treatment can be signed, and the signature has to attest to fixed words;
+ *    rendering from the catalogue would let an edit next year rewrite a note
+ *    signed last year.
+ * 3. `followUpRequired` is only ever switched on. A procedure with no default
+ *    must not un-tick a box the dentist ticked by hand.
+ */
+function withProcedureDefaults<T extends TreatmentNoteFields>(
+  form: T,
+  procedure: Procedure | null
+): T {
+  if (!procedure) return form
+
+  const fill = (current: string, fallback: string | null) =>
+    current.trim() ? current : fallback || ''
+
+  let followUpDate = form.followUpDate
+  let followUpRequired = form.followUpRequired
+  const days = procedure.defaultFollowUpDays
+  if (!followUpDate && days !== null && days !== undefined) {
+    // Days from today, resolved here because a catalogue entry cannot know
+    // when it will be used. `isoDay` builds the value from local parts, so the
+    // date does not slide a day for anyone east of Greenwich after midday.
+    const due = new Date()
+    due.setDate(due.getDate() + days)
+    followUpDate = isoDay(due)
+    followUpRequired = true
+  }
+
+  return {
+    ...form,
+    diagnosis: fill(form.diagnosis, procedure.defaultDiagnosis),
+    findings: fill(form.findings, procedure.defaultFindings),
+    procedureNotes: fill(form.procedureNotes, procedure.defaultProcedureNotes),
+    // `materials` on the catalogue is the list this procedure normally
+    // consumes, which is what `materialsUsed` records. No new column needed.
+    materialsUsed: fill(form.materialsUsed, procedure.materials),
+    followUpDate,
+    followUpRequired,
+  }
 }
 
 export default function NewTreatmentPage() {
@@ -125,11 +197,20 @@ export default function NewTreatmentPage() {
             )
             if (procedure) {
               setSelectedProcedure(procedure)
-              setFormData((prev) => ({
-                ...prev,
-                procedureId: procedure.id,
-                cost: prev.cost || procedure.basePrice.toString(),
-              }))
+              // The same defaults as a hand-picked procedure. This branch used
+              // to fill only the cost, so arriving from an appointment with
+              // ?procedureId= gave a blank note while choosing the identical
+              // procedure from the menu gave a filled one.
+              setFormData((prev) =>
+                withProcedureDefaults(
+                  {
+                    ...prev,
+                    procedureId: procedure.id,
+                    cost: prev.cost || procedure.basePrice.toString(),
+                  },
+                  procedure
+                )
+              )
             }
           }
         }
@@ -141,32 +222,43 @@ export default function NewTreatmentPage() {
     fetchData()
   }, [preselectedPatientId, preselectedProcedureId])
 
-  // Filter patients by search
-  // Group procedures by category
-  const groupedProcedures = procedures.reduce(
-    (acc, proc) => {
-      if (!acc[proc.category]) {
-        acc[proc.category] = []
-      }
-      acc[proc.category].push(proc)
-      return acc
-    },
-    {} as Record<string, Procedure[]>
-  )
-
   const handlePatientSelect = (patient: Patient) => {
     setSelectedPatient(patient)
     setFormData({ ...formData, patientId: patient.id })
   }
 
+  /**
+   * The catalogue as select options, category first so that typing a category
+   * name still finds its procedures and the list reads in the same order the
+   * grouped dropdown did.
+   */
+  const procedureOptions: SearchOption[] = useMemo(
+    () =>
+      // The category grouping this replaced existed only to draw headings in
+      // a Select. The search field shows the category on each row instead, so
+      // it is searchable rather than merely visible.
+      procedures.map((proc) => ({
+        id: proc.id,
+        label: proc.name,
+        hint: formatCurrency(proc.basePrice),
+        detail: `${proc.code} · ${procedureCategoryConfig[proc.category]?.label || proc.category}`,
+      })),
+    [procedures]
+  )
+
   const handleProcedureSelect = (procedureId: string) => {
     const procedure = procedures.find((p) => p.id === procedureId)
     setSelectedProcedure(procedure || null)
-    setFormData({
-      ...formData,
-      procedureId,
-      cost: procedure ? procedure.basePrice.toString() : '',
-    })
+    setFormData((prev) =>
+      withProcedureDefaults(
+        {
+          ...prev,
+          procedureId,
+          cost: procedure ? procedure.basePrice.toString() : '',
+        },
+        procedure || null
+      )
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -224,7 +316,7 @@ export default function NewTreatmentPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Treatment</h1>
+          <h1 className="page-title">New Treatment</h1>
           <p className="text-muted-foreground">Record a new treatment for a patient</p>
         </div>
       </div>
@@ -359,25 +451,33 @@ export default function NewTreatmentPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="procedure">Procedure *</Label>
-                <Select value={formData.procedureId} onValueChange={handleProcedureSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select procedure" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(groupedProcedures).map(([category, procs]) => (
-                      <div key={category}>
-                        <div className="px-2 py-1.5 text-sm font-semibold text-muted-foreground">
-                          {procedureCategoryConfig[category]?.label || category}
-                        </div>
-                        {procs.map((proc) => (
-                          <SelectItem key={proc.id} value={proc.id}>
-                            {proc.code} - {proc.name} ({formatCurrency(proc.basePrice)})
-                          </SelectItem>
-                        ))}
-                      </div>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/*
+                  Searchable, because a Select is a list you scroll and a
+                  catalogue is not a short list. A clinic with sixty procedures
+                  across ten categories made this a scroll to the right heading
+                  and then a scroll within it, every time, with no way to type
+                  "crown" and be done.
+                */}
+                <SearchSelect
+                  id="procedure"
+                  value={formData.procedureId || null}
+                  selectedLabel={selectedProcedure ? selectedProcedure.name : null}
+                  options={procedureOptions}
+                  onSelect={(option) => handleProcedureSelect(option.id)}
+                  onClear={() => handleProcedureSelect('')}
+                  placeholder="Search procedures by name or code…"
+                  emptyMessage="No procedure of that name in the catalogue."
+                  emptyAction={
+                    <Link
+                      href="/settings/procedures"
+                      target="_blank"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Open the procedure catalogue
+                    </Link>
+                  }
+                  aria-label="Procedure"
+                />
               </div>
             </div>
 
@@ -422,6 +522,7 @@ export default function NewTreatmentPage() {
             patientId={selectedPatient.id}
             selected={formData.toothNumbers}
             onChange={(teeth) => setFormData({ ...formData, toothNumbers: teeth })}
+            defaultToFindings
           />
         )}
 

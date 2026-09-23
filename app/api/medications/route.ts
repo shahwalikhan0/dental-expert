@@ -46,6 +46,17 @@ export async function GET(request: NextRequest) {
         orderBy: byName ? { name: 'asc' } : { createdAt: 'desc' },
         skip,
         take: limit,
+        // Stock, so a prescriber can see whether the drug they are about to
+        // write for is on the shelf. Only the two columns that question needs:
+        // pulling whole inventory rows here would put purchase prices and
+        // supplier terms into a dropdown that a dentist opens fifty times a
+        // day. Soft-deleted stock is excluded — it is not on the shelf.
+        include: {
+          inventoryItems: {
+            where: { deletedAt: null, isActive: true },
+            select: { id: true, name: true, unit: true, currentStock: true, minimumStock: true },
+          },
+        },
       }),
       prisma.medication.count({ where }),
     ])

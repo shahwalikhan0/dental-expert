@@ -82,6 +82,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.materials !== undefined) updateData.materials = body.materials
     if (body.preInstructions !== undefined) updateData.preInstructions = body.preInstructions
     if (body.postInstructions !== undefined) updateData.postInstructions = body.postInstructions
+    if (body.defaultDiagnosis !== undefined) updateData.defaultDiagnosis = body.defaultDiagnosis
+    if (body.defaultFindings !== undefined) updateData.defaultFindings = body.defaultFindings
+    if (body.defaultProcedureNotes !== undefined)
+      updateData.defaultProcedureNotes = body.defaultProcedureNotes
+    if (body.defaultFollowUpDays !== undefined)
+      updateData.defaultFollowUpDays =
+        body.defaultFollowUpDays === null || body.defaultFollowUpDays === ''
+          ? null
+          : Number(body.defaultFollowUpDays)
     if (body.isActive !== undefined) updateData.isActive = body.isActive
 
     const procedure = await prisma.procedure.update({

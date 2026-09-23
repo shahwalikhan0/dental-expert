@@ -29,6 +29,13 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { allergyClashes, medicalAlerts } from '@/lib/medical-history'
+import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
+import {
+  medicationStock,
+  type MedicationStock,
+  type MedicationStockRow,
+} from '@/lib/medication-stock'
+import { cn } from '@/lib/utils'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { appendTemplateLines, linesFromTemplate } from '@/lib/prescription-templates'
 import { formatTeeth, parseTeeth } from '@/lib/teeth'
@@ -61,6 +68,9 @@ interface MedicationOption {
   defaultDosage: string | null
   defaultFrequency: string | null
   defaultDuration: string | null
+  contraindications: string | null
+  sideEffects: string | null
+  inventoryItems?: MedicationStockRow[]
 }
 
 interface TemplateOption {
@@ -98,9 +108,16 @@ interface MedicationRow {
   key: number
   medicationId: string | null
   medicationName: string
-  /** Carried so the allergy check can read it. Not sent, not displayed: a row
-      typed by hand has none, and the check falls back to the written name. */
+  /** Carried so the allergy check can read it, and now always present: the
+      field only accepts catalogue entries, so there is no hand-typed row for
+      the check to fall back on. Not sent — the server reads it from the id. */
   genericName: string | null
+  /** Shown beside the row while prescribing. Not sent and not stored: these
+      belong to the drug, not to this prescription, and copying them onto the
+      record would freeze today's warning into a document read years later. */
+  contraindications: string | null
+  sideEffects: string | null
+  stock: MedicationStock | null
   dosage: string
   frequency: string
   duration: string
@@ -139,6 +156,34 @@ const TIMINGS = [
 
 let rowKey = 0
 
+/**
+ * An empty medication line.
+ *
+ * One factory rather than two object literals: the initial row and the row
+ * that "Add medicine" appends were written out separately, so every field
+ * added to the row had to be added twice or one of the two would be missing
+ * it — which is how a row can arrive at the allergy check with `undefined`
+ * where a string was expected.
+ */
+function blankMedRow(): MedicationRow {
+  return {
+    key: ++rowKey,
+    medicationId: null,
+    medicationName: '',
+    genericName: null,
+    contraindications: null,
+    sideEffects: null,
+    stock: null,
+    dosage: '',
+    frequency: '',
+    duration: '',
+    route: 'Oral',
+    timing: '',
+    quantity: '',
+    instructions: '',
+  }
+}
+
 export default function NewPrescriptionPage() {
   const router = useRouter()
   // Warn before a half-filled form is thrown away by a stray click.
@@ -161,7 +206,6 @@ export default function NewPrescriptionPage() {
   const debouncedMedSearch = useDebouncedValue(medSearch)
   const [medOptions, setMedOptions] = useState<MedicationOption[]>([])
   const [searchingMeds, setSearchingMeds] = useState(false)
-  const [activeMedRow, setActiveMedRow] = useState<number | null>(null)
 
   /*
    * Templates, the treatment this is being written during, and the teeth.
@@ -180,21 +224,7 @@ export default function NewPrescriptionPage() {
   const [diagnosis, setDiagnosis] = useState('')
   const [notes, setNotes] = useState('')
   const [validUntil, setValidUntil] = useState('')
-  const [medications, setMedications] = useState<MedicationRow[]>([
-    {
-      key: ++rowKey,
-      medicationId: null,
-      medicationName: '',
-      genericName: null,
-      dosage: '',
-      frequency: '',
-      duration: '',
-      route: 'Oral',
-      timing: '',
-      quantity: '',
-      instructions: '',
-    },
-  ])
+  const [medications, setMedications] = useState<MedicationRow[]>([blankMedRow()])
 
   /**
    * Pre-fill the patient this form was opened for.
@@ -307,6 +337,23 @@ export default function NewPrescriptionPage() {
     return map
   }, [selectedPatient, medications])
 
+  /**
+   * The catalogue results in the shape the select renders.
+   *
+   * Mapped rather than passed through, because `SearchSelect` shows a label, a
+   * hint and a detail line and knows nothing about strengths or generic names.
+   */
+  const medOptionsForSelect: SearchOption[] = useMemo(
+    () =>
+      medOptions.map((m) => ({
+        id: m.id,
+        label: `${m.name}${m.strength ? ` ${m.strength}` : ''}`,
+        hint: m.form || undefined,
+        detail: m.genericName || undefined,
+      })),
+    [medOptions]
+  )
+
   const selectMedication = (med: MedicationOption, rowIndex: number) => {
     setMedications((prev) =>
       prev.map((r, i) =>
@@ -316,6 +363,13 @@ export default function NewPrescriptionPage() {
               medicationId: med.id,
               medicationName: `${med.name}${med.strength ? ` ${med.strength}` : ''}${med.form ? ` (${med.form})` : ''}`,
               genericName: med.genericName,
+              // Read from the catalogue and held for display only. The
+              // prescription stores neither: they describe the drug, and a
+              // warning copied onto a record in 2026 would still be showing
+              // 2026's wording when somebody reads that record in 2031.
+              contraindications: med.contraindications,
+              sideEffects: med.sideEffects,
+              stock: medicationStock(med.inventoryItems),
               dosage: r.dosage || med.defaultDosage || '',
               frequency: r.frequency || med.defaultFrequency || '',
               duration: r.duration || med.defaultDuration || '',
@@ -325,43 +379,40 @@ export default function NewPrescriptionPage() {
     )
     setMedSearch('')
     setMedOptions([])
-    setActiveMedRow(null)
   }
 
-  const updateMedRow = (index: number, field: keyof MedicationRow, value: string) => {
+  /**
+   * Detach a row from the catalogue.
+   *
+   * The medication field no longer takes free text, so there is no "typed over
+   * it" case to handle — clearing is explicit, and it clears everything the
+   * catalogue supplied. The dosage and the rest are left alone: they were
+   * offered as defaults and may since have been edited on purpose.
+   */
+  const clearMedication = (rowIndex: number) => {
     setMedications((prev) =>
       prev.map((r, i) =>
-        i === index
+        i === rowIndex
           ? {
               ...r,
-              [field]: value,
-              // Typing over a name that was picked from the catalogue detaches
-              // the row from it. Keeping the old generic would let the allergy
-              // check answer for a drug that is no longer written here.
-              ...(field === 'medicationName' ? { medicationId: null, genericName: null } : {}),
+              medicationId: null,
+              medicationName: '',
+              genericName: null,
+              contraindications: null,
+              sideEffects: null,
+              stock: null,
             }
           : r
       )
     )
   }
 
+  const updateMedRow = (index: number, field: keyof MedicationRow, value: string) => {
+    setMedications((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)))
+  }
+
   const addMedRow = () => {
-    setMedications((prev) => [
-      ...prev,
-      {
-        key: ++rowKey,
-        medicationId: null,
-        medicationName: '',
-        genericName: null,
-        dosage: '',
-        frequency: '',
-        duration: '',
-        route: 'Oral',
-        timing: '',
-        quantity: '',
-        instructions: '',
-      },
-    ])
+    setMedications((prev) => [...prev, blankMedRow()])
   }
 
   const removeMedRow = (index: number) => {
@@ -441,8 +492,16 @@ export default function NewPrescriptionPage() {
   const applyTemplate = (template: TemplateOption) => {
     const result = appendTemplateLines(medications, linesFromTemplate(template.items) as any)
 
+    // Filled out to a whole row rather than spread onto nothing: a template
+    // line carries no key and none of the catalogue's display fields, and a
+    // row missing them would render with `undefined` where the select expects
+    // a value.
     setMedications(
-      result.lines.map((line: any) => ({ ...line, key: line.key ?? ++rowKey })) as MedicationRow[]
+      result.lines.map((line: any) => ({
+        ...blankMedRow(),
+        ...line,
+        key: line.key ?? ++rowKey,
+      })) as MedicationRow[]
     )
     setAppliedTemplateId(template.id)
     if (template.diagnosis) setDiagnosis((current) => current || template.diagnosis || '')
@@ -541,14 +600,14 @@ export default function NewPrescriptionPage() {
   }
 
   return (
-    <div ref={formRef} className="container mx-auto p-6 max-w-4xl">
+    <div ref={formRef} className="mx-auto max-w-4xl">
       <Button variant="ghost" className="mb-4" onClick={() => router.push('/prescriptions')}>
         <ArrowLeft className="h-4 w-4 mr-2" /> Back to Prescriptions
       </Button>
 
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-          <ClipboardList className="h-8 w-8" />
+        <h1 className="page-title flex items-center gap-2">
+          <ClipboardList className="h-6 w-6" />
           New Prescription
         </h1>
         <p className="text-muted-foreground">Create a new e-prescription for a patient</p>
@@ -765,7 +824,12 @@ export default function NewPrescriptionPage() {
             <div className="space-y-2">
               <Label>Teeth</Label>
               {selectedPatient ? (
-                <ToothPicker patientId={selectedPatient.id} selected={teeth} onChange={setTeeth} />
+                <ToothPicker
+                  patientId={selectedPatient.id}
+                  selected={teeth}
+                  onChange={setTeeth}
+                  defaultToFindings
+                />
               ) : (
                 <p className="text-muted-foreground rounded-xl border border-dashed border-border/60 px-4 py-6 text-center text-sm">
                   Choose a patient first — the chart above shows their findings.
@@ -803,57 +867,92 @@ export default function NewPrescriptionPage() {
                   )}
                 </div>
 
-                {/* Medication name with search */}
-                <div className="relative">
-                  <Label>Medication Name *</Label>
-                  <Input
-                    value={activeMedRow === index ? medSearch : med.medicationName}
-                    onChange={(e) => {
-                      if (activeMedRow !== index) setActiveMedRow(index)
-                      setMedSearch(e.target.value)
-                      updateMedRow(index, 'medicationName', e.target.value)
+                {/*
+                  A select, not a text box. It used to be an Input with a
+                  suggestion list: picking a suggestion linked the row to the
+                  drug catalogue, typing a name and ignoring the list did not,
+                  and nothing downstream could tell the two apart. Stock,
+                  contraindications and side effects all hang off that link, so
+                  a row without one is a row that silently opts out of every
+                  check on this screen.
+                */}
+                <div>
+                  <Label htmlFor={`medication-${med.key}`}>Medication *</Label>
+                  <SearchSelect
+                    id={`medication-${med.key}`}
+                    value={med.medicationId}
+                    selectedLabel={med.medicationName}
+                    options={medOptionsForSelect}
+                    loading={searchingMeds}
+                    onSearchChange={setMedSearch}
+                    onSelect={(option) => {
+                      const chosen = medOptions.find((m) => m.id === option.id)
+                      if (chosen) selectMedication(chosen, index)
                     }}
-                    onFocus={() => setActiveMedRow(index)}
-                    placeholder="Search from catalog or type name..."
+                    onClear={() => clearMedication(index)}
+                    placeholder="Search the drug catalogue…"
+                    emptyMessage={
+                      debouncedMedSearch.trim().length < 2
+                        ? 'Type at least two letters to search.'
+                        : `Nothing in the catalogue matches “${debouncedMedSearch.trim()}”.`
+                    }
+                    emptyAction={
+                      debouncedMedSearch.trim().length >= 2 ? (
+                        <Link
+                          href="/medications"
+                          target="_blank"
+                          className="text-sm text-primary hover:underline"
+                        >
+                          Add it to the drug catalogue
+                        </Link>
+                      ) : null
+                    }
+                    aria-label="Medication"
                   />
-                  {activeMedRow === index && debouncedMedSearch.trim().length >= 2 && (
-                    <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
-                      {searchingMeds ? (
-                        <div className="p-3 text-center text-sm text-muted-foreground">
-                          Searching...
-                        </div>
-                      ) : medOptions.length === 0 ? (
-                        // The catalog is a convenience here, not a
-                        // constraint — the field takes a typed name too, so
-                        // say that rather than just showing nothing.
-                        <div className="p-3 text-sm text-muted-foreground">
-                          Nothing in the catalog matches &ldquo;
-                          {debouncedMedSearch.trim()}&rdquo;. The name you have typed will be used
-                          as it is.
-                        </div>
-                      ) : (
-                        medOptions.map((m) => (
-                          <button
-                            key={m.id}
-                            className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                            onClick={() => selectMedication(m, index)}
-                          >
-                            <span className="font-medium">{m.name}</span>
-                            {m.strength && (
-                              <span className="text-muted-foreground ml-1">{m.strength}</span>
-                            )}
-                            {m.form && (
-                              <span className="text-muted-foreground ml-1">({m.form})</span>
-                            )}
-                            {m.genericName && (
-                              <span className="text-muted-foreground ml-2">— {m.genericName}</span>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
                 </div>
+
+                {/*
+                  What the catalogue knows about this drug, shown while it is
+                  being prescribed rather than filed where nobody reads it.
+                  These two columns existed on Medication from the start and
+                  were written to by the catalogue form, but no screen had ever
+                  displayed them — a field that writes to nowhere.
+                */}
+                {(med.contraindications || med.sideEffects) && (
+                  <div className="rounded-lg border border-border/60 bg-foreground/[0.02] p-3 text-xs">
+                    {med.contraindications && (
+                      <p>
+                        <span className="font-semibold">Contraindications: </span>
+                        <span className="text-muted-foreground">{med.contraindications}</span>
+                      </p>
+                    )}
+                    {med.sideEffects && (
+                      <p className={med.contraindications ? 'mt-1' : undefined}>
+                        <span className="font-semibold">Side effects: </span>
+                        <span className="text-muted-foreground">{med.sideEffects}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/*
+                  Stock, when the drug is linked to a shelf. "Not tracked" is
+                  deliberately silent: on the day this shipped nothing was
+                  linked, and a warning on every row would have trained
+                  prescribers to ignore the one that matters.
+                */}
+                {med.stock && med.stock.state !== 'unlinked' && (
+                  <p
+                    className={cn(
+                      'text-xs',
+                      med.stock.state === 'ok'
+                        ? 'text-muted-foreground'
+                        : 'font-medium text-amber-700 dark:text-amber-400'
+                    )}
+                  >
+                    {med.stock.label}
+                  </p>
+                )}
 
                 {/*
                   Beside the drug that caused it, not gathered into a summary at

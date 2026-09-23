@@ -437,6 +437,14 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/video', 'appointments:read'],
   ['/devices', 'settings:read'],
   ['/settings/audit', 'audit:read'],
+  // The procedure/fee catalogue lives under /settings by URL, but it is master
+  // data, not configuration — §5.10 and the `masters:read` comment above say a
+  // dentist plans treatment *from* this catalogue. Inheriting `settings:read`
+  // from the prefix below locked out every DOCTOR, who holds `masters:read`
+  // and not `settings:read`, so the one role that reads it most could not open
+  // it. Writing is still `settings:write`, enforced by the API and mirrored by
+  // the page, which hides the editing controls it knows the server will refuse.
+  ['/settings/procedures', 'masters:read'],
   ['/settings', 'settings:read'],
   ['/staff', 'staff:read'],
   ['/inventory', 'inventory:read'],
@@ -455,7 +463,19 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/recare', 'appointments:read'],
   ['/appointments', 'appointments:read'],
   ['/sterilization', 'inventory:read'],
-  ['/medications', 'clinical:read'],
+  /*
+   * The drug catalogue is master data, like the procedure list above it: every
+   * clinical role reads it to prescribe, and changing it is an administrative
+   * act under `settings:write`, which the API enforces.
+   *
+   * It was gated on `clinical:read`, which is a different set of people than
+   * the API serves in both directions. Reception, the accountant, inventory
+   * staff and the lab technician all hold `masters:read` and could not open the
+   * page at all; a dentist could open it and was shown Add, Edit and Delete
+   * buttons that the API refuses, because `clinical:read` does not carry
+   * `settings:write`.
+   */
+  ['/medications', 'masters:read'],
 ]
 
 /**

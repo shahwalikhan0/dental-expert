@@ -148,6 +148,9 @@ export async function POST(request: NextRequest) {
       taxPercentage,
       imageUrl,
       notes,
+      // Links this stock to a drug catalogue entry. See the comment on
+      // InventoryItem.medicationId.
+      medicationId,
     } = body
 
     // Validation
@@ -196,6 +199,10 @@ export async function POST(request: NextRequest) {
         taxPercentage: taxPercentage ?? null,
         imageUrl: imageUrl || null,
         notes: notes || null,
+        // Only medicine may carry a catalogue link. Without this guard a form
+        // that had the field filled in, then switched item type, would leave a
+        // box of gloves pointing at amoxicillin and counting towards its stock.
+        medicationId: itemType === 'MEDICINE' && medicationId ? medicationId : null,
       },
     })
 

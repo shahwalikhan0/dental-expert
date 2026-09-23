@@ -26,6 +26,14 @@ const procedureUpdateSchema = z.object({
   materials: z.string().optional(),
   preInstructions: z.string().optional(),
   postInstructions: z.string().optional(),
+  // Boilerplate copied onto a new treatment's note. See model Procedure.
+  defaultDiagnosis: z.string().optional(),
+  defaultFindings: z.string().optional(),
+  defaultProcedureNotes: z.string().optional(),
+  // Non-negative rather than positive: 0 means "follow up the same day",
+  // which is a real answer for an extraction. "No default" is the field
+  // being absent.
+  defaultFollowUpDays: z.number().int().min(0).max(3650).optional().nullable(),
   isActive: z.boolean().optional(),
 })
 

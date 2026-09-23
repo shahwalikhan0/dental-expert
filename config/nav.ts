@@ -38,9 +38,13 @@ import {
   Activity,
   Upload,
   BookOpen,
+  ListTree,
   type LucideIcon,
 } from 'lucide-react'
 import { holderCan, permissionForRoute, type Permission, type RoleHolder } from '@/lib/rbac'
+
+/** Live counts the menu can show. */
+export type NavBadgeKey = 'openVisitors'
 
 export interface NavItem {
   title: string
@@ -53,6 +57,12 @@ export interface NavItem {
    */
   permission?: Permission
   badge?: string
+  /**
+   * A count fetched while the menu is on screen, rather than a fixed string.
+   * The sidebar looks the key up in `useNavBadges`; an absent or zero count
+   * draws nothing, so an empty queue is not advertised.
+   */
+  badgeKey?: NavBadgeKey
   subItems?: NavItem[]
 }
 
@@ -102,12 +112,25 @@ export const navigation: NavSection[] = [
             href: '/appointments/waitlist',
             icon: Clock,
           },
+          /*
+           * Walk-ins sat at the top level, beside Recare and Treatments, as
+           * though it were a module of its own. Every visitor in the system is
+           * created by the appointment form — see the transaction in
+           * app/api/appointments/route.ts, which is the only path that writes
+           * one — so this is the third front-desk workflow, next to the queue
+           * and the waitlist, rather than a fourth place to go.
+           *
+           * The screen itself stays what it is: a decision queue about people,
+           * not a list of visits. The visits are already in the appointments
+           * list.
+           */
+          {
+            title: 'Walk-ins',
+            href: '/walk-ins',
+            icon: UserPlus,
+            badgeKey: 'openVisitors',
+          },
         ],
-      },
-      {
-        title: 'Walk-ins',
-        href: '/walk-ins',
-        icon: UserPlus,
       },
       {
         title: 'Recare',
@@ -115,27 +138,65 @@ export const navigation: NavSection[] = [
         icon: CalendarCheck,
       },
       {
+        // Each clinical module carries the catalogue it writes from, rather
+        // than the catalogues sitting as loose top-level rows. Treatment Plans
+        // is here because it had no menu entry at all: a whole sub-module —
+        // list, create, detail, edit — reachable only from one button partway
+        // down the treatments list.
         title: 'Treatments',
         href: '/treatments',
         icon: Stethoscope,
+        subItems: [
+          {
+            title: 'All Treatments',
+            href: '/treatments',
+            icon: Stethoscope,
+          },
+          {
+            title: 'Treatment Plans',
+            href: '/treatments/plans',
+            icon: ClipboardCheck,
+          },
+          {
+            // A Procedure is the template a treatment is written from — it
+            // carries the name, duration, price, materials, both instruction
+            // sheets and the default clinical note. Putting it here says so.
+            //
+            // It lives at a /settings URL for historical reasons; see
+            // ROUTE_PERMISSIONS in lib/rbac.ts for why that URL does not make
+            // it administrator-only. A child whose href sits outside its
+            // parent's path is already normal here — Walk-ins does the same.
+            title: 'Procedure Catalog',
+            href: '/settings/procedures',
+            icon: ListTree,
+          },
+        ],
       },
       {
+        // Templates were a sibling row ("Rx Templates") first, which put two
+        // top-level entries in the menu for one idea and read as a second
+        // module. Drug Catalog was a third. Nothing outside prescribing
+        // references the drug catalogue, so this is where it belongs.
         title: 'Prescriptions',
         href: '/prescriptions',
         icon: ClipboardList,
-      },
-      {
-        // Beside prescriptions rather than under Settings: a template is
-        // clinical wording a dentist edits between patients, not a
-        // configuration an administrator sets once.
-        title: 'Rx Templates',
-        href: '/prescriptions/templates',
-        icon: FileText,
-      },
-      {
-        title: 'Drug Catalog',
-        href: '/medications',
-        icon: Pill,
+        subItems: [
+          {
+            title: 'All Prescriptions',
+            href: '/prescriptions',
+            icon: ClipboardList,
+          },
+          {
+            title: 'Templates',
+            href: '/prescriptions/templates',
+            icon: FileText,
+          },
+          {
+            title: 'Drug Catalog',
+            href: '/medications',
+            icon: Pill,
+          },
+        ],
       },
     ],
   },
@@ -343,6 +404,18 @@ export function getNavigationForRole(
 }
 
 /**
+ * The children a group draws under itself.
+ *
+ * Every group declares a first child pointing at the group's own href — "All
+ * Appointments", "Overview", "General". The parent row is already that link,
+ * so drawing the child as well is two links to one page, and both of them
+ * highlighted when you are standing on it.
+ */
+export function childrenOf(item: NavItem): NavItem[] {
+  return (item.subItems ?? []).filter((child) => child.href !== item.href)
+}
+
+/**
  * Which navigation item the current page belongs to.
  *
  * The sidebar decided this per item, as `pathname === href || pathname
@@ -363,9 +436,14 @@ export function activeHref(pathname: string, sections: NavSection[]): string | n
 
   for (const section of sections) {
     for (const item of section.items) {
-      const matches = pathname === item.href || pathname.startsWith(item.href + '/')
-      if (!matches) continue
-      if (best === null || item.href.length > best.length) best = item.href
+      // Children as well as parents. A child is not always underneath its
+      // parent's path — Walk-ins lives at `/walk-ins` under Appointments —
+      // so this cannot be left to the prefix match on the parent alone.
+      for (const candidate of [item, ...(item.subItems ?? [])]) {
+        const matches = pathname === candidate.href || pathname.startsWith(candidate.href + '/')
+        if (!matches) continue
+        if (best === null || candidate.href.length > best.length) best = candidate.href
+      }
     }
   }
 

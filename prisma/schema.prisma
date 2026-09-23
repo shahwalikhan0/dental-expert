@@ -791,6 +791,33 @@ model Procedure {
   preInstructions String?           @db.Text
   postInstructions String?          @db.Text
 
+  // Boilerplate for the clinical note, prefilled when this procedure is chosen
+  // on a new treatment and editable there.
+  //
+  // This is the "treatment template" feature, and it lives here rather than in
+  // a TreatmentTemplate model on purpose. A Procedure already *is* the template
+  // for a treatment — it carries the name, the category, the duration, the
+  // price, the materials and both instruction sheets. A second catalogue beside
+  // it would mean two entries called "Root Canal" and no way for a dentist to
+  // know which one to pick.
+  //
+  // Copied onto the Treatment at write time, never read through the relation.
+  // A Treatment can be signed, and `signedAt` is an attestation that the words
+  // in the note are the ones the clinician put their name to. If the note were
+  // rendered from this column, editing the catalogue next year would silently
+  // rewrite notes that were signed last year, and the signature would attest to
+  // text nobody ever read. Same rule as PrescriptionTemplate, for a stronger
+  // reason. See app/(dashboard)/treatments/new/page.tsx.
+  defaultDiagnosis String?
+  defaultFindings String?           @db.Text
+  defaultProcedureNotes String?     @db.Text
+
+  // Days from the treatment date, not a date: a catalogue entry cannot know
+  // when it will be used. Zero is a legitimate answer meaning "same day", so
+  // absence is null and not 0 — the form distinguishes "no follow-up by
+  // default" from "follow up immediately".
+  defaultFollowUpDays Int?
+
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -1194,6 +1221,9 @@ model Medication {
   hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   prescriptionMedications PrescriptionMedication[]
   templateItems   PrescriptionTemplateItem[]
+  /// Stock held for this drug. Several rows when it is stocked in more than
+  /// one pack size. See InventoryItem.medicationId.
+  inventoryItems  InventoryItem[]
 
   @@index([hospitalId, isActive, name])
 }
@@ -1520,6 +1550,20 @@ model InventoryItem {
   batchTracking   Boolean   @default(false)
   expiryTracking  Boolean   @default(false)
 
+  /// The drug catalogue entry this stock is of, for items of type MEDICINE.
+  ///
+  /// The two tables answer different questions and both are needed: Medication
+  /// says what may be prescribed and how it is normally dosed, InventoryItem
+  /// says how many boxes are on the shelf, what they cost and when they
+  /// expire. Until this column existed there was no way to ask whether a drug
+  /// being prescribed was actually in stock, because nothing joined them.
+  ///
+  /// Nullable and one-to-many: most inventory is not medicine, and one
+  /// medication can be stocked in several pack sizes, each its own SKU with
+  /// its own batches. `ON DELETE SET NULL` -- retiring a catalogue entry must
+  /// not delete the stock record or its purchase history.
+  medicationId    String?
+
   storageLocation String?
   storageConditions String?
 
@@ -1530,6 +1574,7 @@ model InventoryItem {
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   preferredSupplier Vendor?   @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
+  medication        Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
   stockTransactions StockTransaction[]
   batches         InventoryBatch[]
   purchaseOrderItems PurchaseOrderItem[]
@@ -1540,6 +1585,7 @@ model InventoryItem {
   @@index([hospitalId, deletedAt, name])
   @@index([hospitalId, deletedAt, itemType])
   @@index([hospitalId, deletedAt, category])
+  @@index([medicationId])
 }
 
 enum InventoryItemType {

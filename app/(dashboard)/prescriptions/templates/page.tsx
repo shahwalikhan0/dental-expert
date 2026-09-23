@@ -94,7 +94,7 @@ export default function PrescriptionTemplatesPage() {
     <div className="space-y-6">
       <div className="page-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Prescription templates</h1>
+          <h1 className="page-title">Prescription templates</h1>
           <p className="text-muted-foreground">
             Shared with everyone at this clinic. Using one copies its medicines onto the
             prescription.

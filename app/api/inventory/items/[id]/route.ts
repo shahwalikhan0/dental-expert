@@ -169,6 +169,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.batchTracking != null) data.batchTracking = body.batchTracking
     if (body.isActive != null) data.isActive = body.isActive
 
+    // Cleared whenever the item is not medicine, so changing the type of an
+    // item that was once a drug does not leave a box of gloves pointing at
+    // amoxicillin and counting towards its stock.
+    data.medication =
+      body.itemType === 'MEDICINE' && body.medicationId
+        ? { connect: { id: body.medicationId } }
+        : { disconnect: true }
+
     data.category = body.category || null
     data.preferredSupplier = body.preferredSupplierId
       ? { connect: { id: body.preferredSupplierId } }

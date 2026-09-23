@@ -67,7 +67,13 @@ const DEFAULT_CATEGORIES = [
   'Other',
 ]
 
+import { medicationStock, type MedicationStockRow } from '@/lib/medication-stock'
+import { useSession } from 'next-auth/react'
+import { holderCan } from '@/lib/rbac'
+
 interface Medication {
+  /** Stock rows that point at this drug. See lib/medication-stock.ts. */
+  inventoryItems?: MedicationStockRow[]
   id: string
   name: string
   genericName: string | null
@@ -100,7 +106,25 @@ const emptyForm = {
 export default function MedicationsPage() {
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  /**
+   * Whether this person may change the catalogue, as opposed to read it.
+   *
+   * The page is open to `masters:read` so anybody who prescribes or dispenses
+   * can look a drug up, but the API guards every write with `settings:write`.
+   * Without this check a dentist would see "Add Medication", fill the whole
+   * dialog in and get a 403 at the end — a control that pretends to work. The
+   * server remains the authority; this only stops us offering an action we
+   * already know it will refuse.
+   */
+  const { data: session } = useSession()
+  const canEditCatalog = holderCan(
+    { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole },
+    'settings:write'
+  )
+
   const [medications, setMedications] = useState<Medication[]>([])
+  /** The last load did not come back. Distinct from "there are none". */
+  const [loadFailed, setLoadFailed] = useState(false)
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -138,16 +162,36 @@ export default function MedicationsPage() {
       const result = await res.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
-      if (result.success) {
-        setMedications(result.data)
-        setPagination((prev) => ({
-          ...prev,
-          total: result.pagination.total,
-          pages: result.pagination.pages,
-        }))
+      /*
+       * A response that is not a success is reported, not dropped.
+       *
+       * This used to be `if (result.success)` with no else, so a 403 or a 500
+       * left the previous rows on screen and the loader off — and on a first
+       * load, an empty grid under "No medications found. Add your first
+       * medication." That is a confident wrong answer: it tells somebody their
+       * catalogue is empty when the truth is that we could not read it, which
+       * is exactly the state you land in after adding a drug and going looking
+       * for it.
+       */
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load medications')
       }
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load medications' })
+      setMedications(result.data)
+      setLoadFailed(false)
+      setPagination((prev) => ({
+        ...prev,
+        total: result.pagination.total,
+        pages: result.pagination.pages,
+      }))
+    } catch (err: any) {
+      if (requestId !== latestRequest.current) return
+      setMedications([])
+      setLoadFailed(true)
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: err?.message || 'Failed to load medications',
+      })
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
@@ -250,19 +294,21 @@ export default function MedicationsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="mx-auto max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Pill className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <Pill className="h-6 w-6" />
             Drug Catalog
           </h1>
           <p className="text-muted-foreground">Manage your medication database</p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Medication
-        </Button>
+        {canEditCatalog && (
+          <Button onClick={openAdd}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Medication
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -339,11 +385,30 @@ export default function MedicationsPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : loadFailed ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Pill className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">The catalog could not be loaded</p>
+              <p className="text-sm">
+                This is not the same as it being empty — nothing has been lost. Try again.
+              </p>
+              <Button variant="outline" className="mt-4" onClick={fetchMedications}>
+                Try again
+              </Button>
+            </div>
           ) : medications.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Pill className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">No medications found</p>
-              <p className="text-sm">Add your first medication to build your drug catalog.</p>
+              <p className="text-lg font-medium">
+                {search || categoryFilter
+                  ? 'No medications match those filters'
+                  : 'No medications found'}
+              </p>
+              <p className="text-sm">
+                {search || categoryFilter
+                  ? 'Clear the filters above to see the whole catalog.'
+                  : 'Add your first medication to build your drug catalog.'}
+              </p>
             </div>
           ) : (
             <Table>
@@ -354,6 +419,7 @@ export default function MedicationsPage() {
                   <TableHead className="hidden md:table-cell">Category</TableHead>
                   <TableHead className="hidden lg:table-cell">Form / Strength</TableHead>
                   <TableHead className="hidden lg:table-cell">Default Dosage</TableHead>
+                  <TableHead className="hidden sm:table-cell">Stock</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -375,30 +441,59 @@ export default function MedicationsPage() {
                         .filter(Boolean)
                         .join(', ') || '—'}
                     </TableCell>
+                    {/*
+                      Stock, now that InventoryItem can point at a drug. A
+                      catalogue entry with nothing linked says so plainly
+                      rather than showing a zero it cannot vouch for.
+                    */}
+                    <TableCell className="hidden sm:table-cell text-sm">
+                      {(() => {
+                        const stock = medicationStock(med.inventoryItems)
+                        if (stock.state === 'unlinked') {
+                          return <span className="text-muted-foreground">Not linked</span>
+                        }
+                        return (
+                          <span
+                            className={
+                              stock.state === 'ok'
+                                ? 'text-muted-foreground'
+                                : 'font-medium text-amber-700 dark:text-amber-400'
+                            }
+                          >
+                            {stock.label}
+                          </span>
+                        )
+                      })()}
+                    </TableCell>
                     <TableCell className="row-actions">
                       <div className="flex gap-1">
-                        <IconTooltip label="Edit this medication">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Edit this medication"
-                            className="h-8 w-8"
-                            onClick={() => openEdit(med)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        </IconTooltip>
-                        <IconTooltip label="Delete this medication">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Delete this medication"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => handleDelete(med)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </IconTooltip>
+                        {!canEditCatalog && <span className="text-muted-foreground">—</span>}
+                        {canEditCatalog && (
+                          <>
+                            <IconTooltip label="Edit this medication">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Edit this medication"
+                                className="h-8 w-8"
+                                onClick={() => openEdit(med)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </IconTooltip>
+                            <IconTooltip label="Delete this medication">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Delete this medication"
+                                className="h-8 w-8 text-destructive"
+                                onClick={() => handleDelete(med)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </IconTooltip>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
