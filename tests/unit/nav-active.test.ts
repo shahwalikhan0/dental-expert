@@ -57,7 +57,15 @@ describe('activeHref', () => {
 describe('the real navigation', () => {
   it('highlights exactly one item for every nested pair it contains', () => {
     const real = getNavigationForRole('ADMIN', null, { isPlatformAdmin: false })
-    const hrefs = real.flatMap((section) => section.items.map((item) => item.href))
+    // Children as well as parents. This counted only top-level hrefs, which
+    // worked while nesting was expressed by sibling rows — "Rx Templates"
+    // beside "Prescriptions". Now that each module carries its catalogue as a
+    // sub-item, every nested pair in the menu lives one level down, and
+    // counting only the top level found nothing to check. The guard below is
+    // what caught it.
+    const hrefs = real.flatMap((section) =>
+      section.items.flatMap((item) => [item.href, ...(item.subItems ?? []).map((sub) => sub.href)])
+    )
 
     const nested = hrefs.filter((href) => hrefs.some((other) => href.startsWith(other + '/')))
     // If this is ever zero the test has stopped proving anything.

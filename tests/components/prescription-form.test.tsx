@@ -98,6 +98,55 @@ vi.mock('next/link', () => ({
 import NewPrescriptionPage from '@/app/(dashboard)/prescriptions/new/page'
 
 // ---------------------------------------------------------------------------
+// Picking a medication
+// ---------------------------------------------------------------------------
+
+/**
+ * The medication field is a select over the drug catalogue, not a text box.
+ *
+ * These tests used to type a name into an Input and carry on. That stopped
+ * working on purpose: a typed name that was never matched to a catalogue entry
+ * left the row with a null `medicationId`, and the stock, contraindication and
+ * side-effect checks all hang off that link. Driving the real control here is
+ * the point — a test that typed into a box the application no longer has would
+ * pass while the feature was broken.
+ */
+const CATALOGUE_MED = {
+  id: 'med-1',
+  name: 'Amoxicillin',
+  genericName: 'Amoxicillin',
+  form: 'Capsule',
+  strength: '500mg',
+  defaultDosage: '',
+  defaultFrequency: '',
+  defaultDuration: '',
+  contraindications: null,
+  sideEffects: null,
+  inventoryItems: [],
+}
+
+/** A fetch answer that serves the drug catalogue and an empty list elsewhere. */
+function catalogueJson(url: string) {
+  if (typeof url === 'string' && url.includes('/api/medications')) {
+    return { success: true, data: [CATALOGUE_MED] }
+  }
+  return { data: [] }
+}
+
+/** Type into the medication combobox and choose the catalogue entry. */
+async function pickMedication() {
+  const combo = screen.getAllByRole('combobox', { name: 'Medication' })[0]
+  fireEvent.focus(combo)
+  fireEvent.change(combo, { target: { value: 'Amox' } })
+
+  // 300ms of debounce before the request is even sent, so this needs longer
+  // than the default find timeout.
+  const option = await screen.findByRole('option', { name: /Amoxicillin/ }, { timeout: 3000 })
+  fireEvent.click(option)
+  return combo
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -172,7 +221,7 @@ describe('NewPrescriptionPage', () => {
   describe('Medication rows', () => {
     it('renders medication field labels', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('Medication Name *')).toBeInTheDocument()
+      expect(screen.getByText('Medication *')).toBeInTheDocument()
       expect(screen.getByText('Dosage *')).toBeInTheDocument()
       expect(screen.getByText('Frequency *')).toBeInTheDocument()
       expect(screen.getByText('Duration *')).toBeInTheDocument()
@@ -204,12 +253,20 @@ describe('NewPrescriptionPage', () => {
       expect(screen.getByText('Medication 2')).toBeInTheDocument()
     })
 
-    it('can fill medication fields', () => {
+    it('can fill medication fields', async () => {
+      ;(global.fetch as any).mockImplementation((url: string) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(catalogueJson(url)) })
+      )
+
       render(<NewPrescriptionPage />)
 
-      const nameInput = screen.getByPlaceholderText('Search from catalog or type name...')
-      fireEvent.change(nameInput, { target: { value: 'Amoxicillin' } })
-      expect(nameInput).toHaveValue('Amoxicillin')
+      const combo = await pickMedication()
+      // The chosen drug is shown as the field's placeholder and the search box
+      // is empty again: the field holds a reference to a catalogue entry, not
+      // the text that found it. Asserting on the value would be asserting that
+      // it is still a text box.
+      expect(combo).toHaveValue('')
+      expect(combo).toHaveAttribute('placeholder', expect.stringContaining('Amoxicillin'))
 
       const dosageInput = screen.getByPlaceholderText('1 tablet')
       fireEvent.change(dosageInput, { target: { value: '500mg' } })
@@ -286,16 +343,14 @@ describe('NewPrescriptionPage', () => {
         }
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ data: [] }),
+          json: () => Promise.resolve(catalogueJson(url)),
         })
       })
 
       render(<NewPrescriptionPage />)
 
-      // Type medication name but leave dosage, frequency, duration empty
-      fireEvent.change(screen.getByPlaceholderText('Search from catalog or type name...'), {
-        target: { value: 'Amoxicillin' },
-      })
+      // Choose a medication but leave dosage, frequency and duration empty
+      await pickMedication()
 
       // The form validates that at least one med has name+dosage+frequency+duration
       // Since we can't easily select a patient in this mock setup, submitting will first error on patient
@@ -333,7 +388,7 @@ describe('NewPrescriptionPage', () => {
               }),
           })
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(catalogueJson(url)) })
       })
 
       render(<NewPrescriptionPage />)
@@ -372,7 +427,7 @@ describe('NewPrescriptionPage', () => {
               }),
           })
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(catalogueJson(url)) })
       })
 
       render(<NewPrescriptionPage />)
@@ -423,7 +478,7 @@ describe('NewPrescriptionPage', () => {
             json: () => Promise.resolve({ data: { id: 'rx1', prescriptionNo: 'RX001' } }),
           })
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(catalogueJson(url)) })
       })
 
       render(<NewPrescriptionPage />)
@@ -440,9 +495,7 @@ describe('NewPrescriptionPage', () => {
       )
 
       // Fill medication
-      fireEvent.change(screen.getByPlaceholderText('Search from catalog or type name...'), {
-        target: { value: 'Amoxicillin 500mg' },
-      })
+      await pickMedication()
       fireEvent.change(screen.getByPlaceholderText('1 tablet'), { target: { value: '1 cap' } })
       fireEvent.change(screen.getByPlaceholderText('3 times a day'), { target: { value: 'TID' } })
       fireEvent.change(screen.getByPlaceholderText('5 days'), { target: { value: '7 days' } })
@@ -499,7 +552,7 @@ describe('NewPrescriptionPage', () => {
             json: () => Promise.resolve({ error: 'Failed to save prescription' }),
           })
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(catalogueJson(url)) })
       })
 
       render(<NewPrescriptionPage />)
@@ -516,9 +569,7 @@ describe('NewPrescriptionPage', () => {
       )
 
       // Fill medication
-      fireEvent.change(screen.getByPlaceholderText('Search from catalog or type name...'), {
-        target: { value: 'Ibuprofen' },
-      })
+      await pickMedication()
       fireEvent.change(screen.getByPlaceholderText('1 tablet'), { target: { value: '1 tab' } })
       fireEvent.change(screen.getByPlaceholderText('3 times a day'), { target: { value: 'BID' } })
       fireEvent.change(screen.getByPlaceholderText('5 days'), { target: { value: '3 days' } })
