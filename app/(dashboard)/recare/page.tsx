@@ -316,9 +316,17 @@ export default function RecarePage() {
               ) : recares.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    {band === 'OVERDUE'
-                      ? 'Nobody is overdue. That is the number to keep at zero.'
-                      : 'Nothing in this band.'}
+                    {/*
+                      A filtered list needs a different sentence. "Nobody is
+                      overdue" is good news and, under a search that matched
+                      nothing, it is also false — there may be plenty overdue,
+                      none of them called what was typed.
+                    */}
+                    {debouncedSearch || typeId !== 'all'
+                      ? 'No records found for this search.'
+                      : band === 'OVERDUE'
+                        ? 'Nobody is overdue. That is the number to keep at zero.'
+                        : 'Nothing in this band.'}
                   </TableCell>
                 </TableRow>
               ) : (

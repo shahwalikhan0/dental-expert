@@ -35,8 +35,11 @@ import {
   Save,
   AlertCircle,
   GripVertical,
+  Loader2,
 } from 'lucide-react'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
+import { usePatientSearch } from '@/hooks/use-patient-search'
+import { fetchHandedPatient } from '@/lib/prefill'
 
 interface Patient {
   id: string
@@ -72,11 +75,10 @@ export default function NewTreatmentPlanPage() {
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
 
-  const [patients, setPatients] = useState<Patient[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [patientSearch, setPatientSearch] = useState('')
+  const patientSearch = usePatientSearch<Patient>()
 
   // Form state
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
@@ -96,19 +98,14 @@ export default function NewTreatmentPlanPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [patientsRes, proceduresRes] = await Promise.all([
-          fetch('/api/patients?limit=100'),
+        const [proceduresRes, handedPatient] = await Promise.all([
           fetch('/api/procedures?all=true&isActive=true'),
+          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
         ])
 
-        if (patientsRes.ok) {
-          const data = await patientsRes.json()
-          setPatients(data.patients)
-          if (preselectedPatientId) {
-            const patient = data.patients.find((p: Patient) => p.id === preselectedPatientId)
-            if (patient) setSelectedPatient(patient)
-          }
-        }
+        // Asked for by id rather than looked for in a page of the register,
+        // which quietly failed for every patient past the hundredth.
+        if (handedPatient) setSelectedPatient(handedPatient)
 
         if (proceduresRes.ok) {
           const data = await proceduresRes.json()
@@ -121,16 +118,6 @@ export default function NewTreatmentPlanPage() {
 
     fetchData()
   }, [preselectedPatientId])
-
-  const filteredPatients = patients.filter((patient) => {
-    const searchLower = patientSearch.toLowerCase()
-    return (
-      patient.firstName.toLowerCase().includes(searchLower) ||
-      patient.lastName.toLowerCase().includes(searchLower) ||
-      patient.phone.includes(patientSearch) ||
-      patient.patientId.toLowerCase().includes(searchLower)
-    )
-  })
 
   const groupedProcedures = procedures.reduce(
     (acc, proc) => {
@@ -290,32 +277,48 @@ export default function NewTreatmentPlanPage() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search patients..."
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
+                    value={patientSearch.term}
+                    onChange={(e) => patientSearch.setTerm(e.target.value)}
                     className="pl-9"
                   />
                 </div>
                 <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {filteredPatients.slice(0, 10).map((patient) => (
-                    <button
-                      key={patient.id}
-                      type="button"
-                      onClick={() => setSelectedPatient(patient)}
-                      className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <div className="font-medium">
-                          {patient.firstName} {patient.lastName}
+                  {patientSearch.searching && (
+                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching…
+                    </p>
+                  )}
+                  {!patientSearch.searching && patientSearch.results.length === 0 && (
+                    <div className="p-4 text-center text-muted-foreground">
+                      {patientSearch.failed
+                        ? 'Could not search just now. Check the connection and try again.'
+                        : patientSearch.isSearch
+                          ? `No patients found for “${patientSearch.searchedFor}”`
+                          : 'No patients found'}
+                    </div>
+                  )}
+                  {!patientSearch.searching &&
+                    patientSearch.results.map((patient) => (
+                      <button
+                        key={patient.id}
+                        type="button"
+                        onClick={() => setSelectedPatient(patient)}
+                        className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                          <User className="h-5 w-5 text-primary" />
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {patient.patientId} | {patient.phone}
+                        <div>
+                          <div className="font-medium">
+                            {patient.firstName} {patient.lastName}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {patient.patientId} | {patient.phone}
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
                 </div>
               </div>
             )}

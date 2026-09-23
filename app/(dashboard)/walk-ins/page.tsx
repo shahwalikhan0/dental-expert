@@ -208,7 +208,12 @@ export default function WalkInsPage() {
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    {state === 'open' ? 'Nobody is waiting on a decision.' : 'Nothing here yet.'}
+                    {/* Under a search, "nobody is waiting" is the wrong fact. */}
+                    {debouncedSearch
+                      ? 'No records found for this search.'
+                      : state === 'open'
+                        ? 'Nobody is waiting on a decision.'
+                        : 'Nothing here yet.'}
                   </TableCell>
                 </TableRow>
               ) : (

@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast'
 import { WORK_TYPES } from '@/lib/lab-orders'
 import { ArrowLeft, Search, User, FlaskConical, Save, Loader2 } from 'lucide-react'
 import { isoDay } from '@/lib/dates'
+import { usePatientSearch } from '@/hooks/use-patient-search'
+import { fetchHandedPatient } from '@/lib/prefill'
 
 interface Patient {
   id: string
@@ -46,10 +48,9 @@ export default function NewLabOrderPage() {
   const preselectedPatientId = searchParams.get('patientId')
   const { toast } = useToast()
 
-  const [patients, setPatients] = useState<Patient[]>([])
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [patientSearch, setPatientSearch] = useState('')
+  const patientSearch = usePatientSearch<Patient>()
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
 
   const [form, setForm] = useState({
@@ -68,25 +69,22 @@ export default function NewLabOrderPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [patientsRes, vendorsRes] = await Promise.all([
-          fetch('/api/patients?limit=100'),
+        const [vendorsRes, handedPatient] = await Promise.all([
           fetch('/api/lab-vendors?status=active&sort=name'),
+          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
         ])
-
-        if (patientsRes.ok) {
-          const data = await patientsRes.json()
-          setPatients(data.patients || [])
-          if (preselectedPatientId) {
-            const patient = (data.patients || []).find(
-              (p: Patient) => p.id === preselectedPatientId
-            )
-            if (patient) setSelectedPatient(patient)
-          }
-        }
 
         if (vendorsRes.ok) {
           const data = await vendorsRes.json()
           setVendors(data.data || [])
+        }
+
+        // Asked for by id. Looking for it in a page of the register meant the
+        // link worked for the first hundred patients and quietly did not for
+        // the rest.
+        if (handedPatient) {
+          setSelectedPatient(handedPatient)
+          setForm((prev) => ({ ...prev, patientId: handedPatient.id }))
         }
       } catch (error) {
         console.error('Error fetching data:', error)
@@ -96,20 +94,9 @@ export default function NewLabOrderPage() {
     fetchData()
   }, [preselectedPatientId])
 
-  const filteredPatients = patients.filter((patient) => {
-    const s = patientSearch.toLowerCase()
-    return (
-      patient.firstName.toLowerCase().includes(s) ||
-      patient.lastName.toLowerCase().includes(s) ||
-      patient.phone.includes(patientSearch) ||
-      patient.patientId.toLowerCase().includes(s)
-    )
-  })
-
-  const handlePatientSelect = (patientId: string) => {
-    const patient = patients.find((p) => p.id === patientId)
-    setSelectedPatient(patient || null)
-    setForm((prev) => ({ ...prev, patientId }))
+  const handlePatientSelect = (patient: Patient) => {
+    setSelectedPatient(patient)
+    setForm((prev) => ({ ...prev, patientId: patient.id }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -239,20 +226,31 @@ export default function NewLabOrderPage() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search patients by name, phone, or ID..."
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
+                    value={patientSearch.term}
+                    onChange={(e) => patientSearch.setTerm(e.target.value)}
                     className="pl-9"
                   />
                 </div>
                 <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {filteredPatients.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">No patients found</div>
+                  {patientSearch.searching ? (
+                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching…
+                    </p>
+                  ) : patientSearch.results.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">
+                      {patientSearch.failed
+                        ? 'Could not search just now. Check the connection and try again.'
+                        : patientSearch.isSearch
+                          ? `No patients found for “${patientSearch.searchedFor}”`
+                          : 'No patients found'}
+                    </div>
                   ) : (
-                    filteredPatients.slice(0, 10).map((patient) => (
+                    patientSearch.results.map((patient) => (
                       <button
                         key={patient.id}
                         type="button"
-                        onClick={() => handlePatientSelect(patient.id)}
+                        onClick={() => handlePatientSelect(patient)}
                         className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
                       >
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">

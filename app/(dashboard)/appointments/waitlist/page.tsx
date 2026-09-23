@@ -295,21 +295,33 @@ export default function WaitlistPage() {
                     {searchingPatients && (
                       <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />
                     )}
-                    {patientResults.length > 0 && (
+                    {/*
+                      A search that matched nothing used to render nothing at
+                      all, which on a box with a spinner in it reads as "still
+                      looking" — so the answer "there is no such patient" was
+                      indistinguishable from no answer yet.
+                    */}
+                    {debouncedPatientSearch.trim().length >= 2 && !searchingPatients && (
                       <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                        {patientResults.map((p: any) => (
-                          <button
-                            key={p.id}
-                            className="w-full text-left px-3 py-2 hover:bg-muted text-sm"
-                            onClick={() => {
-                              setSelectedPatient(p)
-                              setPatientSearch('')
-                              setPatientResults([])
-                            }}
-                          >
-                            {p.firstName} {p.lastName} ({p.patientId})
-                          </button>
-                        ))}
+                        {patientResults.length === 0 ? (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">
+                            No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
+                          </p>
+                        ) : (
+                          patientResults.map((p: any) => (
+                            <button
+                              key={p.id}
+                              className="w-full text-left px-3 py-2 hover:bg-muted text-sm"
+                              onClick={() => {
+                                setSelectedPatient(p)
+                                setPatientSearch('')
+                                setPatientResults([])
+                              }}
+                            >
+                              {p.firstName} {p.lastName} ({p.patientId})
+                            </button>
+                          ))
+                        )}
                       </div>
                     )}
                   </div>

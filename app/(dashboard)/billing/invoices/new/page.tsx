@@ -39,6 +39,7 @@ import {
   IndianRupee,
   Calculator,
   FileText,
+  Loader2,
 } from 'lucide-react'
 import { formatCurrency, calculateInvoiceTotals, paymentTermsOptions } from '@/lib/billing-utils'
 
@@ -92,6 +93,9 @@ export default function NewInvoicePage() {
   const [patientSearch, setPatientSearch] = useState('')
   const debouncedPatientSearch = useDebouncedValue(patientSearch)
   const [showPatientDropdown, setShowPatientDropdown] = useState(false)
+  // Whether a request is out, so "no such patient" can be told apart from
+  // "not answered yet". Without it the two look identical: nothing on screen.
+  const [searchingPatients, setSearchingPatients] = useState(false)
 
   // Unbilled treatments
   const [unbilledTreatments, setUnbilledTreatments] = useState<UnbilledTreatment[]>([])
@@ -153,6 +157,7 @@ export default function NewInvoicePage() {
 
     let current = true
     setShowPatientDropdown(true)
+    setSearchingPatients(true)
     ;(async () => {
       try {
         const response = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=10`)
@@ -164,6 +169,8 @@ export default function NewInvoicePage() {
       } catch (error) {
         console.error('Error fetching patients:', error)
         if (current) setPatients([])
+      } finally {
+        if (current) setSearchingPatients(false)
       }
     })()
 
@@ -408,28 +415,39 @@ export default function NewInvoicePage() {
                     onChange={(e) => setPatientSearch(e.target.value)}
                     className="pl-9"
                   />
-                  {showPatientDropdown && patients.length > 0 && (
+                  {showPatientDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
                       {/*
                         Real buttons, not clickable divs. A cashier types a name
                         and then had to reach for the mouse, because this list
                         could not be reached with Tab or chosen with Enter.
                       */}
-                      {patients.map((patient) => (
-                        <button
-                          key={patient.id}
-                          type="button"
-                          className="block w-full px-4 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                          onClick={() => selectPatient(patient)}
-                        >
-                          <span className="block font-medium">
-                            {patient.firstName} {patient.lastName}
-                          </span>
-                          <span className="block text-sm text-muted-foreground">
-                            {patient.patientId} • {patient.phone}
-                          </span>
-                        </button>
-                      ))}
+                      {searchingPatients ? (
+                        <p className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Searching…
+                        </p>
+                      ) : patients.length === 0 ? (
+                        <p className="px-4 py-2 text-sm text-muted-foreground">
+                          No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
+                        </p>
+                      ) : (
+                        patients.map((patient) => (
+                          <button
+                            key={patient.id}
+                            type="button"
+                            className="block w-full px-4 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                            onClick={() => selectPatient(patient)}
+                          >
+                            <span className="block font-medium">
+                              {patient.firstName} {patient.lastName}
+                            </span>
+                            <span className="block text-sm text-muted-foreground">
+                              {patient.patientId} • {patient.phone}
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
