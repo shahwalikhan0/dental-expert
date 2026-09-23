@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { formatTeeth, parseTeeth } from '@/lib/teeth'
 
 // GET — list prescriptions
 export async function GET(request: NextRequest) {
@@ -54,6 +55,17 @@ export async function GET(request: NextRequest) {
             },
           },
           doctor: { select: { id: true, firstName: true, lastName: true } },
+          // Both are provenance for the reader: which wording this came from,
+          // and what was being treated at the time.
+          template: { select: { id: true, name: true } },
+          treatment: {
+            select: {
+              id: true,
+              treatmentNo: true,
+              toothNumbers: true,
+              procedure: { select: { name: true } },
+            },
+          },
           medications: {
             include: { medication: { select: { id: true, name: true, genericName: true } } },
           },
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { patientId, diagnosis, notes, validUntil, medications } = body
+    const { patientId, diagnosis, notes, validUntil, medications, templateId, treatmentId } = body
 
     if (!patientId || !medications || medications.length === 0) {
       return NextResponse.json(
@@ -102,6 +114,59 @@ export async function POST(request: NextRequest) {
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
+
+    /*
+     * A template is optional, and a retired one is still a valid source.
+     *
+     * Only its existence in this clinic is checked. Nothing is read from it:
+     * the medicines were copied onto the request by the screen that applied
+     * it, and re-reading them here would reintroduce exactly the coupling this
+     * design exists to avoid — a template edited tomorrow changing what was
+     * prescribed today.
+     */
+    if (templateId) {
+      const template = await prisma.prescriptionTemplate.findFirst({
+        where: { id: templateId, hospitalId },
+        select: { id: true },
+      })
+      if (!template) {
+        return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      }
+    }
+
+    /*
+     * A treatment, if one was named, must belong to this patient.
+     *
+     * Scoped by `patientId` as well as `hospitalId`: attaching Mrs Khan's
+     * prescription to Mr Ahmed's extraction would put a wrong clinical reason
+     * on a drug record, and it is the sort of thing a mistyped id does
+     * silently.
+     */
+    let teethFromTreatment: string | null = null
+    if (treatmentId) {
+      const treatment = await prisma.treatment.findFirst({
+        where: { id: treatmentId, hospitalId, patientId },
+        select: { id: true, toothNumbers: true },
+      })
+      if (!treatment) {
+        return NextResponse.json(
+          { error: 'That treatment does not belong to this patient' },
+          { status: 400 }
+        )
+      }
+      teethFromTreatment = treatment.toothNumbers
+    }
+
+    /*
+     * The teeth, normalised through one parser.
+     *
+     * Falls back to the treatment's own teeth when the screen sent none, so
+     * prescribing from a treatment records what was treated without the
+     * dentist retyping it. `formatTeeth` drops anything that is not a
+     * permanent FDI tooth rather than storing it — see lib/teeth.ts.
+     */
+    const toothNumbers =
+      formatTeeth(parseTeeth(body.toothNumbers)) ?? formatTeeth(parseTeeth(teethFromTreatment))
 
     // One counter per clinic per year, allocated atomically: two doctors
     // prescribing in the same second get two numbers rather than one number
@@ -133,6 +198,9 @@ export async function POST(request: NextRequest) {
         prescriptionNo,
         patientId,
         doctorId: staff.id,
+        templateId: templateId || null,
+        treatmentId: treatmentId || null,
+        toothNumbers,
         diagnosis: diagnosis || null,
         notes: notes || null,
         validUntil: validUntil ? new Date(validUntil) : null,
@@ -153,6 +221,8 @@ export async function POST(request: NextRequest) {
       include: {
         patient: { select: { patientId: true, firstName: true, lastName: true } },
         doctor: { select: { firstName: true, lastName: true } },
+        template: { select: { id: true, name: true } },
+        treatment: { select: { id: true, treatmentNo: true } },
         medications: true,
       },
     })

@@ -32,6 +32,7 @@ import {
   Play,
   CheckCircle,
   XCircle,
+  ClipboardList,
   Edit,
   Printer,
   AlertCircle,
@@ -368,6 +369,19 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 </Button>
               </>
             )}
+          {/*
+            The other half of the prescription/treatment link. Extraction then
+            antibiotics is the commonest pair of acts in a dental day, and it
+            meant leaving this screen, finding the patient again and retyping
+            the tooth. The form reads the patient, the diagnosis and the teeth
+            from this treatment.
+          */}
+          <Button variant="outline" asChild>
+            <Link href={`/prescriptions/new?treatmentId=${treatment.id}`}>
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Prescribe
+            </Link>
+          </Button>
           <Button variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-2" />
             Print

@@ -125,6 +125,14 @@ export const navigation: NavSection[] = [
         icon: ClipboardList,
       },
       {
+        // Beside prescriptions rather than under Settings: a template is
+        // clinical wording a dentist edits between patients, not a
+        // configuration an administrator sets once.
+        title: 'Rx Templates',
+        href: '/prescriptions/templates',
+        icon: FileText,
+      },
+      {
         title: 'Drug Catalog',
         href: '/medications',
         icon: Pill,
@@ -332,4 +340,34 @@ export function getNavigationForRole(
         .filter((item) => !item.subItems || item.subItems.length > 0),
     }))
     .filter((section) => section.items.length > 0)
+}
+
+/**
+ * Which navigation item the current page belongs to.
+ *
+ * The sidebar decided this per item, as `pathname === href || pathname
+ * .startsWith(href)`. Every nested pair in this file therefore lit up twice:
+ * standing on `/billing/invoices` highlighted both Billing and Invoices, and
+ * `/settings/forms` highlighted both Settings and Forms. Two highlighted items
+ * is not a stronger signal than one — it is an unanswered question about which
+ * section you are in.
+ *
+ * The longest matching href wins, which is the specific one. Matching is on
+ * path segments, so `/prescriptions/templates` is under `/prescriptions` while
+ * a hypothetical `/prescriptions-archive` would not be.
+ *
+ * Returns the winning href, or null on a page no item owns.
+ */
+export function activeHref(pathname: string, sections: NavSection[]): string | null {
+  let best: string | null = null
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      const matches = pathname === item.href || pathname.startsWith(item.href + '/')
+      if (!matches) continue
+      if (best === null || item.href.length > best.length) best = item.href
+    }
+  }
+
+  return best
 }

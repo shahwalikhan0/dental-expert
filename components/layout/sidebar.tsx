@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getNavigationForRole } from '@/config/nav'
+import { activeHref, getNavigationForRole } from '@/config/nav'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -38,6 +38,8 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname()
   const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
+  // One item is highlighted, not every ancestor of the page. See activeHref.
+  const current = activeHref(pathname, navigation)
   const { isCollapsed, toggleSidebar } = useSidebar()
 
   return (
@@ -147,9 +149,7 @@ export function Sidebar({
                 )}
                 <div className="flex flex-col gap-1">
                   {section.items.map((item) => {
-                    const isActive =
-                      pathname === item.href ||
-                      (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                    const isActive = current === item.href
                     const Icon = item.icon
 
                     if (isCollapsed) {

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getNavigationForRole } from '@/config/nav'
+import { activeHref, getNavigationForRole } from '@/config/nav'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSidebar } from './sidebar-context'
@@ -30,6 +30,8 @@ export function MobileSidebar({
 }: MobileSidebarProps) {
   const pathname = usePathname()
   const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
+  // One item is highlighted, not every ancestor of the page. See activeHref.
+  const current = activeHref(pathname, navigation)
   const { mobileOpen, setMobileOpen } = useSidebar()
 
   // Close on route change
@@ -100,9 +102,7 @@ export function MobileSidebar({
                 </h4>
                 <div className="flex flex-col gap-0.5">
                   {section.items.map((item) => {
-                    const isActive =
-                      pathname === item.href ||
-                      (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                    const isActive = current === item.href
                     const Icon = item.icon
                     return (
                       <Link

@@ -29,6 +29,9 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { allergyClashes, medicalAlerts } from '@/lib/medical-history'
+import { ToothPicker } from '@/components/dental-chart/tooth-picker'
+import { appendTemplateLines, linesFromTemplate } from '@/lib/prescription-templates'
+import { formatTeeth, parseTeeth } from '@/lib/teeth'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { fetchHandedPatient } from '@/lib/prefill'
 
@@ -58,6 +61,37 @@ interface MedicationOption {
   defaultDosage: string | null
   defaultFrequency: string | null
   defaultDuration: string | null
+}
+
+interface TemplateOption {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  diagnosis: string | null
+  notes: string | null
+  items: Array<{
+    medicationId: string | null
+    medicationName: string
+    dosage: string
+    frequency: string
+    duration: string
+    route: string
+    timing: string | null
+    quantity: number | null
+    instructions: string | null
+    medication?: { genericName: string | null } | null
+  }>
+}
+
+interface TreatmentContext {
+  id: string
+  treatmentNo: string
+  toothNumbers: string | null
+  diagnosis: string | null
+  patientId: string
+  procedure?: { name: string } | null
+  patient?: { id: string; patientId: string; firstName: string; lastName: string } | null
 }
 
 interface MedicationRow {
@@ -128,6 +162,19 @@ export default function NewPrescriptionPage() {
   const [medOptions, setMedOptions] = useState<MedicationOption[]>([])
   const [searchingMeds, setSearchingMeds] = useState(false)
   const [activeMedRow, setActiveMedRow] = useState<number | null>(null)
+
+  /*
+   * Templates, the treatment this is being written during, and the teeth.
+   *
+   * `?treatmentId=` is how the treatment screen hands over: prescribing after
+   * an extraction should not mean retyping the patient, the diagnosis and the
+   * tooth that was just pulled.
+   */
+  const presetTreatmentId = searchParams.get('treatmentId')
+  const [templates, setTemplates] = useState<TemplateOption[]>([])
+  const [appliedTemplateId, setAppliedTemplateId] = useState<string | null>(null)
+  const [treatment, setTreatment] = useState<TreatmentContext | null>(null)
+  const [teeth, setTeeth] = useState<number[]>([])
 
   // Form data
   const [diagnosis, setDiagnosis] = useState('')
@@ -322,6 +369,96 @@ export default function NewPrescriptionPage() {
     setMedications((prev) => prev.filter((_, i) => i !== index))
   }
 
+  /* The list is short and clinic-wide, so it is fetched once rather than searched. */
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/prescription-templates')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.data)) setTemplates(data.data)
+      })
+      .catch(() => {
+        /* No templates is a prescription form without a shortcut, not a
+           broken one. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  /*
+   * Arriving from a treatment: carry across what it already knows.
+   *
+   * The diagnosis and the teeth are prefilled and remain editable — the
+   * dentist may be treating 46 and prescribing for 46 and 47. The patient is
+   * taken from the treatment rather than trusted from the query string, so a
+   * hand-edited URL cannot attach a prescription to the wrong record.
+   */
+  useEffect(() => {
+    if (!presetTreatmentId) return
+    let cancelled = false
+    fetch(`/api/treatments/${encodeURIComponent(presetTreatmentId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const t: TreatmentContext | undefined = data?.data ?? data
+        if (cancelled || !t?.id) return
+        setTreatment(t)
+        setTeeth(parseTeeth(t.toothNumbers))
+        if (t.diagnosis) setDiagnosis((current) => current || t.diagnosis || '')
+        /*
+         * The patient is re-fetched rather than taken from the treatment.
+         *
+         * `/api/treatments/[id]` selects a handful of patient columns and does
+         * not include `medicalHistory`, which is where allergies live. Using
+         * that object here would leave `allergies` undefined, and the clash
+         * check below reads it — so prescribing from a treatment would have
+         * been the one route into this form with the allergy warning silently
+         * switched off. Same loader the `?patientId=` arrival uses.
+         */
+        if (t.patient?.id) {
+          fetchHandedPatient<Patient>(t.patient.id).then((patient) => {
+            if (!cancelled && patient) setSelectedPatient(patient)
+          })
+        }
+      })
+      .catch(() => {
+        /* Prescribing still works; it just will not be linked. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [presetTreatmentId])
+
+  /**
+   * Put a template's medicines on the form.
+   *
+   * Appends. A dentist who has typed two medicines and then reaches for
+   * "Post-extraction" is adding to their work, not replacing it — see
+   * lib/prescription-templates.ts. Duplicates are added and announced rather
+   * than blocked: the same drug at two strengths is a real prescription, and
+   * silently adding a second amoxicillin is how somebody dispenses twice.
+   */
+  const applyTemplate = (template: TemplateOption) => {
+    const result = appendTemplateLines(medications, linesFromTemplate(template.items) as any)
+
+    setMedications(
+      result.lines.map((line: any) => ({ ...line, key: line.key ?? ++rowKey })) as MedicationRow[]
+    )
+    setAppliedTemplateId(template.id)
+    if (template.diagnosis) setDiagnosis((current) => current || template.diagnosis || '')
+    if (template.notes) setNotes((current) => (current ? current : template.notes || ''))
+
+    toast({
+      title: `${template.name} added`,
+      description: result.duplicates.length
+        ? `${result.added} medicine${result.added === 1 ? '' : 's'} added. ${result.duplicates.join(
+            ', '
+          )} was already on this prescription — check the dose before saving.`
+        : `${result.added} medicine${result.added === 1 ? '' : 's'} added to what you had.`,
+      variant: result.duplicates.length ? 'destructive' : undefined,
+    })
+  }
+
   const handleSubmit = async () => {
     if (!selectedPatient) {
       toast({ variant: 'destructive', title: 'Error', description: 'Please select a patient' })
@@ -366,6 +503,12 @@ export default function NewPrescriptionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patientId: selectedPatient.id,
+          // Provenance, clinical context, and this patient's teeth. All three
+          // are optional and all three are copied, never referenced — see the
+          // notes on the Prescription model.
+          templateId: appliedTemplateId,
+          treatmentId: treatment?.id ?? null,
+          toothNumbers: formatTeeth(teeth),
           diagnosis,
           notes,
           validUntil: validUntil || null,
@@ -483,11 +626,18 @@ export default function NewPrescriptionPage() {
                   onChange={(e) => setPatientSearch(e.target.value)}
                   className="pl-9"
                 />
-                {(patients.length > 0 || searchingPatients) && (
+                {debouncedPatientSearch.trim().length >= 2 && (
                   <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-60 overflow-y-auto">
                     {searchingPatients ? (
                       <div className="p-3 text-center text-sm text-muted-foreground">
                         Searching...
+                      </div>
+                    ) : patients.length === 0 ? (
+                      // Closing the list on nothing-found left the prescriber
+                      // looking at a plain box, which is what it looks like
+                      // before a search has finished.
+                      <div className="p-3 text-sm text-muted-foreground">
+                        No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
                       </div>
                     ) : (
                       patients.map((p) => (
@@ -517,9 +667,80 @@ export default function NewPrescriptionPage() {
         </Card>
 
         {/* Diagnosis */}
+        {/*
+          Where this prescription came from, when it came from somewhere.
+          Shown rather than hidden in the payload: a dentist should be able to
+          see that this is attached to an extraction before they save it.
+        */}
+        {treatment && (
+          <Card className="border-primary/30 bg-primary/[0.04]">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="text-sm">
+                <p className="font-medium">
+                  Prescribing for {treatment.procedure?.name ?? 'treatment'} ·{' '}
+                  {treatment.treatmentNo}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  The diagnosis and teeth below were carried across. Both are editable.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setTreatment(null)}>
+                Unlink
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Templates */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Start from a template</CardTitle>
+              <CardDescription>
+                Adds its medicines to whatever you have already typed. Nothing is replaced.
+              </CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/prescriptions/templates">Manage</Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {templates.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No templates yet.{' '}
+                <Link href="/prescriptions/templates/new" className="text-primary hover:underline">
+                  Create one
+                </Link>{' '}
+                from a prescription you write often.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {templates.map((template) => (
+                  <Button
+                    key={template.id}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTemplate(template)}
+                  >
+                    {template.name}
+                    <span className="text-muted-foreground ml-2 text-xs">
+                      {template.items.length}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
-            <CardTitle>Diagnosis</CardTitle>
+            <CardTitle>Diagnosis &amp; teeth</CardTitle>
+            <CardDescription>
+              Which teeth this prescription is about. Findings already on the patient&apos;s chart
+              are marked.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -539,6 +760,17 @@ export default function NewPrescriptionPage() {
                   onChange={(e) => setValidUntil(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Teeth</Label>
+              {selectedPatient ? (
+                <ToothPicker patientId={selectedPatient.id} selected={teeth} onChange={setTeeth} />
+              ) : (
+                <p className="text-muted-foreground rounded-xl border border-dashed border-border/60 px-4 py-6 text-center text-sm">
+                  Choose a patient first — the chart above shows their findings.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -584,24 +816,41 @@ export default function NewPrescriptionPage() {
                     onFocus={() => setActiveMedRow(index)}
                     placeholder="Search from catalog or type name..."
                   />
-                  {activeMedRow === index && medOptions.length > 0 && (
+                  {activeMedRow === index && debouncedMedSearch.trim().length >= 2 && (
                     <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
-                      {medOptions.map((m) => (
-                        <button
-                          key={m.id}
-                          className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                          onClick={() => selectMedication(m, index)}
-                        >
-                          <span className="font-medium">{m.name}</span>
-                          {m.strength && (
-                            <span className="text-muted-foreground ml-1">{m.strength}</span>
-                          )}
-                          {m.form && <span className="text-muted-foreground ml-1">({m.form})</span>}
-                          {m.genericName && (
-                            <span className="text-muted-foreground ml-2">— {m.genericName}</span>
-                          )}
-                        </button>
-                      ))}
+                      {searchingMeds ? (
+                        <div className="p-3 text-center text-sm text-muted-foreground">
+                          Searching...
+                        </div>
+                      ) : medOptions.length === 0 ? (
+                        // The catalog is a convenience here, not a
+                        // constraint — the field takes a typed name too, so
+                        // say that rather than just showing nothing.
+                        <div className="p-3 text-sm text-muted-foreground">
+                          Nothing in the catalog matches &ldquo;
+                          {debouncedMedSearch.trim()}&rdquo;. The name you have typed will be used
+                          as it is.
+                        </div>
+                      ) : (
+                        medOptions.map((m) => (
+                          <button
+                            key={m.id}
+                            className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
+                            onClick={() => selectMedication(m, index)}
+                          >
+                            <span className="font-medium">{m.name}</span>
+                            {m.strength && (
+                              <span className="text-muted-foreground ml-1">{m.strength}</span>
+                            )}
+                            {m.form && (
+                              <span className="text-muted-foreground ml-1">({m.form})</span>
+                            )}
+                            {m.genericName && (
+                              <span className="text-muted-foreground ml-2">— {m.genericName}</span>
+                            )}
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

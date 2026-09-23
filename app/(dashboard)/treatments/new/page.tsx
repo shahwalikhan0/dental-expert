@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchHandedPatient } from '@/lib/prefill'
+import { usePatientSearch } from '@/hooks/use-patient-search'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,8 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Search, User, Stethoscope, Save, AlertCircle } from 'lucide-react'
-import { DentalChart } from '@/components/treatments/dental-chart'
+import { ArrowLeft, Search, User, Stethoscope, Save, AlertCircle, Loader2 } from 'lucide-react'
+import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
 import { TreatmentAssist } from '@/components/ai/treatment-assist'
 import { VoiceInput } from '@/components/clinical/voice-input'
@@ -62,12 +63,11 @@ export default function NewTreatmentPage() {
   // worth clicking arrived empty.
   const preselectedProcedureId = searchParams.get('procedureId')
 
-  const [patients, setPatients] = useState<Patient[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [patientSearch, setPatientSearch] = useState('')
+  const patientSearch = usePatientSearch<Patient>()
 
   // Form state
   const [formData, setFormData] = useState({
@@ -93,21 +93,15 @@ export default function NewTreatmentPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [patientsRes, doctorsRes, proceduresRes, handedPatient] = await Promise.all([
-          fetch('/api/patients?limit=100'),
+        const [doctorsRes, proceduresRes, handedPatient] = await Promise.all([
           fetch('/api/staff/doctors'),
           fetch('/api/procedures?all=true&isActive=true'),
           preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
         ])
 
-        if (patientsRes.ok) {
-          const data = await patientsRes.json()
-          setPatients(data.patients)
-        }
-
-        // Fetched by id rather than looked for in the hundred records above:
-        // patient 101 onwards is not in that list, so a link from their own
-        // record used to land here with the patient field empty.
+        // Asked for by id. The register is searched on the server — see
+        // hooks/use-patient-search.ts — so there is no local list to find it
+        // in, and there never should have been.
         if (handedPatient) {
           setSelectedPatient(handedPatient)
         }
@@ -148,16 +142,6 @@ export default function NewTreatmentPage() {
   }, [preselectedPatientId, preselectedProcedureId])
 
   // Filter patients by search
-  const filteredPatients = patients.filter((patient) => {
-    const searchLower = patientSearch.toLowerCase()
-    return (
-      patient.firstName.toLowerCase().includes(searchLower) ||
-      patient.lastName.toLowerCase().includes(searchLower) ||
-      patient.phone.includes(patientSearch) ||
-      patient.patientId.toLowerCase().includes(searchLower)
-    )
-  })
-
   // Group procedures by category
   const groupedProcedures = procedures.reduce(
     (acc, proc) => {
@@ -170,10 +154,9 @@ export default function NewTreatmentPage() {
     {} as Record<string, Procedure[]>
   )
 
-  const handlePatientSelect = (patientId: string) => {
-    const patient = patients.find((p) => p.id === patientId)
-    setSelectedPatient(patient || null)
-    setFormData({ ...formData, patientId })
+  const handlePatientSelect = (patient: Patient) => {
+    setSelectedPatient(patient)
+    setFormData({ ...formData, patientId: patient.id })
   }
 
   const handleProcedureSelect = (procedureId: string) => {
@@ -296,20 +279,31 @@ export default function NewTreatmentPage() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search patients by name, phone, or ID..."
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
+                    value={patientSearch.term}
+                    onChange={(e) => patientSearch.setTerm(e.target.value)}
                     className="pl-9"
                   />
                 </div>
                 <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {filteredPatients.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">No patients found</div>
+                  {patientSearch.searching ? (
+                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching…
+                    </p>
+                  ) : patientSearch.results.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">
+                      {patientSearch.failed
+                        ? 'Could not search just now. Check the connection and try again.'
+                        : patientSearch.isSearch
+                          ? `No patients found for “${patientSearch.searchedFor}”`
+                          : 'No patients found'}
+                    </div>
                   ) : (
-                    filteredPatients.slice(0, 10).map((patient) => (
+                    patientSearch.results.map((patient) => (
                       <button
                         key={patient.id}
                         type="button"
-                        onClick={() => handlePatientSelect(patient.id)}
+                        onClick={() => handlePatientSelect(patient)}
                         className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
                       >
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -417,11 +411,17 @@ export default function NewTreatmentPage() {
         </Card>
 
         {/* Dental Chart */}
+        {/*
+          The picker now reads the patient's chart and marks what is already
+          wrong with each tooth. The component this replaces accepted findings
+          as a prop and was rendered here without them, so a dentist choosing
+          teeth for a treatment was shown a permanently healthy mouth.
+        */}
         {selectedPatient && (
-          <DentalChart
+          <ToothPicker
             patientId={selectedPatient.id}
-            selectedTeeth={formData.toothNumbers}
-            onTeethSelect={(teeth) => setFormData({ ...formData, toothNumbers: teeth })}
+            selected={formData.toothNumbers}
+            onChange={(teeth) => setFormData({ ...formData, toothNumbers: teeth })}
           />
         )}
 

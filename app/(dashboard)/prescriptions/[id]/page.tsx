@@ -10,12 +10,23 @@ import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Printer, Loader2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { describeTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface PrescriptionDetail {
   id: string
   prescriptionNo: string
   diagnosis: string | null
+  // FDI, comma-separated. Shown on the printed prescription because a
+  // dispenser reading "for 46, 47" knows more about the course than the drug
+  // names alone tell them.
+  toothNumbers: string | null
+  template: { id: string; name: string } | null
+  treatment: {
+    id: string
+    treatmentNo: string
+    procedure: { name: string } | null
+  } | null
   notes: string | null
   validUntil: string | null
   createdAt: string
@@ -72,6 +83,7 @@ export default function PrescriptionDetailPage() {
   const [prescription, setPrescription] = useState<PrescriptionDetail | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(prescription?.prescriptionNo ?? null)
+  const teeth = parseTeeth(prescription?.toothNumbers)
   const [hospital, setHospital] = useState<Hospital | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -251,9 +263,45 @@ export default function PrescriptionDetailPage() {
             </div>
 
             {prescription.diagnosis && (
-              <div className="mb-4 text-sm">
+              <div className="mb-2 text-sm">
                 <span className="text-muted-foreground">Diagnosis: </span>
                 <span className="font-medium">{prescription.diagnosis}</span>
+              </div>
+            )}
+
+            {teeth.length > 0 && (
+              <div className="mb-2 text-sm">
+                <span className="text-muted-foreground">
+                  {teeth.length === 1 ? 'Tooth: ' : 'Teeth: '}
+                </span>
+                <span className="font-medium">{describeTeeth(teeth)}</span>
+              </div>
+            )}
+
+            {/*
+              Where this came from — on screen, and deliberately not on the
+              printed sheet below, which is for the patient and the pharmacy.
+              The template name is the clinic's own filing, and the treatment
+              number means nothing outside this building.
+            */}
+            {(prescription.treatment || prescription.template) && (
+              <div className="no-print mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                {prescription.treatment && (
+                  <span className="text-muted-foreground">
+                    Written during{' '}
+                    <Link
+                      href={`/treatments/${prescription.treatment.id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {prescription.treatment.procedure?.name ?? prescription.treatment.treatmentNo}
+                    </Link>
+                  </span>
+                )}
+                {prescription.template && (
+                  <span className="text-muted-foreground">
+                    From the {prescription.template.name} template
+                  </span>
+                )}
               </div>
             )}
 

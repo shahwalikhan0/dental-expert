@@ -41,6 +41,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         medications: {
           include: { medication: { select: { id: true, name: true, genericName: true } } },
         },
+        // Provenance for the reader of the record: the wording it started
+        // from, and what was being treated at the time. Neither is the source
+        // of the medicines below — those were copied at issue.
+        template: { select: { id: true, name: true } },
+        treatment: {
+          select: {
+            id: true,
+            treatmentNo: true,
+            procedure: { select: { name: true } },
+          },
+        },
       },
     })
 

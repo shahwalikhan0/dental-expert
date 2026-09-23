@@ -94,6 +94,7 @@ model Hospital {
   treatmentPlans      TreatmentPlan[]
   dentalChartEntries  DentalChartEntry[]
   prescriptions       Prescription[]
+  prescriptionTemplates PrescriptionTemplate[]
   procedures          Procedure[]
   medications         Medication[]
   invoices            Invoice[]
@@ -291,6 +292,7 @@ model User {
   cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
   treatmentsSigned        Treatment[]          @relation("TreatmentsSigned")
   chartEntriesRecorded    DentalChartEntry[]   @relation("ChartEntriesRecorded")
+  prescriptionTemplatesCreated PrescriptionTemplate[] @relation("PrescriptionTemplatesCreated")
   perioExamsRecorded      PerioExam[]          @relation("PerioExamsRecorded")
   visitorsConverted       Visitor[]            @relation("VisitorsConverted")
   visitorsDiscarded       Visitor[]            @relation("VisitorsDiscarded")
@@ -511,6 +513,11 @@ model Patient {
   @@unique([hospitalId, cnic])
   @@index([hospitalId, createdAt(sort: Desc)])
   @@index([hospitalId, isActive, createdAt(sort: Desc)])
+  // Declared to match what 20260923110000_patient_merge actually created. The
+  // index was in the migration and not in this file, so every `migrate diff`
+  // since has proposed dropping it — and the merge screens read this column to
+  // find where a retired record went.
+  @@index([mergedIntoId])
   @@index([hospitalId, phone])
   @@index([hospitalId, lastName, firstName])
 }
@@ -933,6 +940,7 @@ model Treatment {
   doctor          Staff           @relation(fields: [doctorId], references: [id])
   signedBy        User?           @relation("TreatmentsSigned", fields: [signedById], references: [id])
   amendments      TreatmentAmendment[]
+  prescriptions   Prescription[]
   invoiceItems    InvoiceItem[]
   documents       Document[]
 
@@ -1009,6 +1017,41 @@ model Prescription {
   patientId       String
   doctorId        String
 
+  // Which template this was started from, if any.
+  //
+  // Provenance and nothing else. The medicines the patient was actually told
+  // to take live in `PrescriptionMedication`, copied at the moment of issue —
+  // see the note there. Reading dosages through this relation would mean that
+  // editing a template next year silently rewrites what was prescribed last
+  // year, and a prescription is a record of a decision taken on a date.
+  //
+  // Nullable, and stays nullable: most prescriptions are typed from scratch,
+  // and a template that is later deactivated must not orphan them.
+  templateId      String?
+
+  // The treatment this was written during, if it was written during one.
+  //
+  // Gives the clinical "why" — amoxicillin *because of* the extraction on 46 —
+  // which is what makes a prescription list readable a year later.
+  //
+  // Optional on purpose. A repeat script, a phone call about pain, and
+  // antibiotic prophylaxis (which is prescribed *before* the appointment it
+  // covers) are all ordinary prescriptions with no treatment behind them.
+  // Requiring one would block the clinic's real workflow.
+  treatmentId     String?
+
+  // The teeth this prescription is about, FDI, comma-separated.
+  //
+  // Copied here rather than read through `treatment`, because a prescription
+  // with no treatment must still be able to name a tooth. Defaulted from the
+  // treatment when there is one, and editable after — the dentist may be
+  // treating 46 and prescribing for 46 and 47.
+  //
+  // The shape matches `Treatment.toothNumbers`, `TreatmentPlanItem` and
+  // `LabOrder`. A fourth way of writing down a set of teeth would be worse
+  // than a consistent imperfect one.
+  toothNumbers    String?
+
   diagnosis       String?
   notes           String?      @db.Text
 
@@ -1020,12 +1063,16 @@ model Prescription {
   hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient      @relation(fields: [patientId], references: [id])
   doctor          Staff        @relation(fields: [doctorId], references: [id])
+  template        PrescriptionTemplate? @relation(fields: [templateId], references: [id])
+  treatment       Treatment?   @relation(fields: [treatmentId], references: [id])
   medications     PrescriptionMedication[]
 
   @@unique([hospitalId, prescriptionNo])
   @@index([hospitalId, createdAt(sort: Desc)])
   @@index([hospitalId, patientId, createdAt(sort: Desc)])
   @@index([hospitalId, doctorId])
+  @@index([hospitalId, treatmentId])
+  @@index([templateId])
 }
 
 model PrescriptionMedication {
@@ -1046,6 +1093,83 @@ model PrescriptionMedication {
 
   prescription    Prescription  @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
   medication      Medication?   @relation(fields: [medicationId], references: [id])
+}
+
+// A prescription somebody writes once and reaches for every week.
+//
+// "Post-extraction", "Acute pulpitis", "Pre-med for the cardiac patient" — a
+// clinic prescribes the same three or four combinations most days, and typed
+// them out every time. A template is the wording; it is not a prescription and is
+// never given to a patient.
+//
+// Clinic-wide, like `FormTemplate` and `CommunicationTemplate`. A dentist who
+// improves the post-extraction wording improves it for the practice.
+//
+// Deactivated, never deleted: prescriptions issued from a template keep
+// pointing at it for provenance, and a clinic auditing what it prescribed last
+// March needs that pointer to still resolve.
+model PrescriptionTemplate {
+  id              String       @id @default(cuid())
+  hospitalId      String
+  name            String
+  description     String?
+  category        String?
+
+  // Prefilled onto the issued prescription, and editable there.
+  diagnosis       String?
+  notes           String?      @db.Text
+
+  isActive        Boolean      @default(true)
+
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdBy       User?        @relation("PrescriptionTemplatesCreated", fields: [createdById], references: [id])
+  items           PrescriptionTemplateItem[]
+  prescriptions   Prescription[]
+
+  // Two templates called "Post-extraction" in one clinic is a mistake, not a
+  // choice — whichever one you picked would be a coin toss.
+  @@unique([hospitalId, name])
+  @@index([hospitalId, isActive, name])
+  @@index([createdById])
+}
+
+// One line of a template.
+//
+// Deliberately the same columns as `PrescriptionMedication`, because issuing
+// copies this row into that one. `medicationId` is the same nullable pointer
+// for the same reason: the catalogue is a convenience, and a template must
+// survive a medicine being renamed or retired from it.
+//
+// No teeth here. A template says "post-extraction analgesia"; it cannot know
+// it is tooth 46. Teeth belong to the issued prescription.
+model PrescriptionTemplateItem {
+  id              String       @id @default(cuid())
+  templateId      String
+  medicationId    String?
+
+  medicationName  String
+  dosage          String
+  frequency       String
+  duration        String
+  route           String       @default("Oral")
+  timing          String?
+  quantity        Int?
+  instructions    String?
+
+  // The order the dentist wrote them in, which is usually clinical.
+  sortOrder       Int          @default(0)
+
+  createdAt       DateTime     @default(now())
+
+  template        PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medication      Medication?  @relation(fields: [medicationId], references: [id])
+
+  @@index([templateId, sortOrder])
+  @@index([medicationId])
 }
 
 model Medication {
@@ -1069,6 +1193,7 @@ model Medication {
 
   hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   prescriptionMedications PrescriptionMedication[]
+  templateItems   PrescriptionTemplateItem[]
 
   @@index([hospitalId, isActive, name])
 }

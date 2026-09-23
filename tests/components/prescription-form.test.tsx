@@ -125,8 +125,24 @@ describe('NewPrescriptionPage', () => {
 
     it('renders diagnosis section', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('Diagnosis')).toBeInTheDocument()
+      // The card covers the diagnosis and the teeth it applies to; the heading
+      // says so.
+      expect(screen.getByText(/Diagnosis\s*&\s*teeth/i)).toBeInTheDocument()
       expect(screen.getByPlaceholderText(/Dental caries/i)).toBeInTheDocument()
+    })
+
+    it('asks for a patient before offering the chart', () => {
+      // The picker colours teeth from that patient's findings, so it has
+      // nothing to draw until somebody is chosen — and saying so is better
+      // than showing an empty mouth that looks healthy.
+      render(<NewPrescriptionPage />)
+      expect(screen.getByText(/choose a patient first/i)).toBeInTheDocument()
+    })
+
+    it('offers templates without replacing what is typed', () => {
+      render(<NewPrescriptionPage />)
+      expect(screen.getByText(/start from a template/i)).toBeInTheDocument()
+      expect(screen.getByText(/nothing is replaced/i)).toBeInTheDocument()
     })
 
     it('renders medications section with one initial row', () => {

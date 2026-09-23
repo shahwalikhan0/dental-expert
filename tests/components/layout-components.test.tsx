@@ -44,8 +44,11 @@ const mockNavItems = [
   },
 ]
 
-vi.mock('@/config/nav', () => ({
+vi.mock('@/config/nav', async (importOriginal) => ({
+  ...((await importOriginal()) as any),
   getNavigationForRole: vi.fn(() => mockNavItems),
+  // `activeHref` is left real: it is pure, it decides which item the sidebar
+  // highlights, and a stub would make every highlighting assertion vacuous.
 }))
 
 vi.mock('lucide-react', async (importOriginal) => {
