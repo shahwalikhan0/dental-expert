@@ -48,9 +48,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface LabOrder {
   id: string
@@ -138,7 +141,7 @@ export default function LabWorkPage() {
 
   const fetchVendors = async () => {
     try {
-      const response = await fetch('/api/lab-vendors?status=active')
+      const response = await fetch('/api/lab-vendors?status=active&sort=name')
       if (!response.ok) throw new Error('Failed to fetch vendors')
       const data = await response.json()
       setVendors(data.data)
@@ -241,42 +244,42 @@ export default function LabWorkPage() {
       },
       SENT_TO_LAB: {
         label: 'Sent to Lab',
-        className: 'bg-blue-100 text-blue-800',
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
         icon: Truck,
       },
       IN_PROGRESS: {
         label: 'In Progress',
-        className: 'bg-yellow-100 text-yellow-800',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
         icon: Clock,
       },
       QUALITY_CHECK: {
         label: 'Quality Check',
-        className: 'bg-purple-100 text-purple-800',
+        className: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
         icon: FlaskConical,
       },
       READY: {
         label: 'Ready',
-        className: 'bg-green-100 text-green-800',
+        className: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
         icon: CheckCircle,
       },
       DELIVERED: {
         label: 'Delivered',
-        className: 'bg-emerald-100 text-emerald-800',
+        className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
         icon: CheckCircle,
       },
       FITTED: {
         label: 'Fitted',
-        className: 'bg-teal-100 text-teal-800',
+        className: 'bg-teal-100 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300',
         icon: CheckCircle,
       },
       REMAKE_REQUIRED: {
         label: 'Remake Required',
-        className: 'bg-orange-100 text-orange-800',
+        className: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
         icon: AlertCircle,
       },
       CANCELLED: {
         label: 'Cancelled',
-        className: 'bg-red-100 text-red-800',
+        className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
         icon: XCircle,
       },
     }
@@ -295,8 +298,14 @@ export default function LabWorkPage() {
   const getPriorityBadge = (priority: string) => {
     const configs: Record<string, { label: string; className: string }> = {
       normal: { label: 'Normal', className: 'bg-muted text-foreground' },
-      urgent: { label: 'Urgent', className: 'bg-orange-100 text-orange-800' },
-      rush: { label: 'Rush', className: 'bg-red-100 text-red-800' },
+      urgent: {
+        label: 'Urgent',
+        className: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
+      },
+      rush: {
+        label: 'Rush',
+        className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+      },
     }
 
     const config = configs[priority] || configs.normal
@@ -327,7 +336,7 @@ export default function LabWorkPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Lab Work Management</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lab Work Management</h1>
           <p className="text-muted-foreground">
             Manage lab orders, vendors, and track work progress
           </p>
@@ -384,7 +393,7 @@ export default function LabWorkPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Sent to Lab</CardTitle>
-            <Truck className="h-4 w-4 text-blue-600" />
+            <Truck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.sentToLab}</div>
@@ -393,7 +402,7 @@ export default function LabWorkPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
+            <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.inProgress}</div>
@@ -402,7 +411,7 @@ export default function LabWorkPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Ready</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
+            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.ready}</div>
@@ -411,7 +420,7 @@ export default function LabWorkPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Delivered</CardTitle>
-            <CheckCircle className="h-4 w-4 text-emerald-600" />
+            <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.delivered}</div>
@@ -420,7 +429,7 @@ export default function LabWorkPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Cancelled</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
+            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.cancelled}</div>
@@ -505,6 +514,44 @@ export default function LabWorkPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="lab orders"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setVendorFilter('all')
+              setWorkTypeFilter('all')
+              setPriorityFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              {
+                label: 'Vendor',
+                value:
+                  vendorFilter === 'all'
+                    ? null
+                    : (vendors.find((v) => v.id === vendorFilter)?.name ?? 'Unknown'),
+                onClear: () => setVendorFilter('all'),
+              },
+              {
+                label: 'Work type',
+                value: workTypeFilter === 'all' ? null : workTypeLabel(workTypeFilter),
+                onClear: () => setWorkTypeFilter('all'),
+              },
+              {
+                label: 'Priority',
+                value: priorityFilter === 'all' ? null : humanise(priorityFilter),
+                onClear: () => setPriorityFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -570,13 +617,15 @@ export default function LabWorkPage() {
                       <TableCell>{getStatusBadge(order.status)}</TableCell>
                       <TableCell>{getPriorityBadge(order.priority)}</TableCell>
                       <TableCell>{formatCurrency(order.estimatedCost)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right row-actions">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => router.push(`/lab/orders/${order.id}`)}

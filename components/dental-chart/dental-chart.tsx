@@ -432,7 +432,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-green-50 dark:bg-green-950/20">
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {32 -
                   Object.values(chartData)
                     .flat()
@@ -447,7 +447,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
           </Card>
           <Card className="bg-red-50 dark:bg-red-950/20">
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold text-red-600">
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                 {
                   Object.values(chartData)
                     .flat()
@@ -459,7 +459,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
           </Card>
           <Card className="bg-blue-50 dark:bg-blue-950/20">
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                 {
                   Object.values(chartData)
                     .flat()

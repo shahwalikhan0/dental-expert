@@ -5,6 +5,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
@@ -28,6 +29,7 @@ import { useToast } from '@/hooks/use-toast'
 import { DUE_BAND_LABELS, daysUntil, type DueBand } from '@/lib/recare'
 import { CalendarPlus, Check, Clock, Loader2, Search, Settings2 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 /**
  * The recall list — who should be in the chair and is not booked.
@@ -196,12 +198,12 @@ export default function RecarePage() {
             Patients due to be seen again who have nothing booked.
           </p>
         </div>
-        <Link href={trail.to('/settings/recare')}>
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href={trail.to('/settings/recare')}>
             <Settings2 className="h-4 w-4 mr-2" />
             Recare types
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -257,6 +259,34 @@ export default function RecarePage() {
           </SelectContent>
         </Select>
       </div>
+
+      <ActiveFilters
+        noun="patients"
+        onClearAll={() => {
+          setSearch('')
+          setTypeId('all')
+          setPagination((p) => ({ ...p, page: 1 }))
+        }}
+        filters={[
+          {
+            label: 'Search',
+            value: search,
+            onClear: () => {
+              setSearch('')
+              setPagination((p) => ({ ...p, page: 1 }))
+            },
+          },
+          {
+            label: 'Recare type',
+            value:
+              typeId === 'all' ? null : (types.find((t) => t.id === typeId)?.name ?? 'Unknown'),
+            onClear: () => {
+              setTypeId('all')
+              setPagination((p) => ({ ...p, page: 1 }))
+            },
+          },
+        ]}
+      />
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -314,7 +344,13 @@ export default function RecarePage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className={recare.band === 'OVERDUE' ? 'text-red-600 font-medium' : ''}>
+                      <div
+                        className={
+                          recare.band === 'OVERDUE'
+                            ? 'text-red-600 font-medium dark:text-red-400'
+                            : ''
+                        }
+                      >
                         {displayDate(recare.dueDate)}
                       </div>
                       <div className="text-xs text-muted-foreground">
@@ -331,39 +367,61 @@ export default function RecarePage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Link
-                          href={trail.to(`/appointments/new?patientId=${recare.patient.id}`)}
-                          data-no-row-click
-                        >
-                          <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" asChild>
+                          <Link
+                            href={trail.to(
+                              `/appointments/new?patientId=${recare.patient.id}&reason=${encodeURIComponent(
+                                recare.recareType.name
+                              )}`
+                            )}
+                            data-no-row-click
+                          >
                             <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />
                             Book
-                          </Button>
-                        </Link>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busyId === recare.id}
-                          onClick={() => act(recare, 'complete')}
-                          aria-label="Mark this recare as done"
-                        >
-                          {busyId === recare.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Check className="h-3.5 w-3.5" />
-                          )}
+                          </Link>
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busyId === recare.id}
-                          onClick={() => act(recare, recare.snoozedUntil ? 'unsnooze' : 'snooze')}
-                          aria-label={
-                            recare.snoozedUntil ? 'Put back on the list' : 'Defer for a month'
-                          }
-                        >
-                          <Clock className="h-3.5 w-3.5" />
-                        </Button>
+                        {/*
+                          Book stays put: it is what the recall list is for,
+                          and an invitation nobody can see until they hover
+                          over the right row is not an invitation. The two
+                          icons beside it fade like every other grid's.
+                        */}
+                        <span className="row-actions inline-flex gap-1">
+                          <IconTooltip label="Mark this recare as done">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busyId === recare.id}
+                              onClick={() => act(recare, 'complete')}
+                              aria-label="Mark this recare as done"
+                            >
+                              {busyId === recare.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </IconTooltip>
+                          <IconTooltip
+                            label={
+                              recare.snoozedUntil ? 'Put back on the list' : 'Defer for a month'
+                            }
+                          >
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busyId === recare.id}
+                              onClick={() =>
+                                act(recare, recare.snoozedUntil ? 'unsnooze' : 'snooze')
+                              }
+                              aria-label={
+                                recare.snoozedUntil ? 'Put back on the list' : 'Defer for a month'
+                              }
+                            >
+                              <Clock className="h-3.5 w-3.5" />
+                            </Button>
+                          </IconTooltip>
+                        </span>
                       </div>
                     </TableCell>
                   </ClickableRow>

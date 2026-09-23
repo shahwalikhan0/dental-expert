@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -233,16 +234,18 @@ export default function RecareTypesPage() {
                         aria-label={`${type.name} is active`}
                       />
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-600"
-                        onClick={() => remove(type)}
-                        aria-label={`Remove ${type.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="row-actions">
+                      <IconTooltip label={`Remove ${type.name}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 dark:text-red-400"
+                          onClick={() => remove(type)}
+                          aria-label={`Remove ${type.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </IconTooltip>
                     </TableCell>
                   </TableRow>
                 ))

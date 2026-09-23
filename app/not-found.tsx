@@ -20,12 +20,12 @@ export default function NotFound() {
         link from somewhere in the clinic, the record may have been merged into another.
       </p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
-        <Link href="/dashboard">
-          <Button>Back to the dashboard</Button>
-        </Link>
-        <Link href="/patients">
-          <Button variant="outline">Find a patient</Button>
-        </Link>
+        <Button asChild>
+          <Link href="/dashboard">Back to the dashboard</Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href="/patients">Find a patient</Link>
+        </Button>
       </div>
     </div>
   )

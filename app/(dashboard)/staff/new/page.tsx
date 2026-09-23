@@ -140,13 +140,13 @@ export default function NewStaffPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/staff">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/staff">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Add New Staff</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Add New Staff</h1>
           <p className="text-muted-foreground">Create a new staff member account</p>
         </div>
       </div>
@@ -483,11 +483,9 @@ export default function NewStaffPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4 mt-6">
-          <Link href="/staff">
-            <Button variant="outline" type="button">
-              Cancel
-            </Button>
-          </Link>
+          <Button variant="outline" type="button" asChild>
+            <Link href="/staff">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Staff Member

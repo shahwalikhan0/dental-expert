@@ -173,7 +173,7 @@ export default function AppointmentSettingsPage() {
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <Calendar className="w-8 h-8" />
           Appointment Settings
         </h1>
@@ -400,7 +400,7 @@ export default function AppointmentSettingsPage() {
                         size="sm"
                         onClick={() => handleDeleteHoliday(holiday.id)}
                       >
-                        <Trash2 className="w-4 h-4 text-red-500" />
+                        <Trash2 className="w-4 h-4 text-red-500 dark:text-red-400" />
                       </Button>
                     </div>
                   ))}

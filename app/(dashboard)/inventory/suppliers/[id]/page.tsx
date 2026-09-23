@@ -125,12 +125,12 @@ export default function SupplierDetailPage() {
           </div>
           <p className="text-muted-foreground">{supplier.code}</p>
         </div>
-        <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
             <Edit className="h-4 w-4 mr-2" />
             Edit
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

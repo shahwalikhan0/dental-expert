@@ -129,7 +129,7 @@ export function ItemForm({
         {/* Item Code */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Item Code <span className="text-red-500">*</span>
+            Item Code <span className="text-red-500 dark:text-red-400">*</span>
           </label>
           <input
             type="text"
@@ -145,7 +145,7 @@ export function ItemForm({
         {/* Item Name */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Item Name <span className="text-red-500">*</span>
+            Item Name <span className="text-red-500 dark:text-red-400">*</span>
           </label>
           <input
             type="text"
@@ -179,7 +179,7 @@ export function ItemForm({
         {/* Item Type */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Item Type <span className="text-red-500">*</span>
+            Item Type <span className="text-red-500 dark:text-red-400">*</span>
           </label>
           <select
             name="itemType"
@@ -200,7 +200,7 @@ export function ItemForm({
         {/* Unit of Measurement */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Unit of Measurement <span className="text-red-500">*</span>
+            Unit of Measurement <span className="text-red-500 dark:text-red-400">*</span>
           </label>
           <input
             type="text"
@@ -377,7 +377,7 @@ export function ItemForm({
             name="expiryTracking"
             checked={formData.expiryTracking}
             onChange={handleChange}
-            className="w-4 h-4 text-blue-600"
+            className="w-4 h-4 text-blue-600 dark:text-blue-400"
           />
           <span className="text-sm">Requires Expiry Tracking</span>
         </label>
@@ -388,7 +388,7 @@ export function ItemForm({
             name="batchTracking"
             checked={formData.batchTracking}
             onChange={handleChange}
-            className="w-4 h-4 text-blue-600"
+            className="w-4 h-4 text-blue-600 dark:text-blue-400"
           />
           <span className="text-sm">Requires Batch Tracking</span>
         </label>
@@ -399,7 +399,7 @@ export function ItemForm({
             name="isActive"
             checked={formData.isActive}
             onChange={handleChange}
-            className="w-4 h-4 text-blue-600"
+            className="w-4 h-4 text-blue-600 dark:text-blue-400"
           />
           <span className="text-sm">Active</span>
         </label>

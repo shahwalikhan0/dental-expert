@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { allergyClashes, medicalAlerts } from '@/lib/medical-history'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { fetchHandedPatient } from '@/lib/prefill'
 
 interface Patient {
   id: string
@@ -148,20 +149,22 @@ export default function NewPrescriptionPage() {
     },
   ])
 
-  // Pre-fill patient from query param
+  /**
+   * Pre-fill the patient this form was opened for.
+   *
+   * This read `result.data || result` against a route that answers
+   * `{ success, patient }`, so it set the envelope as the patient: an object
+   * with no name and no id, which the form rendered as a blank selection and
+   * would have submitted as one. See lib/prefill.ts.
+   */
   useEffect(() => {
     const pid = searchParams.get('patientId')
-    if (pid) {
-      fetch(`/api/patients/${pid}`)
-        .then((r) => r.json())
-        .then((result) => {
-          if (result.success || result.data || result.id) {
-            const p = result.data || result
-            setSelectedPatient(p)
-          }
-        })
-        .catch(() => {})
-    }
+    if (!pid) return
+    const controller = new AbortController()
+    fetchHandedPatient<Patient>(pid, controller.signal).then((patient) => {
+      if (patient && !controller.signal.aborted) setSelectedPatient(patient)
+    })
+    return () => controller.abort()
   }, [searchParams])
 
   /**
@@ -212,7 +215,7 @@ export default function NewPrescriptionPage() {
     ;(async () => {
       try {
         const res = await fetch(
-          `/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true`
+          `/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true&sort=name`
         )
         const result = await res.json()
         if (!current) return
@@ -401,7 +404,7 @@ export default function NewPrescriptionPage() {
       </Button>
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <ClipboardList className="h-8 w-8" />
           New Prescription
         </h1>

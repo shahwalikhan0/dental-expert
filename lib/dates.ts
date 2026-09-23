@@ -66,6 +66,22 @@ export function displayDateTime(value: Date | string | null | undefined): string
   })
 }
 
+/**
+ * `20 Sept` — a date with the year left off, for a chart axis or a dense list
+ * where the year is already established by the surrounding context.
+ *
+ * Shares `toDate`, so a bare `YYYY-MM-DD` is still read as that calendar day
+ * rather than as UTC midnight. A chart axis built with `new Date(value)`
+ * directly labels every point with the day before, for every reader west of
+ * Greenwich.
+ */
+export function displayDateShort(value: Date | string | null | undefined): string {
+  const date = toDate(value)
+  if (!date) return BLANK
+
+  return date.toLocaleDateString(LOCALE, { day: '2-digit', month: 'short' })
+}
+
 /** `3:00 pm`. */
 export function displayTime(value: Date | string | null | undefined): string {
   const date = toDate(value)

@@ -5,6 +5,7 @@ import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -380,36 +381,42 @@ export default function EditTreatmentPlanPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => move(index, -1)}
-                        aria-label="Move up"
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => move(index, 1)}
-                        aria-label="Move down"
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-600"
-                        onClick={() => remove(index)}
-                        aria-label="Remove"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <IconTooltip label="Move this item up">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => move(index, -1)}
+                          aria-label="Move this item up"
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Move this item down">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => move(index, 1)}
+                          aria-label="Move this item down"
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Remove this item">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 dark:text-red-400"
+                          onClick={() => remove(index)}
+                          aria-label="Remove this item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </IconTooltip>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -488,11 +495,9 @@ export default function EditTreatmentPlanPage() {
       </Card>
 
       <div className="flex justify-end gap-3">
-        <Link href={`/treatments/plans/${planId}`}>
-          <Button type="button" variant="outline">
-            Cancel
-          </Button>
-        </Link>
+        <Button type="button" variant="outline" asChild>
+          <Link href={`/treatments/plans/${planId}`}>Cancel</Link>
+        </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -88,11 +88,11 @@ export default function PricingSuggestionsPage() {
   const priorityColor = (p: string) => {
     switch (p) {
       case 'HIGH':
-        return 'bg-red-100 text-red-700'
+        return 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
       case 'MEDIUM':
-        return 'bg-amber-100 text-amber-700'
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
       default:
-        return 'bg-green-100 text-green-700'
+        return 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300'
     }
   }
 
@@ -116,12 +116,12 @@ export default function PricingSuggestionsPage() {
       </div>
 
       {/* Advisory notice */}
-      <Card className="border-blue-200 bg-blue-50/50">
+      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800/60">
         <CardContent className="p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-blue-500 mt-0.5" />
+          <AlertCircle className="h-5 w-5 text-blue-500 mt-0.5 dark:text-blue-400" />
           <div className="text-sm">
-            <p className="font-medium text-blue-800">Advisory Only</p>
-            <p className="text-blue-700">
+            <p className="font-medium text-blue-800 dark:text-blue-300">Advisory Only</p>
+            <p className="text-blue-700 dark:text-blue-300">
               These are AI-generated recommendations. No pricing changes are applied automatically.
               Review each suggestion and implement manually if appropriate.
             </p>
@@ -150,7 +150,7 @@ export default function PricingSuggestionsPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="h-5 w-5 text-blue-500" />
+                    <TrendingUp className="h-5 w-5 text-blue-500 dark:text-blue-400" />
                     <p className="text-sm text-muted-foreground">Overall Demand</p>
                   </div>
                   <p className="text-2xl font-bold">{data.summary.overallDemand}</p>
@@ -159,7 +159,7 @@ export default function PricingSuggestionsPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <DollarSign className="h-5 w-5 text-green-500" />
+                    <DollarSign className="h-5 w-5 text-green-500 dark:text-green-400" />
                     <p className="text-sm text-muted-foreground">Revenue Opportunity</p>
                   </div>
                   <p className="text-2xl font-bold">
@@ -171,7 +171,7 @@ export default function PricingSuggestionsPage() {
               <Card className="md:col-span-1">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <Sparkles className="h-5 w-5 text-purple-500" />
+                    <Sparkles className="h-5 w-5 text-purple-500 dark:text-purple-400" />
                     <p className="text-sm text-muted-foreground">Top Recommendation</p>
                   </div>
                   <p className="text-sm">{data.summary.topRecommendation}</p>
@@ -194,7 +194,10 @@ export default function PricingSuggestionsPage() {
                     <p className="text-xs text-muted-foreground mb-1">Busiest Days</p>
                     <div className="flex flex-wrap gap-1">
                       {data.peakAnalysis.busiestDays?.map((d) => (
-                        <Badge key={d} className="bg-red-100 text-red-700">
+                        <Badge
+                          key={d}
+                          className="bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                        >
                           {d}
                         </Badge>
                       ))}
@@ -204,7 +207,10 @@ export default function PricingSuggestionsPage() {
                     <p className="text-xs text-muted-foreground mb-1">Quietest Days</p>
                     <div className="flex flex-wrap gap-1">
                       {data.peakAnalysis.quietestDays?.map((d) => (
-                        <Badge key={d} className="bg-green-100 text-green-700">
+                        <Badge
+                          key={d}
+                          className="bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
+                        >
                           {d}
                         </Badge>
                       ))}
@@ -260,9 +266,9 @@ export default function PricingSuggestionsPage() {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
                           {s.type === 'OFF_PEAK_DISCOUNT' ? (
-                            <TrendingDown className="h-5 w-5 text-green-500" />
+                            <TrendingDown className="h-5 w-5 text-green-500 dark:text-green-400" />
                           ) : (
-                            <TrendingUp className="h-5 w-5 text-blue-500" />
+                            <TrendingUp className="h-5 w-5 text-blue-500 dark:text-blue-400" />
                           )}
                           <div>
                             <p className="font-medium">{s.description}</p>
@@ -281,7 +287,7 @@ export default function PricingSuggestionsPage() {
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">{s.rationale}</p>
-                      <p className="text-sm font-medium text-green-600">
+                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
                         Est. Impact: {s.estimatedRevenueImpact}
                       </p>
                     </div>

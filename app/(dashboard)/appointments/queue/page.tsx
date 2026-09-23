@@ -204,16 +204,17 @@ function Column({
                     <span className="ml-1.5">{action.label}</span>
                   </Button>
                 )}
-                <Link href={to(`/appointments/${a.id}`)}>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    aria-label="Open appointment"
-                  >
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  aria-label="Open appointment"
+                  asChild
+                >
+                  <Link href={to(`/appointments/${a.id}`)}>
                     <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </div>
           ))
@@ -351,12 +352,12 @@ export default function QueuePage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Link href={trail.to('/appointments/new?walkIn=1')}>
-            <Button>
+          <Button asChild>
+            <Link href={trail.to('/appointments/new?walkIn=1')}>
               <UserPlus className="h-4 w-4 mr-2" />
               Add a walk-in
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 

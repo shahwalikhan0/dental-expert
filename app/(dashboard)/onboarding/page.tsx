@@ -393,8 +393,8 @@ export default function OnboardingPage() {
               {currentStep === 4 && (
                 <div className="text-center py-8">
                   <div className="flex justify-center mb-4">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-                      <CheckCircle2 className="h-8 w-8 text-green-600" />
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/40">
+                      <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                     </div>
                   </div>
                   <h3 className="text-lg font-semibold mb-2">Setup Complete!</h3>

@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <Card className="w-full max-w-md">
+      <Card className="glass glass-raised w-full max-w-md rounded-2xl">
         <CardHeader>
           <div className="mb-2 flex justify-center">
             <MailCheck className="h-10 w-10 text-primary" aria-hidden />
@@ -77,18 +77,16 @@ export default function ForgotPasswordPage() {
             Nothing arrived? Check the spam folder, and make sure you used the address you sign in
             with. If your clinic has not set up email, ask your administrator to reset it for you.
           </p>
-          <Link href="/login">
-            <Button variant="outline" className="w-full">
-              Back to sign in
-            </Button>
-          </Link>
+          <Button variant="outline" className="w-full" asChild>
+            <Link href="/login">Back to sign in</Link>
+          </Button>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="glass glass-raised w-full max-w-md rounded-2xl">
       <CardHeader>
         <CardTitle>Forgotten your password?</CardTitle>
         <CardDescription>

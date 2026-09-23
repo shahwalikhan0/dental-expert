@@ -6,6 +6,7 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { GridPagination } from '@/components/ui/data-grid'
@@ -36,6 +37,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Pill, Plus, Search, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 const FORMS = [
   'Tablet',
@@ -251,7 +253,7 @@ export default function MedicationsPage() {
     <div className="container mx-auto p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
             <Pill className="h-8 w-8" />
             Drug Catalog
           </h1>
@@ -299,6 +301,34 @@ export default function MedicationsPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="medications"
+            onClearAll={() => {
+              setSearch('')
+              setCategoryFilter('')
+              setPagination((p) => ({ ...p, page: 1 }))
+            }}
+            filters={[
+              {
+                label: 'Search',
+                value: search,
+                onClear: () => {
+                  setSearch('')
+                  setPagination((p) => ({ ...p, page: 1 }))
+                },
+              },
+              {
+                label: 'Category',
+                value: categoryFilter,
+                onClear: () => {
+                  setCategoryFilter('')
+                  setPagination((p) => ({ ...p, page: 1 }))
+                },
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -345,26 +375,30 @@ export default function MedicationsPage() {
                         .filter(Boolean)
                         .join(', ') || '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="row-actions">
                       <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Edit"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(med)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Delete"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(med)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <IconTooltip label="Edit this medication">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Edit this medication"
+                            className="h-8 w-8"
+                            onClick={() => openEdit(med)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </IconTooltip>
+                        <IconTooltip label="Delete this medication">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete this medication"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => handleDelete(med)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </IconTooltip>
                       </div>
                     </TableCell>
                   </TableRow>

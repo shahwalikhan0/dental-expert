@@ -46,6 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,8 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { ALL_ROLES, roleColor, roleLabel } from '@/lib/rbac'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Staff {
   id: string
@@ -212,7 +215,7 @@ export default function StaffPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Staff Management</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Staff Management</h1>
           <p className="text-muted-foreground">Manage staff members, roles, and permissions</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -237,18 +240,18 @@ export default function StaffPage() {
               and /staff/leaves. Neither page exists — 39fdd2e removed the
               attendance and leave tables as out of scope (spec §3) and left the
               two buttons behind, so both were 404s on the busiest staff screen. */}
-          <Link href="/staff/invites">
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href="/staff/invites">
               <MailPlus className="h-4 w-4 mr-2" />
               Invitations
-            </Button>
-          </Link>
-          <Link href="/staff/new">
-            <Button>
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/staff/new">
               <Plus className="h-4 w-4 mr-2" />
               Add Staff
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -292,6 +295,29 @@ export default function StaffPage() {
               </Select>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="staff"
+            onClearAll={() => {
+              setSearch('')
+              setRoleFilter('all')
+              setStatusFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Role',
+                value: roleFilter === 'all' ? null : roleLabel(roleFilter) || humanise(roleFilter),
+                onClear: () => setRoleFilter('all'),
+              },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -347,12 +373,12 @@ export default function StaffPage() {
                     <div className="flex flex-col items-center gap-2">
                       <UserCog className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No staff members found</p>
-                      <Link href="/staff/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/staff/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Add Staff
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -408,13 +434,15 @@ export default function StaffPage() {
                         {member.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}`)}>
                             <Eye className="h-4 w-4 mr-2" />
@@ -435,7 +463,7 @@ export default function StaffPage() {
                           <DropdownMenuSeparator />
                           {member.isActive && (
                             <DropdownMenuItem
-                              className="text-red-600"
+                              className="text-red-600 dark:text-red-400"
                               onClick={() => {
                                 setStaffToDelete(member)
                                 setDeleteDialogOpen(true)

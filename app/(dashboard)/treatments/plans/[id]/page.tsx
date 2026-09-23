@@ -219,9 +219,9 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-muted-foreground">Treatment plan not found</p>
-        <Link href="/treatments/plans">
-          <Button variant="outline">Back to Treatment Plans</Button>
-        </Link>
+        <Button variant="outline" asChild>
+          <Link href="/treatments/plans">Back to Treatment Plans</Link>
+        </Button>
       </div>
     )
   }
@@ -236,10 +236,13 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
           <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{plan.planNumber}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{plan.planNumber}</h1>
               {getStatusBadge(plan.status)}
               {plan.consentGiven && (
-                <Badge variant="outline" className="bg-green-50 text-green-700">
+                <Badge
+                  variant="outline"
+                  className="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300"
+                >
                   <CheckCircle className="h-3 w-3 mr-1" />
                   Consent Given
                 </Badge>
@@ -269,15 +272,15 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
           )}
           {!['COMPLETED', 'CANCELLED'].includes(plan.status) && (
             <>
-              <Link href={`/treatments/plans/${id}/edit`}>
-                <Button variant="outline">
+              <Button variant="outline" asChild>
+                <Link href={`/treatments/plans/${id}/edit`}>
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
-                </Button>
-              </Link>
+                </Link>
+              </Button>
               <Button
                 variant="outline"
-                className="text-red-600"
+                className="text-red-600 dark:text-red-400"
                 onClick={() => setCancelDialogOpen(true)}
               >
                 <XCircle className="h-4 w-4 mr-2" />
@@ -356,13 +359,13 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                       <TableCell>{getItemStatusBadge(item.status)}</TableCell>
                       <TableCell>
                         {item.status === 'PENDING' && plan.status === 'IN_PROGRESS' && (
-                          <Link
-                            href={`/treatments/new?patientId=${plan.patient.id}&procedureId=${item.procedure.id}`}
-                          >
-                            <Button size="sm" variant="outline">
+                          <Button size="sm" variant="outline" asChild>
+                            <Link
+                              href={`/treatments/new?patientId=${plan.patient.id}&procedureId=${item.procedure.id}`}
+                            >
                               Start
-                            </Button>
-                          </Link>
+                            </Link>
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -432,11 +435,9 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                 )}
               </div>
 
-              <Link href={`/patients/${plan.patient.id}`}>
-                <Button variant="outline" className="w-full">
-                  View Patient Profile
-                </Button>
-              </Link>
+              <Button variant="outline" className="w-full" asChild>
+                <Link href={`/patients/${plan.patient.id}`}>View Patient Profile</Link>
+              </Button>
             </CardContent>
           </Card>
 

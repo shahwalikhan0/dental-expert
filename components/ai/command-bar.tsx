@@ -148,7 +148,7 @@ export function CommandBar() {
                 {result.intent?.replace(/_/g, ' ')}
               </span>
               {result.requiresApproval && (
-                <span className="rounded-full bg-amber-100 text-amber-800 text-xs px-2 py-0.5">
+                <span className="rounded-full bg-amber-100 text-amber-800 text-xs px-2 py-0.5 dark:bg-amber-950/40 dark:text-amber-300">
                   Needs approval
                 </span>
               )}
@@ -160,7 +160,9 @@ export function CommandBar() {
             ) : result.result?.success ? (
               <div className="text-sm space-y-2">
                 {result.result.message && (
-                  <p className="text-emerald-700 font-medium">{result.result.message}</p>
+                  <p className="text-emerald-700 font-medium dark:text-emerald-300">
+                    {result.result.message}
+                  </p>
                 )}
                 {result.result.summary && (
                   <pre className="whitespace-pre-wrap text-xs bg-muted rounded p-2">
@@ -192,10 +194,10 @@ export function CommandBar() {
                         className={cn(
                           'flex justify-between text-xs rounded px-2 py-1',
                           item.status === 'Critical'
-                            ? 'bg-red-50'
+                            ? 'bg-red-50 dark:bg-red-950/30'
                             : item.status === 'Low'
-                              ? 'bg-amber-50'
-                              : 'bg-emerald-50'
+                              ? 'bg-amber-50 dark:bg-amber-950/30'
+                              : 'bg-emerald-50 dark:bg-emerald-950/30'
                         )}
                       >
                         <span>{item.name}</span>
@@ -211,19 +213,23 @@ export function CommandBar() {
                     {result.result.invoices.map((inv: any, i: number) => (
                       <div
                         key={i}
-                        className="flex justify-between text-xs bg-red-50 rounded px-2 py-1"
+                        className="flex justify-between text-xs bg-red-50 rounded px-2 py-1 dark:bg-red-950/30"
                       >
                         <span>
                           {inv.patient} ({inv.invoiceNo})
                         </span>
-                        <span className="font-medium text-red-700">{inv.balance}</span>
+                        <span className="font-medium text-red-700 dark:text-red-300">
+                          {inv.balance}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-red-600">{result.result?.message || 'No result'}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {result.result?.message || 'No result'}
+              </p>
             )}
           </div>
         )}

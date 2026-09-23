@@ -27,6 +27,11 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const skip = (page - 1) * limit
 
+    // The grid shows newest first, so a record somebody has just added is the
+    // top row rather than wherever its name falls. `sort=name` is for the
+    // dropdowns that read the same endpoint, where a person scans for a name.
+    const byName = searchParams.get('sort') === 'name'
+
     // Suppliers and dental laboratories share one `Vendor` table; `kind` is
     // what separates them. Leaving it out here would list the clinic's
     // laboratories on its suppliers screen.
@@ -53,7 +58,7 @@ export async function GET(request: NextRequest) {
       prisma.vendor.count({ where }),
       prisma.vendor.findMany({
         where,
-        orderBy: { name: 'asc' },
+        orderBy: byName ? { name: 'asc' } : { createdAt: 'desc' },
         skip,
         take: limit,
         include: {

@@ -111,7 +111,7 @@ export function Patient360({ patientId }: { patientId: string }) {
           {data.flags.map((f, i) => (
             <div
               key={i}
-              className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1.5"
+              className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1.5 dark:text-amber-300 dark:bg-amber-950/30"
             >
               <span className="flex-shrink-0">⚠</span>
               <span>{f}</span>

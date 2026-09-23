@@ -61,7 +61,7 @@ interface Invite {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-800',
+  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
   EXPIRED: 'bg-muted text-foreground',
 }
 
@@ -181,18 +181,18 @@ export default function StaffInvitesPage() {
       {ConfirmDialogComponent}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Invitations</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Invitations</h1>
           <p className="text-muted-foreground">
             Invite a colleague and they choose their own password.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/staff">
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href="/staff">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Staff
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <Button onClick={() => setOpen(true)}>
             <MailPlus className="h-4 w-4 mr-2" />
             Invite someone
@@ -266,7 +266,7 @@ export default function StaffInvitesPage() {
                     <TableCell className="text-muted-foreground">
                       {formatDate(invite.expiresAt)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <div className="flex justify-end gap-1">
                         {/* Resending issues a fresh token and a new seven days,
                             which is the fix for an invitation that has lapsed —

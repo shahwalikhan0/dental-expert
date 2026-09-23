@@ -29,26 +29,26 @@ export const invoiceStatusConfig: Record<
   },
   PENDING: {
     label: 'Pending',
-    color: 'text-yellow-700',
-    bgColor: 'bg-yellow-100',
+    color: 'text-yellow-700 dark:text-yellow-300',
+    bgColor: 'bg-yellow-100 dark:bg-yellow-950/40',
     description: 'Invoice sent, awaiting payment',
   },
   PARTIALLY_PAID: {
     label: 'Partially Paid',
-    color: 'text-blue-700',
-    bgColor: 'bg-blue-100',
+    color: 'text-blue-700 dark:text-blue-300',
+    bgColor: 'bg-blue-100 dark:bg-blue-950/40',
     description: 'Partial payment received',
   },
   PAID: {
     label: 'Paid',
-    color: 'text-green-700',
-    bgColor: 'bg-green-100',
+    color: 'text-green-700 dark:text-green-300',
+    bgColor: 'bg-green-100 dark:bg-green-950/40',
     description: 'Full payment received',
   },
   OVERDUE: {
     label: 'Overdue',
-    color: 'text-red-700',
-    bgColor: 'bg-red-100',
+    color: 'text-red-700 dark:text-red-300',
+    bgColor: 'bg-red-100 dark:bg-red-950/40',
     description: 'Payment past due date',
   },
   CANCELLED: {
@@ -59,8 +59,8 @@ export const invoiceStatusConfig: Record<
   },
   REFUNDED: {
     label: 'Refunded',
-    color: 'text-purple-700',
-    bgColor: 'bg-purple-100',
+    color: 'text-purple-700 dark:text-purple-300',
+    bgColor: 'bg-purple-100 dark:bg-purple-950/40',
     description: 'Payment has been refunded',
   },
 }
@@ -118,28 +118,28 @@ export const paymentStatusConfig: Record<
 > = {
   PENDING: {
     label: 'Pending',
-    color: 'text-yellow-700',
-    bgColor: 'bg-yellow-100',
+    color: 'text-yellow-700 dark:text-yellow-300',
+    bgColor: 'bg-yellow-100 dark:bg-yellow-950/40',
   },
   COMPLETED: {
     label: 'Completed',
-    color: 'text-green-700',
-    bgColor: 'bg-green-100',
+    color: 'text-green-700 dark:text-green-300',
+    bgColor: 'bg-green-100 dark:bg-green-950/40',
   },
   FAILED: {
     label: 'Failed',
-    color: 'text-red-700',
-    bgColor: 'bg-red-100',
+    color: 'text-red-700 dark:text-red-300',
+    bgColor: 'bg-red-100 dark:bg-red-950/40',
   },
   PARTIALLY_REFUNDED: {
     label: 'Partially Refunded',
-    color: 'text-purple-700',
-    bgColor: 'bg-purple-50',
+    color: 'text-purple-700 dark:text-purple-300',
+    bgColor: 'bg-purple-50 dark:bg-purple-950/30',
   },
   REFUNDED: {
     label: 'Refunded',
-    color: 'text-purple-700',
-    bgColor: 'bg-purple-100',
+    color: 'text-purple-700 dark:text-purple-300',
+    bgColor: 'bg-purple-100 dark:bg-purple-950/40',
   },
   CANCELLED: {
     label: 'Cancelled',

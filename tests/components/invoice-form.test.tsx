@@ -146,6 +146,24 @@ vi.mock('next/link', () => ({
 }))
 
 import NewInvoicePage from '@/app/(dashboard)/billing/invoices/new/page'
+import { TooltipProvider } from '@/components/ui/tooltip'
+
+/**
+ * The page as it is actually mounted.
+ *
+ * In the application this screen always renders inside `DashboardShell`, which
+ * supplies the single `TooltipProvider` that the icon actions in its grids
+ * read. Rendering the page bare is a shortcut this file took, not a situation
+ * that exists — and Radix throws rather than degrading when that provider is
+ * missing, so the shortcut became three red tests the moment the delete button
+ * in the items table grew a tooltip.
+ */
+const renderPage = () =>
+  render(
+    <TooltipProvider>
+      <NewInvoicePage />
+    </TooltipProvider>
+  )
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -162,29 +180,29 @@ describe('NewInvoicePage', () => {
 
   describe('Rendering', () => {
     it('renders the page title', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('New Invoice')).toBeInTheDocument()
     })
 
     it('renders patient search field', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByPlaceholderText(/Search by name, ID, or phone/)).toBeInTheDocument()
     })
 
     it('renders Invoice Summary section', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Invoice Summary')).toBeInTheDocument()
     })
 
     it('renders discount section with FIXED and PERCENTAGE options', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Discount')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-FIXED')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-PERCENTAGE')).toBeInTheDocument()
     })
 
     it('renders payment terms options', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Payment Terms')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-0')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-7')).toBeInTheDocument()
@@ -195,7 +213,7 @@ describe('NewInvoicePage', () => {
     // The clinic is exempt, so there is no tax row at all — printing
     // "Sales Tax: Rs 0.00" on every invoice invites the question of why.
     it('renders no tax line when the clinic is exempt', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Subtotal')).toBeInTheDocument()
       expect(screen.queryByText(/Sales Tax/)).not.toBeInTheDocument()
       expect(screen.queryByText(/CGST/)).not.toBeInTheDocument()
@@ -203,31 +221,31 @@ describe('NewInvoicePage', () => {
     })
 
     it('renders "Create & Send Invoice" and "Save as Draft" buttons', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Create & Send Invoice')).toBeInTheDocument()
       expect(screen.getByText('Save as Draft')).toBeInTheDocument()
     })
 
     it('disables submit buttons when no patient or items', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Create & Send Invoice').closest('button')).toBeDisabled()
       expect(screen.getByText('Save as Draft').closest('button')).toBeDisabled()
     })
 
     it('renders empty items state', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('No items added yet')).toBeInTheDocument()
     })
 
     it('renders "Add Custom Item" button', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByText('Add Custom Item')).toBeInTheDocument()
     })
   })
 
   describe('Patient search', () => {
     it('does not search for less than 2 characters', async () => {
-      render(<NewInvoicePage />)
+      renderPage()
       fireEvent.change(screen.getByPlaceholderText(/Search by name/), { target: { value: 'J' } })
 
       await waitFor(() => {
@@ -257,7 +275,7 @@ describe('NewInvoicePage', () => {
           }),
       })
 
-      render(<NewInvoicePage />)
+      renderPage()
       fireEvent.change(screen.getByPlaceholderText(/Search by name/), { target: { value: 'Jo' } })
 
       await waitFor(() => {
@@ -268,7 +286,7 @@ describe('NewInvoicePage', () => {
 
   describe('Validation', () => {
     it('shows error when submitting without patient', async () => {
-      render(<NewInvoicePage />)
+      renderPage()
 
       // Try clicking "Create & Send" — it's disabled, so validation is via disabled state
       expect(screen.getByText('Create & Send Invoice').closest('button')).toBeDisabled()
@@ -307,7 +325,7 @@ describe('NewInvoicePage', () => {
         })
       })
 
-      render(<NewInvoicePage />)
+      renderPage()
 
       // Search for patient
       fireEvent.change(screen.getByPlaceholderText(/Search by name/), { target: { value: 'Jo' } })
@@ -330,7 +348,7 @@ describe('NewInvoicePage', () => {
 
   describe('Invoice items', () => {
     it('adds custom item on "Add Custom Item" click', async () => {
-      render(<NewInvoicePage />)
+      renderPage()
 
       fireEvent.click(screen.getByText('Add Custom Item'))
 
@@ -340,7 +358,7 @@ describe('NewInvoicePage', () => {
     })
 
     it('renders item table with description, qty, unit price, taxable, delete', async () => {
-      render(<NewInvoicePage />)
+      renderPage()
 
       fireEvent.click(screen.getByText('Add Custom Item'))
 
@@ -353,7 +371,7 @@ describe('NewInvoicePage', () => {
     })
 
     it('can add multiple custom items', async () => {
-      render(<NewInvoicePage />)
+      renderPage()
 
       fireEvent.click(screen.getByText('Add Custom Item'))
 
@@ -372,13 +390,13 @@ describe('NewInvoicePage', () => {
 
   describe('Notes section', () => {
     it('renders notes and terms fields', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       expect(screen.getByPlaceholderText(/additional notes/i)).toBeInTheDocument()
       expect(screen.getByText('Terms & Conditions')).toBeInTheDocument()
     })
 
     it('pre-fills terms and conditions', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       const termsArea =
         screen.getByDisplayValue(/Payment is due/i) || screen.getByText(/Payment is due/i)
       expect(termsArea).toBeInTheDocument()
@@ -387,7 +405,7 @@ describe('NewInvoicePage', () => {
 
   describe('Navigation', () => {
     it('has back link to invoices list', () => {
-      render(<NewInvoicePage />)
+      renderPage()
       const backLink = screen
         .getAllByRole('link')
         .find((link) => link.getAttribute('href') === '/billing/invoices')

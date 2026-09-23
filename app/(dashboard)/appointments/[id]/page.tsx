@@ -295,9 +295,9 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         <p className="text-muted-foreground mb-4">
           The appointment you&apos;re looking for doesn&apos;t exist.
         </p>
-        <Link href="/appointments">
-          <Button>Back to Appointments</Button>
-        </Link>
+        <Button asChild>
+          <Link href="/appointments">Back to Appointments</Link>
+        </Button>
       </div>
     )
   }
@@ -310,7 +310,9 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
           <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{appointment.appointmentNo}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                {appointment.appointmentNo}
+              </h1>
               {getStatusBadge(appointment.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(appointment.createdAt)}</p>
@@ -339,12 +341,12 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               Confirm
             </Button>
           )}
-          <Link href={`/appointments/${id}/edit`}>
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href={`/appointments/${id}/edit`}>
               <Edit className="h-4 w-4 mr-2" />
               Edit
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           {/*
             Marking somebody absent belongs here as much as cancelling does.
             It was only ever on the list screen, so a receptionist who had
@@ -470,12 +472,12 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             {appointment.status === 'CANCELLED' && (
               <>
                 <Separator />
-                <div className="rounded-lg bg-red-50 p-4">
-                  <p className="text-sm font-medium text-red-700">
+                <div className="rounded-lg bg-red-50 p-4 dark:bg-red-950/30">
+                  <p className="text-sm font-medium text-red-700 dark:text-red-300">
                     Cancelled on {new Date(appointment.cancelledAt!).toLocaleString()}
                   </p>
                   {appointment.cancellationReason && (
-                    <p className="text-sm text-red-600 mt-1">
+                    <p className="text-sm text-red-600 mt-1 dark:text-red-400">
                       Reason: {appointment.cancellationReason}
                     </p>
                   )}
@@ -563,11 +565,11 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               )}
 
               <div className="pt-2">
-                <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
-                  <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full" asChild>
+                  <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
                     View Full Patient Profile
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -593,12 +595,12 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 )}
               </div>
               {appointment.visitor && (
-                <Link href={trail.to(`/walk-ins/${appointment.visitor.id}`)}>
-                  <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full" asChild>
+                  <Link href={trail.to(`/walk-ins/${appointment.visitor.id}`)}>
                     <UserPlus className="h-4 w-4 mr-2" />
                     Register as a patient
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
             </CardContent>
           </Card>

@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import {
   Table,
   TableBody,
@@ -91,6 +92,8 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { PerioPanel } from '@/components/clinical/perio-panel'
 import { bloodGroupLabel, genderLabel } from '@/lib/labels'
 import { displayDate } from '@/lib/dates'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Patient {
   id: string
@@ -512,12 +515,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/patients/${patient.id}/edit`}>
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href={`/patients/${patient.id}/edit`}>
               <Edit className="h-4 w-4 mr-2" />
               Edit
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           {/*
             Two records for one person is the commonest mess a front desk makes.
             The registration form has always warned about a likely duplicate
@@ -528,12 +531,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <Merge className="h-4 w-4 mr-2" />
             Merge duplicate
           </Button>
-          <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
-            <Button>
+          <Button asChild>
+            <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
               <Calendar className="h-4 w-4 mr-2" />
               Book Appointment
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -553,11 +556,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               </span>
               . The history is there.
             </p>
-            <Link href={trail.to(`/patients/${patient.mergedInto.id}`)}>
-              <Button size="sm" variant="outline">
-                Open that record
-              </Button>
-            </Link>
+            <Button size="sm" variant="outline" asChild>
+              <Link href={trail.to(`/patients/${patient.mergedInto.id}`)}>Open that record</Link>
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -798,6 +799,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               </Select>
             </CardHeader>
             <CardContent>
+              <ActiveFilters
+                className="-mt-2 mb-4"
+                noun="events"
+                onClearAll={() => setTimelineFilter('all')}
+                filters={[
+                  {
+                    label: 'Showing',
+                    value: timelineFilter === 'all' ? null : humanise(timelineFilter),
+                    onClear: () => setTimelineFilter('all'),
+                  },
+                ]}
+              />
               {timelineLoading ? (
                 <div className="space-y-4">
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -844,17 +857,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                       const getEventColor = () => {
                         switch (event.type) {
                           case 'appointment':
-                            return 'bg-blue-100 text-blue-600 border-blue-200'
+                            return 'bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
                           case 'treatment':
-                            return 'bg-green-100 text-green-600 border-green-200'
+                            return 'bg-green-100 text-green-600 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800/60'
                           case 'payment':
-                            return 'bg-yellow-100 text-yellow-600 border-yellow-200'
+                            return 'bg-yellow-100 text-yellow-600 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-400 dark:border-yellow-800/60'
                           case 'document':
-                            return 'bg-purple-100 text-purple-600 border-purple-200'
+                            return 'bg-purple-100 text-purple-600 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/60'
                           case 'prescription':
-                            return 'bg-orange-100 text-orange-600 border-orange-200'
+                            return 'bg-orange-100 text-orange-600 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/60'
                           case 'lab_order':
-                            return 'bg-pink-100 text-pink-600 border-pink-200'
+                            return 'bg-pink-100 text-pink-600 border-pink-200 dark:bg-pink-950/40 dark:text-pink-400 dark:border-pink-800/60'
                           default:
                             return 'bg-muted text-muted-foreground border-border'
                         }
@@ -1054,7 +1067,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                       const isImage = doc.fileType.startsWith('image/')
                       const isSelected = compareSelection.some((d) => d.id === doc.id)
                       return (
-                        <TableRow key={doc.id} className={isSelected ? 'bg-blue-50' : ''}>
+                        <TableRow
+                          key={doc.id}
+                          className={isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : ''}
+                        >
                           {compareMode && (
                             <TableCell>
                               {isImage && (
@@ -1111,13 +1127,15 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                           </TableCell>
                           <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
                           <TableCell>{displayDate(doc.createdAt)}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right row-actions">
                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="More actions">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
+                              <IconTooltip label="More actions">
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="More actions">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                              </IconTooltip>
                               <DropdownMenuContent align="end">
                                 {isImage && (
                                   <>
@@ -1234,12 +1252,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle>Appointments</CardTitle>
                 <CardDescription>Recent and upcoming appointments</CardDescription>
               </div>
-              <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
-                <Button>
+              <Button asChild>
+                <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
                   <Calendar className="h-4 w-4 mr-2" />
                   New Appointment
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardHeader>
             <CardContent>
               {patient.appointments.length === 0 ? (

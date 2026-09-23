@@ -6,6 +6,7 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
@@ -21,6 +22,8 @@ import {
 } from '@/components/ui/table'
 import { ClipboardList, Plus, Search, Eye, Trash2, Loader2 } from 'lucide-react'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { fetchHandedPatient } from '@/lib/prefill'
 
 interface Prescription {
   id: string
@@ -39,6 +42,12 @@ interface Prescription {
   }[]
 }
 
+interface HandedPatient {
+  id: string
+  firstName: string
+  lastName: string
+}
+
 export default function PrescriptionsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Prescriptions')
@@ -46,7 +55,8 @@ export default function PrescriptionsPage() {
   // Arriving from a patient or a treatment narrows the list to that patient.
   // The route has always accepted this filter; nothing passed it, so the only
   // way to see one patient's prescriptions was to search for their name.
-  const patientId = useSearchParams().get('patientId') ?? ''
+  const searchParams = useSearchParams()
+  const patientId = searchParams.get('patientId') ?? ''
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
@@ -55,6 +65,37 @@ export default function PrescriptionsPage() {
   // What is in the box, and what we are willing to ask the server about.
   const debouncedSearch = useDebouncedValue(search)
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 })
+
+  /**
+   * The name behind `?patientId=`, so the screen can say whose list this is.
+   *
+   * Read from the patient rather than from the first row: a patient with no
+   * prescriptions yet is exactly when an unexplained empty list is most
+   * misleading, and that is the case with no row to take a name from.
+   */
+  const [fetchedPatient, setFetchedPatient] = useState<HandedPatient | null>(null)
+
+  useEffect(() => {
+    if (!patientId) return
+    const controller = new AbortController()
+    fetchHandedPatient<HandedPatient>(patientId, controller.signal).then((patient) => {
+      if (!controller.signal.aborted) setFetchedPatient(patient)
+    })
+    return () => controller.abort()
+  }, [patientId])
+
+  // Matched rather than cleared when the filter goes: clearing it in the
+  // effect is a synchronous setState on a render, and a stale name is the one
+  // thing worse here than no name.
+  const handedPatient = fetchedPatient?.id === patientId ? fetchedPatient : null
+
+  /** Drop the patient filter but keep the trail, so Back still works. */
+  const clearPatient = () => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('patientId')
+    const query = next.toString()
+    router.replace(query ? `/prescriptions?${query}` : '/prescriptions', { scroll: false })
+  }
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -122,7 +163,7 @@ export default function PrescriptionsPage() {
     <div className="container mx-auto p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
             <ClipboardList className="h-8 w-8" />
             Prescriptions
           </h1>
@@ -156,7 +197,20 @@ export default function PrescriptionsPage() {
               }))
             }
           />
-          <Button onClick={() => router.push('/prescriptions/new')}>
+          {/*
+            Carry the patient onward when the list is already scoped to one.
+            Writing a prescription for the patient whose list you are reading
+            should not start by searching for them again.
+          */}
+          <Button
+            onClick={() =>
+              router.push(
+                trail.to(
+                  patientId ? `/prescriptions/new?patientId=${patientId}` : '/prescriptions/new'
+                )
+              )
+            }
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Prescription
           </Button>
@@ -178,6 +232,35 @@ export default function PrescriptionsPage() {
               className="pl-9"
             />
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="prescriptions"
+            onClearAll={() => {
+              setSearch('')
+              setPagination((p) => ({ ...p, page: 1 }))
+              if (patientId) clearPatient()
+            }}
+            filters={[
+              {
+                label: 'Patient',
+                value: patientId
+                  ? handedPatient
+                    ? `${handedPatient.firstName} ${handedPatient.lastName}`
+                    : 'Selected patient'
+                  : null,
+                onClear: clearPatient,
+              },
+              {
+                label: 'Search',
+                value: search,
+                onClear: () => {
+                  setSearch('')
+                  setPagination((p) => ({ ...p, page: 1 }))
+                },
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -245,26 +328,30 @@ export default function PrescriptionsPage() {
                         year: 'numeric',
                       })}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="row-actions">
                       <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="View"
-                          className="h-8 w-8"
-                          onClick={() => router.push(`/prescriptions/${rx.id}`)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Delete"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(rx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <IconTooltip label="Open this prescription">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Open this prescription"
+                            className="h-8 w-8"
+                            onClick={() => router.push(`/prescriptions/${rx.id}`)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </IconTooltip>
+                        <IconTooltip label="Delete this prescription">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete this prescription"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => handleDelete(rx)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </IconTooltip>
                       </div>
                     </TableCell>
                   </ClickableRow>

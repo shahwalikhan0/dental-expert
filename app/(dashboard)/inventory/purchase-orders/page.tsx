@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface PurchaseOrderRow {
   id: string
@@ -22,10 +24,10 @@ interface PurchaseOrderRow {
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-muted text-foreground',
-  ORDERED: 'bg-blue-100 text-blue-800',
-  PARTIALLY_RECEIVED: 'bg-amber-100 text-amber-800',
-  RECEIVED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
+  ORDERED: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  PARTIALLY_RECEIVED: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  RECEIVED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
 }
 
 function statusLabel(status: string) {
@@ -83,7 +85,7 @@ export default function PurchaseOrdersPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Purchase Orders</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Purchase Orders</h1>
           <p className="text-sm text-muted-foreground mt-1">
             What has been ordered from suppliers, and what is still to arrive.
           </p>
@@ -134,6 +136,34 @@ export default function PurchaseOrdersPage() {
             <option value="CANCELLED">Cancelled</option>
           </select>
         </div>
+
+        <ActiveFilters
+          className="mt-4"
+          noun="purchase orders"
+          onClearAll={() => {
+            setSearch('')
+            setStatusFilter('all')
+            setPagination((p) => ({ ...p, page: 1 }))
+          }}
+          filters={[
+            {
+              label: 'Search',
+              value: search,
+              onClear: () => {
+                setSearch('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+            {
+              label: 'Status',
+              value: statusFilter === 'all' ? null : humanise(statusFilter),
+              onClear: () => {
+                setStatusFilter('all')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+          ]}
+        />
       </div>
 
       <div className="bg-background rounded-lg shadow overflow-hidden">
@@ -189,7 +219,9 @@ export default function PurchaseOrdersPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{order.lineCount}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {order.outstanding > 0 ? (
-                        <span className="font-medium text-amber-700">{order.outstanding}</span>
+                        <span className="font-medium text-amber-700 dark:text-amber-300">
+                          {order.outstanding}
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

@@ -101,7 +101,7 @@ function ResetPasswordForm() {
 
   if (checking) {
     return (
-      <Card className="w-full max-w-md">
+      <Card className="glass glass-raised w-full max-w-md rounded-2xl">
         <CardContent className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           Checking that link…
@@ -112,7 +112,7 @@ function ResetPasswordForm() {
 
   if (done) {
     return (
-      <Card className="w-full max-w-md">
+      <Card className="glass glass-raised w-full max-w-md rounded-2xl">
         <CardHeader>
           <div className="mb-2 flex justify-center">
             <CheckCircle2 className="h-10 w-10 text-primary" aria-hidden />
@@ -133,7 +133,7 @@ function ResetPasswordForm() {
 
   if (!valid) {
     return (
-      <Card className="w-full max-w-md">
+      <Card className="glass glass-raised w-full max-w-md rounded-2xl">
         <CardHeader>
           <div className="mb-2 flex justify-center">
             <AlertTriangle className="h-10 w-10 text-destructive" aria-hidden />
@@ -142,21 +142,19 @@ function ResetPasswordForm() {
           <CardDescription className="text-center">{linkError}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Link href="/forgot-password">
-            <Button className="w-full">Ask for a new link</Button>
-          </Link>
-          <Link href="/login">
-            <Button variant="outline" className="w-full">
-              Back to sign in
-            </Button>
-          </Link>
+          <Button className="w-full" asChild>
+            <Link href="/forgot-password">Ask for a new link</Link>
+          </Button>
+          <Button variant="outline" className="w-full" asChild>
+            <Link href="/login">Back to sign in</Link>
+          </Button>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="glass glass-raised w-full max-w-md rounded-2xl">
       <CardHeader>
         <CardTitle>Choose a new password</CardTitle>
         <CardDescription>
@@ -218,7 +216,7 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <Card className="w-full max-w-md">
+        <Card className="glass glass-raised w-full max-w-md rounded-2xl">
           <CardContent className="flex justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </CardContent>

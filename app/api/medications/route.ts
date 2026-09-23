@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(sp.get('limit') || '50')
     const skip = (page - 1) * limit
 
+    // The grid shows newest first, so a record somebody has just added is the
+    // top row rather than wherever its name falls. `sort=name` is for the
+    // dropdowns that read the same endpoint, where a person scans for a name.
+    const byName = sp.get('sort') === 'name'
+
     const where: any = { hospitalId }
 
     if (search) {
@@ -38,7 +43,7 @@ export async function GET(request: NextRequest) {
     const [medications, total] = await Promise.all([
       prisma.medication.findMany({
         where,
-        orderBy: { name: 'asc' },
+        orderBy: byName ? { name: 'asc' } : { createdAt: 'desc' },
         skip,
         take: limit,
       }),

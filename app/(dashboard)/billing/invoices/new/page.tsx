@@ -6,6 +6,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -340,19 +341,19 @@ export default function NewInvoicePage() {
     <div ref={formRef} className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/billing/invoices">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/billing/invoices">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Invoice</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Invoice</h1>
           <p className="text-muted-foreground">Create a new invoice for a patient</p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
           <AlertCircle className="h-4 w-4" />
           {error}
         </div>
@@ -369,10 +370,10 @@ export default function NewInvoicePage() {
             </CardHeader>
             <CardContent>
               {selectedPatient ? (
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-950/30 dark:border-green-800/60">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-                      <User className="h-5 w-5 text-green-600" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/40">
+                      <User className="h-5 w-5 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
                       <div className="font-medium">
@@ -570,14 +571,16 @@ export default function NewInvoicePage() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Delete"
-                            onClick={() => removeItem(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          <IconTooltip label="Remove this line">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Remove this line"
+                              onClick={() => removeItem(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
+                            </Button>
+                          </IconTooltip>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -676,7 +679,7 @@ export default function NewInvoicePage() {
                   <span>{formatCurrency(totals.subtotal)}</span>
                 </div>
                 {totals.discountAmount > 0 && (
-                  <div className="flex justify-between text-sm text-green-600">
+                  <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
                     <span>Discount</span>
                     <span>-{formatCurrency(totals.discountAmount)}</span>
                   </div>

@@ -99,7 +99,11 @@ export default function FeedbackAnalyticsPage() {
   }, [period])
 
   const npsColor = (score: number) =>
-    score >= 50 ? 'text-green-600' : score >= 0 ? 'text-yellow-600' : 'text-red-600'
+    score >= 50
+      ? 'text-green-600 dark:text-green-400'
+      : score >= 0
+        ? 'text-yellow-600 dark:text-yellow-400'
+        : 'text-red-600 dark:text-red-400'
 
   const sentimentTotal = data
     ? data.sentimentBreakdown.positive +
@@ -163,7 +167,7 @@ export default function FeedbackAnalyticsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Avg Rating</CardTitle>
-                <Star className="h-4 w-4 text-yellow-500" />
+                <Star className="h-4 w-4 text-yellow-500 dark:text-yellow-400" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{data.avgRating}/5</div>
@@ -174,9 +178,9 @@ export default function FeedbackAnalyticsPage() {
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">NPS Score</CardTitle>
                 {data.nps.score >= 0 ? (
-                  <ThumbsUp className="h-4 w-4 text-green-500" />
+                  <ThumbsUp className="h-4 w-4 text-green-500 dark:text-green-400" />
                 ) : (
-                  <ThumbsDown className="h-4 w-4 text-red-500" />
+                  <ThumbsDown className="h-4 w-4 text-red-500 dark:text-red-400" />
                 )}
               </CardHeader>
               <CardContent>
@@ -306,7 +310,7 @@ export default function FeedbackAnalyticsPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-sm">
-                      <Smile className="h-5 w-5 text-green-500" />
+                      <Smile className="h-5 w-5 text-green-500 dark:text-green-400" />
                       Positive
                     </span>
                     <span className="font-semibold">{data.sentimentBreakdown.positive}</span>
@@ -324,7 +328,7 @@ export default function FeedbackAnalyticsPage() {
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-sm">
-                      <Meh className="h-5 w-5 text-yellow-500" />
+                      <Meh className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
                       Neutral
                     </span>
                     <span className="font-semibold">{data.sentimentBreakdown.neutral}</span>
@@ -342,7 +346,7 @@ export default function FeedbackAnalyticsPage() {
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-sm">
-                      <Frown className="h-5 w-5 text-red-500" />
+                      <Frown className="h-5 w-5 text-red-500 dark:text-red-400" />
                       Negative
                     </span>
                     <span className="font-semibold">{data.sentimentBreakdown.negative}</span>

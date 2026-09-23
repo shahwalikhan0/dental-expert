@@ -185,9 +185,9 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col items-center justify-center h-[400px] gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-muted-foreground">Performance data not available</p>
-        <Link href="/staff">
-          <Button>Back to Staff List</Button>
-        </Link>
+        <Button asChild>
+          <Link href="/staff">Back to Staff List</Link>
+        </Button>
       </div>
     )
   }
@@ -197,13 +197,13 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
-          <Link href={`/staff/${resolvedParams.id}`}>
-            <Button variant="ghost" size="icon" aria-label="Go back">
+          <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+            <Link href={`/staff/${resolvedParams.id}`}>
               <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Performance Dashboard</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Performance Dashboard</h1>
             <p className="text-muted-foreground">
               {data.staff.name} ({data.staff.employeeId})
               {data.staff.specialization && ` - ${data.staff.specialization}`}
@@ -236,8 +236,8 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-muted-foreground">Total Revenue</p>
                 <p className="text-2xl font-bold">{formatCurrency(data.revenue.total)}</p>
               </div>
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-                <IndianRupee className="h-6 w-6 text-green-600" />
+              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-950/40">
+                <IndianRupee className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
@@ -253,8 +253,8 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-muted-foreground">Patients Treated</p>
                 <p className="text-2xl font-bold">{data.patientsTreated}</p>
               </div>
-              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <Users className="h-6 w-6 text-blue-600" />
+              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-950/40">
+                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">Unique patients this period</p>
@@ -268,8 +268,8 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-muted-foreground">Treatments Done</p>
                 <p className="text-2xl font-bold">{data.treatments.completed}</p>
               </div>
-              <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <Stethoscope className="h-6 w-6 text-purple-600" />
+              <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center dark:bg-purple-950/40">
+                <Stethoscope className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
@@ -285,8 +285,8 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-muted-foreground">Prescriptions</p>
                 <p className="text-2xl font-bold">{data.prescriptionsWritten}</p>
               </div>
-              <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <FileText className="h-6 w-6 text-orange-600" />
+              <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center dark:bg-orange-950/40">
+                <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">Written this period</p>
@@ -316,17 +316,23 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-muted-foreground">Total</p>
                 <p className="text-xl font-bold">{data.appointments.total}</p>
               </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-600">Completed</p>
-                <p className="text-xl font-bold text-green-700">{data.appointments.completed}</p>
+              <div className="p-3 bg-green-50 rounded-lg dark:bg-green-950/30">
+                <p className="text-sm text-green-600 dark:text-green-400">Completed</p>
+                <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                  {data.appointments.completed}
+                </p>
               </div>
-              <div className="p-3 bg-red-50 rounded-lg">
-                <p className="text-sm text-red-600">Cancelled</p>
-                <p className="text-xl font-bold text-red-700">{data.appointments.cancelled}</p>
+              <div className="p-3 bg-red-50 rounded-lg dark:bg-red-950/30">
+                <p className="text-sm text-red-600 dark:text-red-400">Cancelled</p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                  {data.appointments.cancelled}
+                </p>
               </div>
-              <div className="p-3 bg-yellow-50 rounded-lg">
-                <p className="text-sm text-yellow-600">No Show</p>
-                <p className="text-xl font-bold text-yellow-700">{data.appointments.noShow}</p>
+              <div className="p-3 bg-yellow-50 rounded-lg dark:bg-yellow-950/30">
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">No Show</p>
+                <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
+                  {data.appointments.noShow}
+                </p>
               </div>
             </div>
 
@@ -358,28 +364,38 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
             <Progress value={getAttendanceRate()} className="h-2" />
 
             <div className="grid grid-cols-3 gap-4 mt-4">
-              <div className="p-3 bg-green-50 rounded-lg text-center">
-                <p className="text-sm text-green-600">Present</p>
-                <p className="text-xl font-bold text-green-700">{data.attendance.present}</p>
+              <div className="p-3 bg-green-50 rounded-lg text-center dark:bg-green-950/30">
+                <p className="text-sm text-green-600 dark:text-green-400">Present</p>
+                <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                  {data.attendance.present}
+                </p>
               </div>
-              <div className="p-3 bg-red-50 rounded-lg text-center">
-                <p className="text-sm text-red-600">Absent</p>
-                <p className="text-xl font-bold text-red-700">{data.attendance.absent}</p>
+              <div className="p-3 bg-red-50 rounded-lg text-center dark:bg-red-950/30">
+                <p className="text-sm text-red-600 dark:text-red-400">Absent</p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                  {data.attendance.absent}
+                </p>
               </div>
-              <div className="p-3 bg-yellow-50 rounded-lg text-center">
-                <p className="text-sm text-yellow-600">Late</p>
-                <p className="text-xl font-bold text-yellow-700">{data.attendance.late}</p>
+              <div className="p-3 bg-yellow-50 rounded-lg text-center dark:bg-yellow-950/30">
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">Late</p>
+                <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
+                  {data.attendance.late}
+                </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-orange-50 rounded-lg text-center">
-                <p className="text-sm text-orange-600">Half Day</p>
-                <p className="text-xl font-bold text-orange-700">{data.attendance.halfDay}</p>
+              <div className="p-3 bg-orange-50 rounded-lg text-center dark:bg-orange-950/30">
+                <p className="text-sm text-orange-600 dark:text-orange-400">Half Day</p>
+                <p className="text-xl font-bold text-orange-700 dark:text-orange-300">
+                  {data.attendance.halfDay}
+                </p>
               </div>
-              <div className="p-3 bg-blue-50 rounded-lg text-center">
-                <p className="text-sm text-blue-600">On Leave</p>
-                <p className="text-xl font-bold text-blue-700">{data.attendance.onLeave}</p>
+              <div className="p-3 bg-blue-50 rounded-lg text-center dark:bg-blue-950/30">
+                <p className="text-sm text-blue-600 dark:text-blue-400">On Leave</p>
+                <p className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                  {data.attendance.onLeave}
+                </p>
               </div>
             </div>
           </CardContent>

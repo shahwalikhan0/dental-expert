@@ -24,10 +24,11 @@
  */
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TableRow } from '@/components/ui/table'
+import { TableRow, TABLE_HEAD_CLASS } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { GLASS_FIELD } from '@/lib/surface'
 
 /**
  * Elements that handle their own clicks and must not also open the row.
@@ -143,7 +144,7 @@ export function GridPagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-col gap-3 border-t border-border/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
         className
       )}
     >
@@ -160,7 +161,7 @@ export function GridPagination({
               aria-label="Rows per page"
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+              className={`${GLASS_FIELD} h-8 rounded-lg px-2 text-sm`}
             >
               {pageSizeOptions.map((size) => (
                 <option key={size} value={size}>
@@ -321,24 +322,33 @@ export const SortableHeader = React.forwardRef<HTMLTableCellElement, SortableHea
     const ariaSort = !active ? 'none' : sort.direction === 'asc' ? 'ascending' : 'descending'
 
     return (
-      <th
-        ref={ref}
-        aria-sort={ariaSort}
-        className={cn(
-          'h-12 px-4 text-left align-middle font-medium text-muted-foreground',
-          className
-        )}
-        {...props}
-      >
+      <th ref={ref} aria-sort={ariaSort} className={cn(TABLE_HEAD_CLASS, className)} {...props}>
         <button
           type="button"
           onClick={() => sort.toggle(column)}
-          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          /*
+           * `uppercase` is repeated here on purpose. Tailwind's preflight sets
+           * `text-transform: none` on every `button`, so the small capitals the
+           * `<th>` asks for stop at this element — a sortable column would read
+           * in sentence case beside plain columns in capitals.
+           */
+          className="inline-flex items-center gap-1.5 rounded-md uppercase tracking-[0.08em] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {children}
-          <span aria-hidden="true" className={cn('text-xs', active ? 'opacity-100' : 'opacity-30')}>
-            {active && sort.direction === 'desc' ? '▼' : '▲'}
-          </span>
+          {/*
+            Drawn rather than typed. `▲` and `▼` are rendered by whichever font
+            on the machine happens to carry them, so the arrow sat at a
+            different size and baseline on every platform; and the unsorted
+            state was the ascending arrow at 30% opacity, which reads as "sorted
+            ascending, faintly" rather than as "sortable".
+          */}
+          {!active ? (
+            <ChevronsUpDown aria-hidden="true" className="h-3 w-3 opacity-40" />
+          ) : sort.direction === 'asc' ? (
+            <ChevronUp aria-hidden="true" className="h-3 w-3 text-primary" />
+          ) : (
+            <ChevronDown aria-hidden="true" className="h-3 w-3 text-primary" />
+          )}
         </button>
       </th>
     )

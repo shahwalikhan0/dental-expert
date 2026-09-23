@@ -229,7 +229,7 @@ export default function FinancialReportsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Financial Reports</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Financial Reports</h1>
           <p className="text-muted-foreground">View detailed financial analytics and reports</p>
         </div>
         <div className="flex gap-2">
@@ -309,7 +309,9 @@ export default function FinancialReportsPage() {
               <>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-green-600">Current</CardTitle>
+                    <CardTitle className="text-sm font-medium text-green-600 dark:text-green-400">
+                      Current
+                    </CardTitle>
                     <CardDescription>Not yet due</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -323,7 +325,9 @@ export default function FinancialReportsPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-yellow-600">1-30 Days</CardTitle>
+                    <CardTitle className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                      1-30 Days
+                    </CardTitle>
                     <CardDescription>Overdue</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -337,7 +341,7 @@ export default function FinancialReportsPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-orange-600">
+                    <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400">
                       31-60 Days
                     </CardTitle>
                     <CardDescription>Overdue</CardDescription>
@@ -353,7 +357,9 @@ export default function FinancialReportsPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-red-500">61-90 Days</CardTitle>
+                    <CardTitle className="text-sm font-medium text-red-500 dark:text-red-400">
+                      61-90 Days
+                    </CardTitle>
                     <CardDescription>Overdue</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -367,7 +373,9 @@ export default function FinancialReportsPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-red-700">90+ Days</CardTitle>
+                    <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300">
+                      90+ Days
+                    </CardTitle>
                     <CardDescription>Critical</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -450,7 +458,7 @@ export default function FinancialReportsPage() {
                         <TableCell className="text-right">
                           {formatCurrency(invoice.totalAmount)}
                         </TableCell>
-                        <TableCell className="text-right font-medium text-red-600">
+                        <TableCell className="text-right font-medium text-red-600 dark:text-red-400">
                           {formatCurrency(invoice.balanceAmount)}
                         </TableCell>
                       </ClickableRow>
@@ -682,7 +690,7 @@ export default function FinancialReportsPage() {
                 {loading ? (
                   <Skeleton className="h-8 w-32" />
                 ) : (
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                     {formatCurrency(dailyData?.totals.totalCollection || 0)}
                   </div>
                 )}
@@ -777,7 +785,7 @@ export default function FinancialReportsPage() {
                         <TableCell className="text-right">
                           {formatCurrency(day.bankTransfer)}
                         </TableCell>
-                        <TableCell className="text-right font-medium text-green-600">
+                        <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
                           {formatCurrency(day.total)}
                         </TableCell>
                         <TableCell className="text-center">{day.count}</TableCell>

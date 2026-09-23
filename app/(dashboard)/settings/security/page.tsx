@@ -104,7 +104,7 @@ export default function SecuritySettingsPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">Security</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Security</h1>
           <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
         </div>
         <div className="flex h-64 items-center justify-center">
@@ -117,7 +117,7 @@ export default function SecuritySettingsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-3xl font-bold">
+        <h1 className="flex items-center gap-2 text-2xl md:text-3xl font-bold">
           <Shield className="h-8 w-8" />
           Security
         </h1>
@@ -386,14 +386,14 @@ export default function SecuritySettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-amber-200 bg-amber-50">
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-900">
+            <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
               <AlertTriangle className="h-5 w-5" />
               Before you save
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-amber-800">
+          <CardContent className="space-y-2 text-sm text-amber-800 dark:text-amber-300">
             <p>
               • A stricter password policy applies to the next password anybody sets, not to the
               ones already in use.

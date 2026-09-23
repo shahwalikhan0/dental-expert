@@ -309,11 +309,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       <div className="flex flex-col items-center justify-center h-96">
         <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
         <p className="text-lg text-muted-foreground">Invoice not found</p>
-        <Link href="/billing/invoices">
-          <Button variant="outline" className="mt-4">
-            Back to Invoices
-          </Button>
-        </Link>
+        <Button variant="outline" className="mt-4" asChild>
+          <Link href="/billing/invoices">Back to Invoices</Link>
+        </Button>
       </div>
     )
   }
@@ -328,7 +326,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{invoice.invoiceNo}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{invoice.invoiceNo}</h1>
               {getStatusBadge(invoice.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(invoice.createdAt)}</p>
@@ -349,7 +347,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
           <AlertCircle className="h-4 w-4" />
           {error}
         </div>
@@ -461,7 +459,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       <span>{formatCurrency(invoice.subtotal)}</span>
                     </div>
                     {Number(invoice.discountAmount) > 0 && (
-                      <div className="flex justify-between text-green-600">
+                      <div className="flex justify-between text-green-600 dark:text-green-400">
                         <span>Discount</span>
                         <span>-{formatCurrency(invoice.discountAmount)}</span>
                       </div>
@@ -480,13 +478,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       <span>Total</span>
                       <span>{formatCurrency(invoice.totalAmount)}</span>
                     </div>
-                    <div className="flex justify-between text-green-600">
+                    <div className="flex justify-between text-green-600 dark:text-green-400">
                       <span>Paid</span>
                       <span>{formatCurrency(invoice.paidAmount)}</span>
                     </div>
                     <div className="flex justify-between font-bold">
                       <span>Balance Due</span>
-                      <span className={Number(invoice.balanceAmount) > 0 ? 'text-red-600' : ''}>
+                      <span
+                        className={
+                          Number(invoice.balanceAmount) > 0 ? 'text-red-600 dark:text-red-400' : ''
+                        }
+                      >
                         {formatCurrency(invoice.balanceAmount)}
                       </span>
                     </div>
@@ -608,7 +610,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   <div className="text-right">
                     <div>{formatDate(invoice.dueDate)}</div>
                     {dueDays.isOverdue && invoice.status !== 'PAID' && (
-                      <div className="text-xs text-red-600 flex items-center justify-end gap-1">
+                      <div className="text-xs text-red-600 flex items-center justify-end gap-1 dark:text-red-400">
                         <Clock className="h-3 w-3" />
                         {dueDays.label}
                       </div>
@@ -623,14 +625,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Amount Paid</span>
-                <span className="text-green-600 font-semibold">
+                <span className="text-green-600 font-semibold dark:text-green-400">
                   {formatCurrency(invoice.paidAmount)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Balance Due</span>
                 <span
-                  className={`font-semibold ${Number(invoice.balanceAmount) > 0 ? 'text-red-600' : ''}`}
+                  className={`font-semibold ${Number(invoice.balanceAmount) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}
                 >
                   {formatCurrency(invoice.balanceAmount)}
                 </span>
@@ -654,7 +656,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   {linkLoading ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : linkCopied ? (
-                    <Check className="h-4 w-4 mr-2 text-green-500" />
+                    <Check className="h-4 w-4 mr-2 text-green-500 dark:text-green-400" />
                   ) : (
                     <Share2 className="h-4 w-4 mr-2" />
                   )}
@@ -673,12 +675,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   it — there is no endpoint that emails an invoice. Removed
                   rather than left as a button that silently does nothing; see
                   docs/DEFERRED.md for what sending one would involve. */}
-              <Link href={trail.to(`/patients/${invoice.patient.id}`)} className="block">
-                <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start" asChild>
+                <Link href={trail.to(`/patients/${invoice.patient.id}`)} className="block">
                   <User className="h-4 w-4 mr-2" />
                   View Patient
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>

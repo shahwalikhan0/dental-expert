@@ -64,9 +64,9 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
   }
 
   return (
-    <div className="min-h-screen bg-muted/50">
+    <div className="min-h-screen bg-gradient-to-br from-primary/[0.06] via-background to-primary/[0.04]">
       {/* Top navbar */}
-      <header className="sticky top-0 z-40 bg-background border-b shadow-sm">
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
             <button className="md:hidden p-1" onClick={() => setMobileOpen(!mobileOpen)}>
@@ -76,10 +76,10 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
               <img
                 src={hospital.logo}
                 alt={hospital.name}
-                className="h-8 w-8 rounded-md object-cover"
+                className="h-8 w-8 rounded-xl object-cover ring-1 ring-white/40 dark:ring-white/10"
               />
             ) : (
-              <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
                 <Building2 className="h-4 w-4 text-primary" />
               </div>
             )}
@@ -108,17 +108,17 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
 
       <div className="max-w-7xl mx-auto flex">
         {/* Desktop sidebar */}
-        <aside className="hidden md:block w-56 shrink-0 border-r bg-background min-h-[calc(100vh-3.5rem)]">
+        <aside className="hidden md:block w-56 shrink-0 border-r border-border/60 bg-card/50 backdrop-blur-xl min-h-[calc(100vh-3.5rem)]">
           <nav className="p-3 space-y-1">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+                  'flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors',
                   isActive(item.href)
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-muted'
+                    ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground'
+                    : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -131,8 +131,11 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
         {/* Mobile nav overlay */}
         {mobileOpen && (
           <div className="fixed inset-0 z-30 md:hidden">
-            <div className="absolute inset-0 bg-black/20" onClick={() => setMobileOpen(false)} />
-            <aside className="absolute left-0 top-14 bottom-0 w-56 bg-background border-r shadow-lg">
+            <div
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-md"
+              onClick={() => setMobileOpen(false)}
+            />
+            <aside className="glass glass-raised absolute left-0 top-14 bottom-0 w-56 rounded-r-2xl">
               <nav className="p-3 space-y-1">
                 {navItems.map((item) => (
                   <Link
@@ -140,10 +143,10 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
                     className={cn(
-                      'flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+                      'flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors',
                       isActive(item.href)
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted'
+                        ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
                     )}
                   >
                     <item.icon className="h-4 w-4" />

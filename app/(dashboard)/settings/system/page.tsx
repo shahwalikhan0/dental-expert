@@ -84,7 +84,7 @@ export default function SystemSettingsPage() {
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <Database className="w-8 h-8" />
           System Settings
         </h1>
@@ -114,38 +114,52 @@ export default function SystemSettingsPage() {
             <CardContent>
               {backupStats ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <p className="text-3xl font-bold text-blue-600">{backupStats.patients}</p>
+                  <div className="text-center p-4 bg-blue-50 rounded-lg dark:bg-blue-950/30">
+                    <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                      {backupStats.patients}
+                    </p>
                     <p className="text-sm text-muted-foreground">Patients</p>
                   </div>
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <p className="text-3xl font-bold text-green-600">{backupStats.appointments}</p>
+                  <div className="text-center p-4 bg-green-50 rounded-lg dark:bg-green-950/30">
+                    <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                      {backupStats.appointments}
+                    </p>
                     <p className="text-sm text-muted-foreground">Appointments</p>
                   </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-lg">
-                    <p className="text-3xl font-bold text-purple-600">{backupStats.treatments}</p>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg dark:bg-purple-950/30">
+                    <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                      {backupStats.treatments}
+                    </p>
                     <p className="text-sm text-muted-foreground">Treatments</p>
                   </div>
-                  <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                    <p className="text-3xl font-bold text-yellow-600">{backupStats.invoices}</p>
+                  <div className="text-center p-4 bg-yellow-50 rounded-lg dark:bg-yellow-950/30">
+                    <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
+                      {backupStats.invoices}
+                    </p>
                     <p className="text-sm text-muted-foreground">Invoices</p>
                   </div>
-                  <div className="text-center p-4 bg-red-50 rounded-lg">
-                    <p className="text-3xl font-bold text-red-600">{backupStats.payments}</p>
+                  <div className="text-center p-4 bg-red-50 rounded-lg dark:bg-red-950/30">
+                    <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+                      {backupStats.payments}
+                    </p>
                     <p className="text-sm text-muted-foreground">Payments</p>
                   </div>
-                  <div className="text-center p-4 bg-indigo-50 rounded-lg">
-                    <p className="text-3xl font-bold text-indigo-600">
+                  <div className="text-center p-4 bg-indigo-50 rounded-lg dark:bg-indigo-950/30">
+                    <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
                       {backupStats.inventoryItems}
                     </p>
                     <p className="text-sm text-muted-foreground">Inventory Items</p>
                   </div>
-                  <div className="text-center p-4 bg-pink-50 rounded-lg">
-                    <p className="text-3xl font-bold text-pink-600">{backupStats.staff}</p>
+                  <div className="text-center p-4 bg-pink-50 rounded-lg dark:bg-pink-950/30">
+                    <p className="text-3xl font-bold text-pink-600 dark:text-pink-400">
+                      {backupStats.staff}
+                    </p>
                     <p className="text-sm text-muted-foreground">Staff Members</p>
                   </div>
-                  <div className="text-center p-4 bg-teal-50 rounded-lg">
-                    <p className="text-3xl font-bold text-teal-600">{backupStats.labOrders}</p>
+                  <div className="text-center p-4 bg-teal-50 rounded-lg dark:bg-teal-950/30">
+                    <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
+                      {backupStats.labOrders}
+                    </p>
                     <p className="text-sm text-muted-foreground">Lab Orders</p>
                   </div>
                 </div>
@@ -234,8 +248,8 @@ export default function SystemSettingsPage() {
                 </Button>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
-                <p className="text-sm text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4 dark:bg-yellow-950/30 dark:border-yellow-800/60">
+                <p className="text-sm text-yellow-800 dark:text-yellow-300">
                   <strong>Important:</strong> Backups should be stored securely and regularly.
                   Consider setting up automated backups using cron jobs or scheduled tasks.
                 </p>
@@ -251,23 +265,23 @@ export default function SystemSettingsPage() {
             <CardContent>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
+                  <span className="text-blue-600 dark:text-blue-400">•</span>
                   <span>Take full backups daily, preferably at night when system usage is low</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
+                  <span className="text-blue-600 dark:text-blue-400">•</span>
                   <span>Store backups in multiple locations (local + cloud storage)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
+                  <span className="text-blue-600 dark:text-blue-400">•</span>
                   <span>Test backup restoration periodically to ensure data integrity</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
+                  <span className="text-blue-600 dark:text-blue-400">•</span>
                   <span>Keep backups for at least 90 days for compliance</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
+                  <span className="text-blue-600 dark:text-blue-400">•</span>
                   <span>Encrypt backup files before storing them externally</span>
                 </li>
               </ul>

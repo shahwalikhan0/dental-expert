@@ -74,10 +74,22 @@ interface Item {
 }
 
 const STOCK_STYLE: Record<string, { label: string; className: string }> = {
-  out_of_stock: { label: 'Out of stock', className: 'bg-red-100 text-red-800 border-0' },
-  low_stock: { label: 'Low stock', className: 'bg-amber-100 text-amber-800 border-0' },
-  reorder: { label: 'At reorder level', className: 'bg-amber-100 text-amber-800 border-0' },
-  sufficient: { label: 'In stock', className: 'bg-green-100 text-green-800 border-0' },
+  out_of_stock: {
+    label: 'Out of stock',
+    className: 'bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300',
+  },
+  low_stock: {
+    label: 'Low stock',
+    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
+  },
+  reorder: {
+    label: 'At reorder level',
+    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
+  },
+  sufficient: {
+    label: 'In stock',
+    className: 'bg-green-100 text-green-800 border-0 dark:bg-green-950/40 dark:text-green-300',
+  },
 }
 
 /** Incoming movements read as a gain, outgoing as a loss. */
@@ -131,12 +143,12 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">Item not found</h1>
-        <Link href="/inventory">
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href="/inventory">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Inventory
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     )
   }
@@ -148,7 +160,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{item.name}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{item.name}</h1>
             <Badge className={stock.className}>{stock.label}</Badge>
             {!item.isActive && <Badge variant="outline">Inactive</Badge>}
           </div>
@@ -160,9 +172,11 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
         </div>
         <div className="flex gap-2">
           <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
-          <Link href={trail.to(`/inventory/transactions?item=${item.id}`)}>
-            <Button variant="outline">Record movement</Button>
-          </Link>
+          <Button variant="outline" asChild>
+            <Link href={trail.to(`/inventory/transactions?item=${item.id}&record=1`)}>
+              Record movement
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -243,7 +257,11 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                           <TableCell className="text-right">{batch.remainingQty}</TableCell>
                           <TableCell className="text-sm">
                             {batch.expiryDate ? (
-                              <span className={expired ? 'text-red-700 font-medium' : ''}>
+                              <span
+                                className={
+                                  expired ? 'text-red-700 font-medium dark:text-red-300' : ''
+                                }
+                              >
                                 {formatDate(batch.expiryDate)}
                                 <span className="block text-xs text-muted-foreground">
                                   {daysUntil(batch.expiryDate)}
@@ -304,7 +322,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                             )}
                           </TableCell>
                           <TableCell
-                            className={`text-right font-medium ${inbound ? 'text-green-700' : 'text-red-700'}`}
+                            className={`text-right font-medium ${inbound ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
                           >
                             {inbound ? '+' : '−'}
                             {move.quantity}

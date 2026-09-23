@@ -267,7 +267,9 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Reports & Analytics Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Reports & Analytics Dashboard
+          </h1>
           <p className="text-muted-foreground">
             Comprehensive analytics and insights for your dental practice
           </p>
@@ -424,14 +426,14 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Retention Rate</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {formatPercentage(patientAnalytics?.retentionRate || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">Patients with repeat visits</p>
@@ -460,7 +462,7 @@ export default function ReportsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Male</span>
                       <div className="flex items-center gap-2">
-                        <div className="h-2 w-32 bg-blue-100 rounded-full overflow-hidden">
+                        <div className="h-2 w-32 bg-blue-100 rounded-full overflow-hidden dark:bg-blue-950/40">
                           <div
                             className="h-full bg-blue-600"
                             style={{
@@ -476,7 +478,7 @@ export default function ReportsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Female</span>
                       <div className="flex items-center gap-2">
-                        <div className="h-2 w-32 bg-pink-100 rounded-full overflow-hidden">
+                        <div className="h-2 w-32 bg-pink-100 rounded-full overflow-hidden dark:bg-pink-950/40">
                           <div
                             className="h-full bg-pink-600"
                             style={{
@@ -605,14 +607,14 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {clinicalAnalytics?.completedTreatments || 0}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -626,13 +628,13 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-                <Activity className="h-4 w-4 text-orange-600" />
+                <Activity className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
-                  <div className="text-2xl font-bold text-orange-600">
+                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                     {clinicalAnalytics?.inProgressTreatments || 0}
                   </div>
                 )}
@@ -691,7 +693,7 @@ export default function ReportsPage() {
                       </div>
                       <div className="text-right">
                         <div className="font-bold">{proc.count}</div>
-                        <div className="text-xs text-green-600">
+                        <div className="text-xs text-green-600 dark:text-green-400">
                           {formatPercentage(proc.successRate)} success
                         </div>
                       </div>
@@ -755,13 +757,13 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-green-600" />
+                <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                     {formatCurrency(financialAnalytics?.totalRevenue || 0)}
                   </div>
                 )}
@@ -771,13 +773,13 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
-                <DollarSign className="h-4 w-4 text-red-600" />
+                <DollarSign className="h-4 w-4 text-red-600 dark:text-red-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                     {formatCurrency(financialAnalytics?.totalExpenses || 0)}
                   </div>
                 )}
@@ -822,14 +824,14 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Collection Efficiency</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {formatPercentage(financialAnalytics?.collectionEfficiency || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -978,14 +980,14 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {operationalAnalytics?.completedAppointments || 0}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -1000,14 +1002,14 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">No-Show Rate</CardTitle>
-                <TrendingDown className="h-4 w-4 text-red-600" />
+                <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-red-600">
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                       {formatPercentage(operationalAnalytics?.noShowRate || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -1073,7 +1075,7 @@ export default function ReportsPage() {
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">Revenue</div>
-                          <div className="text-xl font-bold text-green-600">
+                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
                             {formatCurrency(staff.revenue)}
                           </div>
                         </div>
@@ -1118,7 +1120,7 @@ export default function ReportsPage() {
                   <Skeleton className="h-16 w-full" />
                 ) : (
                   <div className="space-y-2">
-                    <div className="text-3xl font-bold text-orange-600">
+                    <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
                       {operationalAnalytics?.lowStockItems || 0}
                     </div>
                     <p className="text-sm text-muted-foreground">Items below reorder level</p>

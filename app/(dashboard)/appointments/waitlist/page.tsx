@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
@@ -77,11 +78,11 @@ const TIME_SLOTS = [
 ]
 
 const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-blue-100 text-blue-800',
-  NOTIFIED: 'bg-yellow-100 text-yellow-800',
-  BOOKED: 'bg-green-100 text-green-800',
+  ACTIVE: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  NOTIFIED: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
+  BOOKED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
   CANCELLED: 'bg-muted text-foreground',
-  EXPIRED: 'bg-red-100 text-red-800',
+  EXPIRED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
 }
 
 export default function WaitlistPage() {
@@ -245,7 +246,7 @@ export default function WaitlistPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Waitlist</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Waitlist</h1>
           <p className="text-muted-foreground">Manage patients waiting for appointment slots</p>
         </div>
         <Dialog
@@ -398,8 +399,8 @@ export default function WaitlistPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
-                <Clock className="h-5 w-5 text-blue-600" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{summary.active}</p>
@@ -411,8 +412,8 @@ export default function WaitlistPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-50">
-                <Bell className="h-5 w-5 text-yellow-600" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-50 dark:bg-yellow-950/30">
+                <Bell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{summary.notified}</p>
@@ -424,8 +425,8 @@ export default function WaitlistPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 dark:bg-green-950/30">
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{summary.booked}</p>
@@ -506,16 +507,18 @@ export default function WaitlistPage() {
                       <Badge className={STATUS_COLORS[entry.status] || ''}>{entry.status}</Badge>
                     </TableCell>
                     <TableCell>{displayDate(entry.createdAt)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       {entry.status === 'ACTIVE' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Delete"
-                          onClick={() => handleRemove(entry.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <IconTooltip label="Remove from the waitlist">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Remove from the waitlist"
+                            onClick={() => handleRemove(entry.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </IconTooltip>
                       )}
                       {entry.notifiedAt && (
                         <span className="text-xs text-muted-foreground block">
@@ -523,7 +526,7 @@ export default function WaitlistPage() {
                         </span>
                       )}
                       {entry.bookedAt && (
-                        <span className="text-xs text-green-600 block">
+                        <span className="text-xs text-green-600 block dark:text-green-400">
                           Booked {displayDate(entry.bookedAt)}
                         </span>
                       )}

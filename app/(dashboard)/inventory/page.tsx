@@ -55,7 +55,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface InventoryItem {
   id: string
@@ -223,26 +226,26 @@ export default function InventoryPage() {
     const configs = {
       out_of_stock: {
         label: 'Out of Stock',
-        color: 'text-red-700',
-        bgColor: 'bg-red-100',
+        color: 'text-red-700 dark:text-red-300',
+        bgColor: 'bg-red-100 dark:bg-red-950/40',
         icon: XCircle,
       },
       low_stock: {
         label: 'Low Stock',
-        color: 'text-orange-700',
-        bgColor: 'bg-orange-100',
+        color: 'text-orange-700 dark:text-orange-300',
+        bgColor: 'bg-orange-100 dark:bg-orange-950/40',
         icon: AlertTriangle,
       },
       reorder: {
         label: 'Reorder',
-        color: 'text-yellow-700',
-        bgColor: 'bg-yellow-100',
+        color: 'text-yellow-700 dark:text-yellow-300',
+        bgColor: 'bg-yellow-100 dark:bg-yellow-950/40',
         icon: AlertTriangle,
       },
       sufficient: {
         label: 'Sufficient',
-        color: 'text-green-700',
-        bgColor: 'bg-green-100',
+        color: 'text-green-700 dark:text-green-300',
+        bgColor: 'bg-green-100 dark:bg-green-950/40',
         icon: CheckCircle,
       },
     }
@@ -271,40 +274,40 @@ export default function InventoryPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Inventory</h1>
           <p className="text-muted-foreground">Manage inventory items and stock levels</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/inventory/alerts">
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href="/inventory/alerts">
               <AlertTriangle className="h-4 w-4 mr-2" />
               Alerts
-            </Button>
-          </Link>
-          <Link href="/inventory/purchase-orders">
-            <Button variant="outline">
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/purchase-orders">
               <ShoppingCart className="h-4 w-4 mr-2" />
               Purchase Orders
-            </Button>
-          </Link>
-          <Link href="/inventory/suppliers">
-            <Button variant="outline">
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/suppliers">
               <Users className="h-4 w-4 mr-2" />
               Suppliers
-            </Button>
-          </Link>
-          <Link href="/inventory/transactions">
-            <Button variant="outline">
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/transactions">
               <TrendingUp className="h-4 w-4 mr-2" />
               Transactions
-            </Button>
-          </Link>
-          <Link href="/inventory/reports">
-            <Button variant="outline">
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/reports">
               <FileText className="h-4 w-4 mr-2" />
               Reports
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <ExportMenu
             filename="inventory"
             getData={() =>
@@ -334,12 +337,12 @@ export default function InventoryPage() {
             )}
             AI Forecast
           </Button>
-          <Link href="/inventory/new">
-            <Button>
+          <Button asChild>
+            <Link href="/inventory/new">
               <Plus className="h-4 w-4 mr-2" />
               New Item
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -348,36 +351,38 @@ export default function InventoryPage() {
         <>
           {/* Forecast Summary Cards */}
           <div className="grid gap-4 md:grid-cols-4">
-            <Card className="border-red-200 bg-red-50">
+            <Card className="border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30">
               <CardContent className="pt-4 pb-3">
-                <div className="text-2xl font-bold text-red-700">
+                <div className="text-2xl font-bold text-red-700 dark:text-red-300">
                   {forecastData.summary?.criticalItems || 0}
                 </div>
-                <div className="text-xs text-red-600">Critical (stockout &le;7d)</div>
+                <div className="text-xs text-red-600 dark:text-red-400">
+                  Critical (stockout &le;7d)
+                </div>
               </CardContent>
             </Card>
-            <Card className="border-amber-200 bg-amber-50">
+            <Card className="border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30">
               <CardContent className="pt-4 pb-3">
-                <div className="text-2xl font-bold text-amber-700">
+                <div className="text-2xl font-bold text-amber-700 dark:text-amber-300">
                   {forecastData.summary?.reorderItems || 0}
                 </div>
-                <div className="text-xs text-amber-600">Need Reorder</div>
+                <div className="text-xs text-amber-600 dark:text-amber-400">Need Reorder</div>
               </CardContent>
             </Card>
-            <Card className="border-green-200 bg-green-50">
+            <Card className="border-green-200 bg-green-50 dark:border-green-800/60 dark:bg-green-950/30">
               <CardContent className="pt-4 pb-3">
-                <div className="text-2xl font-bold text-green-700">
+                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
                   {forecastData.summary?.excessItems || 0}
                 </div>
-                <div className="text-xs text-green-600">Excess Stock</div>
+                <div className="text-xs text-green-600 dark:text-green-400">Excess Stock</div>
               </CardContent>
             </Card>
-            <Card className="border-blue-200 bg-blue-50">
+            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800/60 dark:bg-blue-950/30">
               <CardContent className="pt-4 pb-3">
-                <div className="text-2xl font-bold text-blue-700">
+                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
                   {formatCurrency(forecastData.summary?.totalReorderValue || 0)}
                 </div>
-                <div className="text-xs text-blue-600">Reorder Value</div>
+                <div className="text-xs text-blue-600 dark:text-blue-400">Reorder Value</div>
               </CardContent>
             </Card>
           </div>
@@ -388,7 +393,7 @@ export default function InventoryPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5 text-purple-600" />
+                    <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                     AI Demand Forecast
                   </CardTitle>
                   <CardDescription>
@@ -429,10 +434,10 @@ export default function InventoryPage() {
                         <TableCell>
                           <div className="flex items-center gap-1">
                             {forecast.trend === 'INCREASING' && (
-                              <ArrowUp className="h-3 w-3 text-red-500" />
+                              <ArrowUp className="h-3 w-3 text-red-500 dark:text-red-400" />
                             )}
                             {forecast.trend === 'DECREASING' && (
-                              <ArrowDown className="h-3 w-3 text-green-500" />
+                              <ArrowDown className="h-3 w-3 text-green-500 dark:text-green-400" />
                             )}
                             {forecast.trend === 'STABLE' && (
                               <Minus className="h-3 w-3 text-muted-foreground" />
@@ -448,9 +453,9 @@ export default function InventoryPage() {
                           <span
                             className={
                               forecast.daysUntilStockout <= 7
-                                ? 'text-red-600 font-bold'
+                                ? 'text-red-600 font-bold dark:text-red-400'
                                 : forecast.daysUntilStockout <= 14
-                                  ? 'text-amber-600 font-medium'
+                                  ? 'text-amber-600 font-medium dark:text-amber-400'
                                   : ''
                             }
                           >
@@ -470,12 +475,12 @@ export default function InventoryPage() {
                           <Badge
                             className={
                               forecast.urgency === 'CRITICAL'
-                                ? 'bg-red-100 text-red-700 border-0'
+                                ? 'bg-red-100 text-red-700 border-0 dark:bg-red-950/40 dark:text-red-300'
                                 : forecast.urgency === 'SOON'
-                                  ? 'bg-amber-100 text-amber-700 border-0'
+                                  ? 'bg-amber-100 text-amber-700 border-0 dark:bg-amber-950/40 dark:text-amber-300'
                                   : forecast.urgency === 'NORMAL'
-                                    ? 'bg-blue-100 text-blue-700 border-0'
-                                    : 'bg-green-100 text-green-700 border-0'
+                                    ? 'bg-blue-100 text-blue-700 border-0 dark:bg-blue-950/40 dark:text-blue-300'
+                                    : 'bg-green-100 text-green-700 border-0 dark:bg-green-950/40 dark:text-green-300'
                             }
                           >
                             {forecast.urgency}
@@ -558,6 +563,44 @@ export default function InventoryPage() {
               </label>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="items"
+            onClearAll={() => {
+              setSearch('')
+              setCategoryFilter('all')
+              setTypeFilter('all')
+              setStatusFilter('all')
+              setLowStockOnly(false)
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Category',
+                value:
+                  categoryFilter === 'all'
+                    ? null
+                    : (categories.find((c) => c.id === categoryFilter)?.name ?? 'Unknown'),
+                onClear: () => setCategoryFilter('all'),
+              },
+              {
+                label: 'Type',
+                value: typeFilter === 'all' ? null : humanise(typeFilter),
+                onClear: () => setTypeFilter('all'),
+              },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              {
+                label: 'Only',
+                value: lowStockOnly ? 'Low stock' : null,
+                onClear: () => setLowStockOnly(false),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -613,12 +656,12 @@ export default function InventoryPage() {
                     <div className="flex flex-col items-center gap-2">
                       <Package className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No inventory items found</p>
-                      <Link href="/inventory/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/inventory/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Add Item
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -681,13 +724,15 @@ export default function InventoryPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => router.push(`/inventory/${item.id}`)}>
                             <Eye className="h-4 w-4 mr-2" />

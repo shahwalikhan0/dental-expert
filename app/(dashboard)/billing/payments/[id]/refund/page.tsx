@@ -321,11 +321,9 @@ export default function RefundPaymentPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <Link href={`/billing/invoices/${payment.invoice.id}`}>
-                  <Button type="button" variant="outline">
-                    Cancel
-                  </Button>
-                </Link>
+                <Button type="button" variant="outline" asChild>
+                  <Link href={`/billing/invoices/${payment.invoice.id}`}>Cancel</Link>
+                </Button>
                 <Button type="submit" disabled={submitting}>
                   {submitting ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

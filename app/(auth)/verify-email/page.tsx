@@ -69,7 +69,7 @@ function VerifyEmailContent() {
   }
 
   return (
-    <Card className="shadow-lg">
+    <Card className="glass glass-raised rounded-2xl">
       <CardHeader className="space-y-1 text-center">
         <div className="flex justify-center mb-4">
           {status === 'loading' && (
@@ -78,18 +78,18 @@ function VerifyEmailContent() {
             </div>
           )}
           {status === 'success' && (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle2 className="h-6 w-6 text-green-600" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/40">
+              <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
           )}
           {status === 'error' && (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <XCircle className="h-6 w-6 text-red-600" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/40">
+              <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
             </div>
           )}
           {status === 'pending' && (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-              <Mail className="h-6 w-6 text-blue-600" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950/40">
+              <Mail className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             </div>
           )}
         </div>
@@ -142,7 +142,7 @@ export default function VerifyEmailPage() {
   return (
     <Suspense
       fallback={
-        <Card className="shadow-lg">
+        <Card className="glass glass-raised rounded-2xl">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">

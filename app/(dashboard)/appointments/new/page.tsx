@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { fetchHandedPatient } from '@/lib/prefill'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -93,7 +94,12 @@ export default function NewAppointmentPage() {
   const [isWalkIn, setIsWalkIn] = useState(searchParams.get('walkIn') === '1')
   const [visitorName, setVisitorName] = useState('')
   const [visitorPhone, setVisitorPhone] = useState('')
-  const [chiefComplaint, setChiefComplaint] = useState('')
+  // Why the visit was arranged, when the screen that sent us here knows. The
+  // recall list knows: "6 month check-up" is the whole reason the row existed,
+  // and retyping it is the sort of thing that quietly does not get done.
+  const [chiefComplaint, setChiefComplaint] = useState(
+    (searchParams.get('reason') ?? '').slice(0, 200)
+  )
   const [notes, setNotes] = useState('')
 
   // Fetch initial data
@@ -108,20 +114,20 @@ export default function NewAppointmentPage() {
         // twenty thousand records downloaded all twenty thousand to book one
         // appointment. The register is searched on the server now, as it is
         // everywhere else in this application.
-        const requests: Promise<Response>[] = [fetch('/api/staff/doctors')]
-        if (preselectedPatientId) requests.push(fetch(`/api/patients/${preselectedPatientId}`))
-
-        const [doctorsRes, patientRes] = await Promise.all(requests)
+        const [doctorsRes, handedPatient] = await Promise.all([
+          fetch('/api/staff/doctors'),
+          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
+        ])
 
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
           setDoctors(data.doctors)
         }
 
-        if (patientRes?.ok) {
-          const patient = await patientRes.json()
-          if (patient?.id) setSelectedPatient(patient)
-        }
+        // Arriving with a patient already chosen — the recall list's Book, a
+        // patient's own record — must not ask the receptionist to search for
+        // the name they just clicked. See lib/prefill.ts for why this used to.
+        if (handedPatient) setSelectedPatient(handedPatient)
       } catch (err) {
         console.error('Error fetching data:', err)
       } finally {
@@ -336,13 +342,13 @@ export default function NewAppointmentPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/appointments">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/appointments">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Appointment</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Appointment</h1>
           <p className="text-muted-foreground">Schedule a new appointment for a patient</p>
         </div>
       </div>
@@ -455,11 +461,9 @@ export default function NewAppointmentPage() {
                     ) : patients.length === 0 ? (
                       <div className="p-4 text-center text-muted-foreground">
                         <p>No patients found</p>
-                        <Link href="/patients/new">
-                          <Button variant="link" size="sm">
-                            Add New Patient
-                          </Button>
-                        </Link>
+                        <Button variant="link" size="sm" asChild>
+                          <Link href="/patients/new">Add New Patient</Link>
+                        </Button>
                       </div>
                     ) : (
                       <>
@@ -677,17 +681,15 @@ export default function NewAppointmentPage() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
             {error}
           </div>
         )}
 
         <div className="mt-6 flex justify-end gap-4">
-          <Link href="/appointments">
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/appointments">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
               <>

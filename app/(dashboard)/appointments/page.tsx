@@ -59,6 +59,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 import {
   appointmentStatusConfig,
   appointmentTypeConfig,
@@ -184,9 +187,17 @@ export default function AppointmentsPage() {
     router.replace(`/appointments?${next.toString()}`, { scroll: false })
   }
 
-  const setBookDay = (day: string) => {
+  /**
+   * Move the book to a day, staying in whichever view is open.
+   *
+   * This forced `view=calendar` on every call, so the week view's own arrows
+   * paged a week and then dropped the person into the day book — the one place
+   * the week they had just asked for was no longer on screen. Only a caller
+   * that means to change the view now passes `mode`.
+   */
+  const setBookDay = (day: string, mode?: 'calendar' | 'week') => {
     const next = new URLSearchParams(searchParams.toString())
-    next.set('view', 'calendar')
+    if (mode) next.set('view', mode)
     next.set('day', day)
     router.replace(`/appointments?${next.toString()}`, { scroll: false })
   }
@@ -229,9 +240,21 @@ export default function AppointmentsPage() {
     const risk = riskMap[appointmentId]
     if (!risk) return null
     const config = {
-      LOW: { color: 'text-green-700', bgColor: 'bg-green-100', icon: CheckCircle },
-      MEDIUM: { color: 'text-amber-700', bgColor: 'bg-amber-100', icon: AlertTriangle },
-      HIGH: { color: 'text-red-700', bgColor: 'bg-red-100', icon: AlertTriangle },
+      LOW: {
+        color: 'text-green-700 dark:text-green-300',
+        bgColor: 'bg-green-100 dark:bg-green-950/40',
+        icon: CheckCircle,
+      },
+      MEDIUM: {
+        color: 'text-amber-700 dark:text-amber-300',
+        bgColor: 'bg-amber-100 dark:bg-amber-950/40',
+        icon: AlertTriangle,
+      },
+      HIGH: {
+        color: 'text-red-700 dark:text-red-300',
+        bgColor: 'bg-red-100 dark:bg-red-950/40',
+        icon: AlertTriangle,
+      },
     }[risk.riskLevel] || {
       color: 'text-muted-foreground',
       bgColor: 'bg-muted',
@@ -478,7 +501,7 @@ export default function AppointmentsPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Appointments</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Appointments</h1>
             <p className="text-muted-foreground">Manage and schedule patient appointments</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -535,12 +558,12 @@ export default function AppointmentsPage() {
               )}
               {showRisk ? 'Refresh Risk' : 'AI Risk'}
             </Button>
-            <Link href="/appointments/new">
-              <Button>
+            <Button asChild>
+              <Link href="/appointments/new">
                 <Plus className="h-4 w-4 mr-2" />
                 New Appointment
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
 
@@ -557,7 +580,7 @@ export default function AppointmentsPage() {
           <Card className="border-amber-500/50 bg-amber-500/5">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
               <div className="flex items-center gap-3">
-                <Globe className="h-5 w-5 text-amber-600" />
+                <Globe className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 <p className="text-sm">
                   <span className="font-medium">
                     {pendingReview} online booking{pendingReview === 1 ? '' : 's'}
@@ -577,7 +600,7 @@ export default function AppointmentsPage() {
           <Card className="border-amber-500/50 bg-amber-500/5">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
               <div className="flex items-center gap-3">
-                <Globe className="h-5 w-5 text-amber-600" />
+                <Globe className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 <p className="text-sm">
                   Showing online bookings nobody has dealt with yet. Confirming, moving or
                   cancelling one takes it off this list.
@@ -640,6 +663,31 @@ export default function AppointmentsPage() {
                 />
               </div>
             </div>
+
+            <ActiveFilters
+              className="mt-4"
+              noun="appointments"
+              onClearAll={() => {
+                setSearch('')
+                setStatusFilter('all')
+                setTypeFilter('all')
+                setDateFilter('')
+              }}
+              filters={[
+                { label: 'Search', value: search, onClear: () => setSearch('') },
+                {
+                  label: 'Status',
+                  value: statusFilter === 'all' ? null : humanise(statusFilter),
+                  onClear: () => setStatusFilter('all'),
+                },
+                {
+                  label: 'Type',
+                  value: typeFilter === 'all' ? null : humanise(typeFilter),
+                  onClear: () => setTypeFilter('all'),
+                },
+                { label: 'Date', value: dateFilter, onClear: () => setDateFilter('') },
+              ]}
+            />
           </CardContent>
         </Card>
 
@@ -687,12 +735,7 @@ export default function AppointmentsPage() {
                   today={todayInClinic()}
                   appointments={week}
                   href={(a) => trail.to(`/appointments/${a.id}`)}
-                  onPickDay={(day) => {
-                    const next = new URLSearchParams(searchParams.toString())
-                    next.set('view', 'calendar')
-                    next.set('day', day)
-                    router.replace(`/appointments?${next.toString()}`, { scroll: false })
-                  }}
+                  onPickDay={(day) => setBookDay(day, 'calendar')}
                 />
               )}
             </CardContent>
@@ -809,12 +852,12 @@ export default function AppointmentsPage() {
                         <div className="flex flex-col items-center gap-2">
                           <Calendar className="h-8 w-8 text-muted-foreground" />
                           <p className="text-muted-foreground">No appointments found</p>
-                          <Link href="/appointments/new">
-                            <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href="/appointments/new">
                               <Plus className="h-4 w-4 mr-2" />
                               Book New Appointment
-                            </Button>
-                          </Link>
+                            </Link>
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -888,13 +931,15 @@ export default function AppointmentsPage() {
                             )}
                           </TableCell>
                         )}
-                        <TableCell className="text-right">
+                        <TableCell className="text-right row-actions">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
+                            <IconTooltip label="More actions">
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label="More actions">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </IconTooltip>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 onClick={() => router.push(`/appointments/${appointment.id}`)}
@@ -936,14 +981,14 @@ export default function AppointmentsPage() {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() => handleStatusChange(appointment.id, 'NO_SHOW')}
-                                    className="text-amber-600"
+                                    className="text-amber-600 dark:text-amber-400"
                                   >
                                     <XCircle className="h-4 w-4 mr-2" />
                                     Mark No Show
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
-                                    className="text-red-600"
+                                    className="text-red-600 dark:text-red-400"
                                   >
                                     <XCircle className="h-4 w-4 mr-2" />
                                     Cancel

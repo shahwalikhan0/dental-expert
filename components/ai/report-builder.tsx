@@ -172,7 +172,9 @@ export function ReportBuilder() {
 
           {/* error */}
           {!result.success && (
-            <div className="p-3 text-sm text-red-600">{result.error || 'Query failed'}</div>
+            <div className="p-3 text-sm text-red-600 dark:text-red-400">
+              {result.error || 'Query failed'}
+            </div>
           )}
 
           {/* data table */}

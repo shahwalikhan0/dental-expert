@@ -43,7 +43,7 @@ export default function NewPurchaseOrderPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/inventory/suppliers?limit=100').then((r) => r.json()),
+      fetch('/api/inventory/suppliers?limit=100&sort=name').then((r) => r.json()),
       fetch('/api/inventory/items?limit=500').then((r) => r.json()),
     ])
       .then(([supplierData, itemData]) => {
@@ -111,7 +111,7 @@ export default function NewPurchaseOrderPage() {
   return (
     <div ref={formRef} className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">New Purchase Order</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">New Purchase Order</h1>
         <Link
           href="/inventory/purchase-orders"
           className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
@@ -120,7 +120,11 @@ export default function NewPurchaseOrderPage() {
         </Link>
       </div>
 
-      {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm">{error}</div>}
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       <div className="bg-background rounded-lg shadow p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -247,7 +251,7 @@ export default function NewPurchaseOrderPage() {
                     <button
                       type="button"
                       onClick={() => removeLine(index)}
-                      className="px-2 py-1 text-sm text-red-600 hover:underline"
+                      className="px-2 py-1 text-sm text-red-600 hover:underline dark:text-red-400"
                     >
                       Remove
                     </button>

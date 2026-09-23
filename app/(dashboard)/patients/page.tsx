@@ -34,6 +34,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { ActiveFilters } from '@/components/ui/active-filters'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { bloodGroupLabel, genderLabel } from '@/lib/labels'
 
@@ -149,9 +151,9 @@ export default function PatientsPage() {
 
   const getGenderBadge = (gender: string) => {
     const colors = {
-      MALE: 'bg-blue-100 text-blue-700',
-      FEMALE: 'bg-pink-100 text-pink-700',
-      OTHER: 'bg-purple-100 text-purple-700',
+      MALE: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+      FEMALE: 'bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
+      OTHER: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
     }
     return (
       <Badge
@@ -167,7 +169,7 @@ export default function PatientsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Patients</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Patients</h1>
           <p className="text-muted-foreground">Manage patient records and information</p>
         </div>
         <div className="flex gap-2">
@@ -187,12 +189,12 @@ export default function PatientsPage() {
               }))
             }
           />
-          <Link href="/patients/new">
-            <Button>
+          <Button asChild>
+            <Link href="/patients/new">
               <Plus className="h-4 w-4 mr-2" />
               New Patient
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -239,6 +241,29 @@ export default function PatientsPage() {
               </Select>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="patients"
+            onClearAll={() => {
+              setSearch('')
+              setGenderFilter('all')
+              setBloodGroupFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Gender',
+                value: genderFilter === 'all' ? null : genderLabel(genderFilter),
+                onClear: () => setGenderFilter('all'),
+              },
+              {
+                label: 'Blood group',
+                value: bloodGroupFilter === 'all' ? null : bloodGroupLabel(bloodGroupFilter),
+                onClear: () => setBloodGroupFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -307,12 +332,12 @@ export default function PatientsPage() {
                     <div className="flex flex-col items-center gap-2">
                       <User className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No patients found</p>
-                      <Link href="/patients/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/patients/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Add Patient
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -360,13 +385,15 @@ export default function PatientsPage() {
                     <TableCell>
                       <div className="text-sm text-muted-foreground">{patient.city || '—'}</div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => router.push(`/patients/${patient.id}`)}>
                             <Eye className="h-4 w-4 mr-2" />

@@ -46,6 +46,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import {
   paymentMethodConfig,
   paymentStatusConfig,
@@ -53,6 +54,8 @@ import {
   formatDate,
 } from '@/lib/billing-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 /** Statuses that mean money was actually taken — see lib/cashier.ts. */
 const SETTLED = new Set(['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'])
@@ -212,7 +215,7 @@ export default function PaymentsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Payments</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Payments</h1>
           <p className="text-muted-foreground">View and manage all payment transactions</p>
         </div>
         <ExportMenu
@@ -246,7 +249,7 @@ export default function PaymentsPage() {
             {loading ? (
               <Skeleton className="h-8 w-32" />
             ) : (
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {formatCurrency(summary.totalReceived)}
               </div>
             )}
@@ -262,7 +265,7 @@ export default function PaymentsPage() {
             {loading ? (
               <Skeleton className="h-8 w-32" />
             ) : (
-              <div className="text-2xl font-bold text-red-600">
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                 {formatCurrency(summary.totalRefunded)}
               </div>
             )}
@@ -340,6 +343,41 @@ export default function PaymentsPage() {
               />
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="payments"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setMethodFilter('all')
+              setDateFrom('all')
+              setDateTo('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              {
+                label: 'Method',
+                value: methodFilter === 'all' ? null : humanise(methodFilter),
+                onClear: () => setMethodFilter('all'),
+              },
+              {
+                label: 'From',
+                value: dateFrom === 'all' ? null : dateFrom,
+                onClear: () => setDateFrom('all'),
+              },
+              {
+                label: 'To',
+                value: dateTo === 'all' ? null : dateTo,
+                onClear: () => setDateTo('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -450,19 +488,21 @@ export default function PaymentsPage() {
                     <TableCell className="text-right">
                       <div className="font-medium">{formatCurrency(payment.amount)}</div>
                       {payment.refundAmount && Number(payment.refundAmount) > 0 && (
-                        <div className="text-sm text-red-600">
+                        <div className="text-sm text-red-600 dark:text-red-400">
                           Refund: {formatCurrency(payment.refundAmount)}
                         </div>
                       )}
                     </TableCell>
                     <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() =>

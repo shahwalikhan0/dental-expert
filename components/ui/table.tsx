@@ -138,14 +138,14 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
         {edges.left && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background to-transparent"
+            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-card to-transparent"
           />
         )}
         {edges.right && (
           <>
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
+              className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-card to-transparent"
             />
             <p className="hidden px-4 pt-2 text-xs text-muted-foreground sm:block md:hidden">
               Scroll sideways for the rest of each row.
@@ -158,11 +158,31 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
 )
 Table.displayName = 'Table'
 
+/**
+ * The column names, as one string.
+ *
+ * Exported because `SortableHeader` in `data-grid.tsx` renders a `<th>` of its
+ * own and had drifted: a sortable column was `h-12 font-medium` in sentence
+ * case beside plain columns that were small capitals, so a grid with one
+ * sortable column showed two kinds of header in the same row.
+ *
+ * Small capitals and a lighter tone: the names are a legend, not content, and
+ * the eye should fall on the first row rather than on the header above it. The
+ * stacked cards on a phone take their labels from `th.textContent`, which is
+ * the unstyled text, so they keep ordinary sentence case.
+ */
+export const TABLE_HEAD_CLASS =
+  'h-10 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground'
+
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+  <thead
+    ref={ref}
+    className={cn('[&_tr]:border-b [&_tr]:border-border/70 [&_tr]:hover:bg-transparent', className)}
+    {...props}
+  />
 ))
 TableHeader.displayName = 'TableHeader'
 
@@ -180,7 +200,10 @@ const TableFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <tfoot
     ref={ref}
-    className={cn('border-t bg-muted/50 font-medium [&>tr]:last:border-b-0', className)}
+    className={cn(
+      'border-t border-border/60 bg-foreground/[0.03] font-medium [&>tr]:last:border-b-0',
+      className
+    )}
     {...props}
   />
 ))
@@ -191,7 +214,13 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
     <tr
       ref={ref}
       className={cn(
-        'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
+        /*
+         * A lighter rule between rows and a fainter wash on hover. A grid is
+         * read down a column, and a full-strength line under every row turns
+         * twenty records into twenty boxes — the eye stops at each one instead
+         * of running down the list.
+         */
+        'border-b border-border/40 transition-colors hover:bg-foreground/[0.025] data-[state=selected]:bg-primary/10',
         className
       )}
       {...props}
@@ -206,10 +235,7 @@ const TableHead = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <th
     ref={ref}
-    className={cn(
-      'h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0',
-      className
-    )}
+    className={cn(TABLE_HEAD_CLASS, '[&:has([role=checkbox])]:pr-0', className)}
     {...props}
   />
 ))
@@ -221,7 +247,7 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn('p-4 align-middle [&:has([role=checkbox])]:pr-0', className)}
+    className={cn('px-4 py-3.5 align-middle [&:has([role=checkbox])]:pr-0', className)}
     {...props}
   />
 ))

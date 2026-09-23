@@ -145,12 +145,12 @@ export default function BillingPage() {
 
   const invoiceStatusLabels: Record<string, { label: string; color: string }> = {
     DRAFT: { label: 'Draft', color: 'text-muted-foreground' },
-    PENDING: { label: 'Pending', color: 'text-yellow-600' },
-    PARTIALLY_PAID: { label: 'Partially Paid', color: 'text-blue-600' },
-    PAID: { label: 'Paid', color: 'text-green-600' },
-    OVERDUE: { label: 'Overdue', color: 'text-red-600' },
+    PENDING: { label: 'Pending', color: 'text-yellow-600 dark:text-yellow-400' },
+    PARTIALLY_PAID: { label: 'Partially Paid', color: 'text-blue-600 dark:text-blue-400' },
+    PAID: { label: 'Paid', color: 'text-green-600 dark:text-green-400' },
+    OVERDUE: { label: 'Overdue', color: 'text-red-600 dark:text-red-400' },
     CANCELLED: { label: 'Cancelled', color: 'text-muted-foreground' },
-    REFUNDED: { label: 'Refunded', color: 'text-purple-600' },
+    REFUNDED: { label: 'Refunded', color: 'text-purple-600 dark:text-purple-400' },
   }
 
   return (
@@ -158,7 +158,7 @@ export default function BillingPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Billing & Finance</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Billing & Finance</h1>
           <p className="text-muted-foreground">Manage invoices, payments, and financial reports</p>
         </div>
         <div className="flex gap-2">
@@ -219,26 +219,28 @@ export default function BillingPage() {
               return rows
             }}
           />
-          <Link href="/billing/invoices/new">
-            <Button>
+          <Button asChild>
+            <Link href="/billing/invoices/new">
               <Plus className="h-4 w-4 mr-2" />
               New Invoice
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
       {/* Error Display */}
       {error && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600" />
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
               <div>
-                <p className="font-medium text-red-900">Error loading billing data</p>
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="font-medium text-red-900 dark:text-red-200">
+                  Error loading billing data
+                </p>
+                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                 {error.includes('permission') && (
-                  <p className="text-xs text-red-600 mt-1">
+                  <p className="text-xs text-red-600 mt-1 dark:text-red-400">
                     Your account needs ADMIN or ACCOUNTANT role to view billing reports.
                   </p>
                 )}
@@ -283,7 +285,7 @@ export default function BillingPage() {
               <Skeleton className="h-8 w-32" />
             ) : (
               <>
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {formatCurrency(data?.summary.totalCollected || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -305,7 +307,7 @@ export default function BillingPage() {
               <Skeleton className="h-8 w-32" />
             ) : (
               <>
-                <div className="text-2xl font-bold text-red-600">
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {formatCurrency(data?.summary.totalOutstanding || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -326,29 +328,29 @@ export default function BillingPage() {
             <CardDescription>Common billing tasks</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/billing/invoices" className="block">
-              <Button variant="outline" className="w-full justify-start">
+            <Button variant="outline" className="w-full justify-start" asChild>
+              <Link href="/billing/invoices" className="block">
                 <FileText className="h-4 w-4 mr-2" />
                 View All Invoices
-              </Button>
-            </Link>
-            <Link href="/billing/payments" className="block">
-              <Button variant="outline" className="w-full justify-start">
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full justify-start" asChild>
+              <Link href="/billing/payments" className="block">
                 <CreditCard className="h-4 w-4 mr-2" />
                 View All Payments
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             {/* Payment plans, insurance claims, insurance providers and
                 pre-authorisations were four more links here. None of those
                 pages exists — `39fdd2e` removed the tables as out of scope
                 (spec §3) and left the buttons, so four of the seven quick
                 actions on the billing screen were 404s. */}
-            <Link href="/billing/reports" className="block">
-              <Button variant="outline" className="w-full justify-start">
+            <Button variant="outline" className="w-full justify-start" asChild>
+              <Link href="/billing/reports" className="block">
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Financial Reports
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
@@ -421,13 +423,13 @@ export default function BillingPage() {
                       <div key={status.status} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {status.status === 'PAID' && (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" />
                           )}
                           {status.status === 'PENDING' && (
-                            <Clock className="h-4 w-4 text-yellow-500" />
+                            <Clock className="h-4 w-4 text-yellow-500 dark:text-yellow-400" />
                           )}
                           {status.status === 'OVERDUE' && (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
+                            <AlertCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
                           )}
                           {status.status === 'CANCELLED' && (
                             <XCircle className="h-4 w-4 text-muted-foreground" />
@@ -497,13 +499,13 @@ export default function BillingPage() {
                 </div>
                 <div>
                   <div className="text-muted-foreground">Collected</div>
-                  <div className="font-medium text-green-600">
+                  <div className="font-medium text-green-600 dark:text-green-400">
                     {formatCurrency(data.summary.totalCollected)}
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Discounts</div>
-                  <div className="font-medium text-orange-600">
+                  <div className="font-medium text-orange-600 dark:text-orange-400">
                     {formatCurrency(data.summary.totalDiscounts)}
                   </div>
                 </div>
@@ -519,7 +521,7 @@ export default function BillingPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-purple-600" />
+                <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 Cash Flow Forecast
               </CardTitle>
               <CardDescription>AI-projected income for the next 30 days</CardDescription>
@@ -548,37 +550,37 @@ export default function BillingPage() {
             <div className="space-y-4">
               {/* Summary row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 rounded-lg bg-green-50">
-                  <div className="text-lg font-bold text-green-700">
+                <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
+                  <div className="text-lg font-bold text-green-700 dark:text-green-300">
                     {formatCurrency(cashFlowData.summary?.total30Day || 0)}
                   </div>
-                  <div className="text-xs text-green-600">30-Day Projected</div>
+                  <div className="text-xs text-green-600 dark:text-green-400">30-Day Projected</div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-blue-50">
-                  <div className="text-lg font-bold text-blue-700">
+                <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
                     {formatCurrency(cashFlowData.summary?.avgDaily || 0)}
                   </div>
-                  <div className="text-xs text-blue-600">Avg Daily</div>
+                  <div className="text-xs text-blue-600 dark:text-blue-400">Avg Daily</div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-purple-50">
-                  <div className="text-lg font-bold text-purple-700">
+                <div className="text-center p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30">
+                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300">
                     {cashFlowData.summary?.bestDay || 'N/A'}
                   </div>
-                  <div className="text-xs text-purple-600">Best Day</div>
+                  <div className="text-xs text-purple-600 dark:text-purple-400">Best Day</div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-amber-50">
+                <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
                   <Badge
                     className={
                       cashFlowData.summary?.trend === 'GROWING'
-                        ? 'bg-green-100 text-green-700 border-0'
+                        ? 'bg-green-100 text-green-700 border-0 dark:bg-green-950/40 dark:text-green-300'
                         : cashFlowData.summary?.trend === 'DECLINING'
-                          ? 'bg-red-100 text-red-700 border-0'
+                          ? 'bg-red-100 text-red-700 border-0 dark:bg-red-950/40 dark:text-red-300'
                           : 'bg-muted text-muted-foreground border-0'
                     }
                   >
                     {cashFlowData.summary?.trend || 'STABLE'}
                   </Badge>
-                  <div className="text-xs text-amber-600 mt-1">Trend</div>
+                  <div className="text-xs text-amber-600 mt-1 dark:text-amber-400">Trend</div>
                 </div>
               </div>
 
@@ -599,13 +601,13 @@ export default function BillingPage() {
 
               {/* Shortfall warnings */}
               {cashFlowData.summary?.potentialShortfalls?.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 mb-1">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 dark:bg-amber-950/30 dark:border-amber-800/60">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 mb-1 dark:text-amber-300">
                     <AlertCircle className="h-4 w-4" />
                     Potential Shortfalls
                   </div>
                   {cashFlowData.summary.potentialShortfalls.map((s: string, i: number) => (
-                    <p key={i} className="text-xs text-amber-600">
+                    <p key={i} className="text-xs text-amber-600 dark:text-amber-400">
                       • {s}
                     </p>
                   ))}
@@ -662,7 +664,7 @@ export default function BillingPage() {
                 })}
                 <div className="pt-2 border-t flex justify-between text-sm font-medium">
                   <span>Total Outstanding</span>
-                  <span className="text-red-600">
+                  <span className="text-red-600 dark:text-red-400">
                     {formatCurrency(agingData.totals.totalOutstanding)}
                   </span>
                 </div>

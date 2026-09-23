@@ -5,25 +5,39 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /*
+     * The ink, softened.
+     *
+     * This was `222.2 84% 4.9%` — #020817, which is 20:1 against white. That is
+     * roughly twice the contrast of printed text on paper, and a clinic reads
+     * this screen for eight hours. #2F374C is 11.8:1: still comfortably past
+     * WCAG AAA for body text, and no longer a black edge on a white field.
+     *
+     * The muted tone moves the other way, from 4.75:1 to 5.03:1, so the gap
+     * between primary and secondary text does not close as the ink lightens —
+     * and so the small print finally clears AA, which at 4.75 it did not.
+     */
+    --foreground: 222 24% 24%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 24% 24%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 24% 24%;
     --primary: 199 89% 48%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary-foreground: 222 22% 28%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 14% 45%;
     --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent-foreground: 222 22% 28%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 199 89% 48%;
-    --radius: 0.5rem;
+    /* Softer corners throughout. Every `rounded-lg/md/sm` in the
+       application is derived from this one number. */
+    --radius: 0.75rem;
     /* Chart colors */
     --chart-1: 199 89% 48%;
     --chart-2: 160 60% 45%;
@@ -35,19 +49,21 @@
 
   .dark {
     --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* The same decision in the other direction: #F8FAFC is 19:1 on this
+       background and glares. #DBE2EB is 15.3:1. */
+    --foreground: 213 27% 89%;
     --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card-foreground: 213 27% 89%;
     --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover-foreground: 213 27% 89%;
     --primary: 199 89% 48%;
     --primary-foreground: 222.2 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary-foreground: 213 27% 89%;
     --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted-foreground: 215 18% 62%;
     --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent-foreground: 213 27% 89%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
@@ -301,6 +317,206 @@
 
     .table-stacked tr[data-full-row] td::before {
       display: none;
+    }
+  }
+}
+
+/**
+ * Glass surfaces.
+ *
+ * The application was flat cards on a flat background: correct, and
+ * indistinguishable from a form from 2012. These classes give the surfaces that
+ * sit *above* the page — the sign-in panel, the sidebar — a translucent layer
+ * with a hairline edge and a lit top, so depth comes from the material rather
+ * than from a heavier border.
+ *
+ * Everything is a token so the two themes are one implementation. Dark glass is
+ * not light glass with the colours swapped: it is less transparent (a dark blur
+ * over a dark page has almost no contrast to recover), its edge is a light
+ * hairline rather than a dark one, and its shadow is nearly black.
+ */
+@layer base {
+  :root {
+    --glass-bg: 0 0% 100%;
+    --glass-alpha: 0.72;
+    /* The hairline edge: dark on a light page, light on a dark one. */
+    --glass-ring: 222 47% 11%;
+    --glass-ring-alpha: 0.08;
+    /* The lit top edge, which is what reads as "pane of glass" rather than
+       "translucent rectangle". */
+    --glass-sheen: 0 0% 100%;
+    --glass-sheen-alpha: 0.65;
+    --glass-shadow: 222 47% 11%;
+    --glass-shadow-alpha: 0.1;
+  }
+
+  .dark {
+    --glass-bg: 222 47% 9%;
+    --glass-alpha: 0.6;
+    --glass-ring: 210 40% 98%;
+    --glass-ring-alpha: 0.1;
+    --glass-sheen: 210 40% 98%;
+    --glass-sheen-alpha: 0.08;
+    --glass-shadow: 0 0% 0%;
+    --glass-shadow-alpha: 0.45;
+  }
+}
+
+@layer components {
+  /*
+   * Each selector is written twice on purpose.
+   *
+   * A surface class competes with the Tailwind utilities already on the element
+   * — `Card` hardcodes `bg-card`, and `cn()` has no way to know `glass` is also
+   * a background. One class ties on specificity and the winner is decided by
+   * which rule the bundler emitted last, which is not something a call site
+   * should have to reason about. Doubling settles it in one place.
+   */
+  .glass.glass {
+    background-color: hsl(var(--glass-bg) / var(--glass-alpha));
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid hsl(var(--glass-ring) / var(--glass-ring-alpha));
+    box-shadow:
+      inset 0 1px 0 0 hsl(var(--glass-sheen) / var(--glass-sheen-alpha)),
+      0 1px 2px -1px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
+  }
+
+  /* A panel that floats clear of the page: the sign-in card, the sidebar. */
+  .glass-raised.glass-raised {
+    box-shadow:
+      inset 0 1px 0 0 hsl(var(--glass-sheen) / var(--glass-sheen-alpha)),
+      0 2px 4px -2px hsl(var(--glass-shadow) / var(--glass-shadow-alpha)),
+      0 24px 48px -24px hsl(var(--glass-shadow) / calc(var(--glass-shadow-alpha) * 2.5));
+  }
+
+  /*
+   * Without `backdrop-filter` there is no blur, and a 72%-opaque panel over
+   * arbitrary page content is unreadable rather than merely plain. Those
+   * browsers get an opaque surface, which is exactly what they had before.
+   */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass.glass {
+      background-color: hsl(var(--card));
+    }
+  }
+
+  /*
+   * The lit field behind a signed-out screen.
+   *
+   * Drawn on a pseudo-element, oversized and drifting by `transform`, so the
+   * animation is composited rather than repainting a full-screen gradient every
+   * frame. It is decoration: it sits behind everything and takes no pointer.
+   */
+  .aurora {
+    position: relative;
+    isolation: isolate;
+    background-color: hsl(var(--background));
+  }
+
+  .aurora::before {
+    content: '';
+    position: absolute;
+    inset: -25%;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(38rem 30rem at 18% 12%, hsl(var(--primary) / 0.28), transparent 62%),
+      radial-gradient(32rem 26rem at 82% 8%, hsl(262 70% 60% / 0.2), transparent 62%),
+      radial-gradient(40rem 32rem at 62% 92%, hsl(180 80% 50% / 0.22), transparent 62%);
+    animation: aurora-drift 28s ease-in-out infinite alternate;
+  }
+
+  .dark .aurora::before {
+    /* The same hues at a lower strength: on a near-black page the identical
+       alphas read as coloured fog rather than as light. */
+    background-image:
+      radial-gradient(38rem 30rem at 18% 12%, hsl(var(--primary) / 0.22), transparent 62%),
+      radial-gradient(32rem 26rem at 82% 8%, hsl(262 70% 60% / 0.18), transparent 62%),
+      radial-gradient(40rem 32rem at 62% 92%, hsl(180 80% 50% / 0.16), transparent 62%);
+  }
+
+  /* A faint ruled grid, faded out towards the edges so it has no visible end. */
+  .grid-veil::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(hsl(var(--foreground) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.045) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 40%, #000 0%, transparent 100%);
+    mask-image: radial-gradient(70% 60% at 50% 40%, #000 0%, transparent 100%);
+  }
+}
+
+@keyframes aurora-drift {
+  from {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+  }
+}
+
+/* Motion here is ambient and carries no information, so it is the first thing
+   to go when somebody has asked for less of it. */
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before {
+    animation: none;
+  }
+}
+
+/**
+ * Actions that stay out of the way until the row is under the pointer.
+ *
+ * A grid's last column is a strip of icons repeated down every row, which
+ * reads as a column of noise beside the data somebody actually came to look
+ * at. Fading it back until the row is hovered gives the table its quiet back.
+ *
+ * Fading rather than `display: none`: the cell keeps its width, so the columns
+ * do not jump as the pointer travels down the table, and the buttons stay in
+ * the accessibility tree — `opacity` hides something from the eye, not from a
+ * screen reader, which is exactly the distinction wanted here.
+ *
+ * Three things must override the hiding, and all three have been got wrong in
+ * this pattern before:
+ *
+ *   - a keyboard. `:focus-within` on the row, so tabbing into the strip shows
+ *     it. Without this the actions are reachable and invisible, which is worse
+ *     than either;
+ *   - an open menu. Radix renders the dropdown into a portal at the end of the
+ *     body, so focus leaves the row entirely and `:focus-within` goes false —
+ *     the trigger would fade out from under its own open menu. The trigger
+ *     carries `data-state="open"` while that is happening;
+ *   - a touch screen, which has no hover at all. The whole rule is behind
+ *     `(hover: hover) and (pointer: fine)`, so a phone or a tablet simply
+ *     shows the actions, as it did before.
+ *
+ * The class goes on the actions cell where the whole column is icons, and on a
+ * group inside it where it is not: the recall list's row offers Book beside
+ * two icons, and Book is the thing the screen exists to get clicked. Hiding it
+ * until hover would be hiding the call to action.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .row-actions {
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+  }
+
+  tr:hover .row-actions,
+  tr:focus-within .row-actions,
+  .row-actions:has([data-state='open']) {
+    opacity: 1;
+  }
+
+  /* The fade is decoration. Somebody who has asked for less motion still gets
+     the hiding, just without the dissolve. */
+  @media (prefers-reduced-motion: reduce) {
+    .row-actions {
+      transition: none;
     }
   }
 }

@@ -45,6 +45,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 import {
   treatmentPlanStatusConfig,
   formatCurrency,
@@ -186,22 +189,22 @@ export default function TreatmentPlansPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/treatments">
-            <Button variant="ghost" size="icon" aria-label="Go back">
+          <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+            <Link href="/treatments">
               <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Treatment Plans</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Treatment Plans</h1>
             <p className="text-muted-foreground">Create and manage comprehensive treatment plans</p>
           </div>
         </div>
-        <Link href="/treatments/plans/new">
-          <Button>
+        <Button asChild>
+          <Link href="/treatments/plans/new">
             <Plus className="h-4 w-4 mr-2" />
             New Treatment Plan
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       {/* Filters */}
@@ -244,6 +247,34 @@ export default function TreatmentPlansPage() {
               </Select>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="treatment plans"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setConsentFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              {
+                label: 'Consent',
+                value:
+                  consentFilter === 'all'
+                    ? null
+                    : consentFilter === 'true'
+                      ? 'Consent given'
+                      : 'Pending consent',
+                onClear: () => setConsentFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -295,12 +326,12 @@ export default function TreatmentPlansPage() {
                     <div className="flex flex-col items-center gap-2">
                       <FileText className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No treatment plans found</p>
-                      <Link href="/treatments/plans/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/treatments/plans/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Create Treatment Plan
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -350,20 +381,22 @@ export default function TreatmentPlansPage() {
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(plan.status)}
                           {plan.consentGiven && (
-                            <div className="flex items-center gap-1 text-xs text-green-600">
+                            <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                               <CheckCircle className="h-3 w-3" />
                               Consent
                             </div>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right row-actions">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => router.push(`/treatments/plans/${plan.id}`)}

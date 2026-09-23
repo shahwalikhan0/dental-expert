@@ -323,11 +323,9 @@ export default function EditSupplierPage() {
       </Card>
 
       <div className="flex justify-end gap-3">
-        <Link href={`/inventory/suppliers/${supplierId}`}>
-          <Button type="button" variant="outline">
-            Cancel
-          </Button>
-        </Link>
+        <Button type="button" variant="outline" asChild>
+          <Link href={`/inventory/suppliers/${supplierId}`}>Cancel</Link>
+        </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

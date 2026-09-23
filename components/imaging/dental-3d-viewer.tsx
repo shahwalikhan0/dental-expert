@@ -538,7 +538,7 @@ export default function Dental3DViewer({
             <div className="w-64 space-y-3">
               {/* Selected tooth details */}
               {selectedTooth && (
-                <Card className="border-blue-200 bg-blue-50/50">
+                <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800/60">
                   <CardContent className="p-3">
                     <p className="font-semibold text-sm">Tooth #{selectedTooth}</p>
                     <p className="text-xs text-muted-foreground mb-2">

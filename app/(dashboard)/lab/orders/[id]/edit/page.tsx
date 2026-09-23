@@ -81,7 +81,7 @@ export default function EditLabOrderPage() {
       try {
         const [orderRes, vendorRes] = await Promise.all([
           fetch(`/api/lab-orders/${orderId}`),
-          fetch('/api/lab-vendors?status=active'),
+          fetch('/api/lab-vendors?status=active&sort=name'),
         ])
 
         const orderData = await orderRes.json()
@@ -357,11 +357,9 @@ export default function EditLabOrderPage() {
       </Card>
 
       <div className="flex justify-end gap-3">
-        <Link href={`/lab/orders/${orderId}`}>
-          <Button type="button" variant="outline">
-            Cancel
-          </Button>
-        </Link>
+        <Button type="button" variant="outline" asChild>
+          <Link href={`/lab/orders/${orderId}`}>Cancel</Link>
+        </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -92,8 +92,8 @@ export function DuplicateDetector({
   if (duplicates.length === 0) return null
 
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p className="text-xs font-semibold text-amber-800 mb-2">
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/70 dark:bg-amber-950/30">
+      <p className="text-xs font-semibold text-amber-800 mb-2 dark:text-amber-300">
         ⚠ Possible duplicate patient{duplicates.length > 1 ? 's' : ''} detected
       </p>
       <div className="space-y-2">

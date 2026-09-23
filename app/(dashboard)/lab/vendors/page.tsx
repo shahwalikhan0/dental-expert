@@ -58,7 +58,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { useToast } from '@/hooks/use-toast'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface LabVendor {
   id: string
@@ -328,7 +331,7 @@ export default function LabVendorsPage() {
     const configs: Record<string, { label: string; className: string; icon: any }> = {
       active: {
         label: 'Active',
-        className: 'bg-green-100 text-green-800',
+        className: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
         icon: CheckCircle,
       },
       inactive: {
@@ -338,7 +341,7 @@ export default function LabVendorsPage() {
       },
       blocked: {
         label: 'Blocked',
-        className: 'bg-red-100 text-red-800',
+        className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
         icon: XCircle,
       },
     }
@@ -359,7 +362,7 @@ export default function LabVendorsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Lab Vendors</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lab Vendors</h1>
           <p className="text-muted-foreground">
             Manage external laboratory vendors and their information
           </p>
@@ -390,7 +393,7 @@ export default function LabVendorsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Vendors</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
+            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -401,7 +404,7 @@ export default function LabVendorsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg. Rating</CardTitle>
-            <Star className="h-4 w-4 text-yellow-600" />
+            <Star className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -438,6 +441,23 @@ export default function LabVendorsPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="vendors"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -521,13 +541,15 @@ export default function LabVendorsPage() {
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(vendor.status)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right row-actions">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleOpenDialog(vendor)}>
                               <Edit className="mr-2 h-4 w-4" />
@@ -536,7 +558,7 @@ export default function LabVendorsPage() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleDelete(vendor.id)}
-                              className="text-red-600"
+                              className="text-red-600 dark:text-red-400"
                             >
                               <Trash className="mr-2 h-4 w-4" />
                               Delete

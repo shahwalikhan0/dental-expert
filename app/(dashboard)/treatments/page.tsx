@@ -49,6 +49,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import {
   treatmentStatusConfig,
   procedureCategoryConfig,
@@ -58,6 +59,8 @@ import {
   parseToothNumbers,
 } from '@/lib/treatment-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Treatment {
   id: string
@@ -243,7 +246,7 @@ export default function TreatmentsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Treatments</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Treatments</h1>
           <p className="text-muted-foreground">Manage patient treatments and clinical records</p>
         </div>
         <div className="flex gap-2">
@@ -271,18 +274,18 @@ export default function TreatmentsPage() {
               }))
             }
           />
-          <Link href="/treatments/plans">
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link href="/treatments/plans">
               <FileText className="h-4 w-4 mr-2" />
               Treatment Plans
-            </Button>
-          </Link>
-          <Link href="/treatments/new">
-            <Button>
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/treatments/new">
               <Plus className="h-4 w-4 mr-2" />
               New Treatment
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -337,6 +340,33 @@ export default function TreatmentsPage() {
               />
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="treatments"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setFollowUpFilter('all')
+              setDateFrom('')
+              setDateTo('')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              {
+                label: 'Follow-up',
+                value: followUpFilter === 'all' ? null : 'Required',
+                onClear: () => setFollowUpFilter('all'),
+              },
+              { label: 'From', value: dateFrom, onClear: () => setDateFrom('') },
+              { label: 'To', value: dateTo, onClear: () => setDateTo('') },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -392,12 +422,12 @@ export default function TreatmentsPage() {
                     <div className="flex flex-col items-center gap-2">
                       <Stethoscope className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No treatments found</p>
-                      <Link href="/treatments/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/treatments/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Create New Treatment
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -460,20 +490,22 @@ export default function TreatmentsPage() {
                       <div className="flex flex-col gap-1">
                         {getStatusBadge(treatment.status)}
                         {treatment.followUpRequired && (
-                          <div className="flex items-center gap-1 text-xs text-amber-600">
+                          <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                             <AlertCircle className="h-3 w-3" />
                             Follow-up
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() => router.push(`/treatments/${treatment.id}`)}

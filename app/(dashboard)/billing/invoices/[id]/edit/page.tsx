@@ -5,6 +5,7 @@ import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -213,9 +214,9 @@ export default function EditInvoicePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href={`/billing/invoices/${invoiceId}`}>
-              <Button variant="outline">Back to the invoice</Button>
-            </Link>
+            <Button variant="outline" asChild>
+              <Link href={`/billing/invoices/${invoiceId}`}>Back to the invoice</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -286,16 +287,18 @@ export default function EditInvoicePage() {
                     {formatCurrency(item.quantity * item.unitPrice)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-600"
-                      onClick={() => setItems(items.filter((_, i) => i !== index))}
-                      aria-label="Remove line"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <IconTooltip label="Remove line">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-600 dark:text-red-400"
+                        onClick={() => setItems(items.filter((_, i) => i !== index))}
+                        aria-label="Remove line"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </IconTooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -419,11 +422,9 @@ export default function EditInvoicePage() {
       </div>
 
       <div className="flex justify-end gap-3">
-        <Link href={`/billing/invoices/${invoiceId}`}>
-          <Button type="button" variant="outline">
-            Cancel
-          </Button>
-        </Link>
+        <Button type="button" variant="outline" asChild>
+          <Link href={`/billing/invoices/${invoiceId}`}>Cancel</Link>
+        </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -151,7 +151,7 @@ export default function CampaignAnalyticsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Delivery Rate</CardTitle>
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{data.sms.deliveryRate}%</div>
@@ -163,10 +163,12 @@ export default function CampaignAnalyticsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Failed</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500" />
+                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-red-600">{data.sms.failed}</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                    {data.sms.failed}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {data.sms.total > 0
                       ? `${((data.sms.failed / data.sms.total) * 100).toFixed(1)}% failure rate`
@@ -213,7 +215,7 @@ export default function CampaignAnalyticsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
-                  <Eye className="h-4 w-4 text-blue-500" />
+                  <Eye className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{data.email.openRate}%</div>
@@ -225,10 +227,12 @@ export default function CampaignAnalyticsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Failed</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500" />
+                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-red-600">{data.email.failed}</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                    {data.email.failed}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {data.email.total > 0
                       ? `${((data.email.failed / data.email.total) * 100).toFixed(1)}% failure rate`

@@ -135,7 +135,7 @@ export default function BillingSettingsPage() {
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <Receipt className="w-8 h-8" />
           Billing Settings
         </h1>
@@ -201,8 +201,8 @@ export default function BillingSettingsPage() {
               </div>
             )}
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <p className="text-sm text-blue-800">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-950/30">
+              <p className="text-sm text-blue-800 dark:text-blue-300">
                 {tax.taxEnabled && Number(tax.taxRate) > 0 ? (
                   <>
                     Invoices will show <strong>{tax.taxLabel}</strong> at{' '}
@@ -245,8 +245,8 @@ export default function BillingSettingsPage() {
               </p>
             </div>
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <p className="text-sm text-blue-800">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-950/30">
+              <p className="text-sm text-blue-800 dark:text-blue-300">
                 {Number(settings.discountApprovalThreshold) > 0 ? (
                   <>
                     Discounts up to <strong>Rs {settings.discountApprovalThreshold}</strong> go

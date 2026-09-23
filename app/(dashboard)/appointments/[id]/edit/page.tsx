@@ -238,11 +238,9 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">Appointment not found</p>
-        <Link href="/appointments">
-          <Button variant="outline" className="mt-4">
-            Back to Appointments
-          </Button>
-        </Link>
+        <Button variant="outline" className="mt-4" asChild>
+          <Link href="/appointments">Back to Appointments</Link>
+        </Button>
       </div>
     )
   }
@@ -251,13 +249,13 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href={`/appointments/${id}`}>
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href={`/appointments/${id}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Edit Appointment</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Edit Appointment</h1>
           <p className="text-muted-foreground">{appointment.appointmentNo}</p>
         </div>
       </div>
@@ -447,17 +445,15 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
             {error}
           </div>
         )}
 
         <div className="mt-6 flex justify-end gap-4">
-          <Link href={`/appointments/${id}`}>
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href={`/appointments/${id}`}>Cancel</Link>
+          </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
               <>

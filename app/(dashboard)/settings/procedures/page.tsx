@@ -43,7 +43,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 interface Procedure {
   id: string
@@ -353,7 +355,7 @@ export default function ProceduresSettingsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Procedures</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Procedures</h1>
           <p className="text-muted-foreground">Manage dental procedures catalog</p>
         </div>
         <Button onClick={openCreateDialog}>
@@ -401,6 +403,33 @@ export default function ProceduresSettingsPage() {
               </Select>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="procedures"
+            onClearAll={() => {
+              setSearch('')
+              setCategoryFilter('all')
+              setActiveFilter('all')
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Category',
+                value:
+                  categoryFilter === 'all'
+                    ? null
+                    : (procedureCategoryConfig[categoryFilter]?.label ?? categoryFilter),
+                onClear: () => setCategoryFilter('all'),
+              },
+              {
+                label: 'Status',
+                value:
+                  activeFilter === 'all' ? null : activeFilter === 'true' ? 'Active' : 'Inactive',
+                onClear: () => setActiveFilter('all'),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -488,13 +517,15 @@ export default function ProceduresSettingsPage() {
                         onCheckedChange={() => handleToggleActive(procedure)}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right row-actions">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
                             <Edit className="h-4 w-4 mr-2" />
@@ -502,7 +533,7 @@ export default function ProceduresSettingsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-red-600"
+                            className="text-red-600 dark:text-red-400"
                             onClick={() => {
                               setSelectedProcedure(procedure)
                               setDeleteDialogOpen(true)
@@ -546,7 +577,7 @@ export default function ProceduresSettingsPage() {
           </DialogHeader>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
               <AlertCircle className="h-4 w-4" />
               {error}
             </div>

@@ -247,3 +247,99 @@ describe('links between modules', () => {
     ).toEqual([])
   })
 })
+
+describe('row actions', () => {
+  /**
+   * The actions column is faded back until the row is hovered, which is a
+   * presentational choice with three ways to get it wrong — all of them
+   * invisible to whoever makes the change, because they only show up on a
+   * keyboard, on a touch screen, or with a menu open.
+   */
+  const CSS = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8')
+
+  it('hides the actions column only where there is a pointer that can hover', () => {
+    // Without this guard a phone hides the actions and never shows them.
+    expect(CSS).toMatch(/@media \(hover: hover\) and \(pointer: fine\)/)
+  })
+
+  it('brings the actions back for a keyboard', () => {
+    // Reachable by Tab and invisible is worse than either on its own.
+    expect(CSS).toMatch(/tr:focus-within \.row-actions/)
+  })
+
+  it('keeps the trigger visible while its own menu is open', () => {
+    // Radix portals the menu out of the row, so `:focus-within` goes false
+    // and the trigger would fade out from under the menu it opened.
+    expect(CSS).toMatch(/\.row-actions:has\(\[data-state='open'\]\)/)
+  })
+
+  it('does not animate for somebody who asked for less motion', () => {
+    expect(CSS).toMatch(/prefers-reduced-motion: reduce/)
+  })
+
+  /**
+   * Screens whose rows carry actions. Not every list has them — an audit log
+   * and a walk-in board are read-only — so this is a list rather than a rule
+   * over all of them.
+   */
+  const WITH_ACTIONS = [
+    'appointments/page.tsx',
+    'appointments/waitlist/page.tsx',
+    'billing/invoices/page.tsx',
+    'billing/payments/page.tsx',
+    'inventory/page.tsx',
+    'inventory/suppliers/page.tsx',
+    'lab/page.tsx',
+    'lab/vendors/page.tsx',
+    'medications/page.tsx',
+    'patients/page.tsx',
+    'platform/tenants/tenant-console.tsx',
+    'prescriptions/page.tsx',
+    'recare/page.tsx',
+    'settings/forms/page.tsx',
+    'settings/procedures/page.tsx',
+    'settings/recare/page.tsx',
+    'staff/invites/page.tsx',
+    'staff/page.tsx',
+    'treatments/page.tsx',
+    'treatments/plans/page.tsx',
+  ]
+
+  it('tag their actions cell, so the twenty-first grid is not the odd one out', () => {
+    const untagged = WITH_ACTIONS.filter(
+      (name) => !ALL.find((f) => f.name === name)?.source.includes('row-actions')
+    )
+
+    expect(untagged, 'add `row-actions` to the actions cell').toEqual([])
+  })
+
+  it("leaves the recall list's Book visible", () => {
+    // The one grid whose actions column is not all icons. Book is the whole
+    // point of the screen, so the class goes on the icons beside it rather
+    // than on the cell — hiding the call to action would be the bug.
+    const recare = ALL.find((f) => f.name === 'recare/page.tsx')!.source
+
+    expect(recare).not.toMatch(/<TableCell className="text-right row-actions">/)
+    expect(recare).toMatch(/className="row-actions inline-flex/)
+    // Book is outside the faded group: it comes before it in the cell.
+    const book = recare.indexOf('Book')
+    const faded = recare.indexOf('className="row-actions inline-flex')
+    expect(book).toBeLessThan(faded)
+  })
+
+  it('leave the line-item editors alone', () => {
+    // A remove button on a row somebody is actively filling in should not
+    // have to be found by hovering; these are forms, not grids.
+    const editors = [
+      'billing/invoices/new/page.tsx',
+      'billing/invoices/[id]/edit/page.tsx',
+      'treatments/plans/new/page.tsx',
+      'treatments/plans/[id]/edit/page.tsx',
+    ]
+    const hidden = editors.filter((name) =>
+      ALL.find((f) => f.name === name)?.source.includes('row-actions')
+    )
+
+    expect(hidden, 'a form row is not a grid row').toEqual([])
+  })
+})

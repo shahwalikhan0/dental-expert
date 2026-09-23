@@ -88,7 +88,7 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
     return (
       <>
         {header}
-        <div className="bg-background rounded-lg border p-6 text-center shadow-sm">
+        <div className="glass glass-raised rounded-2xl p-6 text-center">
           <h2 className="font-semibold">Online booking is not available</h2>
           <p className="text-muted-foreground mt-2 text-sm">
             Please telephone the clinic to make an appointment.
@@ -108,7 +108,7 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
     return (
       <>
         {header}
-        <div className="bg-background rounded-lg border p-6 text-center shadow-sm">
+        <div className="glass glass-raised rounded-2xl p-6 text-center">
           <h2 className="font-semibold">No appointments available</h2>
           <p className="text-muted-foreground mt-2 text-sm">
             Please telephone the clinic to make an appointment.

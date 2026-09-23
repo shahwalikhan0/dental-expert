@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { GLASS_FIELD } from '@/lib/surface'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -159,37 +160,42 @@ function LoginForm() {
     }
   }
 
+  /* Taller than the default, because this is the one form a stranger fills in
+     on a phone. The surface itself is the shared one — see lib/surface.ts. */
+  const field = 'h-11 rounded-xl placeholder:text-muted-foreground/70'
+
   return (
-    <Card className="shadow-lg">
-      <CardHeader className="space-y-1 text-center">
-        <div className="mb-4 flex justify-center">
+    <Card className="glass glass-raised rounded-2xl p-1">
+      <CardHeader className="space-y-1.5 pb-4 text-center">
+        <div className="mb-5 flex justify-center">
           {clinic?.logo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={clinic.logo}
               alt=""
-              className="h-12 w-12 rounded-xl object-cover"
+              className="h-14 w-14 rounded-2xl object-cover shadow-lg shadow-primary/20 ring-1 ring-white/50 dark:ring-white/10"
               onError={() => setClinic((c) => (c ? { ...c, logo: null } : c))}
             />
           ) : (
-            <div className="bg-primary text-primary-foreground flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/25 ring-1 ring-white/50 dark:ring-white/10">
               {clinic?.name?.trim()?.[0]?.toUpperCase() ?? 'D'}
             </div>
           )}
         </div>
-        <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+        <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
         <CardDescription>
           {clinic ? `Sign in to ${clinic.name}` : 'Sign in to your account'}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
               placeholder="admin@demo-dental.com"
+              className={field}
               {...register('email')}
               disabled={isLoading}
             />
@@ -215,6 +221,7 @@ function LoginForm() {
               id="password"
               type="password"
               placeholder="Enter your password"
+              className={field}
               {...register('password')}
               disabled={isLoading}
             />
@@ -227,7 +234,7 @@ function LoginForm() {
               <Label htmlFor="clinic">Clinic</Label>
               <select
                 id="clinic"
-                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${GLASS_FIELD} ring-offset-background focus-visible:ring-ring flex h-11 w-full rounded-xl px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50`}
                 value={chosenClinic}
                 onChange={(e) => setChosenClinic(e.target.value)}
                 disabled={isLoading}
@@ -243,7 +250,11 @@ function LoginForm() {
               </p>
             </div>
           )}
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button
+            type="submit"
+            className="h-11 w-full rounded-xl bg-gradient-to-b from-primary to-primary/80 shadow-lg shadow-primary/25 transition-shadow hover:from-primary/95 hover:to-primary/70 hover:shadow-primary/35"
+            disabled={isLoading}
+          >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Sign in
           </Button>
@@ -252,15 +263,17 @@ function LoginForm() {
         <div className="mt-6 text-center text-sm">
           <p className="text-muted-foreground">
             Don&apos;t have an account?{' '}
-            <a href="/signup" className="text-primary hover:underline">
+            <a href="/signup" className="font-medium text-primary hover:underline">
               Sign up for free
             </a>
           </p>
         </div>
 
-        <div className="mt-4 text-center text-xs text-muted-foreground border-t pt-4">
-          <p>Demo credentials:</p>
-          <p className="font-mono mt-1">admin@demo-dental.com / Admin@123</p>
+        <div className="text-muted-foreground mt-6 rounded-xl border border-white/40 bg-white/25 px-4 py-3 text-center text-xs dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="font-medium">Demo credentials</p>
+          <p className="mt-1 font-mono text-[11px] text-foreground/70">
+            admin@demo-dental.com / Admin@123
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -271,14 +284,14 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <Card className="shadow-lg">
-          <CardHeader className="space-y-1 text-center">
-            <div className="flex justify-center mb-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-bold">
+        <Card className="glass glass-raised rounded-2xl p-1">
+          <CardHeader className="space-y-1.5 text-center">
+            <div className="mb-5 flex justify-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/25 ring-1 ring-white/50 dark:ring-white/10">
                 D
               </div>
             </div>
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+            <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
             <CardDescription>Loading...</CardDescription>
           </CardHeader>
         </Card>

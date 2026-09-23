@@ -166,14 +166,12 @@ export default function PricingPage() {
             <span className="font-semibold">DentalERP</span>
           </Link>
           <nav className="flex items-center gap-4">
-            <Link href="/login">
-              <Button variant="ghost" size="sm">
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button size="sm">Get Started</Button>
-            </Link>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/login">Sign In</Link>
+            </Button>
+            <Button size="sm" asChild>
+              <Link href="/signup">Get Started</Link>
+            </Button>
           </nav>
         </div>
       </header>
@@ -249,11 +247,11 @@ export default function PricingPage() {
                   </ul>
                 </CardContent>
                 <CardFooter>
-                  <Link href="/signup" className="w-full">
-                    <Button className="w-full" variant={plan.ctaVariant}>
+                  <Button className="w-full" variant={plan.ctaVariant} asChild>
+                    <Link href="/signup" className="w-full">
                       {plan.cta}
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </CardFooter>
               </Card>
             )
@@ -285,11 +283,9 @@ export default function PricingPage() {
               <p className="text-lg opacity-90 mb-8">
                 Start with our free plan and upgrade when you need more.
               </p>
-              <Link href="/signup">
-                <Button size="lg" variant="secondary">
-                  Create Free Account
-                </Button>
-              </Link>
+              <Button size="lg" variant="secondary" asChild>
+                <Link href="/signup">Create Free Account</Link>
+              </Button>
             </CardContent>
           </Card>
         </div>

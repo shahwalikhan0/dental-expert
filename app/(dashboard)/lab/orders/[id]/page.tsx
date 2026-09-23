@@ -75,14 +75,14 @@ const STATUSES = [
 
 const STATUS_STYLE: Record<string, string> = {
   CREATED: 'bg-muted text-foreground',
-  SENT_TO_LAB: 'bg-blue-100 text-blue-800',
-  IN_PROGRESS: 'bg-blue-100 text-blue-800',
-  QUALITY_CHECK: 'bg-amber-100 text-amber-800',
-  READY: 'bg-green-100 text-green-800',
-  DELIVERED: 'bg-green-100 text-green-800',
-  FITTED: 'bg-green-100 text-green-800',
-  REMAKE_REQUIRED: 'bg-red-100 text-red-800',
-  CANCELLED: 'bg-red-100 text-red-800',
+  SENT_TO_LAB: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  IN_PROGRESS: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  QUALITY_CHECK: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  READY: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+  DELIVERED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+  FITTED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+  REMAKE_REQUIRED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
 }
 
 function label(value: string | null) {
@@ -158,12 +158,12 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">Lab case not found</h1>
-        <Link href="/lab">
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href="/lab">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Lab
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     )
   }
@@ -173,12 +173,14 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{order.orderNumber}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{order.orderNumber}</h1>
             <Badge className={`border-0 ${STATUS_STYLE[order.status] ?? ''}`}>
               {label(order.status)}
             </Badge>
             {order.priority === 'URGENT' && (
-              <Badge className="bg-red-100 text-red-800 border-0">Urgent</Badge>
+              <Badge className="bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300">
+                Urgent
+              </Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">

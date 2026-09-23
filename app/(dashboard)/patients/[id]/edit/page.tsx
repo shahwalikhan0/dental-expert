@@ -178,11 +178,11 @@ export default function EditPatientPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href={`/patients/${patientId}`}>
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href={`/patients/${patientId}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
           <h1 className="text-2xl font-bold">Edit Patient</h1>
           <p className="text-muted-foreground">Update patient information</p>
@@ -423,11 +423,9 @@ export default function EditPatientPage() {
 
         {/* Submit */}
         <div className="flex justify-end gap-3">
-          <Link href={`/patients/${patientId}`}>
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href={`/patients/${patientId}`}>Cancel</Link>
+          </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
               <>

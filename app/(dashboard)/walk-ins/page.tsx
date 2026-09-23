@@ -20,6 +20,7 @@ import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Search, UserPlus } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 /**
  * Walk-ins — people the clinic has seen but not registered.
@@ -122,12 +123,12 @@ export default function WalkInsPage() {
             Seen but not registered. Register the ones who come back; discard the rest.
           </p>
         </div>
-        <Link href={trail.to('/appointments/new?walkIn=1')}>
-          <Button>
+        <Button asChild>
+          <Link href={trail.to('/appointments/new?walkIn=1')}>
             <UserPlus className="h-4 w-4 mr-2" />
             New walk-in
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -160,6 +161,24 @@ export default function WalkInsPage() {
           ))}
         </div>
       </div>
+
+      <ActiveFilters
+        noun="walk-ins"
+        onClearAll={() => {
+          setSearch('')
+          setPagination((p) => ({ ...p, page: 1 }))
+        }}
+        filters={[
+          {
+            label: 'Search',
+            value: search,
+            onClear: () => {
+              setSearch('')
+              setPagination((p) => ({ ...p, page: 1 }))
+            },
+          },
+        ]}
+      />
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">

@@ -70,7 +70,7 @@ export default function NewLabOrderPage() {
       try {
         const [patientsRes, vendorsRes] = await Promise.all([
           fetch('/api/patients?limit=100'),
-          fetch('/api/lab-vendors?status=active'),
+          fetch('/api/lab-vendors?status=active&sort=name'),
         ])
 
         if (patientsRes.ok) {
@@ -185,11 +185,11 @@ export default function NewLabOrderPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/lab">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/lab">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
           <h1 className="text-2xl font-bold">New Lab Order</h1>
           <p className="text-muted-foreground">Create a new lab work order</p>
@@ -418,11 +418,9 @@ export default function NewLabOrderPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-3">
-          <Link href="/lab">
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/lab">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
               <>

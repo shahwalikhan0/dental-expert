@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { PLANS } from '@/lib/plans'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 interface Tenant {
   id: string
@@ -32,10 +33,10 @@ const SUBSCRIPTION_STATUSES = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'C
 
 /** Green for paying, amber for owing, red for stopped. */
 const STATUS_TONE: Record<string, string> = {
-  TRIALING: 'bg-sky-100 text-sky-700',
-  ACTIVE: 'bg-green-100 text-green-700',
-  PAST_DUE: 'bg-amber-100 text-amber-700',
-  SUSPENDED: 'bg-red-100 text-red-700',
+  TRIALING: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
+  ACTIVE: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  PAST_DUE: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  SUSPENDED: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
   CANCELLED: 'bg-gray-200 text-gray-700',
 }
 
@@ -129,6 +130,24 @@ export function TenantConsole() {
         </Button>
       </form>
 
+      <ActiveFilters
+        noun="clinics"
+        onClearAll={() => {
+          setQuery('')
+          load('')
+        }}
+        filters={[
+          {
+            label: 'Search',
+            value: query,
+            onClear: () => {
+              setQuery('')
+              load('')
+            },
+          },
+        ]}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
@@ -209,16 +228,16 @@ export function TenantConsole() {
                         </Badge>
                       </td>
                       <td
-                        className={`py-3 pr-4 ${nearLimit(tenant.patients, tenant.entitlements.patients) ? 'text-amber-600' : ''}`}
+                        className={`py-3 pr-4 ${nearLimit(tenant.patients, tenant.entitlements.patients) ? 'text-amber-600 dark:text-amber-400' : ''}`}
                       >
                         {usage(tenant.patients, tenant.entitlements.patients)}
                       </td>
                       <td
-                        className={`py-3 pr-4 ${nearLimit(tenant.users, tenant.entitlements.staff) ? 'text-amber-600' : ''}`}
+                        className={`py-3 pr-4 ${nearLimit(tenant.users, tenant.entitlements.staff) ? 'text-amber-600 dark:text-amber-400' : ''}`}
                       >
                         {usage(tenant.users, tenant.entitlements.staff)}
                       </td>
-                      <td className="py-3">
+                      <td className="py-3 row-actions">
                         <Button
                           size="sm"
                           variant={tenant.isActive ? 'outline' : 'default'}

@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         preferredSupplier: { select: { id: true, name: true, phone: true } },
       },
       orderBy: {
-        name: 'asc',
+        createdAt: 'desc',
       },
     })
 

@@ -113,7 +113,7 @@ export default function EditInventoryItemPage() {
     <div ref={formRef} className="container mx-auto px-4 py-8 space-y-6">
       <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
 
-      <h1 className="text-3xl font-bold">Edit {name ?? 'item'}</h1>
+      <h1 className="text-2xl md:text-3xl font-bold">Edit {name ?? 'item'}</h1>
 
       <ItemForm
         mode="edit"

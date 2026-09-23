@@ -37,6 +37,11 @@ export async function GET(request: NextRequest) {
       deletedAt: null,
     }
 
+    // The grid shows newest first, so a record somebody has just added is the
+    // top row rather than wherever its name falls. `sort=name` is for the
+    // dropdowns that read the same endpoint, where a person scans for a name.
+    const byName = searchParams.get('sort') === 'name'
+
     // Add search filter
     if (search) {
       where.OR = [
@@ -62,9 +67,7 @@ export async function GET(request: NextRequest) {
     // Fetch vendors
     const vendors = await prisma.vendor.findMany({
       where,
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: byName ? { name: 'asc' } : { createdAt: 'desc' },
       skip,
       take: limit,
     })

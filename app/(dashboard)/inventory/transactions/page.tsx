@@ -1,10 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { GridPagination } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { isoDay } from '@/lib/dates'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Transaction {
   id: number
@@ -23,11 +26,22 @@ interface Transaction {
 
 export default function TransactionsPage() {
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  /**
+   * The item this screen was opened about.
+   *
+   * Both ways in carry it — "Stock History" on an inventory row and "Record
+   * movement" on an item's own page — and neither was read, so both landed on
+   * every movement the clinic has ever recorded. `record=1` says the caller
+   * wanted the form rather than the history.
+   */
+  const handedItemId = searchParams.get('item') ?? ''
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(searchParams.get('record') === '1')
   const [items, setItems] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [itemFilter, setItemFilter] = useState(handedItemId)
   const [transactionType, setTransactionType] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -40,7 +54,7 @@ export default function TransactionsPage() {
 
   const [formData, setFormData] = useState({
     type: 'purchase',
-    itemId: '',
+    itemId: handedItemId,
     quantity: 0,
     unitPrice: 0,
     transactionDate: isoDay(new Date()),
@@ -52,7 +66,7 @@ export default function TransactionsPage() {
     fetchTransactions()
     fetchItems()
     fetchSuppliers()
-  }, [transactionType, startDate, endDate, pagination.page])
+  }, [itemFilter, transactionType, startDate, endDate, pagination.page])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -60,6 +74,7 @@ export default function TransactionsPage() {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
+        ...(itemFilter && { itemId: itemFilter }),
         ...(transactionType && { type: transactionType }),
         ...(startDate && { startDate }),
         ...(endDate && { endDate }),
@@ -93,7 +108,7 @@ export default function TransactionsPage() {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/inventory/suppliers?status=active')
+      const response = await fetch('/api/inventory/suppliers?status=active&sort=name')
       const data = await response.json()
       if (data.success) {
         setSuppliers(data.data)
@@ -170,12 +185,12 @@ export default function TransactionsPage() {
 
   const getTransactionTypeBadge = (type: string) => {
     const badges: any = {
-      purchase: 'bg-green-100 text-green-800',
-      sale: 'bg-blue-100 text-blue-800',
-      adjustment: 'bg-yellow-100 text-yellow-800',
-      return: 'bg-orange-100 text-orange-800',
-      usage: 'bg-purple-100 text-purple-800',
-      wastage: 'bg-red-100 text-red-800',
+      purchase: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+      sale: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+      adjustment: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
+      return: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
+      usage: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
+      wastage: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
       previousStock: 'bg-muted text-foreground',
     }
 
@@ -199,7 +214,7 @@ export default function TransactionsPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Stock Transactions</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Stock Transactions</h1>
         <div className="flex gap-2">
           <Link
             href="/inventory"
@@ -261,6 +276,57 @@ export default function TransactionsPage() {
             placeholder="End Date"
           />
         </div>
+
+        <ActiveFilters
+          className="mt-4"
+          noun="transactions"
+          onClearAll={() => {
+            setItemFilter('')
+            setTransactionType('')
+            setStartDate('')
+            setEndDate('')
+            setPagination((p) => ({ ...p, page: 1 }))
+          }}
+          filters={[
+            {
+              // The item arrives from another screen, so it is the filter
+              // most worth naming: a list scoped to one item looks exactly
+              // like a clinic with very few movements.
+              label: 'Item',
+              value: itemFilter
+                ? (items.find((i) => i.id === itemFilter)?.name ?? 'Selected item')
+                : null,
+              onClear: () => {
+                setItemFilter('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+            {
+              label: 'Type',
+              value: transactionType ? humanise(transactionType) : null,
+              onClear: () => {
+                setTransactionType('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+            {
+              label: 'From',
+              value: startDate,
+              onClear: () => {
+                setStartDate('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+            {
+              label: 'To',
+              value: endDate,
+              onClear: () => {
+                setEndDate('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+          ]}
+        />
       </div>
 
       {/* Transactions Table */}
@@ -357,7 +423,7 @@ export default function TransactionsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Transaction Type <span className="text-red-500">*</span>
+                    Transaction Type <span className="text-red-500 dark:text-red-400">*</span>
                   </label>
                   <select
                     name="type"
@@ -376,7 +442,7 @@ export default function TransactionsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Item <span className="text-red-500">*</span>
+                    Item <span className="text-red-500 dark:text-red-400">*</span>
                   </label>
                   <select
                     name="itemId"
@@ -396,7 +462,7 @@ export default function TransactionsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Quantity <span className="text-red-500">*</span>
+                    Quantity <span className="text-red-500 dark:text-red-400">*</span>
                   </label>
                   <input
                     type="number"
@@ -425,7 +491,7 @@ export default function TransactionsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Transaction Date <span className="text-red-500">*</span>
+                    Transaction Date <span className="text-red-500 dark:text-red-400">*</span>
                   </label>
                   <input
                     type="date"

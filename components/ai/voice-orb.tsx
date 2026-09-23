@@ -42,7 +42,9 @@ export function VoiceOrb({ state, audioLevel, size = 120, onPress, disabled }: V
           <span
             className={cn(
               'absolute inset-0 rounded-full border-2 opacity-0',
-              state === 'listening' ? 'border-red-400' : 'border-blue-400'
+              state === 'listening'
+                ? 'border-red-400 dark:border-red-700/70'
+                : 'border-blue-400 dark:border-blue-700/70'
             )}
             style={{
               animation: 'orb-ripple 2s ease-out infinite',
@@ -51,7 +53,9 @@ export function VoiceOrb({ state, audioLevel, size = 120, onPress, disabled }: V
           <span
             className={cn(
               'absolute inset-0 rounded-full border-2 opacity-0',
-              state === 'listening' ? 'border-red-400' : 'border-blue-400'
+              state === 'listening'
+                ? 'border-red-400 dark:border-red-700/70'
+                : 'border-blue-400 dark:border-blue-700/70'
             )}
             style={{
               animation: 'orb-ripple 2s ease-out infinite 0.6s',
@@ -60,7 +64,9 @@ export function VoiceOrb({ state, audioLevel, size = 120, onPress, disabled }: V
           <span
             className={cn(
               'absolute inset-0 rounded-full border-2 opacity-0',
-              state === 'listening' ? 'border-red-400' : 'border-blue-400'
+              state === 'listening'
+                ? 'border-red-400 dark:border-red-700/70'
+                : 'border-blue-400 dark:border-blue-700/70'
             )}
             style={{
               animation: 'orb-ripple 2s ease-out infinite 1.2s',

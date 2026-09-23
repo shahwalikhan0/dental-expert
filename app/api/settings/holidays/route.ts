@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     // for everybody — see lib/availability.ts.
     const holidays = await prisma.availability.findMany({
       where: { ...where, staffId: null, date: where.date ?? { not: null }, isAvailable: false },
-      orderBy: { date: 'asc' },
+      orderBy: { createdAt: 'desc' },
       select: { id: true, name: true, date: true, isRecurring: true },
     })
 

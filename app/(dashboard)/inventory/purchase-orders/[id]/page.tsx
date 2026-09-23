@@ -62,10 +62,10 @@ const EMPTY_DRAFT: ReceiptDraft = { quantity: '', batchNumber: '', expiryDate: '
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-muted text-foreground',
-  ORDERED: 'bg-blue-100 text-blue-800',
-  PARTIALLY_RECEIVED: 'bg-amber-100 text-amber-800',
-  RECEIVED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
+  ORDERED: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  PARTIALLY_RECEIVED: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  RECEIVED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
 }
 
 export default function PurchaseOrderPage() {
@@ -196,7 +196,7 @@ export default function PurchaseOrderPage() {
       <div className="flex justify-between items-start mb-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{order.orderNumber}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">{order.orderNumber}</h1>
             <span
               className={`px-2 py-1 text-xs font-semibold rounded-full ${
                 STATUS_STYLES[order.status] ?? 'bg-muted text-foreground'
@@ -239,7 +239,7 @@ export default function PurchaseOrderPage() {
             <button
               disabled={busy}
               onClick={() => patch({ status: 'CANCELLED' }, 'Order cancelled')}
-              className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50"
+              className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50 dark:border-red-800/70 dark:text-red-300"
             >
               Cancel order
             </button>
@@ -247,9 +247,15 @@ export default function PurchaseOrderPage() {
         </div>
       </div>
 
-      {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm">{error}</div>}
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
       {message && (
-        <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-800 text-sm">{message}</div>
+        <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-800 text-sm dark:bg-green-950/30 dark:text-green-300">
+          {message}
+        </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -273,7 +279,9 @@ export default function PurchaseOrderPage() {
         <div className="px-6 py-4 border-b border-border flex justify-between items-center">
           <h2 className="text-lg font-semibold">Items</h2>
           {outstanding > 0 && (
-            <span className="text-sm text-amber-700">{outstanding} still outstanding</span>
+            <span className="text-sm text-amber-700 dark:text-amber-300">
+              {outstanding} still outstanding
+            </span>
           )}
         </div>
 
@@ -309,9 +317,11 @@ export default function PurchaseOrderPage() {
                   <td className="px-6 py-4 text-sm">{line.receivedQty}</td>
                   <td className="px-6 py-4 text-sm">
                     {line.outstanding > 0 ? (
-                      <span className="text-amber-700 font-medium">{line.outstanding}</span>
+                      <span className="text-amber-700 font-medium dark:text-amber-300">
+                        {line.outstanding}
+                      </span>
                     ) : (
-                      <span className="text-green-700">Complete</span>
+                      <span className="text-green-700 dark:text-green-300">Complete</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm">{formatCurrency(line.unitPrice)}</td>

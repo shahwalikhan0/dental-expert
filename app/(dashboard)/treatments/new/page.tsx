@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { fetchHandedPatient } from '@/lib/prefill'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,6 +57,10 @@ export default function NewTreatmentPage() {
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
   const preselectedAppointmentId = searchParams.get('appointmentId')
+  // A treatment plan's "start this item" hands over the procedure as well as
+  // the patient. It was read by nobody, so the one field that made the link
+  // worth clicking arrived empty.
+  const preselectedProcedureId = searchParams.get('procedureId')
 
   const [patients, setPatients] = useState<Patient[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -68,7 +73,7 @@ export default function NewTreatmentPage() {
   const [formData, setFormData] = useState({
     patientId: preselectedPatientId || '',
     doctorId: '',
-    procedureId: '',
+    procedureId: preselectedProcedureId || '',
     appointmentId: preselectedAppointmentId || '',
     toothNumbers: [] as number[],
     chiefComplaint: '',
@@ -88,20 +93,23 @@ export default function NewTreatmentPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [patientsRes, doctorsRes, proceduresRes] = await Promise.all([
+        const [patientsRes, doctorsRes, proceduresRes, handedPatient] = await Promise.all([
           fetch('/api/patients?limit=100'),
           fetch('/api/staff/doctors'),
           fetch('/api/procedures?all=true&isActive=true'),
+          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
         ])
 
         if (patientsRes.ok) {
           const data = await patientsRes.json()
           setPatients(data.patients)
-          // Set preselected patient if available
-          if (preselectedPatientId) {
-            const patient = data.patients.find((p: Patient) => p.id === preselectedPatientId)
-            if (patient) setSelectedPatient(patient)
-          }
+        }
+
+        // Fetched by id rather than looked for in the hundred records above:
+        // patient 101 onwards is not in that list, so a link from their own
+        // record used to land here with the patient field empty.
+        if (handedPatient) {
+          setSelectedPatient(handedPatient)
         }
 
         if (doctorsRes.ok) {
@@ -112,6 +120,24 @@ export default function NewTreatmentPage() {
         if (proceduresRes.ok) {
           const data = await proceduresRes.json()
           setProcedures(data.procedures)
+
+          // Choosing a procedure by hand also fills the cost from its price
+          // and opens the consent block; a procedure that arrived in the URL
+          // has to do the same, or the form is half-filled in a way that is
+          // worse than empty.
+          if (preselectedProcedureId) {
+            const procedure = data.procedures?.find(
+              (p: Procedure) => p.id === preselectedProcedureId
+            )
+            if (procedure) {
+              setSelectedProcedure(procedure)
+              setFormData((prev) => ({
+                ...prev,
+                procedureId: procedure.id,
+                cost: prev.cost || procedure.basePrice.toString(),
+              }))
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching data:', error)
@@ -119,7 +145,7 @@ export default function NewTreatmentPage() {
     }
 
     fetchData()
-  }, [preselectedPatientId])
+  }, [preselectedPatientId, preselectedProcedureId])
 
   // Filter patients by search
   const filteredPatients = patients.filter((patient) => {
@@ -209,19 +235,19 @@ export default function NewTreatmentPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/treatments">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/treatments">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Treatment</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Treatment</h1>
           <p className="text-muted-foreground">Record a new treatment for a patient</p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
           <AlertCircle className="h-4 w-4" />
           {error}
         </div>
@@ -518,11 +544,9 @@ export default function NewTreatmentPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Link href="/treatments">
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/treatments">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={loading}>
             {loading ? (
               'Creating...'

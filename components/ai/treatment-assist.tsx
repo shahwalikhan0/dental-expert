@@ -234,14 +234,18 @@ function DrugCheck({
       </div>
 
       {loading && <Spinner />}
-      {result.error && <p className="text-xs text-red-600">{String(result.error)}</p>}
+      {result.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{String(result.error)}</p>
+      )}
 
       {!loading && !result.error && result.safe !== undefined && (
         <div className="space-y-2">
           <p
             className={cn(
               'text-xs font-semibold',
-              result.safe ? 'text-emerald-700' : 'text-red-700'
+              result.safe
+                ? 'text-emerald-700 dark:text-emerald-300'
+                : 'text-red-700 dark:text-red-300'
             )}
           >
             {result.safe ? '✓ No interactions detected' : '⚠ Interactions detected'}
@@ -253,9 +257,9 @@ function DrugCheck({
               className={cn(
                 'rounded p-2 text-xs',
                 interaction.severity === 'high'
-                  ? 'bg-red-50 text-red-800'
+                  ? 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300'
                   : interaction.severity === 'moderate'
-                    ? 'bg-amber-50 text-amber-800'
+                    ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
                     : 'bg-muted'
               )}
             >
@@ -265,7 +269,10 @@ function DrugCheck({
           ))}
 
           {(result.allergies as any[])?.map((a, i) => (
-            <p key={i} className="text-xs text-red-700 bg-red-50 rounded px-2 py-1">
+            <p
+              key={i}
+              className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 dark:text-red-300 dark:bg-red-950/30"
+            >
               🚫 Allergy: {a.allergen} — {a.reaction}
             </p>
           ))}
@@ -305,7 +312,9 @@ function CostEstimate({
         </button>
       )}
       {loading && <Spinner />}
-      {result.error && <p className="text-xs text-red-600">{String(result.error)}</p>}
+      {result.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{String(result.error)}</p>
+      )}
 
       {!loading && !result.error && result.lineItems && (
         <div className="space-y-1.5">
@@ -413,7 +422,9 @@ function ConsentForm({
       </div>
 
       {loading && <Spinner />}
-      {result.error && <p className="text-xs text-red-600">{String(result.error)}</p>}
+      {result.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{String(result.error)}</p>
+      )}
 
       {!loading && !result.error && result.title && (
         <>
@@ -498,7 +509,9 @@ function ClinicalNotes({
       </div>
 
       {loading && <Spinner />}
-      {result.error && <p className="text-xs text-red-600">{String(result.error)}</p>}
+      {result.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{String(result.error)}</p>
+      )}
 
       {!loading && !result.error && result.expandedNotes && (
         <div className="space-y-2 text-xs">

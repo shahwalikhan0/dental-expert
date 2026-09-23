@@ -307,7 +307,7 @@ export default function EditTreatmentPage() {
       </Card>
 
       {needsReason && (
-        <Card className="border-amber-300">
+        <Card className="border-amber-300 dark:border-amber-800/70">
           <CardHeader>
             <CardTitle className="text-base">Why is this being amended?</CardTitle>
             <CardDescription>
@@ -327,11 +327,9 @@ export default function EditTreatmentPage() {
       )}
 
       <div className="flex justify-end gap-3">
-        <Link href={`/treatments/${treatmentId}`}>
-          <Button type="button" variant="outline">
-            Cancel
-          </Button>
-        </Link>
+        <Button type="button" variant="outline" asChild>
+          <Link href={`/treatments/${treatmentId}`}>Cancel</Link>
+        </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

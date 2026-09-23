@@ -41,7 +41,7 @@ export default function NewInventoryItemPage() {
   return (
     <div ref={formRef} className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Add New Inventory Item</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Add New Inventory Item</h1>
         <Link
           href="/inventory"
           className="px-4 py-2 bg-muted-foreground text-white rounded-lg hover:bg-muted-foreground/80"

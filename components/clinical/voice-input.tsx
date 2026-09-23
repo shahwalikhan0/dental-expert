@@ -127,7 +127,7 @@ export function VoiceInput({ onTranscript, language = 'en-PK', className }: Voic
         )}
 
         {isListening && !interimText && (
-          <span className="flex items-center gap-1 text-xs text-red-500">
+          <span className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
             <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
             Listening...
           </span>

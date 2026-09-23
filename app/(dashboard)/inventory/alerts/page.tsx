@@ -19,6 +19,8 @@ import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, BellRing, Check, PackageX } from 'lucide-react'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Alert {
   id: string
@@ -51,10 +53,22 @@ interface Summary {
  * must act on before opening a surgery; "low stock" can wait for the order.
  */
 const ALERT_STYLE: Record<Alert['alertType'], { label: string; className: string }> = {
-  EXPIRED: { label: 'Expired', className: 'bg-red-100 text-red-800 border-0' },
-  OUT_OF_STOCK: { label: 'Out of stock', className: 'bg-red-100 text-red-800 border-0' },
-  EXPIRING_SOON: { label: 'Expiring soon', className: 'bg-amber-100 text-amber-800 border-0' },
-  LOW_STOCK: { label: 'Low stock', className: 'bg-amber-100 text-amber-800 border-0' },
+  EXPIRED: {
+    label: 'Expired',
+    className: 'bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300',
+  },
+  OUT_OF_STOCK: {
+    label: 'Out of stock',
+    className: 'bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300',
+  },
+  EXPIRING_SOON: {
+    label: 'Expiring soon',
+    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
+  },
+  LOW_STOCK: {
+    label: 'Low stock',
+    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
+  },
 }
 
 const FILTERS = [
@@ -125,26 +139,38 @@ export default function StockAlertsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Stock Alerts</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Stock Alerts</h1>
           <p className="text-muted-foreground">
             What has run out, what is running out, and what is about to go out of date.
           </p>
         </div>
-        <Link href="/inventory">
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href="/inventory">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Inventory
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
-            { label: 'Expired', value: summary.expired, tone: 'text-red-700' },
-            { label: 'Out of stock', value: summary.outOfStock, tone: 'text-red-700' },
-            { label: 'Expiring soon', value: summary.expiringSoon, tone: 'text-amber-700' },
-            { label: 'Low stock', value: summary.lowStock, tone: 'text-amber-700' },
+            { label: 'Expired', value: summary.expired, tone: 'text-red-700 dark:text-red-300' },
+            {
+              label: 'Out of stock',
+              value: summary.outOfStock,
+              tone: 'text-red-700 dark:text-red-300',
+            },
+            {
+              label: 'Expiring soon',
+              value: summary.expiringSoon,
+              tone: 'text-amber-700 dark:text-amber-300',
+            },
+            {
+              label: 'Low stock',
+              value: summary.lowStock,
+              tone: 'text-amber-700 dark:text-amber-300',
+            },
           ].map((stat) => (
             <Card key={stat.label}>
               <CardContent className="pt-6">
@@ -180,6 +206,26 @@ export default function StockAlertsPage() {
           </Button>
         </div>
       </div>
+
+      <ActiveFilters
+        noun="alerts"
+        onClearAll={() => {
+          setType('')
+          setShowAcknowledged(false)
+        }}
+        filters={[
+          {
+            label: 'Kind',
+            value: type ? (FILTERS.find((f) => f.id === type)?.label ?? humanise(type)) : null,
+            onClear: () => setType(''),
+          },
+          {
+            label: 'Also showing',
+            value: showAcknowledged ? 'Acknowledged' : null,
+            onClear: () => setShowAcknowledged(false),
+          },
+        ]}
+      />
 
       <Card>
         <CardContent className="p-0">

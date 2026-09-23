@@ -24,7 +24,9 @@ export function Header({ user }: HeaderProps) {
   const { setMobileOpen } = useSidebar()
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    // Left unglazed the header was an opaque band butting against a floating
+    // panel, which reads as a seam rather than as a layer.
+    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-[hsl(var(--glass-ring)/0.08)] bg-background/70 px-4 backdrop-blur-xl backdrop-saturate-150 md:px-6">
       {/* Mobile menu button */}
       <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)}>
         <Menu className="h-5 w-5" />

@@ -329,7 +329,7 @@ export default function CommunicationSettingsPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">Communication Settings</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Communication Settings</h1>
           <p className="text-muted-foreground">Configure SMS and Email gateways</p>
         </div>
         <div className="flex items-center justify-center h-64">
@@ -342,7 +342,7 @@ export default function CommunicationSettingsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Communication Settings</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Communication Settings</h1>
         <p className="text-muted-foreground">Configure SMS and Email gateways</p>
       </div>
 
@@ -463,9 +463,11 @@ export default function CommunicationSettingsPage() {
 
               <Separator />
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">TRAI Compliance</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950/30 dark:border-blue-800/60">
+                <h4 className="font-semibold text-blue-900 mb-2 dark:text-blue-200">
+                  TRAI Compliance
+                </h4>
+                <ul className="text-sm text-blue-800 space-y-1 dark:text-blue-300">
                   <li>• SMS will only be sent between 9 AM - 9 PM IST</li>
                   <li>• DND registry will be checked before sending</li>
                   <li>• Patient consent is required for promotional messages</li>
@@ -615,11 +617,11 @@ export default function CommunicationSettingsPage() {
 
               <Separator />
 
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h4 className="font-semibold text-green-900 mb-2">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 dark:bg-green-950/30 dark:border-green-800/60">
+                <h4 className="font-semibold text-green-900 mb-2 dark:text-green-200">
                   Recommended Settings for Hostinger
                 </h4>
-                <ul className="text-sm text-green-800 space-y-1">
+                <ul className="text-sm text-green-800 space-y-1 dark:text-green-300">
                   <li>• SMTP Host: smtp.hostinger.com</li>
                   <li>• SMTP Port: 587 (STARTTLS) or 465 (SSL)</li>
                   <li>• Use your email and password for authentication</li>
@@ -686,9 +688,11 @@ export default function CommunicationSettingsPage() {
 
               <Separator />
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <h4 className="font-semibold text-amber-900 mb-2">Review Gating</h4>
-                <ul className="text-sm text-amber-800 space-y-1">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 dark:bg-amber-950/30 dark:border-amber-800/60">
+                <h4 className="font-semibold text-amber-900 mb-2 dark:text-amber-200">
+                  Review Gating
+                </h4>
+                <ul className="text-sm text-amber-800 space-y-1 dark:text-amber-300">
                   <li>
                     • Review requests are only sent to patients who rated their satisfaction 4/5 or
                     higher

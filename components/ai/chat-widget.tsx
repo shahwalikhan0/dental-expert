@@ -22,7 +22,7 @@ function MicIcon({ listening }: { listening: boolean }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={listening ? 'text-red-500' : ''}
+        className={listening ? 'text-red-500 dark:text-red-400' : ''}
       >
         <rect x="9" y="2" width="6" height="11" rx="3" />
         <path d="M19 10v1a7 7 0 0 1-14 0v-1" />

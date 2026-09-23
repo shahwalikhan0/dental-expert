@@ -5,6 +5,8 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GridPagination } from '@/components/ui/data-grid'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Supplier {
   id: number
@@ -76,9 +78,9 @@ export default function SuppliersPage() {
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      ACTIVE: 'bg-green-100 text-green-800',
+      ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
       INACTIVE: 'bg-muted text-foreground',
-      BLOCKED: 'bg-red-100 text-red-800',
+      BLOCKED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
     }
 
     return (
@@ -101,7 +103,7 @@ export default function SuppliersPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Supplier Management</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Supplier Management</h1>
         <div className="flex gap-2">
           <Link
             href="/inventory"
@@ -148,6 +150,34 @@ export default function SuppliersPage() {
             <option value="BLOCKED">Blocked</option>
           </select>
         </div>
+
+        <ActiveFilters
+          className="mt-4"
+          noun="suppliers"
+          onClearAll={() => {
+            setSearch('')
+            setStatusFilter('all')
+            setPagination((p) => ({ ...p, page: 1 }))
+          }}
+          filters={[
+            {
+              label: 'Search',
+              value: search,
+              onClear: () => {
+                setSearch('')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+            {
+              label: 'Status',
+              value: statusFilter === 'all' ? null : humanise(statusFilter),
+              onClear: () => {
+                setStatusFilter('all')
+                setPagination((p) => ({ ...p, page: 1 }))
+              },
+            },
+          ]}
+        />
       </div>
 
       {/* Suppliers Table */}
@@ -218,16 +248,16 @@ export default function SuppliersPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {formatCurrency(supplier.totalBusiness)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium row-actions">
                         <Link
                           href={`/inventory/suppliers/${supplier.id}`}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
+                          className="text-blue-600 hover:text-blue-900 mr-3 dark:text-blue-400"
                         >
                           View
                         </Link>
                         <Link
                           href={`/inventory/suppliers/${supplier.id}/edit`}
-                          className="text-indigo-600 hover:text-indigo-900"
+                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400"
                         >
                           Edit
                         </Link>

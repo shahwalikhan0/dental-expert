@@ -7,8 +7,10 @@ import { cn } from '@/lib/utils'
 
 const URGENCY_STYLES: Record<string, string> = {
   normal: 'border-muted bg-muted/50 text-foreground',
-  warning: 'border-amber-200 bg-amber-50 text-amber-900',
-  critical: 'border-red-200 bg-red-50 text-red-900',
+  warning:
+    'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200',
+  critical:
+    'border-red-200 bg-red-50 text-red-900 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-200',
 }
 
 /**
@@ -72,7 +74,7 @@ export function SmartSuggestions({ patientId }: { patientId?: string }) {
 
       {/* Feedback toast */}
       {feedback && (
-        <div className="mt-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3 py-2">
+        <div className="mt-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3 py-2 dark:bg-emerald-950/30 dark:border-emerald-800/60 dark:text-emerald-300">
           {feedback}
         </div>
       )}

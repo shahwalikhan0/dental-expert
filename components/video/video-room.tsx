@@ -255,7 +255,9 @@ export default function VideoRoom({
                       <div
                         key={i}
                         className={`flex items-center gap-1 text-xs ${
-                          alert.tone === 'danger' ? 'text-red-600' : 'text-orange-600'
+                          alert.tone === 'danger'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-orange-600 dark:text-orange-400'
                         }`}
                       >
                         <AlertTriangle className="h-3 w-3" />

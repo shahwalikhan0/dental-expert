@@ -75,7 +75,11 @@ export async function GET(request: NextRequest) {
     const [procedures, total] = await Promise.all([
       prisma.procedure.findMany({
         where,
-        orderBy: [{ category: 'asc' }, { name: 'asc' }],
+        // Newest first on the grid, so a procedure somebody has just added is
+        // the first row they see rather than buried under its category. `all`
+        // is the unpaged picker mode, where a person scans for a name and
+        // alphabetical is what they are scanning.
+        orderBy: all ? [{ category: 'asc' }, { name: 'asc' }] : { createdAt: 'desc' },
         skip: all ? undefined : skip,
         take: all ? undefined : limit,
       }),

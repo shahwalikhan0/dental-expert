@@ -523,14 +523,14 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
 
 /** Tailwind classes for a role badge. */
 export const ROLE_COLORS: Record<Role, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700',
-  CLINIC_MANAGER: 'bg-indigo-100 text-indigo-700',
-  DOCTOR: 'bg-blue-100 text-blue-700',
-  DENTAL_ASSISTANT: 'bg-sky-100 text-sky-700',
-  RECEPTIONIST: 'bg-green-100 text-green-700',
-  ACCOUNTANT: 'bg-yellow-100 text-yellow-700',
-  INVENTORY_STAFF: 'bg-amber-100 text-amber-700',
-  LAB_TECH: 'bg-orange-100 text-orange-700',
+  ADMIN: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  CLINIC_MANAGER: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
+  DOCTOR: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  DENTAL_ASSISTANT: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
+  RECEPTIONIST: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  ACCOUNTANT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
+  INVENTORY_STAFF: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  LAB_TECH: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
 }
 
 /** shadcn Badge variants, for the compact badge in the user menu. */

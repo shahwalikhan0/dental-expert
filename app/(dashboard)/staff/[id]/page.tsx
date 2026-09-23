@@ -73,11 +73,11 @@ interface StaffDetail {
 }
 
 const roleColors: Record<string, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700',
-  DOCTOR: 'bg-blue-100 text-blue-700',
-  RECEPTIONIST: 'bg-green-100 text-green-700',
-  LAB_TECH: 'bg-orange-100 text-orange-700',
-  ACCOUNTANT: 'bg-yellow-100 text-yellow-700',
+  ADMIN: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  DOCTOR: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  RECEPTIONIST: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  LAB_TECH: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  ACCOUNTANT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
 }
 
 const roleLabels: Record<string, string> = {
@@ -174,9 +174,9 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col items-center justify-center h-[400px] gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-muted-foreground">Staff member not found</p>
-        <Link href="/staff">
-          <Button>Back to Staff List</Button>
-        </Link>
+        <Button asChild>
+          <Link href="/staff">Back to Staff List</Link>
+        </Button>
       </div>
     )
   }
@@ -193,7 +193,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-3xl font-bold tracking-tight">
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
                   {staff.firstName} {staff.lastName}
                 </h1>
                 <Badge variant={staff.isActive ? 'default' : 'secondary'}>
@@ -210,12 +210,12 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/staff/${staff.id}/edit`}>
-            <Button>
+          <Button asChild>
+            <Link href={`/staff/${staff.id}/edit`}>
               <Edit className="h-4 w-4 mr-2" />
               Edit Profile
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -348,23 +348,25 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                   <>
                     <Separator />
                     <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-3 bg-blue-50 rounded-lg">
-                        <p className="text-2xl font-bold text-blue-700">
+                      <div className="text-center p-3 bg-blue-50 rounded-lg dark:bg-blue-950/30">
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
                           {staff._count.appointments}
                         </p>
-                        <p className="text-sm text-blue-600">Appointments</p>
+                        <p className="text-sm text-blue-600 dark:text-blue-400">Appointments</p>
                       </div>
-                      <div className="text-center p-3 bg-green-50 rounded-lg">
-                        <p className="text-2xl font-bold text-green-700">
+                      <div className="text-center p-3 bg-green-50 rounded-lg dark:bg-green-950/30">
+                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">
                           {staff._count.treatments}
                         </p>
-                        <p className="text-sm text-green-600">Treatments</p>
+                        <p className="text-sm text-green-600 dark:text-green-400">Treatments</p>
                       </div>
-                      <div className="text-center p-3 bg-purple-50 rounded-lg">
-                        <p className="text-2xl font-bold text-purple-700">
+                      <div className="text-center p-3 bg-purple-50 rounded-lg dark:bg-purple-950/30">
+                        <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
                           {staff._count.prescriptions}
                         </p>
-                        <p className="text-sm text-purple-600">Prescriptions</p>
+                        <p className="text-sm text-purple-600 dark:text-purple-400">
+                          Prescriptions
+                        </p>
                       </div>
                     </div>
                   </>
@@ -388,11 +390,9 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="text-center py-8 text-muted-foreground">
                   <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No work schedule configured</p>
-                  <Link href={`/staff/${staff.id}/edit`}>
-                    <Button variant="outline" className="mt-4">
-                      Configure Schedule
-                    </Button>
-                  </Link>
+                  <Button variant="outline" className="mt-4" asChild>
+                    <Link href={`/staff/${staff.id}/edit`}>Configure Schedule</Link>
+                  </Button>
                 </div>
               ) : (
                 <div className="grid gap-2">
@@ -402,13 +402,17 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                       <div
                         key={day}
                         className={`flex items-center justify-between p-3 rounded-lg ${
-                          shift && shift.isActive ? 'bg-green-50' : 'bg-muted/50'
+                          shift && shift.isActive
+                            ? 'bg-green-50 dark:bg-green-950/30'
+                            : 'bg-muted/50'
                         }`}
                       >
                         <span className="font-medium">{day}</span>
                         <span
                           className={
-                            shift && shift.isActive ? 'text-green-700' : 'text-muted-foreground'
+                            shift && shift.isActive
+                              ? 'text-green-700 dark:text-green-300'
+                              : 'text-muted-foreground'
                           }
                         >
                           {shift && shift.isActive

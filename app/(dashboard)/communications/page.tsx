@@ -124,7 +124,7 @@ export default function CommunicationsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Communication Center</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Communication Center</h1>
         <p className="text-muted-foreground">Manage SMS, Email, Templates, and Patient Feedback</p>
       </div>
 
@@ -285,9 +285,9 @@ export default function CommunicationsPage() {
                   </div>
                   {/* Templates are edited in clinic settings; this button had
                       no handler and no screen of its own. */}
-                  <Link href="/settings/communications">
-                    <Button>Manage Templates</Button>
-                  </Link>
+                  <Button asChild>
+                    <Link href="/settings/communications">Manage Templates</Link>
+                  </Button>
                 </div>
 
                 <div className="border rounded-lg p-4">
@@ -314,9 +314,9 @@ export default function CommunicationsPage() {
                     <h3 className="font-semibold">Active Surveys</h3>
                     <p className="text-sm text-muted-foreground">Collect feedback from patients</p>
                   </div>
-                  <Link href="/communications/feedback">
-                    <Button>Manage Surveys</Button>
-                  </Link>
+                  <Button asChild>
+                    <Link href="/communications/feedback">Manage Surveys</Link>
+                  </Button>
                 </div>
 
                 <div className="border rounded-lg p-4">

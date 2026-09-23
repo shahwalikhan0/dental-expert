@@ -58,7 +58,7 @@ const setupSections: SetupSection[] = [
     title: 'Clinic Information',
     description: 'Set up your clinic profile, logo, address, and working hours',
     icon: Building2,
-    color: 'text-blue-600 bg-blue-50',
+    color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30',
     priority: 'essential',
     estimatedTime: '10 min',
     guides: [
@@ -137,7 +137,7 @@ const setupSections: SetupSection[] = [
     title: 'Staff & User Accounts',
     description: 'Add your team members so they can log in and use the system',
     icon: Users,
-    color: 'text-indigo-600 bg-indigo-50',
+    color: 'text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-950/30',
     priority: 'essential',
     estimatedTime: '5 min per staff',
     guides: [
@@ -183,7 +183,7 @@ const setupSections: SetupSection[] = [
     title: 'Dental Procedures & Pricing',
     description: 'Set up your list of dental procedures with prices',
     icon: ClipboardList,
-    color: 'text-pink-600 bg-pink-50',
+    color: 'text-pink-600 bg-pink-50 dark:text-pink-400 dark:bg-pink-950/30',
     priority: 'essential',
     estimatedTime: '15 min',
     guides: [
@@ -215,7 +215,7 @@ const setupSections: SetupSection[] = [
     title: 'Appointment Settings',
     description: 'Configure time slots, working hours, and holiday calendar',
     icon: Calendar,
-    color: 'text-green-600 bg-green-50',
+    color: 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-950/30',
     priority: 'essential',
     estimatedTime: '5 min',
     guides: [
@@ -263,7 +263,7 @@ const setupSections: SetupSection[] = [
     title: 'Billing & Tax Setup',
     description: 'Configure tax, invoice format, and payment terms',
     icon: Receipt,
-    color: 'text-purple-600 bg-purple-50',
+    color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30',
     priority: 'essential',
     estimatedTime: '5 min',
     guides: [
@@ -308,7 +308,7 @@ const setupSections: SetupSection[] = [
     description:
       'India-only as shipped. Razorpay, PhonePe and Paytm do not onboard Pakistani merchants — a local processor has to be chosen and built before online payment works here.',
     icon: CreditCard,
-    color: 'text-emerald-600 bg-emerald-50',
+    color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30',
     priority: 'recommended',
     estimatedTime: '15-30 min',
     guides: [
@@ -350,7 +350,7 @@ const setupSections: SetupSection[] = [
     title: 'SMS Notifications',
     description: 'Send appointment reminders and notifications via SMS to patients',
     icon: Smartphone,
-    color: 'text-orange-600 bg-orange-50',
+    color: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/30',
     priority: 'recommended',
     estimatedTime: '15 min',
     guides: [
@@ -387,7 +387,7 @@ const setupSections: SetupSection[] = [
     title: 'Email Setup (SMTP)',
     description: 'Send emails for appointment confirmations, invoices, and reports',
     icon: Mail,
-    color: 'text-red-600 bg-red-50',
+    color: 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/30',
     priority: 'recommended',
     estimatedTime: '10 min',
     guides: [
@@ -452,7 +452,7 @@ const setupSections: SetupSection[] = [
     title: 'Google Reviews',
     description: 'Automatically request Google reviews from happy patients',
     icon: Star,
-    color: 'text-yellow-600 bg-yellow-50',
+    color: 'text-yellow-600 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-950/30',
     priority: 'optional',
     estimatedTime: '5 min',
     guides: [
@@ -487,7 +487,7 @@ const setupSections: SetupSection[] = [
     title: 'Patient Portal',
     description: 'Let patients book appointments and view records online',
     icon: Users,
-    color: 'text-violet-600 bg-violet-50',
+    color: 'text-violet-600 bg-violet-50 dark:text-violet-400 dark:bg-violet-950/30',
     priority: 'recommended',
     estimatedTime: '2 min',
     guides: [
@@ -518,7 +518,7 @@ const setupSections: SetupSection[] = [
     title: 'Security Settings',
     description: 'Configure password policies, session timeouts, and two-factor authentication',
     icon: Shield,
-    color: 'text-teal-600 bg-teal-50',
+    color: 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30',
     priority: 'recommended',
     estimatedTime: '5 min',
     guides: [
@@ -552,7 +552,7 @@ const setupSections: SetupSection[] = [
     description:
       'Migrate patient records, appointments, and billing data from your previous software',
     icon: Upload,
-    color: 'text-emerald-600 bg-emerald-50',
+    color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30',
     priority: 'optional',
     estimatedTime: '20-60 min',
     guides: [
@@ -669,12 +669,12 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
             {/* Links */}
             <div className="flex flex-wrap gap-2 pt-1">
               {guide.link && (
-                <Link href={guide.link.href}>
-                  <Button size="sm" variant="default">
+                <Button size="sm" variant="default" asChild>
+                  <Link href={guide.link.href}>
                     {guide.link.label}
                     <ArrowLeft className="w-3 h-3 ml-1 rotate-180" />
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
               {guide.externalLinks?.map((extLink, i) => (
                 <a key={i} href={extLink.url} target="_blank" rel="noopener noreferrer">
@@ -723,12 +723,12 @@ export default function SetupGuidePage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <Link href="/settings">
-            <Button variant="ghost" size="sm" className="gap-1">
+          <Button variant="ghost" size="sm" className="gap-1" asChild>
+            <Link href="/settings">
               <ArrowLeft className="w-4 h-4" />
               Settings
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <BookOpen className="w-7 h-7" />
@@ -749,7 +749,7 @@ export default function SetupGuidePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-red-600" />
+                <CheckCircle2 className="w-5 h-5 text-red-600 dark:text-red-400" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{essentialCount}</p>
@@ -765,7 +765,7 @@ export default function SetupGuidePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-                <Circle className="w-5 h-5 text-blue-600" />
+                <Circle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{recommendedCount}</p>

@@ -38,9 +38,9 @@ export default function DashboardError({
 
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         <Button onClick={reset}>Try again</Button>
-        <Link href="/dashboard">
-          <Button variant="outline">Back to the dashboard</Button>
-        </Link>
+        <Button variant="outline" asChild>
+          <Link href="/dashboard">Back to the dashboard</Link>
+        </Button>
       </div>
     </div>
   )

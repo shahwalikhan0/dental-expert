@@ -298,9 +298,9 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-muted-foreground">Treatment not found</p>
-        <Link href="/treatments">
-          <Button variant="outline">Back to Treatments</Button>
-        </Link>
+        <Button variant="outline" asChild>
+          <Link href="/treatments">Back to Treatments</Link>
+        </Button>
       </div>
     )
   }
@@ -315,7 +315,9 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           <BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{treatment.treatmentNo}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                {treatment.treatmentNo}
+              </h1>
               {getStatusBadge(treatment.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(treatment.createdAt)}</p>
@@ -350,15 +352,15 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             treatment.status !== 'COMPLETED' &&
             treatment.status !== 'CANCELLED' && (
               <>
-                <Link href={`/treatments/${id}/edit`}>
-                  <Button variant="outline">
+                <Button variant="outline" asChild>
+                  <Link href={`/treatments/${id}/edit`}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
                 <Button
                   variant="outline"
-                  className="text-red-600"
+                  className="text-red-600 dark:text-red-400"
                   onClick={() => setCancelDialogOpen(true)}
                 >
                   <XCircle className="h-4 w-4 mr-2" />
@@ -375,14 +377,17 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
       {/* FR-007: whether this note is locked, and who put their name to it */}
       {treatment.signedAt && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
           <Lock className="h-4 w-4 shrink-0" />
           <span>
             Signed by <strong>{treatment.signedBy?.name || 'a clinician'}</strong> on{' '}
             {formatDateTime(treatment.signedAt)}. This note is locked — additions go in an addendum.
           </span>
           {treatment.amendedAt && (
-            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+            <Badge
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200"
+            >
               Amended {formatDateTime(treatment.amendedAt)}
             </Badge>
           )}
@@ -390,7 +395,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       )}
 
       {noteError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
           {noteError}
         </div>
       )}
@@ -446,7 +451,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   </div>
                   {treatment.endTime && (
                     <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                       <span>Completed: {formatDateTime(treatment.endTime)}</span>
                     </div>
                   )}
@@ -522,7 +527,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
               {treatment.complications && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground text-amber-600">
+                  <div className="text-sm font-medium text-muted-foreground text-amber-600 dark:text-amber-400">
                     Complications
                   </div>
                   <p className="mt-1">{treatment.complications}</p>
@@ -601,11 +606,13 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                         {Object.entries(amendment.changes).map(([field, change]) => (
                           <div key={field} className="text-sm">
                             <span className="text-muted-foreground">{field}: </span>
-                            <span className="text-red-700 line-through">
+                            <span className="text-red-700 line-through dark:text-red-300">
                               {String(change.from ?? '—')}
                             </span>
                             <span className="text-muted-foreground"> → </span>
-                            <span className="text-emerald-700">{String(change.to ?? '—')}</span>
+                            <span className="text-emerald-700 dark:text-emerald-300">
+                              {String(change.to ?? '—')}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -664,11 +671,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 )}
               </div>
 
-              <Link href={trail.to(`/patients/${treatment.patient.id}`)}>
-                <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full" asChild>
+                <Link href={trail.to(`/patients/${treatment.patient.id}`)}>
                   View Patient Profile
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
 
@@ -713,11 +720,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   {formatDate(treatment.appointment.scheduledDate)} at{' '}
                   {treatment.appointment.scheduledTime}
                 </div>
-                <Link href={trail.to(`/appointments/${treatment.appointment.id}`)}>
-                  <Button variant="outline" size="sm" className="w-full mt-2">
+                <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                  <Link href={trail.to(`/appointments/${treatment.appointment.id}`)}>
                     View Appointment
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -726,7 +733,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           {treatment.followUpRequired && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-600">
+                <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
                   <AlertCircle className="h-5 w-5" />
                   Follow-up Required
                 </CardTitle>
@@ -743,19 +750,19 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 {/* Booking the follow-up is the whole point of the card, and
                     this button did nothing at all. The date, when one was set,
                     is what the booking screen should open on. */}
-                <Link
-                  href={trail.to(
-                    `/appointments/new?patientId=${treatment.patient.id}` +
-                      (treatment.followUpDate
-                        ? `&date=${String(treatment.followUpDate).slice(0, 10)}`
-                        : '')
-                  )}
-                  className="block mt-4"
-                >
-                  <Button variant="outline" size="sm" className="w-full">
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link
+                    href={trail.to(
+                      `/appointments/new?patientId=${treatment.patient.id}` +
+                        (treatment.followUpDate
+                          ? `&date=${String(treatment.followUpDate).slice(0, 10)}`
+                          : '')
+                    )}
+                    className="block mt-4"
+                  >
                     Schedule Follow-up
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -772,14 +779,14 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               <p className="text-sm text-muted-foreground">
                 Prescriptions are written for the patient rather than for one treatment.
               </p>
-              <Link
-                href={trail.to(`/prescriptions?patientId=${treatment.patient.id}`)}
-                className="block mt-4"
-              >
-                <Button variant="outline" size="sm" className="w-full">
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link
+                  href={trail.to(`/prescriptions?patientId=${treatment.patient.id}`)}
+                  className="block mt-4"
+                >
                   Prescriptions for {treatment.patient.firstName}
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
 

@@ -5,6 +5,7 @@ import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -234,13 +235,13 @@ export default function NewTreatmentPlanPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/treatments/plans">
-          <Button variant="ghost" size="icon" aria-label="Go back">
+        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
+          <Link href="/treatments/plans">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Treatment Plan</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Treatment Plan</h1>
           <p className="text-muted-foreground">
             Create a comprehensive treatment plan for a patient
           </p>
@@ -248,7 +249,7 @@ export default function NewTreatmentPlanPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
           <AlertCircle className="h-4 w-4" />
           {error}
         </div>
@@ -484,15 +485,17 @@ export default function NewTreatmentPlanPage() {
                         <TableCell>{item.toothNumbers || '-'}</TableCell>
                         <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
                         <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Delete"
-                            onClick={() => handleRemoveItem(index)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          <IconTooltip label="Remove this line">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Remove this line"
+                              onClick={() => handleRemoveItem(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
+                            </Button>
+                          </IconTooltip>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -514,11 +517,9 @@ export default function NewTreatmentPlanPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Link href="/treatments/plans">
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/treatments/plans">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={loading}>
             {loading ? (
               'Creating...'

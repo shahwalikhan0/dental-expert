@@ -8,6 +8,7 @@ import { AIProvider } from '@/components/ai/ai-provider'
 import { CommandBar } from '@/components/ai/command-bar'
 import { ChatWidget } from '@/components/ai/chat-widget'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { KeyboardShortcutHelp } from '@/components/layout/keyboard-shortcut-help'
 
 interface DashboardShellProps {
@@ -31,11 +32,34 @@ interface DashboardShellProps {
 export function DashboardShell({ children, user, hospital }: DashboardShellProps) {
   return (
     <AIProvider>
-      <SidebarProvider>
-        <div className="flex h-screen overflow-hidden">
-          {/* Sidebar - hidden on mobile */}
-          <aside className="hidden md:flex">
-            <Sidebar
+      {/*
+        One provider for every tooltip under the dashboard. The icon-only
+        actions in the grids each need one, and a provider per button would
+        give each its own open-delay timing — a row of actions would feel like
+        a dozen unrelated controls rather than one strip.
+      */}
+      <TooltipProvider delayDuration={200}>
+        <SidebarProvider>
+          {/*
+          The page itself is the tint the sidebar has to blur. A flat
+          `bg-background` behind a translucent panel produces a panel that looks
+          translucent and shows nothing, which is the worst of both.
+        */}
+          <div className="flex h-screen overflow-hidden bg-gradient-to-br from-primary/[0.06] via-background to-primary/[0.04]">
+            {/* Sidebar - hidden on mobile. The padding is what makes it float. */}
+            <aside className="hidden md:flex md:p-3 md:pr-0">
+              <Sidebar
+                role={user.role}
+                clinicalRole={user.clinicalRole}
+                hospitalName={hospital?.name}
+                hospitalLogo={hospital?.logo}
+                plan={hospital?.plan}
+                isPlatformAdmin={user.isPlatformAdmin}
+              />
+            </aside>
+
+            {/* Mobile sidebar overlay */}
+            <MobileSidebar
               role={user.role}
               clinicalRole={user.clinicalRole}
               hospitalName={hospital?.name}
@@ -43,31 +67,21 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
               plan={hospital?.plan}
               isPlatformAdmin={user.isPlatformAdmin}
             />
-          </aside>
 
-          {/* Mobile sidebar overlay */}
-          <MobileSidebar
-            role={user.role}
-            clinicalRole={user.clinicalRole}
-            hospitalName={hospital?.name}
-            hospitalLogo={hospital?.logo}
-            plan={hospital?.plan}
-            isPlatformAdmin={user.isPlatformAdmin}
-          />
-
-          {/* Main content */}
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Header user={user} />
-            {/* The floating chat button sits at bottom-right over this area.
+            {/* Main content */}
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <Header user={user} />
+              {/* The floating chat button sits at bottom-right over this area.
                 The extra bottom padding is what stops it covering the last row
                 of a list — on a phone it was landing on top of one. */}
-            <main className="flex-1 overflow-auto bg-muted/30 p-4 pb-24 md:p-6 md:pb-24">
-              <Breadcrumb className="mb-4" />
-              {children}
-            </main>
+              <main className="flex-1 overflow-auto p-4 pb-24 md:p-6 md:pb-24">
+                <Breadcrumb className="mb-4" />
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
-      </SidebarProvider>
+        </SidebarProvider>
+      </TooltipProvider>
       <CommandBar />
       <ChatWidget />
       <KeyboardShortcutHelp />

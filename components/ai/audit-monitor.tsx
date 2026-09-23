@@ -19,9 +19,10 @@ interface AuditAnalysis {
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
-  low: 'bg-blue-50 border-blue-200 text-blue-800',
-  medium: 'bg-amber-50 border-amber-200 text-amber-800',
-  high: 'bg-red-50 border-red-200 text-red-800',
+  low: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/60 dark:text-blue-300',
+  medium:
+    'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/60 dark:text-amber-300',
+  high: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300',
 }
 
 /**
@@ -109,10 +110,10 @@ export function AuditMonitor() {
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     p.severity === 'high'
-                      ? 'bg-red-100'
+                      ? 'bg-red-100 dark:bg-red-950/40'
                       : p.severity === 'medium'
-                        ? 'bg-amber-100'
-                        : 'bg-blue-100'
+                        ? 'bg-amber-100 dark:bg-amber-950/40'
+                        : 'bg-blue-100 dark:bg-blue-950/40'
                   }`}
                 >
                   {p.severity}
@@ -134,7 +135,7 @@ export function AuditMonitor() {
 
       {/* clean bill of health */}
       {!loading && analysis?.suspicious && analysis.suspicious.length === 0 && (
-        <p className="text-xs text-emerald-700 bg-emerald-50 rounded border border-emerald-200 px-3 py-2">
+        <p className="text-xs text-emerald-700 bg-emerald-50 rounded border border-emerald-200 px-3 py-2 dark:text-emerald-300 dark:bg-emerald-950/30 dark:border-emerald-800/60">
           ✓ No suspicious patterns detected in the last {daysBack} day{daysBack !== 1 ? 's' : ''}.
         </p>
       )}

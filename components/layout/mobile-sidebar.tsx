@@ -52,14 +52,14 @@ export function MobileSidebar({
     <div className="fixed inset-0 z-50 md:hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+        className="fixed inset-0 bg-foreground/20 backdrop-blur-md"
         onClick={() => setMobileOpen(false)}
       />
 
       {/* Sidebar panel */}
-      <div className="fixed inset-y-0 left-0 w-[min(288px,80vw)] bg-card border-r shadow-xl animate-in slide-in-from-left duration-200">
+      <div className="glass glass-raised animate-in slide-in-from-left fixed inset-y-0 left-0 w-[min(288px,80vw)] rounded-r-2xl duration-200">
         {/* Header */}
-        <div className="flex h-14 items-center justify-between border-b px-4">
+        <div className="flex h-14 items-center justify-between border-b border-[hsl(var(--glass-ring)/0.08)] px-4">
           <Link
             href="/dashboard"
             className="flex items-center gap-3"
@@ -69,10 +69,10 @@ export function MobileSidebar({
               <img
                 src={hospitalLogo}
                 alt={hospitalName || 'Logo'}
-                className="h-8 w-8 rounded-lg object-cover"
+                className="h-8 w-8 rounded-xl object-cover shadow-md shadow-primary/20 ring-1 ring-white/40 dark:ring-white/10"
               />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-sm font-bold text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-white/40 dark:ring-white/10">
                 {hospitalName?.charAt(0) || 'D'}
               </div>
             )}
@@ -83,7 +83,7 @@ export function MobileSidebar({
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10"
+            className="h-10 w-10 rounded-xl hover:bg-foreground/[0.06]"
             onClick={() => setMobileOpen(false)}
           >
             <X className="h-4 w-4" />
@@ -95,7 +95,7 @@ export function MobileSidebar({
           <nav className="flex flex-col gap-1 p-3">
             {navigation.map((section, sectionIndex) => (
               <div key={section.title} className={sectionIndex > 0 ? 'mt-4' : ''}>
-                <h4 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <h4 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
                   {section.title}
                 </h4>
                 <div className="flex flex-col gap-0.5">
@@ -109,13 +109,19 @@ export function MobileSidebar({
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          'flex h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors',
+                          'relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm transition-colors',
                           isActive
-                            ? 'bg-secondary text-secondary-foreground font-medium'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                            ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground'
+                            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
                         )}
                       >
-                        <Icon className="h-4 w-4 shrink-0" />
+                        {isActive && (
+                          <span
+                            aria-hidden
+                            className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                          />
+                        )}
+                        <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
                         <span className="truncate">{item.title}</span>
                         {item.badge && (
                           <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">

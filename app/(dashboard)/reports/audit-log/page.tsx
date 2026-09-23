@@ -30,6 +30,7 @@ import { downloadCSV } from '@/lib/export-utils'
 import { TablePageSkeleton } from '@/components/ui/page-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { AUDIT_GROUPS, auditLabel, auditTone } from '@/lib/audit-labels'
+import { ActiveFilters } from '@/components/ui/active-filters'
 
 interface AuditEntry {
   id: string
@@ -189,6 +190,46 @@ export default function AuditLogPage() {
           </SelectContent>
         </Select>
       </div>
+
+      <ActiveFilters
+        noun="log entries"
+        onClearAll={() => {
+          setSearch('')
+          setActionFilter('all')
+          setEntityFilter('all')
+          setPage(1)
+        }}
+        filters={[
+          {
+            label: 'Search',
+            value: search,
+            onClear: () => {
+              setSearch('')
+              setPage(1)
+            },
+          },
+          {
+            label: 'Action',
+            value:
+              actionFilter === 'all'
+                ? null
+                : (AUDIT_GROUPS.find((g) => g.actions.join(',') === actionFilter)?.label ??
+                  'Selected actions'),
+            onClear: () => {
+              setActionFilter('all')
+              setPage(1)
+            },
+          },
+          {
+            label: 'Entity',
+            value: entityFilter === 'all' ? null : entityFilter,
+            onClear: () => {
+              setEntityFilter('all')
+              setPage(1)
+            },
+          },
+        ]}
+      />
 
       {/* Log entries */}
       {logs.length === 0 ? (

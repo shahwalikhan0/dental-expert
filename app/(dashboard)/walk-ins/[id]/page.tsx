@@ -233,7 +233,7 @@ export default function WalkInPage() {
           </p>
         </div>
         {!decided && (
-          <Button variant="outline" className="text-red-600" onClick={discard}>
+          <Button variant="outline" className="text-red-600 dark:text-red-400" onClick={discard}>
             <Trash2 className="h-4 w-4 mr-2" />
             Discard
           </Button>

@@ -50,7 +50,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { invoiceStatusConfig, formatCurrency, formatDate, getDueDays } from '@/lib/billing-utils'
+import { ActiveFilters } from '@/components/ui/active-filters'
+import { humanise } from '@/lib/labels'
 
 interface Invoice {
   id: string
@@ -205,15 +208,15 @@ export default function InvoicesPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Invoices</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Invoices</h1>
           <p className="text-muted-foreground">Manage patient invoices and billing</p>
         </div>
-        <Link href="/billing/invoices/new">
-          <Button>
+        <Button asChild>
+          <Link href="/billing/invoices/new">
             <Plus className="h-4 w-4 mr-2" />
             New Invoice
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       {/* Filters */}
@@ -269,6 +272,33 @@ export default function InvoicesPage() {
               </Button>
             </div>
           </div>
+
+          <ActiveFilters
+            className="mt-4"
+            noun="invoices"
+            onClearAll={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setDateFrom('')
+              setDateTo('')
+              setOverdueOnly(false)
+            }}
+            filters={[
+              { label: 'Search', value: search, onClear: () => setSearch('') },
+              {
+                label: 'Status',
+                value: statusFilter === 'all' ? null : humanise(statusFilter),
+                onClear: () => setStatusFilter('all'),
+              },
+              { label: 'From', value: dateFrom, onClear: () => setDateFrom('') },
+              { label: 'To', value: dateTo, onClear: () => setDateTo('') },
+              {
+                label: 'Only',
+                value: overdueOnly ? 'Overdue' : null,
+                onClear: () => setOverdueOnly(false),
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -324,12 +354,12 @@ export default function InvoicesPage() {
                     <div className="flex flex-col items-center gap-2">
                       <FileText className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No invoices found</p>
-                      <Link href="/billing/invoices/new">
-                        <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/billing/invoices/new">
                           <Plus className="h-4 w-4 mr-2" />
                           Create New Invoice
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -367,13 +397,15 @@ export default function InvoicesPage() {
                       <TableCell className="text-right font-medium">
                         {formatCurrency(invoice.totalAmount)}
                       </TableCell>
-                      <TableCell className="text-right text-green-600">
+                      <TableCell className="text-right text-green-600 dark:text-green-400">
                         {formatCurrency(invoice.paidAmount)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span
                           className={
-                            Number(invoice.balanceAmount) > 0 ? 'text-red-600 font-medium' : ''
+                            Number(invoice.balanceAmount) > 0
+                              ? 'text-red-600 font-medium dark:text-red-400'
+                              : ''
                           }
                         >
                           {formatCurrency(invoice.balanceAmount)}
@@ -384,7 +416,7 @@ export default function InvoicesPage() {
                           <div className="flex flex-col">
                             <span className="text-sm">{formatDate(invoice.dueDate)}</span>
                             {dueDays.isOverdue && invoice.status !== 'PAID' && (
-                              <span className="text-xs text-red-600 flex items-center gap-1">
+                              <span className="text-xs text-red-600 flex items-center gap-1 dark:text-red-400">
                                 <Clock className="h-3 w-3" />
                                 {dueDays.label}
                               </span>
@@ -395,13 +427,15 @@ export default function InvoicesPage() {
                         )}
                       </TableCell>
                       <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right row-actions">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => router.push(`/billing/invoices/${invoice.id}`)}
@@ -442,7 +476,7 @@ export default function InvoicesPage() {
                             {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
                               <DropdownMenuItem
                                 onClick={() => handleDelete(invoice.id)}
-                                className="text-red-600"
+                                className="text-red-600 dark:text-red-400"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Cancel Invoice

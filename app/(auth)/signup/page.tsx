@@ -88,7 +88,7 @@ export default function SignupPage() {
   }
 
   return (
-    <Card className="shadow-lg">
+    <Card className="glass glass-raised rounded-2xl">
       <CardHeader className="space-y-1 text-center">
         <div className="flex justify-center mb-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">

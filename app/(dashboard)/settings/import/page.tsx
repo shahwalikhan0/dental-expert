@@ -79,49 +79,49 @@ const ENTITY_OPTIONS = [
     label: 'Patients',
     desc: 'Demographics, contact info',
     icon: Users,
-    color: 'text-blue-600 bg-blue-50',
+    color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30',
   },
   {
     key: 'staff',
     label: 'Staff',
     desc: 'Doctors, nurses, admin',
     icon: UserCog,
-    color: 'text-purple-600 bg-purple-50',
+    color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30',
   },
   {
     key: 'appointments',
     label: 'Appointments',
     desc: 'Scheduled visits',
     icon: CalendarDays,
-    color: 'text-green-600 bg-green-50',
+    color: 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-950/30',
   },
   {
     key: 'treatments',
     label: 'Treatments',
     desc: 'Procedures & records',
     icon: Stethoscope,
-    color: 'text-red-600 bg-red-50',
+    color: 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/30',
   },
   {
     key: 'invoices',
     label: 'Invoices',
     desc: 'Bills & amounts',
     icon: Receipt,
-    color: 'text-orange-600 bg-orange-50',
+    color: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/30',
   },
   {
     key: 'payments',
     label: 'Payments',
     desc: 'Payment transactions',
     icon: CreditCard,
-    color: 'text-indigo-600 bg-indigo-50',
+    color: 'text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-950/30',
   },
   {
     key: 'inventory',
     label: 'Inventory',
     desc: 'Stock items & levels',
     icon: Package,
-    color: 'text-teal-600 bg-teal-50',
+    color: 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30',
   },
 ]
 
@@ -375,7 +375,7 @@ export default function DataImportPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Upload className="h-6 w-6 text-emerald-600" />
+          <Upload className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
           Data Import
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -498,7 +498,7 @@ export default function DataImportPage() {
                   />
                   {selectedFile ? (
                     <div className="flex items-center justify-center gap-3">
-                      <FileSpreadsheet className="h-8 w-8 text-green-600" />
+                      <FileSpreadsheet className="h-8 w-8 text-green-600 dark:text-green-400" />
                       <div className="text-left">
                         <p className="text-sm font-medium">{selectedFile.name}</p>
                         <p className="text-xs text-muted-foreground">
@@ -529,7 +529,7 @@ export default function DataImportPage() {
                 {/* PDF warning */}
                 {selectedFile?.name.toLowerCase().endsWith('.pdf') && (
                   <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-400" />
                     <p className="text-xs text-amber-800 dark:text-amber-300">
                       PDF table extraction is best-effort. For most reliable results, export your
                       data as CSV or Excel from your old system.
@@ -571,14 +571,14 @@ export default function DataImportPage() {
 
             {aiError && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
-                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-400" />
                 <p className="text-xs text-amber-800 dark:text-amber-300">{aiError}</p>
               </div>
             )}
 
             {unmappedRequired.length > 0 && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0 dark:text-red-400" />
                 <div>
                   <p className="text-xs font-medium text-red-800 dark:text-red-300">
                     Required fields not yet mapped:
@@ -592,7 +592,7 @@ export default function DataImportPage() {
 
             {splitFields.length > 0 && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0 dark:text-blue-400" />
                 <p className="text-xs text-blue-800 dark:text-blue-300">
                   AI detected columns that may need splitting:{' '}
                   {splitFields
@@ -721,7 +721,8 @@ export default function DataImportPage() {
                           key={f.name}
                           className="px-3 py-2 text-left font-medium text-xs whitespace-nowrap"
                         >
-                          {f.name} {f.required && <span className="text-red-500">*</span>}
+                          {f.name}{' '}
+                          {f.required && <span className="text-red-500 dark:text-red-400">*</span>}
                         </th>
                       ))}
                   </tr>
@@ -801,15 +802,21 @@ export default function DataImportPage() {
                     <p className="text-xs text-muted-foreground">Total Rows</p>
                   </div>
                   <div className="border rounded-lg p-3 border-green-200 bg-green-50/50 dark:bg-green-950/20">
-                    <p className="text-2xl font-bold text-green-600">{validation.validRows}</p>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {validation.validRows}
+                    </p>
                     <p className="text-xs text-muted-foreground">Valid Rows</p>
                   </div>
                   <div className="border rounded-lg p-3 border-red-200 bg-red-50/50 dark:bg-red-950/20">
-                    <p className="text-2xl font-bold text-red-600">{validation.errorCount}</p>
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {validation.errorCount}
+                    </p>
                     <p className="text-xs text-muted-foreground">Errors</p>
                   </div>
                   <div className="border rounded-lg p-3 border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/20">
-                    <p className="text-2xl font-bold text-yellow-600">{validation.warningCount}</p>
+                    <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                      {validation.warningCount}
+                    </p>
                     <p className="text-xs text-muted-foreground">Warnings</p>
                   </div>
                 </div>
@@ -828,7 +835,7 @@ export default function DataImportPage() {
                       {validation.foreignKeyResolution.unresolved.length > 0 && (
                         <div className="mt-2 max-h-32 overflow-auto">
                           {validation.foreignKeyResolution.unresolved.slice(0, 10).map((u, i) => (
-                            <p key={i} className="text-xs text-red-600">
+                            <p key={i} className="text-xs text-red-600 dark:text-red-400">
                               Row {u.row}: {u.field} = "{u.value}" not found
                             </p>
                           ))}
@@ -927,7 +934,7 @@ export default function DataImportPage() {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Will Import</p>
-                      <p className="font-medium text-green-600">
+                      <p className="font-medium text-green-600 dark:text-green-400">
                         {skipErrorRows ? (validation?.validRows ?? totalRows) : totalRows} records
                       </p>
                     </div>
@@ -935,7 +942,7 @@ export default function DataImportPage() {
 
                   <div className="border-t pt-4">
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-400" />
                       <p className="text-xs text-amber-800 dark:text-amber-300">
                         This will create new {schema?.label.toLowerCase()} records in your database.
                         {schema?.entityType === 'staff' &&
@@ -978,7 +985,7 @@ export default function DataImportPage() {
                 {importResult.success ? (
                   <>
                     <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-950/30 flex items-center justify-center mx-auto">
-                      <CheckCircle2 className="h-8 w-8 text-green-600" />
+                      <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold">Import Complete!</h2>
@@ -991,7 +998,7 @@ export default function DataImportPage() {
                 ) : (
                   <>
                     <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/30 flex items-center justify-center mx-auto">
-                      <X className="h-8 w-8 text-red-600" />
+                      <X className="h-8 w-8 text-red-600 dark:text-red-400" />
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold">Import Failed</h2>
@@ -1008,12 +1015,16 @@ export default function DataImportPage() {
                     <p className="text-lg font-bold">{importResult.totalRows}</p>
                     <p className="text-xs text-muted-foreground">Total</p>
                   </div>
-                  <div className="border rounded-lg p-3 border-green-200">
-                    <p className="text-lg font-bold text-green-600">{importResult.imported}</p>
+                  <div className="border rounded-lg p-3 border-green-200 dark:border-green-800/60">
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                      {importResult.imported}
+                    </p>
                     <p className="text-xs text-muted-foreground">Imported</p>
                   </div>
-                  <div className="border rounded-lg p-3 border-red-200">
-                    <p className="text-lg font-bold text-red-600">{importResult.skipped}</p>
+                  <div className="border rounded-lg p-3 border-red-200 dark:border-red-800/60">
+                    <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                      {importResult.skipped}
+                    </p>
                     <p className="text-xs text-muted-foreground">Skipped</p>
                   </div>
                 </div>
@@ -1023,7 +1034,7 @@ export default function DataImportPage() {
                     <h3 className="text-sm font-medium mb-2">Error Log</h3>
                     <div className="max-h-40 overflow-auto space-y-1">
                       {importResult.errors.map((e, i) => (
-                        <p key={i} className="text-xs text-red-600">
+                        <p key={i} className="text-xs text-red-600 dark:text-red-400">
                           Row {e.row}: {e.message}
                         </p>
                       ))}

@@ -5,15 +5,17 @@ import { useAI, type Insight } from './ai-provider'
 import { cn } from '@/lib/utils'
 
 const SEVERITY_STYLES: Record<string, string> = {
-  INFO: 'bg-blue-50 border-blue-200 text-blue-800',
-  WARNING: 'bg-amber-50 border-amber-200 text-amber-800',
-  CRITICAL: 'bg-red-50 border-red-200 text-red-800',
+  INFO: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/60 dark:text-blue-300',
+  WARNING:
+    'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/60 dark:text-amber-300',
+  CRITICAL:
+    'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300',
 }
 
 const SEVERITY_BADGE: Record<string, string> = {
-  INFO: 'bg-blue-100 text-blue-700',
-  WARNING: 'bg-amber-100 text-amber-700',
-  CRITICAL: 'bg-red-100 text-red-700',
+  INFO: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  WARNING: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  CRITICAL: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
