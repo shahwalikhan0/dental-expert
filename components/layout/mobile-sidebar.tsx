@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { X } from 'lucide-react'
+import { X, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { activeHref, getNavigationForRole } from '@/config/nav'
+import { activeHref, childrenOf, getNavigationForRole } from '@/config/nav'
+import { useNavBadges } from '@/hooks/use-nav-badges'
+import { NavBadge } from './nav-badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSidebar } from './sidebar-context'
@@ -29,6 +31,12 @@ export function MobileSidebar({
   isPlatformAdmin,
 }: MobileSidebarProps) {
   const pathname = usePathname()
+  const badges = useNavBadges()
+  // Only the groups somebody has clicked the arrow on; everything else falls
+  // back to "open if you are inside it". See the sidebar for the reasoning.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const toggle = (href: string, isOpen: boolean) =>
+    setOpenGroups((open) => ({ ...open, [href]: !isOpen }))
   const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
   // One item is highlighted, not every ancestor of the page. See activeHref.
   const current = activeHref(pathname, navigation)
@@ -104,31 +112,81 @@ export function MobileSidebar({
                   {section.items.map((item) => {
                     const isActive = current === item.href
                     const Icon = item.icon
+                    const children = childrenOf(item)
+                    const holdsCurrent =
+                      isActive || children.some((child) => child.href === current)
+                    const isOpen = openGroups[item.href] ?? holdsCurrent
                     return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={cn(
-                          'relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm transition-colors',
-                          isActive
-                            ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
-                        )}
-                      >
-                        {isActive && (
-                          <span
-                            aria-hidden
-                            className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                          />
-                        )}
-                        <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
-                        <span className="truncate">{item.title}</span>
-                        {item.badge && (
-                          <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                            {item.badge}
-                          </span>
-                        )}
-                      </Link>
+                      <div key={item.href} className="flex flex-col gap-0.5">
+                        {/* A container, not a link: it holds the section link
+                            and the toggle for its children, and a button inside
+                            an anchor is neither valid nor operable. */}
+                        <div
+                          className={cn(
+                            'relative flex h-10 items-center rounded-xl text-sm transition-colors',
+                            isActive
+                              ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground'
+                              : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+                          )}
+                        >
+                          {isActive && (
+                            <span
+                              aria-hidden
+                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                            />
+                          )}
+                          <Link
+                            href={item.href}
+                            className="flex min-w-0 flex-1 items-center gap-3 px-3"
+                          >
+                            <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
+                            <span className="truncate">{item.title}</span>
+                            <NavBadge item={item} badges={badges} />
+                          </Link>
+                          {children.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggle(item.href, isOpen)}
+                              aria-expanded={isOpen}
+                              aria-label={`${isOpen ? 'Hide' : 'Show'} ${item.title} pages`}
+                              className="mr-1 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'h-4 w-4 transition-transform duration-200',
+                                  !isOpen && '-rotate-90'
+                                )}
+                              />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* The same children the desktop sidebar draws; a menu
+                            that differs between the two is worse than either. */}
+                        {isOpen &&
+                          children.map((child) => {
+                            const ChildIcon = child.icon
+                            const childActive = current === child.href
+                            return (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                className={cn(
+                                  'relative ml-4 flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+                                  childActive
+                                    ? 'bg-primary/10 font-medium text-foreground'
+                                    : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+                                )}
+                              >
+                                <ChildIcon
+                                  className={cn('h-4 w-4 shrink-0', childActive && 'text-primary')}
+                                />
+                                <span className="truncate">{child.title}</span>
+                                <NavBadge item={child} badges={badges} />
+                              </Link>
+                            )
+                          })}
+                      </div>
                     )
                   })}
                 </div>

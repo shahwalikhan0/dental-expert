@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import {
   treatmentStatusConfig,
   treatmentPlanStatusConfig,
@@ -61,8 +63,23 @@ describe('toothConditionConfig', () => {
     expect(toothConditionConfig.HEALTHY.fillColor).toBe('#22c55e')
   })
 
-  it('has all 10 conditions', () => {
-    expect(Object.keys(toothConditionConfig)).toHaveLength(10)
+  /**
+   * Read from the schema rather than from a number written here, because the
+   * number written here is what went stale: the config was missing six
+   * conditions the chart can write and carried two the database cannot store,
+   * so a tooth charted as fractured drew no colour and read as healthy.
+   */
+  it('covers the ToothCondition enum exactly', () => {
+    const schema = readFileSync(resolve(__dirname, '../../prisma/schema.prisma'), 'utf8')
+    const block = schema.match(/enum ToothCondition \{([^}]*)\}/)
+    expect(block).not.toBeNull()
+
+    const conditions = block![1]
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    expect(Object.keys(toothConditionConfig).sort()).toEqual(conditions.sort())
   })
 })
 
@@ -146,8 +163,24 @@ describe('parseToothNumbers()', () => {
 // formatToothNumbers
 // ---------------------------------------------------------------------------
 describe('formatToothNumbers()', () => {
-  it('joins and sorts teeth', () => {
-    expect(formatToothNumbers([21, 11, 31])).toBe('11, 21, 31')
+  it('names the quadrant each tooth is in', () => {
+    expect(formatToothNumbers([21, 11, 31])).toBe('UR 11 \u00b7 UL 21 \u00b7 LL 31')
+  })
+
+  it('collapses a run within one quadrant', () => {
+    expect(formatToothNumbers([11, 12, 13, 14])).toBe('UR 11\u201314')
+  })
+
+  it('never collapses a run across the midline', () => {
+    // 13\u201323 would read as eleven teeth to anybody who knows the notation,
+    // when it means four.
+    expect(formatToothNumbers([12, 11, 21, 22])).toBe('UR 11, 12 \u00b7 UL 21, 22')
+  })
+
+  it("leaves the caller's array alone", () => {
+    const teeth = [21, 11, 31]
+    formatToothNumbers(teeth)
+    expect(teeth).toEqual([21, 11, 31])
   })
 
   it('returns dash for empty array', () => {

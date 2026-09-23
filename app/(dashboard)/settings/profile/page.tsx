@@ -30,9 +30,9 @@ export default async function ProfileSettingsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">My Profile</h1>
+        <h1 className="page-title">My Profile</h1>
         <p className="text-muted-foreground">
           Preferences that apply to your account only — {user.name} ({user.email})
         </p>

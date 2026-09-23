@@ -167,7 +167,7 @@ export default function EditSupplierPage() {
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
       <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
 
-      <h1 className="text-2xl font-bold">Edit {form.name || 'supplier'}</h1>
+      <h1 className="page-title">Edit {form.name || 'supplier'}</h1>
 
       <Card>
         <CardHeader>

@@ -326,7 +326,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{invoice.invoiceNo}</h1>
+              <h1 className="page-title">{invoice.invoiceNo}</h1>
               {getStatusBadge(invoice.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(invoice.createdAt)}</p>

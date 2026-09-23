@@ -193,7 +193,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
+          <h1 className="page-title">Dashboard</h1>
           <p className="text-muted-foreground">Loading your practice data...</p>
         </div>
         {/* The actions do not depend on the figures, so they are usable while
@@ -220,7 +220,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
+          <h1 className="page-title">Dashboard</h1>
           <p className="text-muted-foreground">
             The figures could not be loaded. Everything else still works.
           </p>
@@ -282,7 +282,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Welcome message */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
+        <h1 className="page-title">Dashboard</h1>
         <p className="text-muted-foreground">
           Here&apos;s what&apos;s happening at your dental practice today.
         </p>

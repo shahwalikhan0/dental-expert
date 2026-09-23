@@ -155,7 +155,7 @@ export default function RecareTypesPage() {
       <BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />
 
       <div>
-        <h1 className="text-2xl font-bold">Recare types</h1>
+        <h1 className="page-title">Recare types</h1>
         <p className="text-muted-foreground">
           What a patient is recalled for, and how often. The default is what a newly registered
           patient is put on.

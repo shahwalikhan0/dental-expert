@@ -102,9 +102,9 @@ export default function SecuritySettingsPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
+      <div>
         <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold">Security</h1>
+          <h1 className="page-title">Security</h1>
           <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
         </div>
         <div className="flex h-64 items-center justify-center">
@@ -115,10 +115,10 @@ export default function SecuritySettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div>
       <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl md:text-3xl font-bold">
-          <Shield className="h-8 w-8" />
+        <h1 className="page-title flex items-center gap-2">
+          <Shield className="h-6 w-6" />
           Security
         </h1>
         <p className="text-muted-foreground">How accounts, sessions and records are protected</p>

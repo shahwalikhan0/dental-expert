@@ -18,9 +18,11 @@ import {
 import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Search, UserPlus } from 'lucide-react'
+import { Loader2, Search, Trash2, UserPlus } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
 import { ActiveFilters } from '@/components/ui/active-filters'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 
 /**
  * Walk-ins — people the clinic has seen but not registered.
@@ -45,19 +47,25 @@ interface Visitor {
   _count: { appointments: number }
 }
 
-const STATES = [
-  { value: 'open', label: 'To decide' },
-  { value: 'converted', label: 'Registered' },
-  { value: 'discarded', label: 'Discarded' },
-]
+/**
+ * The list is the decision queue and nothing else.
+ *
+ * It had three tabs — to decide, registered, discarded — and two of them were
+ * archives nobody works. A walk-in has exactly one thing that needs doing to
+ * it, so the screen is that one thing, and a row leaves the list once it has
+ * been done. What became of somebody is still on their own page, and their
+ * visits are still in the appointments list either way.
+ */
+const STATE = 'open'
 
 export default function WalkInsPage() {
   const trail = useTrail('Walk-ins')
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const sort = useSort({ column: 'createdAt', direction: 'desc' })
 
   const [visitors, setVisitors] = useState<Visitor[]>([])
-  const [state, setState] = useState('open')
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   // What is in the box, and what we are willing to ask the server about.
   const debouncedSearch = useDebouncedValue(search)
@@ -76,7 +84,7 @@ export default function WalkInsPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        state,
+        state: STATE,
         page: String(pagination.page),
         limit: String(pagination.limit),
       })
@@ -98,13 +106,54 @@ export default function WalkInsPage() {
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [state, debouncedSearch, pagination.page, pagination.limit, toast])
+  }, [debouncedSearch, pagination.page, pagination.limit, toast])
 
   useEffect(() => {
     // The wait now lives in `useDebouncedValue` above, which `load` depends on.
     // This used to hold a second timer of its own, so a keystroke waited twice.
     load()
   }, [load])
+
+  /**
+   * Discard, from the row.
+   *
+   * Registering is not here: a patient record needs a first name, a last name
+   * and a phone, and the split of a one-box name is a guess — "Muhammad Ali
+   * Khan" gets it wrong often enough that committing it silently would put the
+   * wrong thing in the surname column of a permanent record. That decision has
+   * a screen, and Register goes to it. Discarding needs nothing else, so it
+   * happens here.
+   */
+  const discard = async (visitor: Visitor) => {
+    const ok = await confirm({
+      title: `Discard ${visitor.name}?`,
+      description:
+        'Their visits stay on the record. They will leave the list of walk-ins to decide on.',
+      confirmLabel: 'Discard',
+      variant: 'destructive',
+    })
+    if (!ok) return
+
+    setBusyId(visitor.id)
+    try {
+      const res = await fetch(`/api/visitors/${visitor.id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not discard this walk-in')
+
+      toast({ title: 'Discarded', description: `${visitor.name} is off the list.` })
+      // Re-read rather than dropping the row locally: the count in the pager
+      // and the badge in the menu are both now one lower.
+      load()
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Could not discard this walk-in',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   const rows = [...visitors].sort((a, b) => {
     if (!sort.column) return 0
@@ -118,7 +167,7 @@ export default function WalkInsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Walk-ins</h1>
+          <h1 className="page-title">Walk-ins</h1>
           <p className="text-muted-foreground">
             Seen but not registered. Register the ones who come back; discard the rest.
           </p>
@@ -144,21 +193,6 @@ export default function WalkInsPage() {
             className="pl-9"
             aria-label="Search walk-ins"
           />
-        </div>
-        <div className="inline-flex rounded-md border p-1">
-          {STATES.map((option) => (
-            <Button
-              key={option.value}
-              size="sm"
-              variant={state === option.value ? 'default' : 'ghost'}
-              onClick={() => {
-                setState(option.value)
-                setPagination((p) => ({ ...p, page: 1 }))
-              }}
-            >
-              {option.label}
-            </Button>
-          ))}
         </div>
       </div>
 
@@ -196,24 +230,23 @@ export default function WalkInsPage() {
                   First seen
                 </SortableHeader>
                 <TableHead>Outcome</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     {/* Under a search, "nobody is waiting" is the wrong fact. */}
                     {debouncedSearch
                       ? 'No records found for this search.'
-                      : state === 'open'
-                        ? 'Nobody is waiting on a decision.'
-                        : 'Nothing here yet.'}
+                      : 'Nobody is waiting on a decision.'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -240,6 +273,32 @@ export default function WalkInsPage() {
                         <Badge>To decide</Badge>
                       )}
                     </TableCell>
+                    <TableCell className="text-right row-actions">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
+                            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                            Register
+                          </Link>
+                        </Button>
+                        <IconTooltip label={`Discard ${visitor.name}`}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            disabled={busyId === visitor.id}
+                            onClick={() => discard(visitor)}
+                            aria-label={`Discard ${visitor.name}`}
+                          >
+                            {busyId === visitor.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </IconTooltip>
+                      </div>
+                    </TableCell>
                   </ClickableRow>
                 ))
               )}
@@ -256,6 +315,8 @@ export default function WalkInsPage() {
           />
         </CardContent>
       </Card>
+
+      {ConfirmDialogComponent}
     </div>
   )
 }

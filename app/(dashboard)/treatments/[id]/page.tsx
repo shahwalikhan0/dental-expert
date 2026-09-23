@@ -49,11 +49,11 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
-  formatToothNumbers,
   parseToothNumbers,
   toothNames,
 } from '@/lib/treatment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { groupTeeth } from '@/lib/teeth'
 
 interface Treatment {
   id: string
@@ -316,9 +316,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           <BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                {treatment.treatmentNo}
-              </h1>
+              <h1 className="page-title">{treatment.treatmentNo}</h1>
               {getStatusBadge(treatment.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(treatment.createdAt)}</p>
@@ -481,13 +479,30 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 <CardTitle>Teeth Affected</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {teeth.map((tooth) => (
-                    <div key={tooth} className="px-3 py-2 bg-muted rounded-lg text-sm">
-                      <span className="font-medium">{tooth}</span>
-                      <span className="text-muted-foreground ml-1">
-                        - {toothNames[tooth]?.split(' ').slice(-2).join(' ')}
-                      </span>
+                {/*
+                  By quadrant. A flat row of chips reading "13 15 25 34 44"
+                  makes the reader divide each number by ten to place it, and
+                  the tooth's own name was cut down to its last two words —
+                  "Central Incisor" — which drops the half of it that says
+                  which of the four central incisors is meant.
+                */}
+                <div className="space-y-3">
+                  {groupTeeth(teeth).map((group) => (
+                    <div key={group.key}>
+                      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                        {group.label}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {group.teeth.map((tooth) => (
+                          <div key={tooth} className="rounded-lg bg-muted px-3 py-2 text-sm">
+                            <span className="font-medium">{tooth}</span>
+                            <span className="ml-1 text-muted-foreground">
+                              {/* Every name starts with its quadrant; the heading already said it. */}
+                              {toothNames[tooth]?.split(' ').slice(2).join(' ')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>

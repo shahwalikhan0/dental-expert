@@ -193,7 +193,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                <h1 className="page-title">
                   {staff.firstName} {staff.lastName}
                 </h1>
                 <Badge variant={staff.isActive ? 'default' : 'secondary'}>

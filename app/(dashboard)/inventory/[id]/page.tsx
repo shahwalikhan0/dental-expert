@@ -142,7 +142,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   if (!item) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Item not found</h1>
+        <h1 className="page-title">Item not found</h1>
         <Button variant="outline" asChild>
           <Link href="/inventory">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -160,7 +160,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{item.name}</h1>
+            <h1 className="page-title">{item.name}</h1>
             <Badge className={stock.className}>{stock.label}</Badge>
             {!item.isActive && <Badge variant="outline">Inactive</Badge>}
           </div>

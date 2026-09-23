@@ -127,7 +127,7 @@ export default function AuditLogPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             <Shield className="h-6 w-6" /> Audit Log
           </h1>
           <p className="text-muted-foreground">{total.toLocaleString()} total events</p>

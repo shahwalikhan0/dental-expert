@@ -134,7 +134,7 @@ export default function NewPatientPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">New Patient</h1>
+          <h1 className="page-title">New Patient</h1>
           <p className="text-muted-foreground">Register a new patient</p>
         </div>
       </div>

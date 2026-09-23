@@ -80,6 +80,7 @@ import {
   Merge,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
+import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { Patient360 } from '@/components/ai/patient-360'
 import { PatientFormSubmissions } from '@/components/forms/patient-form-submissions'
 import { ImageViewer } from '@/components/imaging/image-viewer'
@@ -502,7 +503,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             </AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-2xl font-bold">
+            <h1 className="page-title">
               {patient.firstName} {patient.lastName}
             </h1>
             <p className="text-muted-foreground">Patient ID: {patient.patientId}</p>
@@ -565,45 +566,45 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="w-full">
           <TabsTrigger value="overview" className="gap-2">
             <User className="h-4 w-4" />
-            <span className="hidden sm:inline">Overview</span>
+            <span>Overview</span>
           </TabsTrigger>
           <TabsTrigger value="dental-chart" className="gap-2">
             <Smile className="h-4 w-4" />
-            <span className="hidden sm:inline">Dental Chart</span>
+            <span>Dental Chart</span>
           </TabsTrigger>
           <TabsTrigger value="perio" className="gap-2">
             <Activity className="h-4 w-4" />
-            <span className="hidden sm:inline">Perio</span>
+            <span>Perio</span>
           </TabsTrigger>
           <TabsTrigger value="timeline" className="gap-2">
             <History className="h-4 w-4" />
-            <span className="hidden sm:inline">Timeline</span>
+            <span>Timeline</span>
           </TabsTrigger>
           <TabsTrigger value="documents" className="gap-2">
             <FolderOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">Documents</span>
+            <span>Documents</span>
             <Badge variant="secondary" className="ml-1">
               {patient._count.documents}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="appointments" className="gap-2">
             <Calendar className="h-4 w-4" />
-            <span className="hidden sm:inline">Appointments</span>
+            <span>Appointments</span>
           </TabsTrigger>
           <TabsTrigger value="treatments" className="gap-2">
             <Stethoscope className="h-4 w-4" />
-            <span className="hidden sm:inline">Treatments</span>
+            <span>Treatments</span>
           </TabsTrigger>
           <TabsTrigger value="billing" className="gap-2">
             <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">Billing</span>
+            <span>Billing</span>
           </TabsTrigger>
           <TabsTrigger value="forms" className="gap-2">
             <FileCheck className="h-4 w-4" />
-            <span className="hidden sm:inline">Forms</span>
+            <span>Forms</span>
           </TabsTrigger>
         </TabsList>
 
@@ -923,7 +924,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {event.metadata.toothNumbers && (
                                   <span className="text-xs bg-muted px-2 py-1 rounded">
-                                    Teeth: {event.metadata.toothNumbers}
+                                    Teeth:{' '}
+                                    {describeTeethByQuadrant(
+                                      parseTeeth(String(event.metadata.toothNumbers))
+                                    ) || String(event.metadata.toothNumbers)}
                                   </span>
                                 )}
                                 {event.metadata.cost && (

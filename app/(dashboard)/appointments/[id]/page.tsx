@@ -310,9 +310,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
           <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                {appointment.appointmentNo}
-              </h1>
+              <h1 className="page-title">{appointment.appointmentNo}</h1>
               {getStatusBadge(appointment.status)}
             </div>
             <p className="text-muted-foreground">Created on {formatDate(appointment.createdAt)}</p>

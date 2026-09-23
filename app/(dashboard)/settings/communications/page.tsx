@@ -327,9 +327,9 @@ export default function CommunicationSettingsPage() {
 
   if (loadingSettings) {
     return (
-      <div className="container mx-auto p-6">
+      <div>
         <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold">Communication Settings</h1>
+          <h1 className="page-title">Communication Settings</h1>
           <p className="text-muted-foreground">Configure SMS and Email gateways</p>
         </div>
         <div className="flex items-center justify-center h-64">
@@ -340,9 +340,9 @@ export default function CommunicationSettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div>
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Communication Settings</h1>
+        <h1 className="page-title">Communication Settings</h1>
         <p className="text-muted-foreground">Configure SMS and Email gateways</p>
       </div>
 

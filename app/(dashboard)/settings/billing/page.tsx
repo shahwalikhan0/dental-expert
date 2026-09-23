@@ -133,9 +133,9 @@ export default function BillingSettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="mx-auto max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Receipt className="w-8 h-8" />
           Billing Settings
         </h1>

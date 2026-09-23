@@ -102,7 +102,7 @@ export function TenantConsole() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Clinics</h1>
+        <h1 className="page-title">Clinics</h1>
         <p className="text-muted-foreground text-sm">
           Every clinic on this installation. Changes here are written to that clinic&apos;s own
           audit trail.

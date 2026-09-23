@@ -127,3 +127,69 @@ export function describeTeeth(teeth: number[] | null | undefined): string {
 
   return spans.join(', ')
 }
+
+/**
+ * The four quadrants, in FDI's own order, with the names people use for them.
+ *
+ * `short` is the two-letter form a clinician writes on a chart — UR, UL, LL,
+ * LR. `side` is the patient's own left and right, not the viewer's: tooth 11
+ * is in the patient's upper *right*, which is drawn on the left of every chart
+ * in this application because a chart is drawn as you face the patient.
+ */
+export const QUADRANTS = [
+  { key: 'upperRight', short: 'UR', label: 'Upper right', number: 1 },
+  { key: 'upperLeft', short: 'UL', label: 'Upper left', number: 2 },
+  { key: 'lowerLeft', short: 'LL', label: 'Lower left', number: 3 },
+  { key: 'lowerRight', short: 'LR', label: 'Lower right', number: 4 },
+] as const satisfies readonly {
+  key: keyof typeof FDI_QUADRANTS
+  short: string
+  label: string
+  number: number
+}[]
+
+export interface ToothGroup {
+  key: keyof typeof FDI_QUADRANTS
+  /** UR, UL, LL, LR. */
+  short: string
+  /** "Upper right". */
+  label: string
+  /** The teeth themselves, low to high. */
+  teeth: number[]
+  /** Those teeth with adjacent runs collapsed — "16–13". */
+  description: string
+}
+
+/**
+ * A set of teeth, split into the quadrants it touches.
+ *
+ * "13, 15, 25, 34, 44" is five numbers and no shape. Nobody reads it as "two
+ * on the patient's upper right, one upper left, one lower left, one lower
+ * right" without doing the arithmetic in their head, and the arithmetic is the
+ * part FDI notation was meant to remove. Grouped, the quadrant is read rather
+ * than derived.
+ *
+ * Empty quadrants are left out, so a case confined to one quadrant reads as
+ * one line rather than three blanks and a line.
+ */
+export function groupTeeth(teeth: number[] | null | undefined): ToothGroup[] {
+  const list = [...new Set((teeth ?? []).filter(isTooth))].sort((a, b) => a - b)
+
+  return QUADRANTS.map(({ key, short, label }) => {
+    const inQuadrant = list.filter((tooth) => quadrantOf(tooth) === key)
+    return { key, short, label, teeth: inQuadrant, description: describeTeeth(inQuadrant) }
+  }).filter((group) => group.teeth.length > 0)
+}
+
+/**
+ * A set of teeth on one line, by quadrant: "UR 13, 15 · UL 25 · LL 34".
+ *
+ * For the places that have room for a sentence and not a layout — a printed
+ * prescription, a grid cell, a tooltip. Where there is room, render
+ * {@link groupTeeth} instead and let each quadrant have its own label.
+ */
+export function describeTeethByQuadrant(teeth: number[] | null | undefined): string {
+  return groupTeeth(teeth)
+    .map((group) => `${group.short} ${group.description}`)
+    .join(' · ')
+}

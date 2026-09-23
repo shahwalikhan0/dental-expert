@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { PanelLeftClose, PanelLeft } from 'lucide-react'
+import { PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { activeHref, getNavigationForRole } from '@/config/nav'
+import { activeHref, childrenOf, getNavigationForRole } from '@/config/nav'
+import { useNavBadges } from '@/hooks/use-nav-badges'
+import { NavBadge } from './nav-badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -37,6 +40,21 @@ export function Sidebar({
   isPlatformAdmin,
 }: SidebarProps) {
   const pathname = usePathname()
+  const badges = useNavBadges()
+  /**
+   * Which groups are showing their children.
+   *
+   * Only the groups somebody has clicked the arrow on: everything else falls
+   * back to "open if you are inside it". Storing the exceptions rather than
+   * the whole state means a group you have never touched follows you around
+   * the application instead of holding an opinion from three pages ago.
+   */
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  // Takes what the group is showing now, because that is not always stored:
+  // an untouched group is open or shut according to where you are, and
+  // guessing a default here made the first click on a shut group do nothing.
+  const toggle = (href: string, isOpen: boolean) =>
+    setOpenGroups((open) => ({ ...open, [href]: !isOpen }))
   const navigation = getNavigationForRole(role, clinicalRole, { isPlatformAdmin })
   // One item is highlighted, not every ancestor of the page. See activeHref.
   const current = activeHref(pathname, navigation)
@@ -151,6 +169,13 @@ export function Sidebar({
                   {section.items.map((item) => {
                     const isActive = current === item.href
                     const Icon = item.icon
+                    const children = childrenOf(item)
+                    // Open by default when you are somewhere inside the group,
+                    // which is how you got here; a click on the arrow wins
+                    // after that.
+                    const holdsCurrent =
+                      isActive || children.some((child) => child.href === current)
+                    const isOpen = openGroups[item.href] ?? holdsCurrent
 
                     if (isCollapsed) {
                       return (
@@ -170,48 +195,106 @@ export function Sidebar({
                           </TooltipTrigger>
                           <TooltipContent side="right" className="flex items-center gap-2">
                             {item.title}
-                            {item.badge && (
-                              <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                                {item.badge}
-                              </span>
-                            )}
+                            <NavBadge item={item} badges={badges} />
                           </TooltipContent>
                         </Tooltip>
                       )
                     }
 
                     return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        /*
+                      <div key={item.href} className="flex flex-col gap-1">
+                        {/*
+                         * The row is a container rather than a link, because it
+                         * holds two controls: the link to the section, and the
+                         * toggle for its children. A button inside an anchor is
+                         * not valid markup and, on a keyboard, not operable.
+                         *
                          * The active row used to be a flat grey fill, which on a
                          * translucent panel is indistinguishable from hover. It
                          * is now a tinted pill with a bar at its leading edge —
                          * two signals rather than one, and the bar survives on a
                          * display that flattens the tint.
-                         */
-                        className={cn(
-                          'group relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm transition-colors',
-                          isActive
-                            ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground shadow-sm shadow-primary/10'
-                            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
-                        )}
-                      >
-                        {isActive && (
-                          <span
-                            aria-hidden
-                            className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                          />
-                        )}
-                        <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
-                        <span className="truncate">{item.title}</span>
-                        {item.badge && (
-                          <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                            {item.badge}
-                          </span>
-                        )}
-                      </Link>
+                         */}
+                        <div
+                          className={cn(
+                            'relative flex h-10 items-center rounded-xl text-sm transition-colors',
+                            isActive
+                              ? 'bg-gradient-to-r from-primary/20 to-primary/5 font-medium text-foreground shadow-sm shadow-primary/10'
+                              : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+                          )}
+                        >
+                          {isActive && (
+                            <span
+                              aria-hidden
+                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                            />
+                          )}
+                          <Link
+                            href={item.href}
+                            className="flex min-w-0 flex-1 items-center gap-3 px-3"
+                          >
+                            <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
+                            <span className="truncate">{item.title}</span>
+                            <NavBadge item={item} badges={badges} />
+                          </Link>
+                          {children.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggle(item.href, isOpen)}
+                              aria-expanded={isOpen}
+                              aria-label={`${isOpen ? 'Hide' : 'Show'} ${item.title} pages`}
+                              className="mr-1 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'h-4 w-4 transition-transform duration-200',
+                                  // Pointing down when the children are showing,
+                                  // and turned to point at the row when they are
+                                  // not — the arrow says which way it will move.
+                                  !isOpen && '-rotate-90'
+                                )}
+                              />
+                            </button>
+                          )}
+                        </div>
+
+                        {/*
+                        The children were declared in config/nav.ts and drawn by
+                        nobody: both sidebars mapped over `section.items` and
+                        stopped. Today's Queue — which a file comment calls "the
+                        screen a receptionist works all day" — has been in the
+                        config and unreachable from the menu this whole time.
+
+                        The child whose href equals its parent's is skipped:
+                        every group has one ("All Appointments", "Overview",
+                        "General") and the parent row already goes there, so
+                        drawing it twice is two links to one page and two
+                        things highlighted when you are on it.
+                      */}
+                        {isOpen &&
+                          children.map((child) => {
+                            const ChildIcon = child.icon
+                            const childActive = current === child.href
+                            return (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                className={cn(
+                                  'relative ml-4 flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+                                  childActive
+                                    ? 'bg-primary/10 font-medium text-foreground'
+                                    : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+                                )}
+                              >
+                                <ChildIcon
+                                  className={cn('h-4 w-4 shrink-0', childActive && 'text-primary')}
+                                />
+                                <span className="truncate">{child.title}</span>
+                                <NavBadge item={child} badges={badges} />
+                              </Link>
+                            )
+                          })}
+                      </div>
                     )
                   })}
                 </div>

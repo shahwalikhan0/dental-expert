@@ -184,19 +184,19 @@ export default function PurchaseOrderPage() {
     if (response.ok) router.push('/inventory/purchase-orders')
   }
 
-  if (loading) return <div className="container mx-auto px-4 py-8">Loading...</div>
-  if (!order) return <div className="container mx-auto px-4 py-8">Purchase order not found</div>
+  if (loading) return <div>Loading...</div>
+  if (!order) return <div>Purchase order not found</div>
 
   const canReceive = order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED'
   const outstanding = order.items.reduce((sum, line) => sum + line.outstanding, 0)
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <div className="mx-auto max-w-5xl">
       {ConfirmDialogComponent}
       <div className="flex justify-between items-start mb-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold">{order.orderNumber}</h1>
+            <h1 className="page-title">{order.orderNumber}</h1>
             <span
               className={`px-2 py-1 text-xs font-semibold rounded-full ${
                 STATUS_STYLES[order.status] ?? 'bg-muted text-foreground'

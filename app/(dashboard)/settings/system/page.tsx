@@ -82,9 +82,9 @@ export default function SystemSettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="mx-auto max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Database className="w-8 h-8" />
           System Settings
         </h1>

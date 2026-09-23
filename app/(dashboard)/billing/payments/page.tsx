@@ -215,7 +215,7 @@ export default function PaymentsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Payments</h1>
+          <h1 className="page-title">Payments</h1>
           <p className="text-muted-foreground">View and manage all payment transactions</p>
         </div>
         <ExportMenu

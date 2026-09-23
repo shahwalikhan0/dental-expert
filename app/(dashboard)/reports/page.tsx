@@ -267,9 +267,7 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Reports & Analytics Dashboard
-          </h1>
+          <h1 className="page-title">Reports & Analytics Dashboard</h1>
           <p className="text-muted-foreground">
             Comprehensive analytics and insights for your dental practice
           </p>
@@ -336,7 +334,7 @@ export default function ReportsPage() {
 
       {/* Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="w-full">
           <TabsTrigger value="patient" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Patient Analytics

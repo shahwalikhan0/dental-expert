@@ -8,7 +8,7 @@
  * Settings *and* Forms.
  */
 import { describe, it, expect } from 'vitest'
-import { activeHref, getNavigationForRole, type NavSection } from '@/config/nav'
+import { activeHref, childrenOf, getNavigationForRole, type NavSection } from '@/config/nav'
 
 const sections: NavSection[] = [
   {
@@ -66,5 +66,45 @@ describe('the real navigation', () => {
     for (const href of nested) {
       expect(activeHref(href, real)).toBe(href)
     }
+  })
+})
+
+describe('groups and their children', () => {
+  const real = getNavigationForRole('ADMIN', null, { isPlatformAdmin: false })
+  const appointments = real
+    .flatMap((section) => section.items)
+    .find((item) => item.title === 'Appointments')!
+
+  it('draws walk-ins under appointments, where a walk-in is created', () => {
+    // Every visitor in the system is written by the appointment form, in a
+    // transaction with the appointment. See app/api/appointments/route.ts.
+    const walkIns = appointments.subItems?.find((child) => child.href === '/walk-ins')
+
+    expect(walkIns, 'walk-ins belongs to the appointments group').toBeDefined()
+  })
+
+  it('highlights a child that does not live under its parent path', () => {
+    // `/walk-ins` is not a prefix of `/appointments`, so this only works if
+    // activeHref looks at children rather than matching parents alone.
+    expect(activeHref('/walk-ins', real)).toBe('/walk-ins')
+  })
+
+  it('still highlights a child that does live under its parent path', () => {
+    expect(activeHref('/appointments/waitlist', real)).toBe('/appointments/waitlist')
+  })
+
+  it('drops the child that duplicates its parent, so one page is one row', () => {
+    // Every group declares a first child pointing at the group's own href.
+    // Drawing it would give two links to one page, both highlighted on it.
+    const drawn = childrenOf(appointments).map((child) => child.href)
+
+    expect(drawn).not.toContain(appointments.href)
+    expect(drawn).toContain('/walk-ins')
+  })
+
+  it('leaves a group with no children alone', () => {
+    const patients = real.flatMap((s) => s.items).find((item) => item.title === 'Patients')!
+
+    expect(childrenOf(patients)).toEqual([])
   })
 })

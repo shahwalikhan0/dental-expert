@@ -342,7 +342,7 @@ export default function QueuePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Today&rsquo;s queue</h1>
+          <h1 className="page-title">Today&rsquo;s queue</h1>
           <p className="text-muted-foreground">
             Who is waiting, in the order they arrived. Refreshes on its own.
           </p>

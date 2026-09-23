@@ -501,7 +501,7 @@ export default function AppointmentsPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Appointments</h1>
+            <h1 className="page-title">Appointments</h1>
             <p className="text-muted-foreground">Manage and schedule patient appointments</p>
           </div>
           <div className="flex flex-wrap gap-2">

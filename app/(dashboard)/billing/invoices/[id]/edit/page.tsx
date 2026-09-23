@@ -228,7 +228,7 @@ export default function EditInvoicePage() {
       <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
 
       <div>
-        <h1 className="text-2xl font-bold">Edit {invoiceNo ?? 'invoice'}</h1>
+        <h1 className="page-title">Edit {invoiceNo ?? 'invoice'}</h1>
         {patient && (
           <p className="text-muted-foreground">
             for{' '}

@@ -171,7 +171,7 @@ export default function NewFormTemplatePage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">Preview: {name || 'Untitled'}</h1>
+              <h1 className="page-title">Preview: {name || 'Untitled'}</h1>
               <p className="text-muted-foreground">This is how the form will appear to patients</p>
             </div>
           </div>
@@ -209,7 +209,7 @@ export default function NewFormTemplatePage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">New Form Template</h1>
+            <h1 className="page-title">New Form Template</h1>
             <p className="text-muted-foreground">Design a custom form for patients</p>
           </div>
         </div>

@@ -139,7 +139,7 @@ export default function StockAlertsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Stock Alerts</h1>
+          <h1 className="page-title">Stock Alerts</h1>
           <p className="text-muted-foreground">
             What has run out, what is running out, and what is about to go out of date.
           </p>

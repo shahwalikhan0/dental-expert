@@ -229,7 +229,7 @@ export default function FinancialReportsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Financial Reports</h1>
+          <h1 className="page-title">Financial Reports</h1>
           <p className="text-muted-foreground">View detailed financial analytics and reports</p>
         </div>
         <div className="flex gap-2">
@@ -274,7 +274,7 @@ export default function FinancialReportsPage() {
 
       {/* Report Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="w-full">
           <TabsTrigger value="outstanding" className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
             Outstanding

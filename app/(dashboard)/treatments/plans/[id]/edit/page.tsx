@@ -279,7 +279,7 @@ export default function EditTreatmentPlanPage() {
       <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
 
       <div>
-        <h1 className="text-2xl font-bold">Edit {planNumber ?? 'treatment plan'}</h1>
+        <h1 className="page-title">Edit {planNumber ?? 'treatment plan'}</h1>
         {patient && (
           <p className="text-muted-foreground">
             for{' '}

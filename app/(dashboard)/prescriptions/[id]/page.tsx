@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Printer, Loader2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { describeTeeth, parseTeeth } from '@/lib/teeth'
+import { groupTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface PrescriptionDetail {
@@ -84,6 +84,7 @@ export default function PrescriptionDetailPage() {
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(prescription?.prescriptionNo ?? null)
   const teeth = parseTeeth(prescription?.toothNumbers)
+  const toothGroups = groupTeeth(teeth)
   const [hospital, setHospital] = useState<Hospital | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -139,7 +140,7 @@ export default function PrescriptionDetailPage() {
 
   if (!prescription) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
+      <div className="mx-auto max-w-4xl">
         <p className="text-center text-muted-foreground py-20">Prescription not found</p>
       </div>
     )
@@ -155,7 +156,7 @@ export default function PrescriptionDetailPage() {
   return (
     <>
       {/* Screen-only controls */}
-      <div className="container mx-auto p-6 max-w-4xl print:hidden">
+      <div className="mx-auto max-w-4xl print:hidden">
         <div className="flex items-center justify-between mb-6">
           <BackLink trail={trail} fallback="/prescriptions" fallbackLabel="Prescriptions" />
           <div className="flex gap-2">
@@ -170,10 +171,7 @@ export default function PrescriptionDetailPage() {
       </div>
 
       {/* Printable prescription */}
-      <div
-        ref={printRef}
-        className="container mx-auto px-6 pb-6 max-w-4xl print:max-w-full print:px-0 print:pb-0"
-      >
+      <div ref={printRef} className="mx-auto max-w-4xl print:max-w-full">
         <Card className="print:shadow-none print:border-none">
           <CardContent className="p-8 print:p-6">
             {/* Header — Clinic Info */}
@@ -269,12 +267,24 @@ export default function PrescriptionDetailPage() {
               </div>
             )}
 
-            {teeth.length > 0 && (
-              <div className="mb-2 text-sm">
+            {/*
+              Teeth by quadrant rather than as a run of numbers. "13, 15, 25,
+              34, 44" is five numbers and no shape: a reader has to divide each
+              by ten to work out which side of which jaw it is on, which is the
+              arithmetic FDI notation exists to spare them. Named, the quadrant
+              is read rather than derived.
+            */}
+            {toothGroups.length > 0 && (
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
                 <span className="text-muted-foreground">
                   {teeth.length === 1 ? 'Tooth: ' : 'Teeth: '}
                 </span>
-                <span className="font-medium">{describeTeeth(teeth)}</span>
+                {toothGroups.map((group) => (
+                  <span key={group.key}>
+                    <span className="text-muted-foreground">{group.label} </span>
+                    <span className="font-medium">{group.description}</span>
+                  </span>
+                ))}
               </div>
             )}
 

@@ -348,7 +348,7 @@ export default function NewAppointmentPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Appointment</h1>
+          <h1 className="page-title">New Appointment</h1>
           <p className="text-muted-foreground">Schedule a new appointment for a patient</p>
         </div>
       </div>

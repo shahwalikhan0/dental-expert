@@ -255,7 +255,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Edit Appointment</h1>
+          <h1 className="page-title">Edit Appointment</h1>
           <p className="text-muted-foreground">{appointment.appointmentNo}</p>
         </div>
       </div>

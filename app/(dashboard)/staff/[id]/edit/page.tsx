@@ -262,7 +262,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Edit Staff</h1>
+          <h1 className="page-title">Edit Staff</h1>
           <p className="text-muted-foreground">Update staff member details</p>
         </div>
       </div>

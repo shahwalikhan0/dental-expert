@@ -122,14 +122,14 @@ export default function CommunicationsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div>
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Communication Center</h1>
+        <h1 className="page-title">Communication Center</h1>
         <p className="text-muted-foreground">Manage SMS, Email, Templates, and Patient Feedback</p>
       </div>
 
       <Tabs defaultValue="sms" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="w-full">
           <TabsTrigger value="sms">
             <MessageSquare className="w-4 h-4 mr-2" />
             SMS

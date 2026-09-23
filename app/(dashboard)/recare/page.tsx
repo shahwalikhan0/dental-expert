@@ -193,7 +193,7 @@ export default function RecarePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Recare</h1>
+          <h1 className="page-title">Recare</h1>
           <p className="text-muted-foreground">
             Patients due to be seen again who have nothing booked.
           </p>

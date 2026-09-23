@@ -118,7 +118,7 @@ export default function SupplierDetailPage() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{supplier.name}</h1>
+            <h1 className="page-title">{supplier.name}</h1>
             <Badge variant={supplier.status === 'ACTIVE' ? 'default' : 'outline'}>
               {supplier.status.toLowerCase()}
             </Badge>

@@ -118,7 +118,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <SettingsIcon className="w-8 h-8" />
           Settings & Configuration
         </h1>

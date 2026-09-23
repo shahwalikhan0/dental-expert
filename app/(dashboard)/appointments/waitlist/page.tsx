@@ -243,10 +243,10 @@ export default function WaitlistPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Waitlist</h1>
+          <h1 className="page-title">Waitlist</h1>
           <p className="text-muted-foreground">Manage patients waiting for appointment slots</p>
         </div>
         <Dialog

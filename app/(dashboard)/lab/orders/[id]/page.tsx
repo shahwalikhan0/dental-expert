@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, FlaskConical, Phone, User } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 
 interface HistoryEntry {
   id: string
@@ -157,7 +158,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
   if (!order) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Lab case not found</h1>
+        <h1 className="page-title">Lab case not found</h1>
         <Button variant="outline" asChild>
           <Link href="/lab">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -173,7 +174,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{order.orderNumber}</h1>
+            <h1 className="page-title">{order.orderNumber}</h1>
             <Badge className={`border-0 ${STATUS_STYLE[order.status] ?? ''}`}>
               {label(order.status)}
             </Badge>
@@ -202,7 +203,12 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
               {[
                 ['Work', label(order.workType)],
-                ['Teeth', order.toothNumbers],
+                [
+                  'Teeth',
+                  order.toothNumbers
+                    ? describeTeethByQuadrant(parseTeeth(order.toothNumbers))
+                    : null,
+                ],
                 ['Shade', order.shadeGuide],
                 ['Description', order.description],
                 ['Special instructions', order.specialInstructions],

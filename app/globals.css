@@ -191,6 +191,17 @@
   .page-actions {
     @apply flex flex-wrap items-center gap-2;
   }
+  /*
+   * The title of a screen, at one size.
+   *
+   * Page headings were written five different ways, and sixty of the ninety-odd
+   * of them carried `md:text-3xl` — so half the application's screens had a 30px
+   * title on a desktop and half had 24px, and which you got depended on which
+   * screen you had navigated to rather than on anything about the screen.
+   */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight;
+  }
 }
 
 /* Required field marker */
@@ -519,4 +530,15 @@
       transition: none;
     }
   }
+}
+
+/* The tab strip scrolls; see components/ui/tabs.tsx. It is 40px tall, so an
+   8px scrollbar across the bottom of it is a fifth of the control. */
+.tabs-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tabs-scroll::-webkit-scrollbar {
+  display: none;
 }

@@ -190,7 +190,7 @@ export default function RefundPaymentPage() {
       <BackLink trail={trail} fallback="/billing/payments" fallbackLabel="Payments" />
 
       <div>
-        <h1 className="text-2xl font-bold">Refund {payment.paymentNo}</h1>
+        <h1 className="page-title">Refund {payment.paymentNo}</h1>
         <p className="text-muted-foreground">
           {patient ? (
             <>

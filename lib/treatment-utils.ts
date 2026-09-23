@@ -3,6 +3,7 @@ import {
   formatDate as baseFormatDate,
   formatDateTime as baseFormatDateTime,
 } from '@/lib/i18n/format'
+import { describeTeethByQuadrant } from '@/lib/teeth'
 
 // Treatment status colors and labels
 export const treatmentStatusConfig: Record<
@@ -167,7 +168,16 @@ export const procedureCategoryConfig: Record<
   },
 }
 
-// Dental chart tooth condition colors and labels
+/**
+ * How each finding is drawn, keyed by `ToothCondition` in the schema.
+ *
+ * Every member of that enum has an entry, and nothing else does. It drifted
+ * before: six conditions the chart can write (`EXTRACTION`, `FRACTURED`,
+ * `SENSITIVE`, `MOBILITY`, `ABSCESS`, `PERIODONTAL`) had no entry here, so a
+ * tooth charted with any of them drew no colour and read as healthy in the
+ * picker — while two entries that were here, `EXTRACTION_NEEDED` and `VENEER`,
+ * name nothing the database can store.
+ */
 export const toothConditionConfig: Record<
   string,
   { label: string; color: string; bgColor: string; fillColor: string }
@@ -202,12 +212,6 @@ export const toothConditionConfig: Record<
     bgColor: 'bg-purple-100 dark:bg-purple-950/40',
     fillColor: '#a855f7',
   },
-  MISSING: {
-    label: 'Missing',
-    color: 'text-muted-foreground',
-    bgColor: 'bg-muted',
-    fillColor: '#9ca3af',
-  },
   IMPLANT: {
     label: 'Implant',
     color: 'text-cyan-700 dark:text-cyan-300',
@@ -220,17 +224,47 @@ export const toothConditionConfig: Record<
     bgColor: 'bg-pink-100 dark:bg-pink-950/40',
     fillColor: '#ec4899',
   },
-  EXTRACTION_NEEDED: {
-    label: 'Extraction Needed',
+  EXTRACTION: {
+    label: 'Extracted',
+    color: 'text-slate-700 dark:text-slate-300',
+    bgColor: 'bg-slate-200 dark:bg-slate-800/60',
+    fillColor: '#475569',
+  },
+  MISSING: {
+    label: 'Missing',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted',
+    fillColor: '#9ca3af',
+  },
+  FRACTURED: {
+    label: 'Fractured',
     color: 'text-orange-700 dark:text-orange-300',
     bgColor: 'bg-orange-100 dark:bg-orange-950/40',
     fillColor: '#f97316',
   },
-  VENEER: {
-    label: 'Veneer',
+  SENSITIVE: {
+    label: 'Sensitive',
+    color: 'text-sky-700 dark:text-sky-300',
+    bgColor: 'bg-sky-100 dark:bg-sky-950/40',
+    fillColor: '#0ea5e9',
+  },
+  MOBILITY: {
+    label: 'Mobility',
     color: 'text-indigo-700 dark:text-indigo-300',
     bgColor: 'bg-indigo-100 dark:bg-indigo-950/40',
     fillColor: '#6366f1',
+  },
+  ABSCESS: {
+    label: 'Abscess',
+    color: 'text-rose-700 dark:text-rose-300',
+    bgColor: 'bg-rose-100 dark:bg-rose-950/40',
+    fillColor: '#e11d48',
+  },
+  PERIODONTAL: {
+    label: 'Periodontal',
+    color: 'text-lime-700 dark:text-lime-300',
+    bgColor: 'bg-lime-100 dark:bg-lime-950/40',
+    fillColor: '#84cc16',
   },
 }
 
@@ -340,9 +374,19 @@ export function parseToothNumbers(toothString: string): number[] {
 }
 
 // Format tooth numbers to string
+/**
+ * A set of teeth, for a cell or a line of text.
+ *
+ * "13, 15, 25, 34, 44" is five numbers and no shape: reading it means dividing
+ * each by ten to work out which side of which jaw the tooth is on, which is the
+ * arithmetic FDI notation exists to spare people. This names the quadrant —
+ * "UR 13, 15 · UL 25 · LL 34 · LR 44" — and collapses adjacent runs within one.
+ *
+ * It also no longer sorts the caller's array in place, which it did, silently
+ * reordering whatever was passed in.
+ */
 export function formatToothNumbers(teeth: number[]): string {
-  if (!teeth || teeth.length === 0) return '-'
-  return teeth.sort((a, b) => a - b).join(', ')
+  return describeTeethByQuadrant(teeth) || '-'
 }
 
 // Get tooth quadrant from tooth number

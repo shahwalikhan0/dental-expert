@@ -205,7 +205,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">Preview: {name}</h1>
+              <h1 className="page-title">Preview: {name}</h1>
               <p className="text-muted-foreground">This is how the form will appear to patients</p>
             </div>
           </div>
@@ -243,7 +243,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Edit: {name}</h1>
+            <h1 className="page-title">Edit: {name}</h1>
             <p className="text-muted-foreground">
               {submissionCount} submission{submissionCount !== 1 ? 's' : ''}
             </p>

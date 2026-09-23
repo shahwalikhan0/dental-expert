@@ -1,7 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { format } from 'date-fns'
+/**
+ * A patient's mouth, as charted.
+ *
+ * Draws the same arch as the picker on the treatment and prescription forms —
+ * `ToothArch` owns the geometry — so a tooth is in the same place, at the same
+ * width, with the same colour for the same finding, wherever you meet it. This
+ * screen used to draw its own: two straight rows of thirty-two identical
+ * rectangles on a pink gradient, with its own private list of conditions and
+ * its own private list of tooth names, both of which had drifted from the ones
+ * every other screen used.
+ *
+ * Clicking a tooth opens its findings rather than selecting it, which is the
+ * only real difference from the picker.
+ */
+
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +42,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { ALL_TEETH, quadrantOf, QUADRANTS } from '@/lib/teeth'
+import { toothConditionConfig, toothNames } from '@/lib/treatment-utils'
+import { ToothArch, ToothButton } from '@/components/dental-chart/tooth-arch'
 
 interface DentalChartEntry {
   id: string
@@ -50,20 +67,19 @@ interface DentalChartProps {
   patientId: string
 }
 
-const TOOTH_CONDITIONS = [
-  { value: 'HEALTHY', label: 'Healthy', color: 'bg-green-500' },
-  { value: 'CARIES', label: 'Caries', color: 'bg-red-500' },
-  { value: 'FILLED', label: 'Filled', color: 'bg-blue-500' },
-  { value: 'CROWN', label: 'Crown', color: 'bg-yellow-500' },
-  { value: 'BRIDGE', label: 'Bridge', color: 'bg-orange-500' },
-  { value: 'IMPLANT', label: 'Implant', color: 'bg-purple-500' },
-  { value: 'ROOT_CANAL', label: 'Root Canal', color: 'bg-pink-500' },
-  { value: 'EXTRACTION', label: 'Extraction', color: 'bg-gray-700' },
-  { value: 'MISSING', label: 'Missing', color: 'bg-gray-400' },
-  { value: 'FRACTURED', label: 'Fractured', color: 'bg-amber-600' },
-  { value: 'SENSITIVE', label: 'Sensitive', color: 'bg-cyan-500' },
-  { value: 'MOBILITY', label: 'Mobility', color: 'bg-indigo-500' },
-]
+/**
+ * The conditions a finding can have, in the order the dropdown offers them.
+ *
+ * Derived from `toothConditionConfig`, which is itself keyed by the
+ * `ToothCondition` enum, so this list cannot drift from what the database will
+ * accept — which is exactly what the hand-written copy that used to live here
+ * had done.
+ */
+const TOOTH_CONDITIONS = Object.entries(toothConditionConfig).map(([value, config]) => ({
+  value,
+  label: config.label,
+  fillColor: config.fillColor,
+}))
 
 const SEVERITY_LEVELS = [
   { value: 'MILD', label: 'Mild' },
@@ -71,128 +87,16 @@ const SEVERITY_LEVELS = [
   { value: 'SEVERE', label: 'Severe' },
 ]
 
-// FDI notation tooth positions
-const UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11]
-const UPPER_LEFT = [21, 22, 23, 24, 25, 26, 27, 28]
-const LOWER_LEFT = [31, 32, 33, 34, 35, 36, 37, 38]
-const LOWER_RIGHT = [48, 47, 46, 45, 44, 43, 42, 41]
+/** Conditions that mean the tooth is no longer in the mouth. */
+const ABSENT = new Set(['MISSING', 'EXTRACTION'])
 
-const TOOTH_NAMES: Record<number, string> = {
-  // Upper right
-  18: 'Third Molar',
-  17: 'Second Molar',
-  16: 'First Molar',
-  15: 'Second Premolar',
-  14: 'First Premolar',
-  13: 'Canine',
-  12: 'Lateral Incisor',
-  11: 'Central Incisor',
-  // Upper left
-  21: 'Central Incisor',
-  22: 'Lateral Incisor',
-  23: 'Canine',
-  24: 'First Premolar',
-  25: 'Second Premolar',
-  26: 'First Molar',
-  27: 'Second Molar',
-  28: 'Third Molar',
-  // Lower left
-  31: 'Central Incisor',
-  32: 'Lateral Incisor',
-  33: 'Canine',
-  34: 'First Premolar',
-  35: 'Second Premolar',
-  36: 'First Molar',
-  37: 'Second Molar',
-  38: 'Third Molar',
-  // Lower right
-  41: 'Central Incisor',
-  42: 'Lateral Incisor',
-  43: 'Canine',
-  44: 'First Premolar',
-  45: 'Second Premolar',
-  46: 'First Molar',
-  47: 'Second Molar',
-  48: 'Third Molar',
+function conditionLabel(condition: string): string {
+  return toothConditionConfig[condition]?.label ?? condition
 }
 
-function getConditionColor(condition: string): string {
-  const found = TOOTH_CONDITIONS.find((c) => c.value === condition)
-  return found?.color || 'bg-gray-300'
-}
-
-function getConditionLabel(condition: string): string {
-  const found = TOOTH_CONDITIONS.find((c) => c.value === condition)
-  return found?.label || condition
-}
-
-interface ToothProps {
-  number: number
-  entries: DentalChartEntry[]
-  onClick: (toothNumber: number) => void
-  isUpper: boolean
-}
-
-function Tooth({ number, entries, onClick, isUpper }: ToothProps) {
-  const activeEntry = entries.find((e) => !e.resolvedDate)
-  const condition = activeEntry?.condition || 'HEALTHY'
-  const isMissing = condition === 'MISSING' || condition === 'EXTRACTION'
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={() => onClick(number)}
-            className={`relative w-10 h-14 rounded-lg border-2 transition-all hover:scale-110 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary ${
-              isMissing ? 'opacity-40 border-dashed' : 'border-border'
-            }`}
-          >
-            {/* Tooth body */}
-            <div
-              className={`absolute inset-1 rounded ${getConditionColor(condition)} transition-colors`}
-            >
-              {/* Crown area indicator */}
-              {!isMissing && (
-                <div
-                  className={`absolute ${isUpper ? 'bottom-1' : 'top-1'} left-1 right-1 h-2 rounded bg-white/30`}
-                />
-              )}
-            </div>
-            {/* Tooth number */}
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-sm">
-              {number}
-            </span>
-            {/* Surface indicators */}
-            {activeEntry &&
-              (activeEntry.mesial ||
-                activeEntry.distal ||
-                activeEntry.occlusal ||
-                activeEntry.buccal ||
-                activeEntry.lingual) && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full border border-white" />
-              )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="text-sm">
-            <p className="font-semibold">
-              {number} - {TOOTH_NAMES[number]}
-            </p>
-            <p className={`${isMissing ? 'text-muted-foreground' : ''}`}>
-              {getConditionLabel(condition)}
-              {activeEntry?.severity &&
-                activeEntry.severity !== 'MILD' &&
-                ` (${activeEntry.severity})`}
-            </p>
-            {activeEntry?.notes && (
-              <p className="text-muted-foreground text-xs mt-1">{activeEntry.notes}</p>
-            )}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
+/** The name of a tooth, with the quadrant spelled out rather than implied. */
+function toothLabel(tooth: number): string {
+  return toothNames[tooth] ?? 'Tooth'
 }
 
 export function DentalChart({ patientId }: DentalChartProps) {
@@ -239,10 +143,61 @@ export function DentalChart({ patientId }: DentalChartProps) {
     fetchChartData()
   }, [fetchChartData])
 
+  /**
+   * One current finding per tooth.
+   *
+   * The counts below used to be taken over every entry flattened together, so
+   * a tooth carrying two unresolved entries counted twice. A mouth has
+   * thirty-two teeth and each is in one state; this is that state.
+   */
+  const current = useMemo(() => {
+    const map: Record<number, DentalChartEntry> = {}
+    for (const tooth of ALL_TEETH) {
+      const active = (chartData[tooth] ?? []).find((entry) => !entry.resolvedDate)
+      if (active) map[tooth] = active
+    }
+    return map
+  }, [chartData])
+
+  const counts = useMemo(() => {
+    const teeth = Object.values(current)
+    const absent = teeth.filter((entry) => ABSENT.has(entry.condition)).length
+    return {
+      present: ALL_TEETH.length - absent,
+      caries: teeth.filter((entry) => entry.condition === 'CARIES').length,
+      filled: teeth.filter((entry) => entry.condition === 'FILLED').length,
+      absent,
+    }
+  }, [current])
+
+  /** Only the conditions this mouth actually has — a key, not a catalogue. */
+  const presentConditions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const tooth of ALL_TEETH) {
+      const condition = current[tooth]?.condition
+      if (condition && condition !== 'HEALTHY') seen.add(condition)
+    }
+    return [...seen]
+  }, [current])
+
+  /** What is charted, by quadrant, under the arch. */
+  const byQuadrant = useMemo(
+    () =>
+      QUADRANTS.map((quadrant) => ({
+        ...quadrant,
+        teeth: ALL_TEETH.filter(
+          (tooth) =>
+            quadrantOf(tooth) === quadrant.key &&
+            current[tooth] &&
+            current[tooth].condition !== 'HEALTHY'
+        ),
+      })).filter((quadrant) => quadrant.teeth.length > 0),
+    [current]
+  )
+
   const handleToothClick = (toothNumber: number) => {
     setSelectedTooth(toothNumber)
-    const entries = chartData[toothNumber] || []
-    const activeEntry = entries.find((e) => !e.resolvedDate)
+    const activeEntry = current[toothNumber]
 
     if (activeEntry) {
       setFormCondition(activeEntry.condition)
@@ -315,6 +270,57 @@ export function DentalChart({ patientId }: DentalChartProps) {
     }
   }
 
+  const renderTooth = (tooth: number, arch: 'upper' | 'lower') => {
+    const finding = current[tooth]
+    const config = finding ? toothConditionConfig[finding.condition] : undefined
+    const surfaces =
+      finding &&
+      (finding.mesial || finding.distal || finding.occlusal || finding.buccal || finding.lingual)
+
+    return (
+      <Tooltip key={tooth}>
+        <TooltipTrigger asChild>
+          <ToothButton
+            tooth={tooth}
+            arch={arch}
+            absent={ABSENT.has(finding?.condition ?? '')}
+            aria-label={`Tooth ${tooth}, ${toothLabel(tooth)}${
+              config ? `, ${config.label}` : ', no finding recorded'
+            }`}
+            onClick={() => handleToothClick(tooth)}
+            dotColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
+          >
+            {/* A finding that names surfaces has more to it than its colour. */}
+            {surfaces && (
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-1 ring-card"
+              />
+            )}
+          </ToothButton>
+        </TooltipTrigger>
+        <TooltipContent side={arch === 'upper' ? 'top' : 'bottom'}>
+          <p className="font-medium">
+            {tooth} · {toothLabel(tooth)}
+          </p>
+          {config ? (
+            <p className="text-xs">
+              {config.label}
+              {finding?.severity && finding.severity !== 'MILD'
+                ? ` · ${finding.severity.toLowerCase()}`
+                : ''}
+            </p>
+          ) : (
+            <p className="text-xs opacity-80">No finding recorded</p>
+          )}
+          {finding?.notes && (
+            <p className="mt-1 max-w-[16rem] text-xs opacity-80">{finding.notes}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
   if (loading) {
     return (
       <Card>
@@ -332,115 +338,86 @@ export function DentalChart({ patientId }: DentalChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Interactive Dental Chart</CardTitle>
+        <CardTitle>Dental Chart</CardTitle>
         <CardDescription>
-          Click on a tooth to view or update its condition. FDI notation is used.
+          Click a tooth to view or update its condition. Numbered in FDI notation, drawn as you face
+          the patient — so the upper right quadrant is on the left.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Legend */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          {TOOTH_CONDITIONS.map((condition) => (
-            <div key={condition.value} className="flex items-center gap-1 text-xs">
-              <div className={`w-3 h-3 rounded ${condition.color}`} />
-              <span>{condition.label}</span>
-            </div>
-          ))}
-        </div>
+        <TooltipProvider delayDuration={200}>
+          <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+            <ToothArch tooth={renderTooth} />
 
-        {/* Dental Chart Grid */}
-        <div className="relative bg-gradient-to-b from-pink-50 to-pink-100 dark:from-pink-950/20 dark:to-pink-900/20 rounded-xl p-6">
-          {/* Upper jaw label */}
-          <div className="text-center mb-2 text-sm font-medium text-muted-foreground">
-            Upper Jaw (Maxilla)
-          </div>
+            {/* A key, only for what this mouth has */}
+            {presentConditions.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/50 pt-3">
+                {presentConditions.map((condition) => {
+                  const config = toothConditionConfig[condition]
+                  if (!config) return null
+                  return (
+                    <span key={condition} className="flex items-center gap-1.5 text-xs">
+                      <span
+                        aria-hidden
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: config.fillColor }}
+                      />
+                      <span className="text-muted-foreground">{config.label}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
 
-          {/* Upper teeth row */}
-          <div className="flex justify-center gap-1 mb-4">
-            <div className="flex gap-1">
-              {UPPER_RIGHT.map((num) => (
-                <Tooth
-                  key={num}
-                  number={num}
-                  entries={chartData[num] || []}
-                  onClick={handleToothClick}
-                  isUpper={true}
-                />
-              ))}
-            </div>
-            <div className="w-4" /> {/* Center gap */}
-            <div className="flex gap-1">
-              {UPPER_LEFT.map((num) => (
-                <Tooth
-                  key={num}
-                  number={num}
-                  entries={chartData[num] || []}
-                  onClick={handleToothClick}
-                  isUpper={true}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="border-t-2 border-dashed border-border my-4 relative">
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-pink-100 dark:bg-pink-900/20 px-2 text-xs text-muted-foreground">
-              Midline
-            </span>
-          </div>
-
-          {/* Lower teeth row */}
-          <div className="flex justify-center gap-1 mt-4">
-            <div className="flex gap-1">
-              {LOWER_RIGHT.map((num) => (
-                <Tooth
-                  key={num}
-                  number={num}
-                  entries={chartData[num] || []}
-                  onClick={handleToothClick}
-                  isUpper={false}
-                />
-              ))}
-            </div>
-            <div className="w-4" /> {/* Center gap */}
-            <div className="flex gap-1">
-              {LOWER_LEFT.map((num) => (
-                <Tooth
-                  key={num}
-                  number={num}
-                  entries={chartData[num] || []}
-                  onClick={handleToothClick}
-                  isUpper={false}
-                />
-              ))}
+            {/*
+              What is charted, by quadrant. The arch says where; this says what,
+              without asking the reader to hover thirty-two teeth to find out.
+            */}
+            <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
+              {byQuadrant.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nothing charted yet. Click a tooth to record a finding.
+                </p>
+              ) : (
+                byQuadrant.map((quadrant) => (
+                  <div key={quadrant.key} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-24 shrink-0 text-xs font-medium text-muted-foreground">
+                      {quadrant.label}
+                    </span>
+                    {quadrant.teeth.map((tooth) => {
+                      const config = toothConditionConfig[current[tooth].condition]
+                      return (
+                        <button
+                          key={tooth}
+                          type="button"
+                          onClick={() => handleToothClick(tooth)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2 py-0.5 text-xs font-medium transition-colors hover:bg-foreground/[0.1]"
+                        >
+                          <span
+                            aria-hidden
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: config?.fillColor }}
+                          />
+                          {tooth}
+                          <span className="text-muted-foreground">
+                            {conditionLabel(current[tooth].condition)}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
             </div>
           </div>
-
-          {/* Lower jaw label */}
-          <div className="text-center mt-2 text-sm font-medium text-muted-foreground">
-            Lower Jaw (Mandible)
-          </div>
-
-          {/* Quadrant labels */}
-          <div className="absolute top-2 left-2 text-xs text-muted-foreground">Q1 (UR)</div>
-          <div className="absolute top-2 right-2 text-xs text-muted-foreground">Q2 (UL)</div>
-          <div className="absolute bottom-2 left-2 text-xs text-muted-foreground">Q4 (LR)</div>
-          <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">Q3 (LL)</div>
-        </div>
+        </TooltipProvider>
 
         {/* Summary section */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <Card className="bg-green-50 dark:bg-green-950/20">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {32 -
-                  Object.values(chartData)
-                    .flat()
-                    .filter(
-                      (e) =>
-                        !e.resolvedDate &&
-                        (e.condition === 'MISSING' || e.condition === 'EXTRACTION')
-                    ).length}
+                {counts.present}
               </div>
               <div className="text-sm text-muted-foreground">Present Teeth</div>
             </CardContent>
@@ -448,11 +425,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
           <Card className="bg-red-50 dark:bg-red-950/20">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                {
-                  Object.values(chartData)
-                    .flat()
-                    .filter((e) => !e.resolvedDate && e.condition === 'CARIES').length
-                }
+                {counts.caries}
               </div>
               <div className="text-sm text-muted-foreground">Caries</div>
             </CardContent>
@@ -460,28 +433,14 @@ export function DentalChart({ patientId }: DentalChartProps) {
           <Card className="bg-blue-50 dark:bg-blue-950/20">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {
-                  Object.values(chartData)
-                    .flat()
-                    .filter((e) => !e.resolvedDate && e.condition === 'FILLED').length
-                }
+                {counts.filled}
               </div>
               <div className="text-sm text-muted-foreground">Filled</div>
             </CardContent>
           </Card>
           <Card className="bg-muted/50">
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold text-muted-foreground">
-                {
-                  Object.values(chartData)
-                    .flat()
-                    .filter(
-                      (e) =>
-                        !e.resolvedDate &&
-                        (e.condition === 'MISSING' || e.condition === 'EXTRACTION')
-                    ).length
-                }
-              </div>
+              <div className="text-2xl font-bold text-muted-foreground">{counts.absent}</div>
               <div className="text-sm text-muted-foreground">Missing</div>
             </CardContent>
           </Card>
@@ -492,7 +451,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                Tooth {selectedTooth} - {selectedTooth ? TOOTH_NAMES[selectedTooth] : ''}
+                Tooth {selectedTooth} · {selectedTooth ? toothLabel(selectedTooth) : ''}
               </DialogTitle>
               <DialogDescription>View or update the condition of this tooth</DialogDescription>
             </DialogHeader>
@@ -509,7 +468,11 @@ export function DentalChart({ patientId }: DentalChartProps) {
                     {TOOTH_CONDITIONS.map((condition) => (
                       <SelectItem key={condition.value} value={condition.value}>
                         <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded ${condition.color}`} />
+                          <span
+                            aria-hidden
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: condition.fillColor }}
+                          />
                           {condition.label}
                         </div>
                       </SelectItem>
@@ -570,27 +533,27 @@ export function DentalChart({ patientId }: DentalChartProps) {
               {selectedTooth && chartData[selectedTooth]?.length > 0 && (
                 <div className="space-y-2">
                   <Label>History</Label>
-                  <div className="max-h-32 overflow-y-auto space-y-2">
-                    {chartData[selectedTooth].map((entry, i) => (
+                  <div className="max-h-32 space-y-2 overflow-y-auto">
+                    {chartData[selectedTooth].map((entry) => (
                       <div
                         key={entry.id}
-                        className={`text-sm p-2 rounded ${entry.resolvedDate ? 'bg-muted' : 'bg-blue-50 dark:bg-blue-950/20'}`}
+                        className={`rounded p-2 text-sm ${entry.resolvedDate ? 'bg-muted' : 'bg-blue-50 dark:bg-blue-950/20'}`}
                       >
                         <div className="flex justify-between">
                           <Badge variant={entry.resolvedDate ? 'outline' : 'default'}>
-                            {getConditionLabel(entry.condition)}
+                            {conditionLabel(entry.condition)}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
                             {displayDate(entry.diagnosedDate)}
                           </span>
                         </div>
                         {entry.notes && (
-                          <p className="text-xs text-muted-foreground mt-1">{entry.notes}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{entry.notes}</p>
                         )}
                         {/* Findings charted before authorship was recorded have
                             nobody to name; say so rather than leaving a blank
                             that reads like the line was never there. */}
-                        <p className="text-xs text-muted-foreground mt-1 italic">
+                        <p className="mt-1 text-xs italic text-muted-foreground">
                           {entry.recordedBy
                             ? `Charted by ${entry.recordedBy.name}`
                             : 'Author not recorded'}

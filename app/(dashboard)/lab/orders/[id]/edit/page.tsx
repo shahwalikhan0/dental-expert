@@ -188,7 +188,7 @@ export default function EditLabOrderPage() {
       <BackLink trail={trail} fallback="/lab" fallbackLabel="Lab Orders" />
 
       <div>
-        <h1 className="text-2xl font-bold">Edit {orderNumber ?? 'lab case'}</h1>
+        <h1 className="page-title">Edit {orderNumber ?? 'lab case'}</h1>
         {patient && (
           <p className="text-muted-foreground">
             for{' '}

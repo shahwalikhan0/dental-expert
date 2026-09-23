@@ -6,7 +6,15 @@
  * value one of them writes has to mean the same thing when another reads it.
  */
 import { describe, it, expect } from 'vitest'
-import { parseTeeth, formatTeeth, describeTeeth, quadrantOf, isTooth } from '@/lib/teeth'
+import {
+  parseTeeth,
+  formatTeeth,
+  describeTeeth,
+  describeTeethByQuadrant,
+  groupTeeth,
+  quadrantOf,
+  isTooth,
+} from '@/lib/teeth'
 
 describe('parseTeeth', () => {
   it('reads an ordinary column', () => {
@@ -106,5 +114,70 @@ describe('isTooth', () => {
     expect(isTooth(Number('abc'))).toBe(false)
     expect(isTooth(46.5)).toBe(false)
     expect(isTooth('46' as unknown as number)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// groupTeeth / describeTeethByQuadrant
+// ---------------------------------------------------------------------------
+describe('groupTeeth()', () => {
+  it('splits a set across the quadrants it touches', () => {
+    expect(groupTeeth([13, 15, 25, 34, 44]).map((g) => [g.short, g.description])).toEqual([
+      ['UR', '13, 15'],
+      ['UL', '25'],
+      ['LL', '34'],
+      ['LR', '44'],
+    ])
+  })
+
+  it('returns quadrants in FDI order however the teeth arrive', () => {
+    expect(groupTeeth([44, 34, 25, 13]).map((g) => g.short)).toEqual(['UR', 'UL', 'LL', 'LR'])
+  })
+
+  it('leaves out the quadrants with nothing in them', () => {
+    // A case confined to one quadrant should read as one line, not as one line
+    // and three blanks.
+    expect(groupTeeth([46, 47]).map((g) => g.short)).toEqual(['LR'])
+  })
+
+  it('collapses adjacent runs within a quadrant', () => {
+    expect(groupTeeth([11, 12, 13, 14])[0].description).toBe('11–14')
+  })
+
+  it('names the quadrant in full as well as in short', () => {
+    expect(groupTeeth([46])[0]).toMatchObject({
+      key: 'lowerRight',
+      short: 'LR',
+      label: 'Lower right',
+      teeth: [46],
+    })
+  })
+
+  it('drops anything that is not a permanent tooth', () => {
+    expect(groupTeeth([11, 0, 99, NaN])).toEqual([
+      { key: 'upperRight', short: 'UR', label: 'Upper right', teeth: [11], description: '11' },
+    ])
+  })
+
+  it('is empty for no teeth', () => {
+    expect(groupTeeth([])).toEqual([])
+    expect(groupTeeth(null)).toEqual([])
+    expect(groupTeeth(undefined)).toEqual([])
+  })
+})
+
+describe('describeTeethByQuadrant()', () => {
+  it('writes one line naming each quadrant', () => {
+    expect(describeTeethByQuadrant([13, 15, 25, 34, 44])).toBe('UR 13, 15 · UL 25 · LL 34 · LR 44')
+  })
+
+  it('is empty for no teeth, so a caller can fall back', () => {
+    expect(describeTeethByQuadrant([])).toBe('')
+  })
+
+  it('reads a stored column end to end', () => {
+    expect(describeTeethByQuadrant(parseTeeth('16,15,14, 24 ,,46'))).toBe(
+      'UR 14–16 · UL 24 · LR 46'
+    )
   })
 })

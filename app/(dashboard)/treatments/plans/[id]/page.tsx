@@ -49,6 +49,8 @@ import {
   calculatePlanProgress,
 } from '@/lib/treatment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { parseTeeth } from '@/lib/teeth'
+import { formatToothNumbers } from '@/lib/treatment-utils'
 
 interface TreatmentPlanItem {
   id: string
@@ -236,7 +238,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
           <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{plan.planNumber}</h1>
+              <h1 className="page-title">{plan.planNumber}</h1>
               {getStatusBadge(plan.status)}
               {plan.consentGiven && (
                 <Badge
@@ -354,7 +356,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                           <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
                         )}
                       </TableCell>
-                      <TableCell>{item.toothNumbers || '-'}</TableCell>
+                      <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
                       <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
                       <TableCell>{getItemStatusBadge(item.status)}</TableCell>
                       <TableCell>

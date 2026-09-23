@@ -15,7 +15,7 @@ export default function NewPrescriptionTemplatePage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">New template</h1>
+          <h1 className="page-title">New template</h1>
           <p className="text-muted-foreground">
             A prescription your clinic writes often, saved once.
           </p>

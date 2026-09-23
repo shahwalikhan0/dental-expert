@@ -208,7 +208,7 @@ export default function InvoicesPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Invoices</h1>
+          <h1 className="page-title">Invoices</h1>
           <p className="text-muted-foreground">Manage patient invoices and billing</p>
         </div>
         <Button asChild>

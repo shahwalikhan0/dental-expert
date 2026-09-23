@@ -69,7 +69,7 @@ export default function EditPrescriptionTemplatePage({
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Edit template</h1>
+          <h1 className="page-title">Edit template</h1>
           <p className="text-muted-foreground">
             Changes apply to prescriptions written from now on. Ones already issued keep their own
             copy.

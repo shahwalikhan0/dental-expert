@@ -37,9 +37,10 @@ import {
   GripVertical,
   Loader2,
 } from 'lucide-react'
-import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
+import { procedureCategoryConfig, formatCurrency, formatToothNumbers } from '@/lib/treatment-utils'
 import { usePatientSearch } from '@/hooks/use-patient-search'
 import { fetchHandedPatient } from '@/lib/prefill'
+import { parseTeeth } from '@/lib/teeth'
 
 interface Patient {
   id: string
@@ -228,7 +229,7 @@ export default function NewTreatmentPlanPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">New Treatment Plan</h1>
+          <h1 className="page-title">New Treatment Plan</h1>
           <p className="text-muted-foreground">
             Create a comprehensive treatment plan for a patient
           </p>
@@ -485,7 +486,7 @@ export default function NewTreatmentPlanPage() {
                             {procedureCategoryConfig[item.category]?.label}
                           </Badge>
                         </TableCell>
-                        <TableCell>{item.toothNumbers || '-'}</TableCell>
+                        <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
                         <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
                         <TableCell>
                           <IconTooltip label="Remove this line">

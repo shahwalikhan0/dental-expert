@@ -221,15 +221,7 @@ describe('DentalChart', () => {
   it('renders chart title after loading', async () => {
     render(<DentalChart patientId="p1" />)
     await waitFor(() => {
-      expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument()
-    })
-  })
-
-  it('renders Upper Jaw and Lower Jaw labels', async () => {
-    render(<DentalChart patientId="p1" />)
-    await waitFor(() => {
-      expect(screen.getByText('Upper Jaw (Maxilla)')).toBeInTheDocument()
-      expect(screen.getByText('Lower Jaw (Mandible)')).toBeInTheDocument()
+      expect(screen.getByText('Dental Chart')).toBeInTheDocument()
     })
   })
 
@@ -243,27 +235,38 @@ describe('DentalChart', () => {
     })
   })
 
-  it('renders quadrant labels', async () => {
+  it('names each quadrant on the arch', async () => {
     render(<DentalChart patientId="p1" />)
     await waitFor(() => {
-      expect(screen.getByText('Q1 (UR)')).toBeInTheDocument()
-      expect(screen.getByText('Q2 (UL)')).toBeInTheDocument()
-      expect(screen.getByText('Q3 (LL)')).toBeInTheDocument()
-      expect(screen.getByText('Q4 (LR)')).toBeInTheDocument()
+      expect(screen.getByText('Upper right \u00b7 UR')).toBeInTheDocument()
+      expect(screen.getByText('Upper left \u00b7 UL')).toBeInTheDocument()
+      expect(screen.getByText('Lower left \u00b7 LL')).toBeInTheDocument()
+      expect(screen.getByText('Lower right \u00b7 LR')).toBeInTheDocument()
     })
   })
 
-  it('renders condition legend', async () => {
+  it('groups the charted teeth under the quadrant they are in', async () => {
     render(<DentalChart patientId="p1" />)
     await waitFor(() => {
-      // Condition labels appear in legend + tooltips, use getAllByText
-      expect(screen.getAllByText('Healthy').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Caries').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Filled').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Missing').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Crown').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Root Canal').length).toBeGreaterThanOrEqual(1)
+      // 11 is upper right, 21 upper left, 36 lower left, so three quadrants get
+      // a row. Nothing is charted in the lower right, so that one gets none.
+      expect(screen.getByText('Upper right')).toBeInTheDocument()
+      expect(screen.getByText('Upper left')).toBeInTheDocument()
+      expect(screen.getByText('Lower left')).toBeInTheDocument()
+      expect(screen.queryByText('Lower right')).not.toBeInTheDocument()
     })
+  })
+
+  it('keys only the conditions this mouth has', async () => {
+    render(<DentalChart patientId="p1" />)
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
+
+    // A legend listing all fourteen conditions above a mouth with three is
+    // decoration, not a key.
+    expect(screen.getAllByText('Caries').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Filled').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Crown')).not.toBeInTheDocument()
+    expect(screen.queryByText('Healthy')).not.toBeInTheDocument()
   })
 
   it('renders summary cards (present teeth, caries, filled, missing)', async () => {
@@ -289,12 +292,12 @@ describe('DentalChart', () => {
 
   it('opens dialog when a tooth is clicked', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    // Click on tooth 11 (should be rendered as a button with text "11")
-    const tooth11 = screen.getByText('11').closest('button')
-    expect(tooth11).toBeTruthy()
-    fireEvent.click(tooth11!)
+    // By its label, not its text: the number 11 is on the arch and again on the
+    // upper-right row beneath it.
+    const tooth11 = screen.getByRole('button', { name: /^Tooth 11,/ })
+    fireEvent.click(tooth11)
 
     await waitFor(() => {
       expect(screen.getByTestId('dialog')).toHaveAttribute('data-open', 'true')
@@ -303,9 +306,9 @@ describe('DentalChart', () => {
 
   it('dialog shows tooth number and name', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       expect(screen.getByTestId('dialog-title').textContent).toContain('11')
@@ -315,9 +318,9 @@ describe('DentalChart', () => {
 
   it('dialog pre-fills condition for existing entries', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       const select = screen.getAllByTestId('select')[0]
@@ -327,9 +330,9 @@ describe('DentalChart', () => {
 
   it('dialog has Cancel and Save Changes buttons', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       expect(screen.getByText('Cancel')).toBeInTheDocument()
@@ -350,9 +353,9 @@ describe('DentalChart', () => {
       } as Response) // refetch
 
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
     await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
 
     fireEvent.click(screen.getByText('Save Changes'))
@@ -380,9 +383,9 @@ describe('DentalChart', () => {
       } as Response)
 
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
     await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
     fireEvent.click(screen.getByText('Save Changes'))
 
@@ -418,9 +421,9 @@ describe('DentalChart', () => {
       } as Response)
 
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
     await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
     fireEvent.click(screen.getByText('Save Changes'))
 
@@ -429,11 +432,22 @@ describe('DentalChart', () => {
     })
   })
 
-  it('shows Midline separator', async () => {
+  it('draws the arch as you face the patient', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => {
-      expect(screen.getByText('Midline')).toBeInTheDocument()
-    })
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
+
+    // A chart is drawn from the dentist's side of the chair, so the patient's
+    // upper right quadrant is on the left of the screen. Getting this backwards
+    // would put every finding in the wrong half of the mouth.
+    const labels = screen
+      .getAllByText(/^(Upper|Lower) (right|left) \u00b7 (UR|UL|LL|LR)$/)
+      .map((node) => node.textContent)
+    expect(labels).toEqual([
+      'Upper right \u00b7 UR',
+      'Upper left \u00b7 UL',
+      'Lower right \u00b7 LR',
+      'Lower left \u00b7 LL',
+    ])
   })
 
   it('renders FDI description text', async () => {
@@ -445,9 +459,9 @@ describe('DentalChart', () => {
 
   it('renders dialog with surface checkboxes', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       expect(screen.getByText('Surfaces Affected')).toBeInTheDocument()
@@ -461,10 +475,10 @@ describe('DentalChart', () => {
 
   it('pre-fills surface checkboxes from existing data', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
     // Tooth 11 has mesial: true in mockChartData
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       expect(screen.getByTestId('checkbox-mesial')).toBeChecked()
@@ -474,7 +488,7 @@ describe('DentalChart', () => {
 
   it('resets form for tooth without existing data', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
     // Tooth 12 has no data in mock
     fireEvent.click(screen.getByText('12').closest('button')!)
@@ -488,9 +502,9 @@ describe('DentalChart', () => {
 
   it('renders history section for teeth with data', async () => {
     render(<DentalChart patientId="p1" />)
-    await waitFor(() => expect(screen.getByText('Interactive Dental Chart')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('11').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
 
     await waitFor(() => {
       expect(screen.getByText('History')).toBeInTheDocument()
