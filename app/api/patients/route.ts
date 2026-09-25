@@ -9,6 +9,7 @@ import { startDefaultRecare } from '@/lib/recare'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 import { mayBeScoped, patientScopeFilter } from '@/lib/patient-scope'
 import { readSecuritySettings } from '@/lib/security-settings'
+import { isBlankMedicalHistory, medicalHistoryInput } from '@/lib/medical-history'
 
 /**
  * The columns the patient list can be sorted by.
@@ -259,6 +260,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    /*
+     * Three lists, not whatever arrived.
+     *
+     * This was `create: medicalHistory` — the request body spread straight into
+     * a Prisma create, which would have accepted `id`, `patientId` or any other
+     * column of the table. It is now the three fields the registration form
+     * offers, trimmed and de-duplicated.
+     *
+     * Skipped entirely when all three are empty, so a patient nobody was asked
+     * about has no row rather than a blank one.
+     */
+    const history = medicalHistoryInput(medicalHistory)
+
     // Generate patient ID for this hospital
     const patientId = await nextPatientId(prisma, hospitalId)
 
@@ -291,11 +305,7 @@ export async function POST(request: NextRequest) {
           emergencyContactPhone,
           emergencyContactRelation,
           hospitalId,
-          medicalHistory: medicalHistory
-            ? {
-                create: medicalHistory,
-              }
-            : undefined,
+          medicalHistory: isBlankMedicalHistory(history) ? undefined : { create: history },
         },
         include: {
           medicalHistory: true,

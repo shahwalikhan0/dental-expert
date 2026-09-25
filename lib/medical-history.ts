@@ -76,6 +76,53 @@ export function normalizeList(values: unknown): string[] {
   return out
 }
 
+/**
+ * The three lists a screen edits, and the only three it may write.
+ *
+ * `MedicalHistory` has a dozen other columns — habits, pregnancy, dental
+ * anxiety, free-text notes — which belong to a longer intake conversation than
+ * registration at the desk. Naming the three explicitly also means the create
+ * below is a fixed shape rather than whatever JSON arrived: the POST route used
+ * to spread the request body straight into `medicalHistory.create`, so a client
+ * could have set `id`, `patientId` or any column it liked.
+ */
+export interface MedicalHistoryInput {
+  allergies: string[]
+  conditions: string[]
+  currentMedications: string[]
+}
+
+export const EMPTY_MEDICAL_HISTORY: MedicalHistoryInput = {
+  allergies: [],
+  conditions: [],
+  currentMedications: [],
+}
+
+/** Whatever arrived, reduced to three tidy lists. */
+export function medicalHistoryInput(body: unknown): MedicalHistoryInput {
+  const raw = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  return {
+    allergies: normalizeList(raw.allergies),
+    conditions: normalizeList(raw.conditions),
+    currentMedications: normalizeList(raw.currentMedications),
+  }
+}
+
+/**
+ * Nothing worth recording.
+ *
+ * Registration skips the write entirely in this case, so a patient nobody was
+ * asked about has no row rather than an empty one. On edit it still writes,
+ * because clearing the last allergy has to actually clear it.
+ */
+export function isBlankMedicalHistory(values: MedicalHistoryInput): boolean {
+  return (
+    values.allergies.length === 0 &&
+    values.conditions.length === 0 &&
+    values.currentMedications.length === 0
+  )
+}
+
 export interface MedicalAlert {
   label: string
   /** `danger` is shown before treatment starts; `warning` sits on the record. */

@@ -401,10 +401,7 @@ describe('Patients API - Comprehensive Tests', () => {
       mockPrisma.patient.create.mockResolvedValue({
         id: '1',
         patientId: 'PAT202500001',
-        medicalHistory: {
-          allergies: 'Penicillin',
-          conditions: 'Diabetes',
-        },
+        medicalHistory: { allergies: ['Penicillin'], conditions: ['Diabetes'] },
       })
 
       const request = new NextRequest('http://localhost/api/patients', {
@@ -414,26 +411,83 @@ describe('Patients API - Comprehensive Tests', () => {
           lastName: 'Doe',
           phone: '9876543210',
           medicalHistory: {
-            allergies: 'Penicillin',
-            conditions: 'Diabetes',
+            allergies: ['Penicillin', ' penicillin ', ''],
+            conditions: ['Diabetes'],
           },
         }),
       })
       const response = await POST(request)
 
       expect(response.status).toBe(201)
+      // Three named lists, trimmed and de-duplicated — not the request body.
+      // This used to assert the body went through untouched, which is what let
+      // a caller write any column of MedicalHistory it liked.
       expect(mockPrisma.patient.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             medicalHistory: {
               create: {
-                allergies: 'Penicillin',
-                conditions: 'Diabetes',
+                allergies: ['Penicillin'],
+                conditions: ['Diabetes'],
+                currentMedications: [],
               },
             },
           }),
         })
       )
+    })
+
+    it('writes no medical history row when nothing was recorded', async () => {
+      mockPrisma.patient.findFirst.mockResolvedValue(null)
+      mockPrisma.patient.create.mockResolvedValue({ id: '1', patientId: 'PAT202500002' })
+
+      const request = new NextRequest('http://localhost/api/patients', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'John',
+          lastName: 'Doe',
+          phone: '9876543210',
+          medicalHistory: { allergies: [], conditions: [], currentMedications: [] },
+        }),
+      })
+      const response = await POST(request)
+
+      expect(response.status).toBe(201)
+      // A patient nobody was asked about has no row, rather than a blank one
+      // that reads as "asked, nothing to report".
+      expect(mockPrisma.patient.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ medicalHistory: undefined }),
+        })
+      )
+    })
+
+    it('ignores columns the registration form does not offer', async () => {
+      mockPrisma.patient.findFirst.mockResolvedValue(null)
+      mockPrisma.patient.create.mockResolvedValue({ id: '1', patientId: 'PAT202500003' })
+
+      const request = new NextRequest('http://localhost/api/patients', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'John',
+          lastName: 'Doe',
+          phone: '9876543210',
+          medicalHistory: {
+            allergies: ['Latex'],
+            id: 'forged',
+            patientId: 'someone-else',
+            isPregnant: true,
+          },
+        }),
+      })
+      await POST(request)
+
+      const { data } = mockPrisma.patient.create.mock.calls.at(-1)![0]
+      expect(data.medicalHistory.create).toEqual({
+        allergies: ['Latex'],
+        conditions: [],
+        currentMedications: [],
+      })
     })
 
     it('should handle optional fields correctly', async () => {

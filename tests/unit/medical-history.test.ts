@@ -12,7 +12,9 @@ import {
   COMMON_ALLERGIES,
   COMMON_CONDITIONS,
   allergyClashes,
+  isBlankMedicalHistory,
   medicalAlerts,
+  medicalHistoryInput,
   normalizeList,
 } from '@/lib/medical-history'
 
@@ -37,6 +39,56 @@ describe('normalizeList', () => {
   it('copes with something that is not a list at all', () => {
     expect(normalizeList(null)).toEqual([])
     expect(normalizeList('Penicillin')).toEqual([])
+  })
+})
+
+describe('medicalHistoryInput', () => {
+  it('keeps the three lists the form offers and nothing else', () => {
+    // The POST route used to spread the request body straight into
+    // `medicalHistory.create`, so a caller could set any column of the table.
+    const input = medicalHistoryInput({
+      allergies: ['Penicillin'],
+      conditions: ['Diabetes'],
+      currentMedications: ['Metformin 500mg'],
+      id: 'forged',
+      patientId: 'someone-else',
+      isPregnant: true,
+      dentalAnxietyLevel: 9,
+    })
+
+    expect(input).toEqual({
+      allergies: ['Penicillin'],
+      conditions: ['Diabetes'],
+      currentMedications: ['Metformin 500mg'],
+    })
+  })
+
+  it('tidies each list on the way in', () => {
+    expect(medicalHistoryInput({ allergies: [' Latex ', 'latex', ''] }).allergies).toEqual([
+      'Latex',
+    ])
+  })
+
+  it('answers three empty lists for anything it cannot read', () => {
+    expect(medicalHistoryInput(undefined)).toEqual({
+      allergies: [],
+      conditions: [],
+      currentMedications: [],
+    })
+    expect(medicalHistoryInput('Penicillin').allergies).toEqual([])
+  })
+})
+
+describe('isBlankMedicalHistory', () => {
+  it('is true only when all three lists are empty', () => {
+    expect(isBlankMedicalHistory(medicalHistoryInput({}))).toBe(true)
+    expect(isBlankMedicalHistory(medicalHistoryInput({ conditions: ['Asthma'] }))).toBe(false)
+  })
+
+  // Registration skips the write in this case, so "nobody asked" reads
+  // differently from "asked, nothing to report".
+  it('does not count whitespace as something to record', () => {
+    expect(isBlankMedicalHistory(medicalHistoryInput({ allergies: ['   ', ''] }))).toBe(true)
   })
 })
 

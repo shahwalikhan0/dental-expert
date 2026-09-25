@@ -8,6 +8,7 @@ import { mayBeScoped, patientScopeFilter, OUT_OF_SCOPE_MESSAGE } from '@/lib/pat
 import { readSecuritySettings } from '@/lib/security-settings'
 import { noteRecordAccess } from '@/lib/record-access'
 import { requestContext } from '@/lib/audit'
+import { medicalHistoryInput } from '@/lib/medical-history'
 
 // GET /api/patients/[id] - Get a specific patient with all details
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -67,10 +68,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             payments: true,
           },
         },
-        documents: {
-          where: { isArchived: false },
+        // The medicines this patient was told to take, newest first. Read on
+        // the record rather than fetched when the tab opens, like treatments
+        // and invoices beside it: a prescription list is short, and a clinician
+        // opening a patient is as likely to want it as the treatment history.
+        prescriptions: {
+          take: 10,
           orderBy: { createdAt: 'desc' },
-          take: 20,
+          select: {
+            id: true,
+            prescriptionNo: true,
+            diagnosis: true,
+            toothNumbers: true,
+            createdAt: true,
+            doctor: { select: { firstName: true, lastName: true } },
+            // What was prescribed, as it was written at the time — see the note
+            // on PrescriptionMedication. Not read through `medication`, which
+            // is the catalogue entry and may since have been edited.
+            medications: {
+              select: { id: true, medicationName: true, dosage: true, frequency: true },
+            },
+          },
         },
         dentalChart: true,
         _count: {
@@ -78,7 +96,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             appointments: true,
             treatments: true,
             invoices: true,
-            documents: true,
+            prescriptions: true,
           },
         },
       },
@@ -187,6 +205,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       emergencyContactName,
       emergencyContactPhone,
       emergencyContactRelation,
+      medicalHistory,
     } = body
 
     // The CNIC was accepted by the edit form but silently dropped here, so a
@@ -233,6 +252,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         emergencyContactName,
         emergencyContactPhone,
         emergencyContactRelation,
+        /*
+         * Allergies, conditions and current medications.
+         *
+         * An upsert rather than an update, because most patients on the books
+         * were registered before any screen asked for a history and so have no
+         * row to update. Absent from the body means "leave it alone" — the
+         * edit form always sends it, but other callers of this route do not,
+         * and they should not be able to wipe a record's allergies by omission.
+         *
+         * Only the three lists are written. Everything else on the table — the
+         * habits, pregnancy, the dental-anxiety score — belongs to the intake
+         * questionnaire and is left exactly as it was.
+         */
+        ...(medicalHistory !== undefined && {
+          medicalHistory: {
+            upsert: {
+              create: medicalHistoryInput(medicalHistory),
+              update: medicalHistoryInput(medicalHistory),
+            },
+          },
+        }),
         // Clear cached AI summary so it regenerates on next view
         aiSummary: Prisma.JsonNull,
         aiSummaryAt: null,

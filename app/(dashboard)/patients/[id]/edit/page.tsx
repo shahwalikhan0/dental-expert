@@ -21,6 +21,8 @@ import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
 import { isoDay } from '@/lib/dates'
+import { MedicalHistoryFields } from '@/components/patients/medical-history-fields'
+import { EMPTY_MEDICAL_HISTORY, type MedicalHistoryInput } from '@/lib/medical-history'
 
 export default function EditPatientPage() {
   const router = useRouter()
@@ -54,6 +56,8 @@ export default function EditPatientPage() {
     emergencyContactRelation: '',
   })
 
+  const [history, setHistory] = useState<MedicalHistoryInput>(EMPTY_MEDICAL_HISTORY)
+
   useEffect(() => {
     async function loadPatient() {
       try {
@@ -82,6 +86,15 @@ export default function EditPatientPage() {
           emergencyContactName: p.emergencyContactName || '',
           emergencyContactPhone: p.emergencyContactPhone || '',
           emergencyContactRelation: p.emergencyContactRelation || '',
+        })
+
+        // A patient registered before this form asked for a history has no
+        // row at all, which is not the same as an empty one — both edit into
+        // the same three empty lists here, and only a save writes anything.
+        setHistory({
+          allergies: p.medicalHistory?.allergies ?? [],
+          conditions: p.medicalHistory?.conditions ?? [],
+          currentMedications: p.medicalHistory?.currentMedications ?? [],
         })
       } catch {
         toast({
@@ -138,6 +151,10 @@ export default function EditPatientPage() {
       if (form.emergencyContactPhone) payload.emergencyContactPhone = form.emergencyContactPhone
       if (form.emergencyContactRelation)
         payload.emergencyContactRelation = form.emergencyContactRelation
+      // Always sent, unlike on registration: removing the last allergy from a
+      // record has to actually remove it, and an omitted key would read as
+      // "leave it alone".
+      payload.medicalHistory = history
 
       const response = await fetch(`/api/patients/${patientId}`, {
         method: 'PUT',
@@ -420,6 +437,8 @@ export default function EditPatientPage() {
             </div>
           </CardContent>
         </Card>
+
+        <MedicalHistoryFields values={history} onChange={setHistory} />
 
         {/* Submit */}
         <div className="flex justify-end gap-3">

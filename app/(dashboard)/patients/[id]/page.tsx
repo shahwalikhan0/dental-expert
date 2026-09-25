@@ -10,9 +10,6 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -20,23 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { IconTooltip } from '@/components/ui/icon-action'
 import {
   Table,
   TableBody,
@@ -46,7 +26,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { MergeDialog } from '@/components/patients/merge-dialog'
 import {
   ArrowLeft,
@@ -56,37 +35,23 @@ import {
   MapPin,
   Edit,
   FileText,
-  Upload,
-  Download,
-  Trash2,
-  MoreHorizontal,
   User,
   Stethoscope,
   CreditCard,
-  FolderOpen,
   Heart,
   AlertCircle,
-  FileImage,
-  FileScan,
   FileCheck,
-  Loader2,
-  Eye,
   History,
   Pill,
   TestTube,
   Activity,
   Smile,
-  Pen,
   Merge,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { Patient360 } from '@/components/ai/patient-360'
 import { PatientFormSubmissions } from '@/components/forms/patient-form-submissions'
-import { ImageViewer } from '@/components/imaging/image-viewer'
-import { ImageAnnotator, type Annotation } from '@/components/imaging/image-annotator'
-import { ImageCompare } from '@/components/imaging/image-compare'
-import { uploadUrl } from '@/lib/storage/keys'
 import { formatDate, formatTime } from '@/lib/appointment-utils'
 import { ClickableRow } from '@/components/ui/data-grid'
 import { BackLink, useTrail } from '@/components/ui/trail'
@@ -131,33 +96,23 @@ interface Patient {
   appointments: any[]
   treatments: any[]
   invoices: any[]
-  documents: Document[]
+  prescriptions: Prescription[]
   _count: {
     appointments: number
     treatments: number
     invoices: number
-    documents: number
+    prescriptions: number
   }
 }
 
-interface Document {
+interface Prescription {
   id: string
-  fileName: string
-  originalName: string
-  fileType: string
-  fileSize: number
-  filePath: string
-  documentType: string
-  description?: string
-  annotations?: Annotation[]
-  annotatedBy?: string
-  annotatedAt?: string
+  prescriptionNo: string
+  diagnosis?: string | null
+  toothNumbers?: string | null
   createdAt: string
-  treatment?: {
-    procedure: {
-      name: string
-    }
-  }
+  doctor?: { firstName: string; lastName: string } | null
+  medications: { id: string; medicationName: string; dosage: string; frequency: string }[]
 }
 
 interface TimelineEvent {
@@ -168,33 +123,6 @@ interface TimelineEvent {
   description?: string
   status?: string
   metadata?: Record<string, any>
-}
-
-const DOCUMENT_TYPES = [
-  { value: 'XRAY', label: 'X-Ray', icon: FileScan },
-  { value: 'CT_SCAN', label: 'CT Scan', icon: FileScan },
-  { value: 'PHOTO', label: 'Photo', icon: FileImage },
-  { value: 'CONSENT_FORM', label: 'Consent Form', icon: FileCheck },
-  { value: 'PRESCRIPTION', label: 'Prescription', icon: FileText },
-  { value: 'LAB_REPORT', label: 'Lab Report', icon: FileText },
-  { value: 'ID_PROOF', label: 'ID Proof', icon: FileText },
-  { value: 'OTHER', label: 'Other', icon: FolderOpen },
-]
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function getDocumentTypeIcon(type: string) {
-  const docType = DOCUMENT_TYPES.find((d) => d.value === type)
-  return docType?.icon || FileText
-}
-
-function getDocumentTypeLabel(type: string) {
-  const docType = DOCUMENT_TYPES.find((d) => d.value === type)
-  return docType?.label || type
 }
 
 /**
@@ -209,9 +137,9 @@ const PATIENT_TABS = [
   'dental-chart',
   'perio',
   'timeline',
-  'documents',
   'appointments',
   'treatments',
+  'prescriptions',
   'billing',
   'forms',
 ]
@@ -220,7 +148,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const router = useRouter()
   const { toast } = useToast()
-  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [mergeOpen, setMergeOpen] = useState(false)
   const [patient, setPatient] = useState<Patient | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
@@ -238,6 +165,21 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const requestedTab = searchParams.get('tab') ?? ''
   const activeTab = PATIENT_TABS.includes(requestedTab) ? requestedTab : 'overview'
 
+  /**
+   * Is there anything to show, rather than: is there a row?
+   *
+   * A history that was recorded and then cleared leaves a row with three empty
+   * lists behind it. Keying the card on the row drew an empty card, which reads
+   * as a panel that failed to load rather than as a record with nothing in it.
+   */
+  const history = patient?.medicalHistory
+  const hasMedicalHistory = Boolean(
+    history &&
+    ((history.allergies?.length ?? 0) > 0 ||
+      (history.conditions?.length ?? 0) > 0 ||
+      (history.currentMedications?.length ?? 0) > 0)
+  )
+
   const setActiveTab = (tab: string) => {
     const next = new URLSearchParams(searchParams.toString())
     if (tab === 'overview') next.delete('tab')
@@ -247,25 +189,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     // button with steps the user has to press their way out of.
     router.replace(query ? `?${query}` : '?', { scroll: false })
   }
-
-  // Document upload state
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploadType, setUploadType] = useState('')
-  const [uploadDescription, setUploadDescription] = useState('')
-
-  // Document view state
-  const [viewDocument, setViewDocument] = useState<Document | null>(null)
-  const [viewerIndex, setViewerIndex] = useState(0)
-
-  // Annotation state
-  const [annotateDocument, setAnnotateDocument] = useState<Document | null>(null)
-
-  // Compare state
-  const [compareMode, setCompareMode] = useState(false)
-  const [compareSelection, setCompareSelection] = useState<Document[]>([])
-  const [compareOpen, setCompareOpen] = useState(false)
 
   // Timeline state
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
@@ -321,149 +244,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       fetchTimeline()
     }
   }, [activeTab, fetchTimeline])
-
-  const handleUploadDocument = async () => {
-    if (!uploadFile || !uploadType) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Please select a file and document type',
-      })
-      return
-    }
-
-    try {
-      setUploading(true)
-
-      const formData = new FormData()
-      formData.append('file', uploadFile)
-      formData.append('documentType', uploadType)
-      if (uploadDescription) {
-        formData.append('description', uploadDescription)
-      }
-
-      const response = await fetch(`/api/patients/${resolvedParams.id}/documents`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to upload document')
-      }
-
-      toast({
-        title: 'Success',
-        description: 'Document uploaded successfully',
-      })
-
-      setUploadDialogOpen(false)
-      setUploadFile(null)
-      setUploadType('')
-      setUploadDescription('')
-      fetchPatient()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to upload document',
-      })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleDownloadDocument = async (doc: Document) => {
-    try {
-      const response = await fetch(
-        `/api/patients/${resolvedParams.id}/documents/${doc.id}?download=true`
-      )
-      if (!response.ok) throw new Error('Failed to download document')
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = doc.originalName
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to download document',
-      })
-    }
-  }
-
-  const handleDeleteDocument = async (docId: string) => {
-    const ok = await confirm({
-      title: 'Delete document?',
-      description: 'Are you sure you want to delete this document?',
-      confirmLabel: 'Delete',
-    })
-    if (!ok) return
-
-    try {
-      const response = await fetch(`/api/patients/${resolvedParams.id}/documents/${docId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) throw new Error('Failed to delete document')
-
-      toast({
-        title: 'Success',
-        description: 'Document deleted successfully',
-      })
-      fetchPatient()
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete document',
-      })
-    }
-  }
-
-  // Save annotations for a document
-  const handleSaveAnnotations = async (docId: string, annotations: Annotation[]) => {
-    const response = await fetch(
-      `/api/patients/${resolvedParams.id}/documents/${docId}/annotations`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ annotations }),
-      }
-    )
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error(err.error || 'Failed to save annotations')
-    }
-    toast({ title: 'Annotations saved' })
-    fetchPatient()
-  }
-
-  // Get image documents only
-  const imageDocuments = patient?.documents.filter((d) => d.fileType.startsWith('image/')) || []
-
-  // Get image list for viewer navigation
-  const viewerImages = imageDocuments.map((d) => ({
-    src: uploadUrl(d.filePath),
-    title: d.originalName,
-    subtitle: getDocumentTypeLabel(d.documentType),
-  }))
-
-  // Handle compare selection
-  const handleToggleCompare = (doc: Document) => {
-    setCompareSelection((prev) => {
-      const exists = prev.find((d) => d.id === doc.id)
-      if (exists) return prev.filter((d) => d.id !== doc.id)
-      if (prev.length >= 2) return [prev[1], doc]
-      return [...prev, doc]
-    })
-  }
 
   if (loading) {
     return (
@@ -583,13 +363,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <History className="h-4 w-4" />
             <span>Timeline</span>
           </TabsTrigger>
-          <TabsTrigger value="documents" className="gap-2">
-            <FolderOpen className="h-4 w-4" />
-            <span>Documents</span>
-            <Badge variant="secondary" className="ml-1">
-              {patient._count.documents}
-            </Badge>
-          </TabsTrigger>
           <TabsTrigger value="appointments" className="gap-2">
             <Calendar className="h-4 w-4" />
             <span>Appointments</span>
@@ -597,6 +370,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <TabsTrigger value="treatments" className="gap-2">
             <Stethoscope className="h-4 w-4" />
             <span>Treatments</span>
+          </TabsTrigger>
+          <TabsTrigger value="prescriptions" className="gap-2">
+            <Pill className="h-4 w-4" />
+            <span>Prescriptions</span>
+            <Badge variant="secondary" className="ml-1">
+              {patient._count.prescriptions}
+            </Badge>
           </TabsTrigger>
           <TabsTrigger value="billing" className="gap-2">
             <CreditCard className="h-4 w-4" />
@@ -710,53 +490,55 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Medical History Summary */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <Heart className="h-4 w-4" />
                   Medical History
                 </CardTitle>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={trail.to(`/patients/${patient.id}/edit`)}>
+                    {hasMedicalHistory ? 'Edit' : 'Record'}
+                  </Link>
+                </Button>
               </CardHeader>
               <CardContent>
-                {patient.medicalHistory ? (
+                {hasMedicalHistory ? (
                   <div className="space-y-3">
-                    {patient.medicalHistory.allergies &&
-                      patient.medicalHistory.allergies.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground">Allergies</p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {patient.medicalHistory.allergies.map((allergy, i) => (
-                              <Badge key={i} variant="destructive">
-                                {allergy}
-                              </Badge>
-                            ))}
-                          </div>
+                    {(history?.allergies?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Allergies</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {history?.allergies?.map((allergy) => (
+                            <Badge key={allergy} variant="destructive">
+                              {allergy}
+                            </Badge>
+                          ))}
                         </div>
-                      )}
-                    {patient.medicalHistory.conditions &&
-                      patient.medicalHistory.conditions.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground">Medical Conditions</p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {patient.medicalHistory.conditions.map((condition, i) => (
-                              <Badge key={i} variant="secondary">
-                                {condition}
-                              </Badge>
-                            ))}
-                          </div>
+                      </div>
+                    )}
+                    {(history?.conditions?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Medical Conditions</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {history?.conditions?.map((condition) => (
+                            <Badge key={condition} variant="secondary">
+                              {condition}
+                            </Badge>
+                          ))}
                         </div>
-                      )}
-                    {patient.medicalHistory.currentMedications &&
-                      patient.medicalHistory.currentMedications.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground">Current Medications</p>
-                          <p className="text-sm">
-                            {patient.medicalHistory.currentMedications.join(', ')}
-                          </p>
-                        </div>
-                      )}
+                      </div>
+                    )}
+                    {(history?.currentMedications?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Current Medications</p>
+                        <p className="text-sm">{history?.currentMedications?.join(', ')}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">No medical history recorded</p>
+                  <p className="text-muted-foreground">
+                    Nothing recorded — an allergy noted here is checked against every prescription.
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -953,301 +735,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </Card>
         </TabsContent>
 
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Documents</CardTitle>
-                <CardDescription>
-                  X-rays, photos, consent forms, and other patient documents
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {imageDocuments.length >= 2 && (
-                  <Button
-                    variant={compareMode ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      setCompareMode((m) => !m)
-                      setCompareSelection([])
-                    }}
-                  >
-                    {compareMode ? 'Cancel Compare' : 'Compare'}
-                  </Button>
-                )}
-                {compareMode && compareSelection.length === 2 && (
-                  <Button size="sm" onClick={() => setCompareOpen(true)}>
-                    Compare Selected
-                  </Button>
-                )}
-                <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Document
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Upload Document</DialogTitle>
-                      <DialogDescription>Upload a new document for this patient</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="file">File</Label>
-                        <Input
-                          id="file"
-                          type="file"
-                          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Supported: JPEG, PNG, GIF, WebP, PDF, DOC, DOCX (max 10MB)
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="type">Document Type</Label>
-                        <Select value={uploadType} onValueChange={setUploadType}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DOCUMENT_TYPES.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="description">Description (optional)</Label>
-                        <Textarea
-                          id="description"
-                          placeholder="Enter a description..."
-                          value={uploadDescription}
-                          onChange={(e) => setUploadDescription(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleUploadDocument} disabled={uploading}>
-                        {uploading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                        Upload
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {patient.documents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[200px] text-center">
-                  <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No documents uploaded yet</p>
-                  <p className="text-sm text-muted-foreground">
-                    Upload X-rays, photos, or other documents
-                  </p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {compareMode && <TableHead className="w-10" />}
-                      <TableHead>Document</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {patient.documents.map((doc) => {
-                      const IconComponent = getDocumentTypeIcon(doc.documentType)
-                      const isImage = doc.fileType.startsWith('image/')
-                      const isSelected = compareSelection.some((d) => d.id === doc.id)
-                      return (
-                        <TableRow
-                          key={doc.id}
-                          className={isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : ''}
-                        >
-                          {compareMode && (
-                            <TableCell>
-                              {isImage && (
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => handleToggleCompare(doc)}
-                                  className="h-4 w-4"
-                                />
-                              )}
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              {isImage ? (
-                                <div
-                                  className="flex h-10 w-10 items-center justify-center rounded bg-muted overflow-hidden cursor-pointer"
-                                  onClick={() => {
-                                    const idx = imageDocuments.findIndex((d) => d.id === doc.id)
-                                    setViewerIndex(idx >= 0 ? idx : 0)
-                                    setViewDocument(doc)
-                                  }}
-                                >
-                                  <img
-                                    src={uploadUrl(doc.filePath)}
-                                    alt=""
-                                    className="h-10 w-10 object-cover"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="flex h-10 w-10 items-center justify-center rounded bg-muted">
-                                  <IconComponent className="h-5 w-5 text-muted-foreground" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-medium">{doc.originalName}</p>
-                                {doc.description && (
-                                  <p className="text-sm text-muted-foreground">{doc.description}</p>
-                                )}
-                                {doc.annotations &&
-                                  (doc.annotations as Annotation[]).length > 0 && (
-                                    <Badge variant="secondary" className="text-xs mt-0.5">
-                                      {(doc.annotations as Annotation[]).length} annotation
-                                      {(doc.annotations as Annotation[]).length !== 1 ? 's' : ''}
-                                    </Badge>
-                                  )}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {getDocumentTypeLabel(doc.documentType)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
-                          <TableCell>{displayDate(doc.createdAt)}</TableCell>
-                          <TableCell className="text-right row-actions">
-                            <DropdownMenu>
-                              <IconTooltip label="More actions">
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label="More actions">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                              </IconTooltip>
-                              <DropdownMenuContent align="end">
-                                {isImage && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        const idx = imageDocuments.findIndex((d) => d.id === doc.id)
-                                        setViewerIndex(idx >= 0 ? idx : 0)
-                                        setViewDocument(doc)
-                                      }}
-                                    >
-                                      <Eye className="h-4 w-4 mr-2" />
-                                      View
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setAnnotateDocument(doc)}>
-                                      <Pen className="h-4 w-4 mr-2" />
-                                      Annotate
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                <DropdownMenuItem onClick={() => handleDownloadDocument(doc)}>
-                                  <Download className="h-4 w-4 mr-2" />
-                                  Download
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDeleteDocument(doc.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Image Viewer */}
-          {viewDocument && (
-            <ImageViewer
-              open={!!viewDocument}
-              onOpenChange={(open) => {
-                if (!open) setViewDocument(null)
-              }}
-              src={uploadUrl(viewDocument.filePath)}
-              title={viewDocument.originalName}
-              subtitle={viewDocument.description || getDocumentTypeLabel(viewDocument.documentType)}
-              images={viewerImages}
-              currentIndex={viewerIndex}
-              onIndexChange={(idx) => {
-                setViewerIndex(idx)
-                setViewDocument(imageDocuments[idx])
-              }}
-              onDownload={() => handleDownloadDocument(viewDocument)}
-              onAnnotate={() => {
-                setViewDocument(null)
-                setAnnotateDocument(viewDocument)
-              }}
-              onCompare={
-                imageDocuments.length >= 2
-                  ? () => {
-                      setViewDocument(null)
-                      setCompareMode(true)
-                    }
-                  : undefined
-              }
-            />
-          )}
-
-          {/* Image Annotator */}
-          {annotateDocument && (
-            <ImageAnnotator
-              open={!!annotateDocument}
-              onOpenChange={(open) => {
-                if (!open) setAnnotateDocument(null)
-              }}
-              src={uploadUrl(annotateDocument.filePath)}
-              title={annotateDocument.originalName}
-              annotations={(annotateDocument.annotations as Annotation[]) || []}
-              onSave={(anns) => handleSaveAnnotations(annotateDocument.id, anns)}
-            />
-          )}
-
-          {/* Image Compare */}
-          {compareSelection.length === 2 && (
-            <ImageCompare
-              open={compareOpen}
-              onOpenChange={setCompareOpen}
-              before={{
-                src: uploadUrl(compareSelection[0].filePath),
-                title: compareSelection[0].originalName,
-                date: displayDate(compareSelection[0].createdAt),
-              }}
-              after={{
-                src: uploadUrl(compareSelection[1].filePath),
-                title: compareSelection[1].originalName,
-                date: displayDate(compareSelection[1].createdAt),
-              }}
-            />
-          )}
-        </TabsContent>
-
         {/* Appointments Tab */}
         <TabsContent value="appointments" className="space-y-6">
           <Card>
@@ -1385,6 +872,78 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </Card>
         </TabsContent>
 
+        {/* Prescriptions Tab */}
+        <TabsContent value="prescriptions" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Prescriptions</CardTitle>
+                <CardDescription>What this patient was told to take, and when</CardDescription>
+              </div>
+              <Button asChild>
+                <Link href={trail.to(`/prescriptions/new?patientId=${patient.id}`)}>
+                  <Pill className="h-4 w-4 mr-2" />
+                  New Prescription
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {patient.prescriptions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-[200px]">
+                  <Pill className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No prescriptions written</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Number</TableHead>
+                      <TableHead>Medications</TableHead>
+                      <TableHead>Doctor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {patient.prescriptions.map((rx) => (
+                      <ClickableRow
+                        key={rx.id}
+                        href={trail.to(`/prescriptions/${rx.id}`)}
+                        label={`Open prescription ${rx.prescriptionNo}`}
+                      >
+                        <TableCell>{displayDate(rx.createdAt)}</TableCell>
+                        <TableCell className="font-medium">{rx.prescriptionNo}</TableCell>
+                        <TableCell>
+                          {rx.medications.length === 0 ? (
+                            <span className="text-muted-foreground">No medicines</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {rx.medications.map((med) => (
+                                <p key={med.id} className="text-sm">
+                                  <span className="font-medium">{med.medicationName}</span>
+                                  <span className="text-muted-foreground">
+                                    {' '}
+                                    {med.dosage} · {med.frequency}
+                                  </span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {rx.diagnosis && (
+                            <p className="text-xs text-muted-foreground mt-1">{rx.diagnosis}</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {rx.doctor ? `Dr. ${rx.doctor.firstName} ${rx.doctor.lastName}` : 'N/A'}
+                        </TableCell>
+                      </ClickableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Billing Tab */}
         <TabsContent value="billing" className="space-y-6">
           <Card>
@@ -1459,7 +1018,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         patient={patient}
         onMerged={() => fetchPatient()}
       />
-      {ConfirmDialogComponent}
     </div>
   )
 }

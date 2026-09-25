@@ -21,6 +21,12 @@ import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { DuplicateDetector } from '@/components/patients/duplicate-detector'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
+import { MedicalHistoryFields } from '@/components/patients/medical-history-fields'
+import {
+  EMPTY_MEDICAL_HISTORY,
+  isBlankMedicalHistory,
+  type MedicalHistoryInput,
+} from '@/lib/medical-history'
 
 export default function NewPatientPage() {
   const router = useRouter()
@@ -51,6 +57,13 @@ export default function NewPatientPage() {
     emergencyContactPhone: '',
     emergencyContactRelation: '',
   })
+
+  /**
+   * Kept beside the patient rather than inside `form`, because it is a
+   * different shape — three lists, not a flat bag of strings — and because it
+   * is sent as its own nested object.
+   */
+  const [history, setHistory] = useState<MedicalHistoryInput>(EMPTY_MEDICAL_HISTORY)
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -94,6 +107,11 @@ export default function NewPatientPage() {
       if (form.emergencyContactPhone) payload.emergencyContactPhone = form.emergencyContactPhone
       if (form.emergencyContactRelation)
         payload.emergencyContactRelation = form.emergencyContactRelation
+      // Omitted entirely when nothing was filled in, so a patient registered
+      // without a history has no row rather than an empty one. "Not asked" and
+      // "asked, nothing to report" look the same on screen either way, and the
+      // absent row is the honest one.
+      if (!isBlankMedicalHistory(history)) payload.medicalHistory = history
 
       const response = await fetch('/api/patients', {
         method: 'POST',
@@ -381,6 +399,8 @@ export default function NewPatientPage() {
             </div>
           </CardContent>
         </Card>
+
+        <MedicalHistoryFields values={history} onChange={setHistory} />
 
         {/* Duplicate Detection */}
         <DuplicateDetector

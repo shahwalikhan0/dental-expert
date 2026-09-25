@@ -183,8 +183,8 @@ test.describe('Patient Management', () => {
     })
   })
 
-  test.describe('Patient Documents', () => {
-    test('should navigate to patient documents section', async ({ adminPage: page }) => {
+  test.describe('Patient Prescriptions', () => {
+    test('should navigate to patient prescriptions section', async ({ adminPage: page }) => {
       await page.goto('/patients')
       await page.waitForTimeout(1000)
       // Click on first patient to view details
@@ -192,13 +192,9 @@ test.describe('Patient Management', () => {
       if (await patientLink.isVisible()) {
         await patientLink.click()
         await page.waitForTimeout(1000)
-        // Look for documents tab or section
-        const documentsTab = page
-          .getByRole('tab', { name: /document/i })
-          .or(page.getByText(/document/i))
-          .first()
-        if (await documentsTab.isVisible()) {
-          await documentsTab.click()
+        const prescriptionsTab = page.getByRole('tab', { name: /prescription/i }).first()
+        if (await prescriptionsTab.isVisible()) {
+          await prescriptionsTab.click()
           await expect(page.locator('body')).toBeVisible()
         }
       }
