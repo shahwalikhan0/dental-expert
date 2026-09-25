@@ -69,10 +69,16 @@ export const ClickableRow = React.forwardRef<HTMLTableRowElement, ClickableRowPr
         tabIndex={0}
         aria-label={label}
         data-href={href}
-        className={cn(
-          'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-          className
-        )}
+        /*
+         * The focus state is in app/globals.css, keyed off `data-href`.
+         *
+         * It asked for `ring-2 ring-inset` here, which is a box-shadow on a
+         * `<tr>` — and a row in a border-collapsed table paints no box of its
+         * own, so the ring never appeared. Tabbing down a list highlighted
+         * nothing. A background and a leading bar are drawn instead, both of
+         * which a row does paint.
+         */
+        className={cn('cursor-pointer focus-visible:outline-none', className)}
         onClick={(event) => {
           onClick?.(event)
           if (event.defaultPrevented) return
@@ -144,7 +150,10 @@ export function GridPagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t border-border/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
+        // The same faint wash as the header rail at the other end of the
+        // grid, so the rows are bounded by one material rather than by a
+        // legend at the top and a bare line at the bottom.
+        'flex flex-col gap-3 border-t border-border/60 bg-foreground/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
         className
       )}
     >
@@ -332,7 +341,13 @@ export const SortableHeader = React.forwardRef<HTMLTableCellElement, SortableHea
            * `<th>` asks for stop at this element — a sortable column would read
            * in sentence case beside plain columns in capitals.
            */
-          className="inline-flex items-center gap-1.5 rounded-md uppercase tracking-[0.08em] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md uppercase tracking-[0.08em] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            // The column the grid is ordered by, named as plainly as the arrow
+            // beside it. A coloured arrow over a muted label said which way it
+            // was sorted without saying which column was doing the sorting.
+            active && 'text-foreground'
+          )}
         >
           {children}
           {/*

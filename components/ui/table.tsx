@@ -125,7 +125,15 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
 
     return (
       <div className="relative w-full">
-        <div ref={scroller} className="w-full overflow-auto">
+        {/* The fade is a mask on the content, not a veil over it — see
+            `.grid-scroller` in app/globals.css for why a card-coloured
+            gradient stopped being the right answer. */}
+        <div
+          ref={scroller}
+          data-fade-start={edges.left ? '' : undefined}
+          data-fade-end={edges.right ? '' : undefined}
+          className="grid-scroller w-full overflow-auto"
+        >
           <table
             ref={setRefs}
             className={cn('table-stacked w-full caption-bottom text-sm', className)}
@@ -133,24 +141,10 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
           />
         </div>
 
-        {/* Pointer-events-none: the fade is a hint, not a control, and must not
-            swallow a tap meant for the row beneath it. */}
-        {edges.left && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-card to-transparent"
-          />
-        )}
         {edges.right && (
-          <>
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-card to-transparent"
-            />
-            <p className="hidden px-4 pt-2 text-xs text-muted-foreground sm:block md:hidden">
-              Scroll sideways for the rest of each row.
-            </p>
-          </>
+          <p className="hidden px-4 pt-2 text-xs text-muted-foreground sm:block md:hidden">
+            Scroll sideways for the rest of each row.
+          </p>
         )}
       </div>
     )
@@ -180,7 +174,14 @@ const TableHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <thead
     ref={ref}
-    className={cn('[&_tr]:border-b [&_tr]:border-border/70 [&_tr]:hover:bg-transparent', className)}
+    className={cn(
+      // A rail rather than small text floating above the first row. The same
+      // faint wash as the footer below, so a grid is bounded top and bottom by
+      // the same material instead of by a line at one end and nothing at the
+      // other.
+      'bg-foreground/[0.03] [&_tr]:border-b [&_tr]:border-border/60 [&_tr]:hover:bg-transparent',
+      className
+    )}
     {...props}
   />
 ))
@@ -220,7 +221,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
          * twenty records into twenty boxes — the eye stops at each one instead
          * of running down the list.
          */
-        'border-b border-border/40 transition-colors hover:bg-foreground/[0.025] data-[state=selected]:bg-primary/10',
+        'border-b border-border/40 transition-colors hover:bg-foreground/[0.04] data-[state=selected]:bg-primary/10',
         className
       )}
       {...props}

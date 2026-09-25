@@ -261,12 +261,24 @@
       width: 100%;
     }
 
+    /*
+     * The same material as `.glass`, minus the blur.
+     *
+     * Spelled out rather than sharing the class because a `<tr>` gets its
+     * classes from twenty screens, not from us. The blur is left off on
+     * purpose: these cards sit on the page background rather than over content
+     * of their own, so it would buy nothing — and a phone showing twenty
+     * blurred surfaces at once pays for every one of them.
+     */
     .table-stacked tr {
-      border: 1px solid hsl(var(--border));
-      border-radius: var(--radius);
-      padding: 0.25rem 0.75rem;
+      border: 1px solid hsl(var(--glass-ring) / var(--glass-ring-alpha));
+      border-radius: calc(var(--radius) + 2px);
+      padding: 0.25rem 0.875rem;
       margin-bottom: 0.625rem;
-      background: hsl(var(--card));
+      background-color: hsl(var(--glass-bg) / var(--glass-alpha));
+      box-shadow:
+        inset 0 1px 0 0 hsl(var(--glass-sheen) / var(--glass-sheen-alpha)),
+        0 1px 2px -1px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
     }
 
     .table-stacked td {
@@ -280,7 +292,7 @@
     }
 
     .table-stacked td + td {
-      border-top: 1px solid hsl(var(--border) / 0.5);
+      border-top: 1px solid hsl(var(--glass-ring) / calc(var(--glass-ring-alpha) * 0.75));
     }
 
     .table-stacked td[data-label]::before {
@@ -359,6 +371,10 @@
     --glass-sheen-alpha: 0.65;
     --glass-shadow: 222 47% 11%;
     --glass-shadow-alpha: 0.1;
+    /* The selected segment of a tab strip. Near-opaque, because it is the one
+       part of the control that has to stay legible over whatever is behind. */
+    --segment-thumb: 0 0% 100%;
+    --segment-thumb-alpha: 0.92;
   }
 
   .dark {
@@ -370,6 +386,11 @@
     --glass-sheen-alpha: 0.08;
     --glass-shadow: 0 0% 0%;
     --glass-shadow-alpha: 0.45;
+    /* Lighter than the track it sits in, not darker. A raised pane catches the
+       light; iOS does the same thing, and a dark-on-dark thumb reads as a hole
+       rather than as the selected segment. */
+    --segment-thumb: 215 20% 34%;
+    --segment-thumb-alpha: 0.78;
   }
 }
 
@@ -527,6 +548,163 @@
      the hiding, just without the dissolve. */
   @media (prefers-reduced-motion: reduce) {
     .row-actions {
+      transition: none;
+    }
+  }
+}
+
+/**
+ * The tab strip, as a segmented control.
+ *
+ * It was a flat grey track with the selected tab painted in the card colour:
+ * legible, and flat against a page whose panels are already glass. The two
+ * surfaces here are deliberately opposite, which is what makes the thing read
+ * as a physical control rather than as two shades of grey —
+ *
+ *   - the track is *recessed*. Thinner than `.glass` and lit from inside the
+ *     top edge, so it reads as a groove cut into the page;
+ *   - the thumb is *raised*. Near-opaque, with the same lit top edge as every
+ *     other glass surface and a soft shadow under it.
+ *
+ * The thumb is one element that moves, not a background on whichever tab
+ * happens to be selected, so the selection slides between segments the way a
+ * physical switch would. components/ui/tabs.tsx measures it; everything about
+ * how it looks is here.
+ */
+.segmented.segmented {
+  background-color: hsl(var(--glass-bg) / calc(var(--glass-alpha) * 0.55));
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid hsl(var(--glass-ring) / var(--glass-ring-alpha));
+  box-shadow: inset 0 1px 3px -1px hsl(var(--glass-shadow) / calc(var(--glass-shadow-alpha) * 0.9));
+}
+
+.segmented-thumb {
+  background-color: hsl(var(--segment-thumb) / var(--segment-thumb-alpha));
+  border: 1px solid hsl(var(--glass-ring) / var(--glass-ring-alpha));
+  box-shadow:
+    inset 0 1px 0 0 hsl(var(--glass-sheen) / var(--glass-sheen-alpha)),
+    0 1px 3px -1px hsl(var(--glass-shadow) / var(--glass-shadow-alpha)),
+    0 4px 10px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
+  /* Width and transform are written by the component; the easing is the part
+     that belongs to the design. Slightly past the target and back, which is
+     what makes a slide feel like a switch rather than a tween. */
+  transition:
+    transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 150ms ease-out;
+}
+
+/* Same fallback reasoning as `.glass`: with no backdrop-filter a half-opaque
+   track over arbitrary content is unreadable rather than merely plain. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .segmented.segmented {
+    background-color: hsl(var(--muted));
+  }
+}
+
+/* The slide carries no information — the label and `aria-selected` already say
+   which tab is current — so it is the first thing to go. */
+@media (prefers-reduced-motion: reduce) {
+  .segmented-thumb {
+    transition: opacity 150ms ease-out;
+  }
+}
+
+/**
+ * Grids.
+ *
+ * Two things the table primitive cannot say in a class name, because they are
+ * about elements it does not put a `className` on.
+ *
+ * The edges first. A table wider than its column has always faded at whichever
+ * side had more behind it, and the fade was two absolutely-positioned divs
+ * filled `from-card` — a card-coloured veil laid over the content. That was
+ * right when a card was opaque. Every surface in this application is now
+ * translucent, so painting the card colour on top of one is painting a colour
+ * that is not there: the veil showed as a pale smear over whatever the page
+ * had behind the glass.
+ *
+ * Masking the scroller instead. The content itself fades out at an edge it
+ * runs past, so it is correct over any background, there is nothing stacked
+ * above the rows to swallow a tap, and the hint costs no elements at all. The
+ * stops are zero-width until the component says otherwise, which is why the
+ * mask is only attached to a scroller that is actually overflowing.
+ */
+.grid-scroller {
+  --grid-fade-start: 0px;
+  --grid-fade-end: 0px;
+}
+
+.grid-scroller[data-fade-start],
+.grid-scroller[data-fade-end] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--grid-fade-start),
+    #000 calc(100% - var(--grid-fade-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--grid-fade-start),
+    #000 calc(100% - var(--grid-fade-end)),
+    transparent 100%
+  );
+}
+
+.grid-scroller[data-fade-start] {
+  --grid-fade-start: 1.75rem;
+}
+
+.grid-scroller[data-fade-end] {
+  --grid-fade-end: 1.75rem;
+}
+
+/*
+ * A row that opens a record says so.
+ *
+ * Rows highlight on hover whether or not they go anywhere, which is exactly
+ * the ambiguity that made every grid hide "View Details" in a three-dot menu —
+ * see components/ui/data-grid.tsx. `data-href` marks the rows that do go
+ * somewhere, so only those get a hairline of the accent colour down their
+ * leading edge.
+ *
+ * The bar is drawn on the first cell, not on the `<tr>`. Tailwind's preflight
+ * collapses table borders, and in the collapsed model a row generates no box
+ * of its own, so a border or a box-shadow on it is simply not painted. A
+ * background on a row is.
+ *
+ * Which is also why the focus state is here. `ClickableRow` asked for
+ * `ring-2 ring-inset`, a box-shadow on the `<tr>` — so the one state that has
+ * to be visible, for the one person who cannot see the pointer, was the state
+ * that drew nothing at all. It is a background and a bar now, and unlike the
+ * hover it applies at every width: a phone has no hover, but it can very well
+ * have a keyboard.
+ */
+tr[data-href]:focus-visible {
+  outline: none;
+  background-color: hsl(var(--primary) / 0.09);
+}
+
+tr[data-href]:focus-visible > td:first-child {
+  box-shadow: inset 2px 0 0 0 hsl(var(--primary));
+}
+
+@media (min-width: 640px) {
+  tr[data-href] > td:first-child {
+    box-shadow: inset 0 0 0 0 hsl(var(--primary) / 0);
+    transition: box-shadow 150ms ease-out;
+  }
+
+  tr[data-href]:hover > td:first-child {
+    box-shadow: inset 2px 0 0 0 hsl(var(--primary));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    tr[data-href] > td:first-child {
       transition: none;
     }
   }
