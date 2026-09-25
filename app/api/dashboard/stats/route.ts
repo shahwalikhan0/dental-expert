@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { subDays, subMonths } from 'date-fns'
 import { clinicTimezone, dayRangeIn, localDay, wallClockIn } from '@/lib/appointment-time'
 import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
+import { subjectName } from '@/lib/visitors'
 
 // Helper function to convert BigInt to Number in query results
 function convertBigIntToNumber(obj: any): any {
@@ -247,10 +248,19 @@ export async function GET(req: NextRequest) {
             status: { in: ['SCHEDULED', 'CONFIRMED'] },
           },
           include: {
+            // A walk-in has a visitor and no patient, so the subject of an
+            // appointment has to be asked for both ways. Fetching only the
+            // patient made the whole dashboard 500 as soon as the next five
+            // appointments included one walk-in.
             patient: {
               select: {
                 firstName: true,
                 lastName: true,
+              },
+            },
+            visitor: {
+              select: {
+                name: true,
               },
             },
             doctor: {
@@ -424,9 +434,9 @@ export async function GET(req: NextRequest) {
         topProcedures,
       },
       recentActivity: {
-        upcomingAppointments: recentAppointments.map((apt: any) => ({
+        upcomingAppointments: recentAppointments.map((apt) => ({
           id: apt.id,
-          patientName: `${apt.patient.firstName} ${apt.patient.lastName}`,
+          patientName: subjectName(apt),
           doctorName: apt.doctor
             ? `${apt.doctor.firstName} ${apt.doctor.lastName}`
             : 'Not assigned',

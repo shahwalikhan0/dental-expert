@@ -71,6 +71,11 @@ export async function GET(req: NextRequest) {
           startsAt: true,
           status: true,
           patient: { select: { firstName: true, lastName: true } },
+          // Selected as well as searched. The walk-in clause above meant
+          // searching a visitor's name found their appointment and then
+          // labelled it "Unknown", because the name it matched on was never
+          // fetched back.
+          visitor: { select: { name: true } },
           doctor: { select: { firstName: true, lastName: true } },
         },
         take: 5,

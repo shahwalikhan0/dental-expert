@@ -18,6 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { ArrowLeft, Calendar, Clock, User, Check, Loader2, Save } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/appointment-utils'
+import { subjectName, subjectPhone } from '@/lib/visitors'
 
 interface Doctor {
   id: string
@@ -43,15 +44,21 @@ interface Appointment {
   priority: string
   chiefComplaint: string | null
   notes: string | null
-  patientId: string
+  patientId: string | null
   doctorId: string
+  /** Null on a walk-in, which has a visitor instead. */
   patient: {
     id: string
     patientId: string
     firstName: string
     lastName: string
     phone: string
-  }
+  } | null
+  visitor: {
+    id: string
+    name: string
+    phone: string | null
+  } | null
   doctor: {
     id: string
     firstName: string
@@ -275,11 +282,13 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
             </CardHeader>
             <CardContent>
               <div className="rounded-lg border p-4 bg-muted/50">
-                <p className="font-medium">
-                  {appointment.patient.firstName} {appointment.patient.lastName}
+                <p className="font-medium">{subjectName(appointment)}</p>
+                {/* A walk-in has no patient number to show — saying so is more
+                    use than a blank line where one is expected. */}
+                <p className="text-sm text-muted-foreground">
+                  {appointment.patient ? appointment.patient.patientId : 'Walk-in, not registered'}
                 </p>
-                <p className="text-sm text-muted-foreground">{appointment.patient.patientId}</p>
-                <p className="text-sm text-muted-foreground">{appointment.patient.phone}</p>
+                <p className="text-sm text-muted-foreground">{subjectPhone(appointment) ?? '-'}</p>
               </div>
             </CardContent>
           </Card>
