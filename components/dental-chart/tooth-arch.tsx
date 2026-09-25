@@ -22,6 +22,7 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { FDI_QUADRANTS, QUADRANTS } from '@/lib/teeth'
+import { ToothGlyph } from '@/components/dental-chart/tooth-glyph'
 
 /**
  * How far each tooth sits from its row's baseline, in pixels, indexed by its
@@ -57,23 +58,29 @@ export function toothWidth(tooth: number): string {
 export interface ToothButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   tooth: number
   arch: 'upper' | 'lower'
-  /** Filled in the primary colour. The picker's "chosen"; the chart's "open". */
+  /** Marked in the primary colour. The picker's "chosen"; the chart's "open". */
   selected?: boolean
-  /** The finding's colour, drawn as a dot under the number. Null for none. */
-  dotColor?: string | null
-  /** Gone from the mouth — drawn faint and dashed rather than simply coloured. */
+  /** The finding's colour, which fills the crown. Null leaves it unfilled. */
+  conditionColor?: string | null
+  /** Gone from the mouth — drawn faint, with the crown left hollow. */
   absent?: boolean
 }
 
 /**
- * One tooth.
+ * One tooth: its crown, drawn, with its FDI number underneath.
+ *
+ * The number moved out of the shape rather than sitting on top of it. Inside a
+ * filled crown it had to be white to stay legible, which meant it disappeared
+ * against a pale finding and fought the fissure lines for the same pixels;
+ * underneath, the colour says what is wrong and the number says which tooth,
+ * and neither has to be read through the other.
  *
  * `forwardRef` because both callers wrap it in a Radix `TooltipTrigger asChild`,
  * which needs the ref and the props to reach the real element.
  */
 export const ToothButton = React.forwardRef<HTMLButtonElement, ToothButtonProps>(
   function ToothButton(
-    { tooth, arch, selected, dotColor, absent, className, disabled, children, ...props },
+    { tooth, arch, selected, conditionColor, absent, className, disabled, children, ...props },
     ref
   ) {
     const offset = archOffset(tooth)
@@ -83,38 +90,38 @@ export const ToothButton = React.forwardRef<HTMLButtonElement, ToothButtonProps>
         ref={ref}
         type="button"
         disabled={disabled}
-        style={{ transform: `translateY(${arch === 'upper' ? offset : -offset}px)` }}
+        style={
+          {
+            transform: `translateY(${arch === 'upper' ? offset : -offset}px)`,
+            // Read by `ToothGlyph`. An absent tooth is an outline, never a
+            // colour: the finding is that there is nothing there to colour.
+            '--tooth-fill': absent ? 'transparent' : (conditionColor ?? 'hsl(var(--card))'),
+            '--tooth-line': selected ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
+          } as React.CSSProperties
+        }
         className={cn(
-          'group relative flex h-9 flex-col items-center justify-center rounded-lg border text-[10px] font-medium transition-all',
+          'group relative flex flex-col items-center gap-0.5 rounded-md p-0.5 transition-all',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-          toothWidth(tooth),
-          disabled ? 'cursor-not-allowed opacity-60' : 'hover:-translate-y-0.5 hover:shadow-md',
-          selected
-            ? 'border-primary bg-primary text-primary-foreground shadow-md shadow-primary/30'
-            : 'border-border/70 bg-card/80 text-muted-foreground hover:border-primary/40',
-          absent && !selected && 'border-dashed opacity-50',
+          disabled ? 'cursor-not-allowed opacity-60' : 'hover:-translate-y-0.5',
+          selected && 'bg-primary/10 ring-1 ring-primary',
+          absent && !selected && 'opacity-45',
           className
         )}
         {...props}
       >
-        {tooth}
+        <span className={cn('block h-7', toothWidth(tooth))}>
+          <ToothGlyph tooth={tooth} arch={arch} />
+        </span>
+        <span
+          className={cn(
+            'text-[9px] leading-none tabular-nums',
+            selected ? 'font-semibold text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {tooth}
+        </span>
         {/* Anything the caller wants on top — the chart marks charted surfaces here. */}
         {children}
-        {/*
-          The finding, as a dot rather than a fill. A filled tooth would fight
-          the selected state for the same pixels, and both need to be readable
-          at once — you are choosing among the defective ones.
-        */}
-        {dotColor && (
-          <span
-            aria-hidden
-            className={cn(
-              'absolute -bottom-0.5 h-1.5 w-1.5 rounded-full ring-1',
-              selected ? 'ring-primary-foreground/60' : 'ring-card'
-            )}
-            style={{ backgroundColor: dotColor }}
-          />
-        )}
       </button>
     )
   }
@@ -169,7 +176,7 @@ export function ToothArch({ tooth, onQuadrant, disabled, className }: ToothArchP
           <div className="flex items-end gap-1">
             {FDI_QUADRANTS.upperRight.map((t) => tooth(t, 'upper'))}
           </div>
-          <div className="mx-1 h-9 w-px self-center bg-border" aria-hidden />
+          <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
           <div className="flex items-end gap-1">
             {FDI_QUADRANTS.upperLeft.map((t) => tooth(t, 'upper'))}
           </div>
@@ -186,7 +193,7 @@ export function ToothArch({ tooth, onQuadrant, disabled, className }: ToothArchP
           <div className="flex items-start gap-1">
             {[...FDI_QUADRANTS.lowerRight].reverse().map((t) => tooth(t, 'lower'))}
           </div>
-          <div className="mx-1 h-9 w-px self-center bg-border" aria-hidden />
+          <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
           <div className="flex items-start gap-1">
             {[...FDI_QUADRANTS.lowerLeft].reverse().map((t) => tooth(t, 'lower'))}
           </div>

@@ -288,7 +288,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
               config ? `, ${config.label}` : ', no finding recorded'
             }`}
             onClick={() => handleToothClick(tooth)}
-            dotColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
+            conditionColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
           >
             {/* A finding that names surfaces has more to it than its colour. */}
             {surfaces && (

@@ -239,7 +239,7 @@ export function ToothPicker({
               config ? `, ${config.label}` : ''
             }`}
             onClick={() => toggle(tooth)}
-            dotColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
+            conditionColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
           />
         </TooltipTrigger>
         <TooltipContent side={arch === 'upper' ? 'top' : 'bottom'}>
