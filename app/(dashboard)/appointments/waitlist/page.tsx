@@ -6,7 +6,13 @@ import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
+import {
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  usePagedRows,
+} from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -25,14 +31,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -474,80 +473,77 @@ export default function WaitlistPage() {
             Patients are automatically notified when matching slots open up
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center h-[200px]">
-              <Loader2 className="h-6 w-6 animate-spin" />
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[200px] text-center">
-              <Clock className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No waitlist entries</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Doctor Preference</TableHead>
-                  <TableHead>Preferred Days</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Added</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[900px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Patient</TableHead>
+                <TableHead>Doctor Preference</TableHead>
+                <TableHead>Preferred Days</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Added</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={entries.length === 0}
+              emptyIcon={Clock}
+              emptyTitle="No waitlist entries"
+              emptyDescription="Add a patient here and they are told as soon as a slot matching their preferences opens up."
+            >
+              {paged.rows.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{entry.patient?.name || 'Unknown'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.patient?.patientId} | {entry.patient?.phone}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell>{entry.doctor?.name || 'Any'}</TableCell>
+                  <TableCell>
+                    {entry.preferredDays && (entry.preferredDays as string[]).length > 0
+                      ? (entry.preferredDays as string[]).map((d) => d.slice(0, 3)).join(', ')
+                      : 'Any'}
+                  </TableCell>
+                  <TableCell>{entry.preferredTime || 'Any'}</TableCell>
+                  <TableCell>
+                    <Badge className={STATUS_COLORS[entry.status] || ''}>{entry.status}</Badge>
+                  </TableCell>
+                  <TableCell>{displayDate(entry.createdAt)}</TableCell>
+                  <GridActionsCell>
+                    {entry.status === 'ACTIVE' && (
+                      <IconTooltip label="Remove from the waitlist">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove from the waitlist"
+                          onClick={() => handleRemove(entry.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </IconTooltip>
+                    )}
+                    {entry.notifiedAt && (
+                      <span className="text-xs text-muted-foreground block">
+                        Notified {displayDate(entry.notifiedAt)}
+                      </span>
+                    )}
+                    {entry.bookedAt && (
+                      <span className="text-xs text-green-600 block dark:text-green-400">
+                        Booked {displayDate(entry.bookedAt)}
+                      </span>
+                    )}
+                  </GridActionsCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.rows.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{entry.patient?.name || 'Unknown'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {entry.patient?.patientId} | {entry.patient?.phone}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{entry.doctor?.name || 'Any'}</TableCell>
-                    <TableCell>
-                      {entry.preferredDays && (entry.preferredDays as string[]).length > 0
-                        ? (entry.preferredDays as string[]).map((d) => d.slice(0, 3)).join(', ')
-                        : 'Any'}
-                    </TableCell>
-                    <TableCell>{entry.preferredTime || 'Any'}</TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_COLORS[entry.status] || ''}>{entry.status}</Badge>
-                    </TableCell>
-                    <TableCell>{displayDate(entry.createdAt)}</TableCell>
-                    <TableCell className="text-right row-actions">
-                      {entry.status === 'ACTIVE' && (
-                        <IconTooltip label="Remove from the waitlist">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Remove from the waitlist"
-                            onClick={() => handleRemove(entry.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </IconTooltip>
-                      )}
-                      {entry.notifiedAt && (
-                        <span className="text-xs text-muted-foreground block">
-                          Notified {displayDate(entry.notifiedAt)}
-                        </span>
-                      )}
-                      {entry.bookedAt && (
-                        <span className="text-xs text-green-600 block dark:text-green-400">
-                          Booked {displayDate(entry.bookedAt)}
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={paged.page}
             pageSize={paged.pageSize}

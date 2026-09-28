@@ -30,6 +30,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.DISCOUNT_REJECTED]: 'Discount refused',
   [AUDIT_ACTIONS.REFUND_ISSUED]: 'Refund issued',
 
+  [AUDIT_ACTIONS.GUARANTOR_CHANGED]: 'Account payer changed',
+  [AUDIT_ACTIONS.RECALL_CONTACTED]: 'Recall list worked',
   [AUDIT_ACTIONS.VISITOR_CONVERTED]: 'Walk-in registered',
   [AUDIT_ACTIONS.VISITOR_DISCARDED]: 'Walk-in discarded',
   [AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED]: 'Booked online',
@@ -41,6 +43,13 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.GOODS_RECEIVED]: 'Goods received',
   [AUDIT_ACTIONS.PURCHASE_ORDER_PLACED]: 'Purchase order placed',
   [AUDIT_ACTIONS.PURCHASE_ORDER_CANCELLED]: 'Purchase order cancelled',
+
+  [AUDIT_ACTIONS.PORTAL_ACCESS_GRANTED]: 'Portal access given',
+  [AUDIT_ACTIONS.PORTAL_ACCESS_REVOKED]: 'Portal access withdrawn',
+  [AUDIT_ACTIONS.PORTAL_PASSWORD_REISSUED]: 'Portal password reissued',
+  [AUDIT_ACTIONS.PORTAL_LOGIN_SUCCESS]: 'Patient signed in',
+  [AUDIT_ACTIONS.PORTAL_LOGIN_FAILED]: 'Patient sign-in failed',
+  [AUDIT_ACTIONS.PORTAL_PASSWORD_CHANGED]: 'Patient changed their password',
 
   [AUDIT_ACTIONS.SETTINGS_UPDATED]: 'Settings changed',
   [AUDIT_ACTIONS.CLINIC_UPDATED]: 'Clinic details changed',
@@ -97,6 +106,20 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.VISITOR_CONVERTED,
       AUDIT_ACTIONS.VISITOR_DISCARDED,
       AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED,
+      AUDIT_ACTIONS.GUARANTOR_CHANGED,
+      AUDIT_ACTIONS.RECALL_CONTACTED,
+    ],
+  },
+  {
+    key: 'portal',
+    label: 'Patient portal',
+    actions: [
+      AUDIT_ACTIONS.PORTAL_ACCESS_GRANTED,
+      AUDIT_ACTIONS.PORTAL_ACCESS_REVOKED,
+      AUDIT_ACTIONS.PORTAL_PASSWORD_REISSUED,
+      AUDIT_ACTIONS.PORTAL_LOGIN_SUCCESS,
+      AUDIT_ACTIONS.PORTAL_LOGIN_FAILED,
+      AUDIT_ACTIONS.PORTAL_PASSWORD_CHANGED,
     ],
   },
   {

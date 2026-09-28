@@ -44,10 +44,12 @@ export async function generateMetadata({
   const { slug } = await params
   const clinic = await clinicFor(slug)
 
-  if (!clinic || !clinic.isActive) return { title: 'Book an appointment' }
+  if (!clinic || !clinic.isActive) return { title: { absolute: 'Dental Expert' } }
 
   return {
-    title: `Book an appointment — ${clinic.name}`,
+    // The same `{clinic} | Dental Expert` the clinic's own staff see, because
+    // this page belongs to the clinic rather than to the product.
+    title: { absolute: `${clinic.name} | Dental Expert` },
     description: `Book a dental appointment at ${clinic.name}.`,
     // A booking page is for the clinic's own patients, reached from the
     // clinic's own website. It has no business in a search index, and the URL

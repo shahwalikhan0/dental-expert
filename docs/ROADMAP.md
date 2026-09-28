@@ -15,7 +15,7 @@ Two rules for this file:
    false statement about the product made in writing to a clinic. Anything in
    that state gets removed or finished, not listed.
 
-Last reviewed: 21 September 2026.
+Last reviewed: 28 September 2026.
 
 ---
 
@@ -251,3 +251,54 @@ one is the same class of problem: a control a clinic can set that nothing reads.
   now confirmed by SMS and lands in a review queue the desk can work through
   (`bookedOnline` / `reviewedAt`), so the "we will telephone you" on that screen
   is a promise somebody can keep.
+
+---
+
+## 8. Built, reachable by API, and absent from the interface
+
+Both of these are worse than an unbuilt feature. The model, the migration, the
+storage driver and the routes exist and are maintained; what is missing is the
+last hundred lines that put them on a screen. Nothing tells a reader that, so
+the cost is paid twice — once keeping the dead code working, and once by a
+clinic that assumes the capability is there because the product is a dental
+application and every dental application has it.
+
+### 8.1 Patient documents and X-rays — **no UI at all**
+
+**What exists.** The `Document` model (X-ray, CT, photo, consent form,
+prescription, lab report, ID proof), a storage layer with a local-disk driver
+and an S3 driver (`lib/storage/`, keyed `{hospitalId}/…` for tenant isolation),
+and four routes:
+
+```
+app/api/patients/[id]/documents/route.ts
+app/api/patients/[id]/documents/[documentId]/route.ts
+app/api/patients/[id]/documents/[documentId]/annotations/route.ts
+```
+
+`Document.annotations` is a JSON column with `annotatedBy` and `annotatedAt`
+beside it, so an annotation tool existed once.
+
+**What does not exist.** Any way to reach any of it. The patient record's
+Documents tab was replaced by Prescriptions in `d24b11f` and nothing took over
+the upload. Grepping the whole of `app/` and `components/` for a reference to
+`/documents` returns nothing. There is, today, no way for a clinic to attach an
+X-ray to a patient — which for a dental application is the one attachment that
+is not optional.
+
+**Roughly what building it looks like.** A `documents` tab on the patient
+record, an upload control, a thumbnail grid filtered by `documentType`, and a
+viewer. The annotation editor is a second, larger piece and can wait; the
+upload and the viewer cannot. The X-ray-specific work — per-tooth linkage on
+`Document`, a bitewing mount, before/after pairing — is a separate item and not
+needed to close this one.
+
+### 8.2 The AI layer — see §4
+
+Unchanged since §4 was written: nine mounted components, six endpoints,
+`app/api/ai` does not exist, every call 404s on the dashboard, the patient
+record, the treatments form, the reports screen and the security settings.
+Repeated here because §4 reads as a design question ("which provider?") and
+this is the operational half of it: **until it is decided either way, five of
+the most-used screens in the product carry a visibly broken widget.** Deleting
+the components closes this in an afternoon and loses nothing that works today.

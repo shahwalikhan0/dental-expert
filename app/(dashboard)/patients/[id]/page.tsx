@@ -27,6 +27,12 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { MergeDialog } from '@/components/patients/merge-dialog'
+import { PortalAccessCard } from '@/components/patients/portal-access-card'
+import { FamilyCard } from '@/components/patients/family-card'
+import { ClinicalNotesCard } from '@/components/patients/clinical-notes-card'
+import { PatientLedger } from '@/components/billing/patient-ledger'
+import { useSession } from 'next-auth/react'
+import { holderCan } from '@/lib/rbac'
 import {
   ArrowLeft,
   Calendar,
@@ -47,6 +53,7 @@ import {
   Activity,
   Smile,
   Merge,
+  NotebookPen,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
@@ -139,6 +146,7 @@ const PATIENT_TABS = [
   'timeline',
   'appointments',
   'treatments',
+  'notes',
   'prescriptions',
   'billing',
   'forms',
@@ -148,6 +156,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const router = useRouter()
   const { toast } = useToast()
+  // Offering a button the server will refuse is worse than not offering it.
+  // The server remains the authority; see the route.
+  const { data: session } = useSession()
+  const canManagePortal = holderCan(
+    { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole },
+    'patients:write'
+  )
   const [mergeOpen, setMergeOpen] = useState(false)
   const [patient, setPatient] = useState<Patient | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
@@ -371,6 +386,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <Stethoscope className="h-4 w-4" />
             <span>Treatments</span>
           </TabsTrigger>
+          <TabsTrigger value="notes" className="gap-2">
+            <NotebookPen className="h-4 w-4" />
+            <span>Notes</span>
+          </TabsTrigger>
           <TabsTrigger value="prescriptions" className="gap-2">
             <Pill className="h-4 w-4" />
             <span>Prescriptions</span>
@@ -391,6 +410,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
           <Patient360 patientId={patient.id} />
+          <PortalAccessCard patientId={patient.id} canManage={canManagePortal} />
+          <FamilyCard
+            patientId={patient.id}
+            patientName={`${patient.firstName} ${patient.lastName}`}
+            canEdit={holderCan(session?.user, 'patients:write')}
+          />
           <div className="grid gap-6 md:grid-cols-2">
             {/* Contact Information */}
             <Card>
@@ -873,6 +898,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </TabsContent>
 
         {/* Prescriptions Tab */}
+        <TabsContent value="notes" className="space-y-6">
+          <ClinicalNotesCard
+            patientId={patient.id}
+            canWrite={holderCan(session?.user, 'clinical:write')}
+            canSign={holderCan(session?.user, 'clinical:sign')}
+          />
+        </TabsContent>
+
         <TabsContent value="prescriptions" className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -946,65 +979,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Billing Tab */}
         <TabsContent value="billing" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Billing History</CardTitle>
-              <CardDescription>Invoices and payment records</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {patient.invoices.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[200px]">
-                  <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No invoices found</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice #</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Paid</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {patient.invoices.map((invoice) => {
-                      const totalPaid = invoice.payments.reduce(
-                        (sum: number, p: any) => sum + Number(p.amount),
-                        0
-                      )
-                      return (
-                        <ClickableRow
-                          key={invoice.id}
-                          href={trail.to(`/billing/invoices/${invoice.id}`)}
-                          label={`Open invoice ${invoice.invoiceNumber}`}
-                        >
-                          <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                          <TableCell>{displayDate(invoice.createdAt)}</TableCell>
-                          <TableCell>Rs {Number(invoice.totalAmount).toLocaleString()}</TableCell>
-                          <TableCell>Rs {totalPaid.toLocaleString()}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                invoice.status === 'PAID'
-                                  ? 'default'
-                                  : invoice.status === 'CANCELLED'
-                                    ? 'destructive'
-                                    : 'secondary'
-                              }
-                            >
-                              {invoice.status}
-                            </Badge>
-                          </TableCell>
-                        </ClickableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          {/*
+            A running balance, not a list of invoices with their own balances.
+            What the desk is asked is "what do I owe you?", and the old table
+            left that sum to whoever was standing there. See lib/ledger.ts.
+          */}
+          <PatientLedger patientId={patient.id} />
         </TabsContent>
 
         {/* Forms Tab */}

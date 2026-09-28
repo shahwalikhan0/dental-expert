@@ -23,6 +23,16 @@ import type { PrismaClient, Prisma, RecareStatus } from '@prisma/client'
  */
 
 /**
+ * How long before the same patient may be chased about the same recare again.
+ *
+ * A fortnight. Short enough that a second attempt is still part of the same
+ * campaign; long enough that working the list twice in a week cannot send two
+ * messages. The desk can still override it — see `force` — because sometimes
+ * you know the first one did not arrive.
+ */
+export const RECALL_COOLDOWN_DAYS = 14
+
+/**
  * What a clinic starts with.
  *
  * The migration that added recare inserted these for every clinic that already

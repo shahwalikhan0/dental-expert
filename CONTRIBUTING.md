@@ -1,6 +1,6 @@
-# Contributing to DentalERP
+# Contributing to Dental Expert
 
-Thank you for your interest in contributing to DentalERP! This guide will help you get started.
+Thank you for your interest in contributing to Dental Expert! This guide will help you get started.
 
 ## How to Contribute
 

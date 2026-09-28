@@ -148,6 +148,14 @@ export const BUCKETS: { matches: (pathname: string) => boolean; bucket: Bucket }
     bucket: { name: 'signin', limit: 10, windowMs: 5 * MINUTE },
   },
   {
+    // A patient signing in to the portal. The same shape of door as the staff
+    // sign-in, and the same limit: the per-account lockout in
+    // lib/portal/accounts.ts counts against one patient, this counts against
+    // one source however many patient numbers it names.
+    matches: (p) => p === '/api/portal/auth/login',
+    bucket: { name: 'portal-signin', limit: 10, windowMs: 5 * MINUTE },
+  },
+  {
     // Asking for a password reset sends an email to an address the caller
     // names. Unlimited, it is a way to post mail to a stranger, repeatedly.
     matches: (p) => p.startsWith('/api/public/password-reset'),

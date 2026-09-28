@@ -7,9 +7,19 @@ import { Providers } from '@/components/providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
+  /*
+   * The tab says who you are signed in to, not which screen you are on.
+   *
+   * Somebody working two clinics has both open, and "Patients" in both tabs
+   * tells them nothing. The dashboard layout overrides this with
+   * `{clinic} | Dental Expert` once there is a session to read a clinic from —
+   * see app/(dashboard)/layout.tsx. Everything a stranger can reach, the login
+   * and signup screens above all, has no clinic to name and keeps the bare
+   * product name.
+   */
   title: {
-    default: 'DentalERP - Open Source Dental Hospital Management Software India',
-    template: '%s | DentalERP',
+    default: 'Dental Expert',
+    template: '%s | Dental Expert',
   },
   description:
     'Dental clinic management: patient records, appointment scheduling, clinical charting, billing, inventory, laboratory cases and reporting.',
@@ -17,6 +27,7 @@ export const metadata: Metadata = {
     'dental software India',
     'dental clinic management software',
     'dental hospital management system',
+    'Dental Expert',
     'dental ERP',
     'dental practice management',
     'open source dental software',
@@ -40,14 +51,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_IN',
-    title: 'DentalERP - Open Source Dental Hospital Management Software',
+    title: 'Dental Expert - Open Source Dental Hospital Management Software',
     description:
       'Dental clinic management: patient records, billing, appointments, inventory, laboratory cases and reporting.',
-    siteName: 'DentalERP',
+    siteName: 'Dental Expert',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DentalERP - Open Source Dental Hospital Management Software',
+    title: 'Dental Expert - Open Source Dental Hospital Management Software',
     description:
       'Dental clinic management: clinical records, billing, scheduling and the patient portal.',
   },
@@ -58,7 +69,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'DentalERP',
+    title: 'Dental Expert',
   },
 }
 

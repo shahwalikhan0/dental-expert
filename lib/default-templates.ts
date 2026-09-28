@@ -14,6 +14,10 @@
  *
  * SMS is kept under 160 characters with the longest plausible substitutions, so
  * a reminder is one message and not three.
+ *
+ * A clinic created before a template was added here has none of it. Settings →
+ * Communications can seed the missing ones; `seedDefaultTemplates` skips the
+ * pairs a clinic already has rather than overwriting wording somebody wrote.
  */
 import type { CommunicationChannel, TemplateCategory } from '@prisma/client'
 
@@ -59,6 +63,25 @@ export const DEFAULT_TEMPLATES: readonly DefaultTemplate[] = [
     channel: 'SMS',
     content:
       'Dear {{patientName}}, your {{labWorkType}} has arrived at {{clinicName}}. Please call {{clinicPhone}} to book a fitting.',
+  },
+  {
+    name: 'Recall reminder (SMS)',
+    category: 'FOLLOW_UP',
+    channel: 'SMS',
+    content:
+      'Dear {{patientName}}, you are due for your {{recareType}} at {{clinicName}}. Please call {{clinicPhone}} to book a time.',
+  },
+  {
+    name: 'Recall reminder (Email)',
+    category: 'FOLLOW_UP',
+    channel: 'EMAIL',
+    subject: 'Time for your {{recareType}}',
+    content:
+      '<p>Dear {{patientName}},</p>' +
+      '<p>Our records show you are due for your <strong>{{recareType}}</strong> at {{clinicName}}' +
+      '{{lastVisitClause}}.</p>' +
+      '<p>Please call us on {{clinicPhone}} and we will find you a time.</p>' +
+      '<p>{{clinicName}}</p>',
   },
   {
     name: 'Birthday wishes (SMS)',

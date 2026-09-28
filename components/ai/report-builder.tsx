@@ -2,6 +2,14 @@
 
 import { useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -180,34 +188,29 @@ export function ReportBuilder() {
           {/* data table */}
           {result.success && result.rows && result.rows.length > 0 && (
             <div className="overflow-auto max-h-64">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted">
                     {columns.map((col) => (
-                      <th
-                        key={col}
-                        className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap"
-                      >
-                        {col}
-                      </th>
+                      <TableHead key={col}>{col}</TableHead>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {result.rows.map((row, i) => (
-                    <tr
+                    <TableRow
                       key={i}
                       className={cn('border-t', i % 2 === 0 ? 'bg-background' : 'bg-muted/30')}
                     >
                       {columns.map((col) => (
-                        <td key={col} className="px-3 py-1.5 whitespace-nowrap">
+                        <TableCell key={col} className="py-1.5 whitespace-nowrap">
                           {String(row[col] ?? '—')}
-                        </td>
+                        </TableCell>
                       ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
 

@@ -1,12 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Search } from 'lucide-react'
+import { Building2, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
+import {
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  usePagedRows,
+} from '@/components/ui/data-grid'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { PLANS } from '@/lib/plans'
 import { ActiveFilters } from '@/components/ui/active-filters'
@@ -158,107 +165,115 @@ export function TenantConsole() {
             them.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading clinics…
-            </div>
-          ) : tenants.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-sm">No clinics match that search.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-muted-foreground border-b text-left text-xs uppercase">
-                    <th className="py-2 pr-4 font-medium">Clinic</th>
-                    <th className="py-2 pr-4 font-medium">Plan</th>
-                    <th className="py-2 pr-4 font-medium">Subscription</th>
-                    <th className="py-2 pr-4 font-medium">Patients</th>
-                    <th className="py-2 pr-4 font-medium">Staff</th>
-                    <th className="py-2 font-medium">Access</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paged.rows.map((tenant) => (
-                    <tr key={tenant.id} className="border-b last:border-0">
-                      <td className="py-3 pr-4">
-                        <div className="font-medium">{tenant.name}</div>
-                        <div className="text-muted-foreground text-xs">
-                          {tenant.slug}
-                          {tenant.city ? ` · ${tenant.city}` : ''}
-                          {tenant.onboardingCompleted ? '' : ' · onboarding'}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <select
-                          className={SELECT_CLASS}
-                          value={tenant.plan}
-                          disabled={saving === tenant.id}
-                          onChange={(e) =>
-                            change(tenant, { plan: e.target.value }, `moved to ${e.target.value}`)
-                          }
-                        >
-                          {PLANS.map((plan) => (
-                            <option key={plan.id} value={plan.id}>
-                              {plan.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <select
-                          className={SELECT_CLASS}
-                          value={tenant.status}
-                          disabled={saving === tenant.id}
-                          onChange={(e) =>
-                            change(tenant, { status: e.target.value }, `set ${e.target.value}`)
-                          }
-                        >
-                          {SUBSCRIPTION_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {status.replace('_', ' ')}
-                            </option>
-                          ))}
-                        </select>
-                        <Badge
-                          className={`ml-2 ${STATUS_TONE[tenant.status] ?? ''}`}
-                          variant="secondary"
-                        >
-                          {tenant.status.replace('_', ' ')}
-                        </Badge>
-                      </td>
-                      <td
-                        className={`py-3 pr-4 ${nearLimit(tenant.patients, tenant.entitlements.patients) ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                      >
-                        {usage(tenant.patients, tenant.entitlements.patients)}
-                      </td>
-                      <td
-                        className={`py-3 pr-4 ${nearLimit(tenant.users, tenant.entitlements.staff) ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                      >
-                        {usage(tenant.users, tenant.entitlements.staff)}
-                      </td>
-                      <td className="py-3 row-actions">
-                        <Button
-                          size="sm"
-                          variant={tenant.isActive ? 'outline' : 'default'}
-                          disabled={saving === tenant.id}
-                          onClick={() =>
-                            change(
-                              tenant,
-                              { isActive: !tenant.isActive },
-                              tenant.isActive ? 'switched off' : 'switched back on'
-                            )
-                          }
-                        >
-                          {tenant.isActive ? 'Switch off' : 'Reinstate'}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Clinic</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Subscription</TableHead>
+                <TableHead>Patients</TableHead>
+                <TableHead>Staff</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={6}
+              loading={loading}
+              empty={paged.rows.length === 0}
+              emptyIcon={Building2}
+              emptyTitle="No clinics match that search"
+              emptyDescription="Every clinic on the platform is listed here. Clear the search to see all of them."
+            >
+              {paged.rows.map((tenant) => (
+                <TableRow key={tenant.id}>
+                  <TableCell>
+                    <div className="font-medium">{tenant.name}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {tenant.slug}
+                      {tenant.city ? ` · ${tenant.city}` : ''}
+                      {tenant.onboardingCompleted ? '' : ' · onboarding'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <select
+                      className={SELECT_CLASS}
+                      aria-label={`Plan for ${tenant.name}`}
+                      value={tenant.plan}
+                      disabled={saving === tenant.id}
+                      onChange={(e) =>
+                        change(tenant, { plan: e.target.value }, `moved to ${e.target.value}`)
+                      }
+                    >
+                      {PLANS.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                  </TableCell>
+                  <TableCell>
+                    <select
+                      className={SELECT_CLASS}
+                      aria-label={`Subscription status for ${tenant.name}`}
+                      value={tenant.status}
+                      disabled={saving === tenant.id}
+                      onChange={(e) =>
+                        change(tenant, { status: e.target.value }, `set ${e.target.value}`)
+                      }
+                    >
+                      {SUBSCRIPTION_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {status.replace('_', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                    <Badge
+                      className={`ml-2 ${STATUS_TONE[tenant.status] ?? ''}`}
+                      variant="secondary"
+                    >
+                      {tenant.status.replace('_', ' ')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell
+                    className={
+                      nearLimit(tenant.patients, tenant.entitlements.patients)
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : ''
+                    }
+                  >
+                    {usage(tenant.patients, tenant.entitlements.patients)}
+                  </TableCell>
+                  <TableCell
+                    className={
+                      nearLimit(tenant.users, tenant.entitlements.staff)
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : ''
+                    }
+                  >
+                    {usage(tenant.users, tenant.entitlements.staff)}
+                  </TableCell>
+                  <GridActionsCell>
+                    <Button
+                      size="sm"
+                      variant={tenant.isActive ? 'outline' : 'default'}
+                      disabled={saving === tenant.id}
+                      onClick={() =>
+                        change(
+                          tenant,
+                          { isActive: !tenant.isActive },
+                          tenant.isActive ? 'switched off' : 'switched back on'
+                        )
+                      }
+                    >
+                      {tenant.isActive ? 'Switch off' : 'Reinstate'}
+                    </Button>
+                  </GridActionsCell>
+                </TableRow>
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={paged.page}
             pageSize={paged.pageSize}

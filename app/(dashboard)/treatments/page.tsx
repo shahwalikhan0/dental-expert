@@ -14,17 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
@@ -383,174 +381,137 @@ export default function TreatmentsPage() {
                 <TableHead>Teeth</TableHead>
                 <TableHead>Cost</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-28" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-28" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : treatments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Stethoscope className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No treatments found</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/treatments/new">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Create New Treatment
-                        </Link>
-                      </Button>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={treatments.length === 0}
+              emptyIcon={Stethoscope}
+              emptyTitle="No treatments found"
+              emptyDescription="Nothing has been carried out under these filters."
+              emptyActionLabel="Create New Treatment"
+              emptyActionHref="/treatments/new"
+            >
+              {treatments.map((treatment) => (
+                <ClickableRow
+                  key={treatment.id}
+                  href={trail.to(`/treatments/${treatment.id}`)}
+                  label={`Open treatment ${treatment.treatmentNo}`}
+                >
+                  <TableCell>
+                    <div className="font-medium">{treatment.treatmentNo}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {formatDate(treatment.createdAt)}
                     </div>
                   </TableCell>
-                </TableRow>
-              ) : (
-                treatments.map((treatment) => (
-                  <ClickableRow
-                    key={treatment.id}
-                    href={trail.to(`/treatments/${treatment.id}`)}
-                    label={`Open treatment ${treatment.treatmentNo}`}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{treatment.treatmentNo}</div>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-medium">
+                          {treatment.patient.firstName} {treatment.patient.lastName}
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Phone className="h-3 w-3" />
+                          {treatment.patient.phone}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{treatment.procedure.name}</div>
+                    <div className="mt-1">{getCategoryBadge(treatment.procedure.category)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">
+                      Dr. {treatment.doctor.firstName} {treatment.doctor.lastName}
+                    </div>
+                    {treatment.doctor.specialization && (
                       <div className="text-sm text-muted-foreground">
-                        {formatDate(treatment.createdAt)}
+                        {treatment.doctor.specialization}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {treatment.patient.firstName} {treatment.patient.lastName}
-                          </div>
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            {treatment.patient.phone}
-                          </div>
-                        </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {treatment.toothNumbers ? (
+                      <div className="text-sm font-medium">
+                        {formatToothNumbers(parseToothNumbers(treatment.toothNumbers))}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{treatment.procedure.name}</div>
-                      <div className="mt-1">{getCategoryBadge(treatment.procedure.category)}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        Dr. {treatment.doctor.firstName} {treatment.doctor.lastName}
-                      </div>
-                      {treatment.doctor.specialization && (
-                        <div className="text-sm text-muted-foreground">
-                          {treatment.doctor.specialization}
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{formatCurrency(treatment.cost)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {getStatusBadge(treatment.status)}
+                      {treatment.followUpRequired && (
+                        <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                          <AlertCircle className="h-3 w-3" />
+                          Follow-up
                         </div>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {treatment.toothNumbers ? (
-                        <div className="text-sm font-medium">
-                          {formatToothNumbers(parseToothNumbers(treatment.toothNumbers))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{formatCurrency(treatment.cost)}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {getStatusBadge(treatment.status)}
-                        {treatment.followUpRequired && (
-                          <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                            <AlertCircle className="h-3 w-3" />
-                            Follow-up
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
+                    </div>
+                  </TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/treatments/${treatment.id}`)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
                           <DropdownMenuItem
-                            onClick={() => router.push(`/treatments/${treatment.id}`)}
+                            onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
                           >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
                           </DropdownMenuItem>
-                          {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {treatment.status === 'PLANNED' && (
-                            <DropdownMenuItem onClick={() => handleStartTreatment(treatment.id)}>
-                              <Play className="h-4 w-4 mr-2" />
-                              Start Treatment
-                            </DropdownMenuItem>
-                          )}
-                          {treatment.status === 'IN_PROGRESS' && (
-                            <DropdownMenuItem onClick={() => handleCompleteTreatment(treatment.id)}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Complete Treatment
-                            </DropdownMenuItem>
-                          )}
-                          {treatment.appointment && (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(`/appointments/${treatment.appointment!.id}`)
-                              }
-                            >
-                              <Calendar className="h-4 w-4 mr-2" />
-                              View Appointment
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                        )}
+                        <DropdownMenuSeparator />
+                        {treatment.status === 'PLANNED' && (
+                          <DropdownMenuItem onClick={() => handleStartTreatment(treatment.id)}>
+                            <Play className="h-4 w-4 mr-2" />
+                            Start Treatment
+                          </DropdownMenuItem>
+                        )}
+                        {treatment.status === 'IN_PROGRESS' && (
+                          <DropdownMenuItem onClick={() => handleCompleteTreatment(treatment.id)}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Complete Treatment
+                          </DropdownMenuItem>
+                        )}
+                        {treatment.appointment && (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              router.push(`/appointments/${treatment.appointment!.id}`)
+                            }
+                          >
+                            <Calendar className="h-4 w-4 mr-2" />
+                            View Appointment
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

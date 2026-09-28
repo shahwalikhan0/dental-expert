@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { can } from '@/lib/rbac'
+import { normalisePhaseNames, phaseOf } from '@/lib/treatment-phases'
 
 // GET - Get single treatment plan with all details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,9 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               },
             },
           },
-          orderBy: {
-            priority: 'asc',
-          },
+          orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
         },
       },
     })
@@ -107,6 +106,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.startDate = body.startDate ? new Date(body.startDate) : null
     if (body.expectedEndDate !== undefined)
       updateData.expectedEndDate = body.expectedEndDate ? new Date(body.expectedEndDate) : null
+    if (body.phaseNames !== undefined) updateData.phaseNames = normalisePhaseNames(body.phaseNames)
     if (body.consentGiven !== undefined) {
       updateData.consentGiven = body.consentGiven
       // `consentDate` was a column nothing ever wrote. A plan could say the
@@ -167,6 +167,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           treatmentPlanId: id,
           procedureId: item.procedureId,
           toothNumbers: item.toothNumbers || null,
+          phase: phaseOf(item),
           priority: item.priority || index + 1,
           estimatedCost: item.estimatedCost ?? 0,
           notes: item.notes || null,
@@ -199,9 +200,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               },
             },
           },
-          orderBy: {
-            priority: 'asc',
-          },
+          orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
         },
       },
     })

@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import { ClickableRow, GridBody, GridPagination } from '@/components/ui/data-grid'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ClipboardList } from 'lucide-react'
 import { useTrail } from '@/components/ui/trail'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
@@ -166,94 +170,80 @@ export default function PurchaseOrdersPage() {
         />
       </div>
 
-      <div className="bg-background rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">Loading...</div>
-        ) : orders.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            No purchase orders yet. Raise one when you next order from a supplier — receiving
-            against it is what records the batch and expiry date on the stock.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  {[
-                    'Order',
-                    'Supplier',
-                    'Ordered',
-                    'Expected',
-                    'Items',
-                    'Outstanding',
-                    'Total',
-                    'Status',
-                  ].map((heading) => (
-                    <th
-                      key={heading}
-                      className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
-                    >
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-background divide-y divide-border">
-                {orders.map((order) => (
-                  <ClickableRow
-                    key={order.id}
-                    href={trail.to(`/inventory/purchase-orders/${order.id}`)}
-                    label={`Open order ${order.orderNumber}`}
-                    className="hover:bg-muted/50"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {order.orderNumber}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{order.supplier.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {formatDate(order.orderDate)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {order.expectedDate ? formatDate(order.expectedDate) : '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{order.lineCount}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {order.outstanding > 0 ? (
-                        <span className="font-medium text-amber-700 dark:text-amber-300">
-                          {order.outstanding}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {formatCurrency(order.totalAmount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          STATUS_STYLES[order.status] ?? 'bg-muted text-foreground'
-                        }`}
-                      >
-                        {statusLabel(order.status)}
-                      </span>
-                    </td>
-                  </ClickableRow>
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                {[
+                  'Order',
+                  'Supplier',
+                  'Ordered',
+                  'Expected',
+                  'Items',
+                  'Outstanding',
+                  'Total',
+                  'Status',
+                ].map((heading) => (
+                  <TableHead key={heading}>{heading}</TableHead>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={orders.length === 0}
+              emptyIcon={ClipboardList}
+              emptyTitle="No purchase orders yet"
+              emptyDescription="Raise one when you next order from a supplier — receiving against it is what records the batch and expiry date on the stock."
+            >
+              {orders.map((order) => (
+                <ClickableRow
+                  key={order.id}
+                  href={trail.to(`/inventory/purchase-orders/${order.id}`)}
+                  label={`Open order ${order.orderNumber}`}
+                >
+                  <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                  <TableCell>{order.supplier.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(order.orderDate)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {order.expectedDate ? formatDate(order.expectedDate) : '—'}
+                  </TableCell>
+                  <TableCell>{order.lineCount}</TableCell>
+                  <TableCell>
+                    {order.outstanding > 0 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        {order.outstanding}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{formatCurrency(order.totalAmount)}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={`border-0 ${STATUS_STYLES[order.status] ?? 'bg-muted text-foreground'}`}
+                    >
+                      {statusLabel(order.status)}
+                    </Badge>
+                  </TableCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
+          </Table>
 
-        <GridPagination
-          page={pagination.page}
-          pageSize={pagination.limit}
-          total={pagination.total}
-          noun="orders"
-          onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-          onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
-        />
-      </div>
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="orders"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

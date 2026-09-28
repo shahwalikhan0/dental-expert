@@ -29,6 +29,7 @@ import type { CommunicationChannel } from '@prisma/client'
 export const MESSAGE_KINDS = [
   'appointmentReminders',
   'paymentReminders',
+  'recallReminders',
   'promotions',
   'birthdayWishes',
 ] as const
@@ -43,6 +44,23 @@ export interface CommunicationPreferences {
 
   appointmentReminders: boolean
   paymentReminders: boolean
+
+  /**
+   * "You are due for a check-up." Separate from `appointmentReminders`, which
+   * is about a booking that already exists.
+   *
+   * The distinction is the patient's to make and they make it constantly: a
+   * reminder of Thursday's appointment is a service, and being told every six
+   * months that you ought to come in is, to some people, marketing. Folding
+   * recall into appointment reminders would mean somebody who wants the first
+   * cannot refuse the second without also losing the reminder for a booking
+   * they have made and intend to keep.
+   *
+   * Defaults on, like the other care-related kinds, and `doNotContact` still
+   * overrides it.
+   */
+  recallReminders: boolean
+
   promotions: boolean
   birthdayWishes: boolean
 
@@ -66,6 +84,7 @@ export const DEFAULT_PREFERENCES: CommunicationPreferences = {
   whatsapp: false,
   appointmentReminders: true,
   paymentReminders: true,
+  recallReminders: true,
   promotions: true,
   birthdayWishes: true,
   preferredChannel: 'SMS',
@@ -97,6 +116,7 @@ export function communicationPreferences(
     whatsapp: bool('whatsapp'),
     appointmentReminders: bool('appointmentReminders'),
     paymentReminders: bool('paymentReminders'),
+    recallReminders: bool('recallReminders'),
     promotions: bool('promotions'),
     birthdayWishes: bool('birthdayWishes'),
     preferredChannel:
@@ -148,6 +168,7 @@ export function mayContact(
 const LABELS: Record<MessageKind, string> = {
   appointmentReminders: 'appointment reminders',
   paymentReminders: 'payment reminders',
+  recallReminders: 'recall reminders',
   promotions: 'promotional messages',
   birthdayWishes: 'birthday messages',
 }

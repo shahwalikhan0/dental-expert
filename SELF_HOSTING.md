@@ -1,4 +1,4 @@
-# Self-hosting DentalERP
+# Self-hosting Dental Expert
 
 Running this system on your own server.
 
@@ -7,7 +7,7 @@ Running this system on your own server.
 > against this Postgres stack, so the "fetch four files, pull an image" path
 > below has been replaced by a checkout. See [CHANGES.md](CHANGES.md).
 
-This is the operator's guide. If you want to _develop_ DentalERP, read the
+This is the operator's guide. If you want to _develop_ Dental Expert, read the
 [README](README.md) instead — the development stack is a different file and a
 different set of trade-offs.
 
@@ -75,7 +75,7 @@ Then tag the build, so you can tell which commit is running and roll back to a
 previous image by tag:
 
 ```bash
-DENTAL_ERP_VERSION="v1.0.0"
+DENTAL_EXPERT_VERSION="v1.0.0"
 ```
 
 ## 3. Start it
@@ -117,7 +117,7 @@ before DNS resolves. Then:
 
 ```bash
 # in .env
-DENTAL_ERP_DOMAIN="dental.example.com"
+DENTAL_EXPERT_DOMAIN="dental.example.com"
 ACME_EMAIL="you@example.com"
 ```
 
@@ -191,7 +191,7 @@ lifecycle policy there. The database backup still covers everything else.
 ```bash
 ./scripts/backup.sh                  # first, always
 git pull
-# edit .env: DENTAL_ERP_VERSION="v1.1.0"
+# edit .env: DENTAL_EXPERT_VERSION="v1.1.0"
 docker compose build
 docker compose up -d
 ```

@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Return as JSON download
-    const filename = `dental-erp-backup-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
+    const filename = `dental-expert-backup-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
 
     return new NextResponse(JSON.stringify(backup, null, 2), {
       headers: {

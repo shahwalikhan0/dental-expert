@@ -1,4 +1,4 @@
-# DentalERP — production stack.
+# Dental Expert — production stack.
 #
 #   cp .env.production.example .env    # then fill it in
 #   docker compose up -d
@@ -55,7 +55,7 @@ services:
     # running it against this Postgres stack would fail. See CHANGES.md.
     build:
       context: .
-    image: dental-clinic:${DENTAL_ERP_VERSION:-local}
+    image: dental-clinic:${DENTAL_EXPERT_VERSION:-local}
     restart: 'no'
     command: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy']
     depends_on:
@@ -67,7 +67,7 @@ services:
   app:
     build:
       context: .
-    image: dental-clinic:${DENTAL_ERP_VERSION:-local}
+    image: dental-clinic:${DENTAL_EXPERT_VERSION:-local}
     restart: unless-stopped
     depends_on:
       postgres:

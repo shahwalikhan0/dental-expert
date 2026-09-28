@@ -1,8 +1,8 @@
 # Infrastructure Roadmap
 
-How DentalERP is packaged, deployed and run — where it is today, and where it is going.
+How Dental Expert is packaged, deployed and run — where it is today, and where it is going.
 
-This document exists to be argued with. If you are self-hosting DentalERP, or want to contribute to the plumbing rather than the features, the shape of what follows should be useful to you before it is built rather than after. Comments and pull requests are welcome on any of it.
+This document exists to be argued with. If you are self-hosting Dental Expert, or want to contribute to the plumbing rather than the features, the shape of what follows should be useful to you before it is built rather than after. Comments and pull requests are welcome on any of it.
 
 ---
 
@@ -12,7 +12,7 @@ This document exists to be argued with. If you are self-hosting DentalERP, or wa
 
 A dental clinic self-hosting on a single 4 GB VPS should not have to run Redis, an object store and an identity provider just to see a patient list.
 
-The open-source projects worth imitating get this right: Redis is a cache with an in-process fallback, S3 is a driver with a local-disk sibling, the identity provider is a configuration block rather than a bundled container. Making the whole stack mandatory would make DentalERP _harder_ to self-host, not more professional.
+The open-source projects worth imitating get this right: Redis is a cache with an in-process fallback, S3 is a driver with a local-disk sibling, the identity provider is a configuration block rather than a bundled container. Making the whole stack mandatory would make Dental Expert _harder_ to self-host, not more professional.
 
 So every item on this roadmap is designed to degrade gracefully when its service is absent:
 
@@ -22,7 +22,7 @@ So every item on this roadmap is designed to degrade gracefully when its service
 | `S3_ENDPOINT` | Local disk driver, exactly as today                          |
 | `OIDC_ISSUER` | Credentials login only, with no change to the UI             |
 
-The development Docker Compose stack is a convenience for contributors. It is never a requirement for running DentalERP.
+The development Docker Compose stack is a convenience for contributors. It is never a requirement for running Dental Expert.
 
 ---
 
@@ -121,7 +121,7 @@ See [`docs/LOCALIZATION.md`](./LOCALIZATION.md) for the wider localization desig
 
 A driver interface — `put`, `get`, `delete`, `getSignedUrl`, `exists` — with a local-disk implementation and an S3-compatible one that works against MinIO, AWS S3, R2, Spaces, Wasabi and Ceph. `STORAGE_DRIVER` defaults to `local`, so an install that sets nothing behaves exactly as before.
 
-This is what gets uploads off the container filesystem, so DentalERP can run more than one replica and survive a redeploy without losing files. Multi-tenant isolation is preserved: every stored object is keyed `{hospitalId}/...`, and the access check on served files is now enforced by a shared helper rather than by path arithmetic repeated in each route.
+This is what gets uploads off the container filesystem, so Dental Expert can run more than one replica and survive a redeploy without losing files. Multi-tenant isolation is preserved: every stored object is keyed `{hospitalId}/...`, and the access check on served files is now enforced by a shared helper rather than by path arithmetic repeated in each route.
 
 Two things worth knowing if you are upgrading:
 

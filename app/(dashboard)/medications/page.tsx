@@ -3,22 +3,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { GridPagination } from '@/components/ui/data-grid'
-import { useToast } from '@/hooks/use-toast'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
+import { useToast } from '@/hooks/use-toast'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Select,
   SelectContent,
@@ -34,9 +31,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Pill, Plus, Search, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Pill, Plus, Search, Pencil, Trash2, Loader2, MoreHorizontal } from 'lucide-react'
 import { ActiveFilters } from '@/components/ui/active-filters'
 
 const FORMS = [
@@ -380,127 +384,114 @@ export default function MedicationsPage() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : loadFailed ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Pill className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">The catalog could not be loaded</p>
-              <p className="text-sm">
-                This is not the same as it being empty — nothing has been lost. Try again.
-              </p>
-              <Button variant="outline" className="mt-4" onClick={fetchMedications}>
-                Try again
-              </Button>
-            </div>
-          ) : medications.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Pill className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">
-                {search || categoryFilter
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Generic Name</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Form / Strength</TableHead>
+                <TableHead>Default Dosage</TableHead>
+                <TableHead>Stock</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={7}
+              loading={loading}
+              failed={loadFailed}
+              onRetry={fetchMedications}
+              empty={medications.length === 0}
+              emptyIcon={Pill}
+              emptyTitle={
+                search || categoryFilter
                   ? 'No medications match those filters'
-                  : 'No medications found'}
-              </p>
-              <p className="text-sm">
-                {search || categoryFilter
+                  : 'No medications yet'
+              }
+              emptyDescription={
+                search || categoryFilter
                   ? 'Clear the filters above to see the whole catalog.'
-                  : 'Add your first medication to build your drug catalog.'}
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Generic Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Category</TableHead>
-                  <TableHead className="hidden lg:table-cell">Form / Strength</TableHead>
-                  <TableHead className="hidden lg:table-cell">Default Dosage</TableHead>
-                  <TableHead className="hidden sm:table-cell">Stock</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {medications.map((med) => (
-                  <TableRow key={med.id}>
-                    <TableCell className="font-medium">{med.name}</TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {med.genericName || '—'}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {med.category ? <Badge variant="secondary">{med.category}</Badge> : '—'}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      {[med.form, med.strength].filter(Boolean).join(' · ') || '—'}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                      {[med.defaultDosage, med.defaultFrequency, med.defaultDuration]
-                        .filter(Boolean)
-                        .join(', ') || '—'}
-                    </TableCell>
-                    {/*
-                      Stock, now that InventoryItem can point at a drug. A
-                      catalogue entry with nothing linked says so plainly
-                      rather than showing a zero it cannot vouch for.
-                    */}
-                    <TableCell className="hidden sm:table-cell text-sm">
-                      {(() => {
-                        const stock = medicationStock(med.inventoryItems)
-                        if (stock.state === 'unlinked') {
-                          return <span className="text-muted-foreground">Not linked</span>
-                        }
-                        return (
-                          <span
-                            className={
-                              stock.state === 'ok'
-                                ? 'text-muted-foreground'
-                                : 'font-medium text-amber-700 dark:text-amber-400'
-                            }
+                  : 'Add your first medication to build your drug catalog.'
+              }
+              emptyActionLabel={
+                canEditCatalog && !search && !categoryFilter ? 'Add Medication' : undefined
+              }
+              onEmptyAction={canEditCatalog && !search && !categoryFilter ? openAdd : undefined}
+            >
+              {medications.map((med) => (
+                <TableRow key={med.id}>
+                  <TableCell className="font-medium">{med.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{med.genericName || '—'}</TableCell>
+                  <TableCell>
+                    {med.category ? <Badge variant="secondary">{med.category}</Badge> : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {[med.form, med.strength].filter(Boolean).join(' · ') || '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {[med.defaultDosage, med.defaultFrequency, med.defaultDuration]
+                      .filter(Boolean)
+                      .join(', ') || '—'}
+                  </TableCell>
+                  {/*
+                    Stock, now that InventoryItem can point at a drug. A
+                    catalogue entry with nothing linked says so plainly rather
+                    than showing a zero it cannot vouch for.
+                  */}
+                  <TableCell className="text-sm">
+                    {(() => {
+                      const stock = medicationStock(med.inventoryItems)
+                      if (stock.state === 'unlinked') {
+                        return <span className="text-muted-foreground">Not linked</span>
+                      }
+                      return (
+                        <span
+                          className={
+                            stock.state === 'ok'
+                              ? 'text-muted-foreground'
+                              : 'font-medium text-amber-700 dark:text-amber-400'
+                          }
+                        >
+                          {stock.label}
+                        </span>
+                      )
+                    })()}
+                  </TableCell>
+                  <GridActionsCell>
+                    {/* The menu holds nothing but Edit and Delete, so a reader
+                        without the capability gets no menu rather than an
+                        empty one. */}
+                    {canEditCatalog && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(med)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => handleDelete(med)}
                           >
-                            {stock.label}
-                          </span>
-                        )
-                      })()}
-                    </TableCell>
-                    <TableCell className="row-actions">
-                      <div className="flex gap-1">
-                        {!canEditCatalog && <span className="text-muted-foreground">—</span>}
-                        {canEditCatalog && (
-                          <>
-                            <IconTooltip label="Edit this medication">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Edit this medication"
-                                className="h-8 w-8"
-                                onClick={() => openEdit(med)}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            </IconTooltip>
-                            <IconTooltip label="Delete this medication">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Delete this medication"
-                                className="h-8 w-8 text-destructive"
-                                onClick={() => handleDelete(med)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </IconTooltip>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </GridActionsCell>
+                </TableRow>
+              ))}
+            </GridBody>
+          </Table>
           <GridPagination
             page={pagination.page}
             pageSize={pagination.limit}

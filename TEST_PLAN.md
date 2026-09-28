@@ -1,4 +1,4 @@
-# DentalERP — Master Test Plan
+# Dental Expert — Master Test Plan
 
 > **Status**: In Progress — 4,153 Vitest tests passing across 177 test files + ~478 Playwright E2E tests across 51 spec files
 > **Test infrastructure**: Vitest (unit/integration), Playwright (E2E — 6 browsers), React Testing Library (components), axe-core (accessibility)

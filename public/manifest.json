@@ -1,6 +1,6 @@
 {
-  "name": "DentalERP - Dental Hospital Management",
-  "short_name": "DentalERP",
+  "name": "Dental Expert - Dental Hospital Management",
+  "short_name": "Dental Expert",
   "description": "Comprehensive dental hospital management system",
   "start_url": "/dashboard",
   "display": "standalone",

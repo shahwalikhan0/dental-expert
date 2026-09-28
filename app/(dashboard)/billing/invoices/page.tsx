@@ -15,17 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
@@ -315,181 +313,144 @@ export default function InvoicesPage() {
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Due Date</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={invoices.length === 0}
+              emptyIcon={FileText}
+              emptyTitle="No invoices found"
+              emptyDescription="Nothing has been billed under these filters."
+              emptyActionLabel="Create New Invoice"
+              emptyActionHref="/billing/invoices/new"
+            >
+              {invoices.map((invoice) => {
+                const dueDays = getDueDays(invoice.dueDate)
+                return (
+                  <ClickableRow
+                    key={invoice.id}
+                    href={trail.to(`/billing/invoices/${invoice.id}`)}
+                    label={`Open invoice ${invoice.invoiceNo}`}
+                  >
                     <TableCell>
-                      <Skeleton className="h-4 w-24" />
+                      <div className="font-medium">{invoice.invoiceNo}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatDate(invoice.createdAt)}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : invoices.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <FileText className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No invoices found</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/billing/invoices/new">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Create New Invoice
-                        </Link>
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                invoices.map((invoice) => {
-                  const dueDays = getDueDays(invoice.dueDate)
-                  return (
-                    <ClickableRow
-                      key={invoice.id}
-                      href={trail.to(`/billing/invoices/${invoice.id}`)}
-                      label={`Open invoice ${invoice.invoiceNo}`}
-                    >
-                      <TableCell>
-                        <div className="font-medium">{invoice.invoiceNo}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {formatDate(invoice.createdAt)}
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                          <User className="h-4 w-4 text-primary" />
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                            <User className="h-4 w-4 text-primary" />
+                        <div>
+                          <div className="font-medium">
+                            {invoice.patient.firstName} {invoice.patient.lastName}
                           </div>
-                          <div>
-                            <div className="font-medium">
-                              {invoice.patient.firstName} {invoice.patient.lastName}
-                            </div>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <Phone className="h-3 w-3" />
-                              {invoice.patient.phone}
-                            </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            {invoice.patient.phone}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(invoice.totalAmount)}
-                      </TableCell>
-                      <TableCell className="text-right text-green-600 dark:text-green-400">
-                        {formatCurrency(invoice.paidAmount)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={
-                            Number(invoice.balanceAmount) > 0
-                              ? 'text-red-600 font-medium dark:text-red-400'
-                              : ''
-                          }
-                        >
-                          {formatCurrency(invoice.balanceAmount)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {invoice.dueDate ? (
-                          <div className="flex flex-col">
-                            <span className="text-sm">{formatDate(invoice.dueDate)}</span>
-                            {dueDays.isOverdue && invoice.status !== 'PAID' && (
-                              <span className="text-xs text-red-600 flex items-center gap-1 dark:text-red-400">
-                                <Clock className="h-3 w-3" />
-                                {dueDays.label}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                      <TableCell className="text-right row-actions">
-                        <DropdownMenu>
-                          <IconTooltip label="More actions">
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </IconTooltip>
-                          <DropdownMenuContent align="end">
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(invoice.totalAmount)}
+                    </TableCell>
+                    <TableCell className="text-right text-green-600 dark:text-green-400">
+                      {formatCurrency(invoice.paidAmount)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={
+                          Number(invoice.balanceAmount) > 0
+                            ? 'text-red-600 font-medium dark:text-red-400'
+                            : ''
+                        }
+                      >
+                        {formatCurrency(invoice.balanceAmount)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {invoice.dueDate ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm">{formatDate(invoice.dueDate)}</span>
+                          {dueDays.isOverdue && invoice.status !== 'PAID' && (
+                            <span className="text-xs text-red-600 flex items-center gap-1 dark:text-red-400">
+                              <Clock className="h-3 w-3" />
+                              {dueDays.label}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                    <GridActionsCell>
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/billing/invoices/${invoice.id}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          {invoice.status === 'DRAFT' && (
                             <DropdownMenuItem
-                              onClick={() => router.push(`/billing/invoices/${invoice.id}`)}
+                              onClick={() => router.push(`/billing/invoices/${invoice.id}/edit`)}
                             >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
                             </DropdownMenuItem>
-                            {invoice.status === 'DRAFT' && (
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/billing/invoices/${invoice.id}/edit`)}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  router.push(`/billing/invoices/${invoice.id}?action=payment`)
-                                }
-                              >
-                                <CreditCard className="h-4 w-4 mr-2" />
-                                Record Payment
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => window.print()}>
-                              <Printer className="h-4 w-4 mr-2" />
-                              Print Invoice
+                          )}
+                          <DropdownMenuSeparator />
+                          {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(`/billing/invoices/${invoice.id}?action=payment`)
+                              }
+                            >
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              Record Payment
                             </DropdownMenuItem>
-                            {invoice.patient.email && (
-                              <DropdownMenuItem>
-                                <Mail className="h-4 w-4 mr-2" />
-                                Send via Email
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
-                              <DropdownMenuItem
-                                onClick={() => handleDelete(invoice.id)}
-                                className="text-red-600 dark:text-red-400"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Cancel Invoice
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </ClickableRow>
-                  )
-                })
-              )}
-            </TableBody>
+                          )}
+                          <DropdownMenuItem onClick={() => window.print()}>
+                            <Printer className="h-4 w-4 mr-2" />
+                            Print Invoice
+                          </DropdownMenuItem>
+                          {invoice.patient.email && (
+                            <DropdownMenuItem>
+                              <Mail className="h-4 w-4 mr-2" />
+                              Send via Email
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(invoice.id)}
+                              className="text-red-600 dark:text-red-400"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Cancel Invoice
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </GridActionsCell>
+                  </ClickableRow>
+                )
+              })}
+            </GridBody>
           </Table>
 
           <GridPagination

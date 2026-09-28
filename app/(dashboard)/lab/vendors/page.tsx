@@ -14,14 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -33,8 +26,12 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { GridPagination } from '@/components/ui/data-grid'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import {
   Plus,
   Search,
@@ -463,124 +460,111 @@ export default function LabVendorsPage() {
 
       {/* Vendors Table */}
       <Card>
-        <CardContent className="pt-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[900px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Vendor Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Specializations</TableHead>
+                <TableHead>Turnaround</TableHead>
+                <TableHead>Rating</TableHead>
+                <TableHead>Status</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={vendors.length === 0}
+              emptyIcon={FlaskConical}
+              emptyTitle="No vendors found"
+              emptyDescription="Lab orders are placed against a vendor, so add the laboratories you work with."
+              emptyActionLabel="Add Vendor"
+              onEmptyAction={() => handleOpenDialog()}
+            >
+              {vendors.map((vendor) => (
+                <TableRow key={vendor.id}>
+                  <TableCell className="font-medium">{vendor.code}</TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{vendor.name}</div>
+                      <div className="text-sm text-muted-foreground">{vendor.contactPerson}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="flex items-center text-sm">
+                        <Phone className="mr-1 h-3 w-3" />
+                        {vendor.phone}
+                      </div>
+                      {vendor.email && (
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Mail className="mr-1 h-3 w-3" />
+                          {vendor.email}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      {vendor.specializations
+                        ? vendor.specializations.split(',').slice(0, 2).join(', ')
+                        : '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Clock className="mr-1 h-3 w-3" />
+                      {vendor.avgTurnaround} days
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Star className="mr-1 h-3 w-3 fill-yellow-400 text-yellow-400" />
+                      {vendor.rating.toFixed(1)}
+                    </div>
+                  </TableCell>
+                  <TableCell>{getStatusBadge(vendor.status)}</TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleOpenDialog(vendor)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleDelete(vendor.id)}
+                          className="text-red-600 dark:text-red-400"
+                        >
+                          <Trash className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </TableRow>
               ))}
-            </div>
-          ) : vendors.length === 0 ? (
-            <div className="text-center py-12">
-              <FlaskConical className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No vendors found</h3>
-              <p className="text-muted-foreground">Get started by adding your first lab vendor</p>
-              <Button className="mt-4" onClick={() => handleOpenDialog()}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Vendor
-              </Button>
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Vendor Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Specializations</TableHead>
-                    <TableHead>Turnaround</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vendors.map((vendor) => (
-                    <TableRow key={vendor.id}>
-                      <TableCell className="font-medium">{vendor.code}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{vendor.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {vendor.contactPerson}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center text-sm">
-                            <Phone className="mr-1 h-3 w-3" />
-                            {vendor.phone}
-                          </div>
-                          {vendor.email && (
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Mail className="mr-1 h-3 w-3" />
-                              {vendor.email}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {vendor.specializations
-                            ? vendor.specializations.split(',').slice(0, 2).join(', ')
-                            : '-'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Clock className="mr-1 h-3 w-3" />
-                          {vendor.avgTurnaround} days
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Star className="mr-1 h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          {vendor.rating.toFixed(1)}
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(vendor.status)}</TableCell>
-                      <TableCell className="text-right row-actions">
-                        <DropdownMenu>
-                          <IconTooltip label="More actions">
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </IconTooltip>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleOpenDialog(vendor)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(vendor.id)}
-                              className="text-red-600 dark:text-red-400"
-                            >
-                              <Trash className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            </GridBody>
+          </Table>
 
-              <GridPagination
-                page={pagination.page}
-                pageSize={pagination.limit}
-                total={pagination.total}
-                noun="laboratories"
-                onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
-                onPageSizeChange={(limit) => setPagination((prev) => ({ ...prev, limit, page: 1 }))}
-              />
-            </>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="laboratories"
+            onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
+            onPageSizeChange={(limit) => setPagination((prev) => ({ ...prev, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
 

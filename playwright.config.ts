@@ -3,6 +3,19 @@ import { defineConfig, devices } from '@playwright/test'
 const isCI = !!process.env.CI
 
 /**
+ * Where the server under test is listening.
+ *
+ * The two commands below do not agree on a port, and Playwright starts one and
+ * then polls the other — so this has to be derived rather than written twice.
+ * `npm run dev` is pinned to 3001, to keep a developer's machine clear of
+ * whatever else wants 3000; `npm run start` is not pinned, because it is what
+ * runs in a container where the port is the deployment's business, and Next
+ * honours PORT there.
+ */
+const port = isCI ? 3000 : 3001
+const baseURL = `http://localhost:${port}`
+
+/**
  * Browsers exercised locally. CI runs chromium only: the suite is ~480 tests,
  * and running all six projects serially on a single runner took over six hours
  * and got killed by the GitHub Actions job limit. Run the full matrix locally
@@ -36,7 +49,7 @@ export default defineConfig({
   // `open: 'never'` stops the reporter from starting a blocking preview server.
   reporter: isCI ? [['line'], ['html', { open: 'never' }]] : [['html', { open: 'on-failure' }]],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -46,7 +59,7 @@ export default defineConfig({
     // per-test timeout repeatedly in CI. CI builds first and serves the
     // production output instead.
     command: isCI ? 'npm run start' : 'npm run dev',
-    url: 'http://localhost:3000',
+    url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 120000,
   },

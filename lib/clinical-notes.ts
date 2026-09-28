@@ -36,6 +36,20 @@ export const CLINICAL_NOTE_FIELDS = [
 export type ClinicalNoteField = (typeof CLINICAL_NOTE_FIELDS)[number]
 
 /**
+ * The clinical content of a free-standing note — `ClinicalNote`, the record a
+ * telephone call or a declined treatment goes in.
+ *
+ * A second list rather than a second module: the fields differ because a note
+ * has no procedure and no price, but *what signing means* must not. Sharing
+ * `diffClinicalFields`, `isUsableReason` and the minimum reason length below is
+ * the whole point — two implementations of "is this note locked" is how a
+ * clinic ends up with one kind of record that can be quietly rewritten.
+ */
+export const STANDALONE_NOTE_FIELDS = ['kind', 'summary', 'body', 'toothNumbers'] as const
+
+export type StandaloneNoteField = (typeof STANDALONE_NOTE_FIELDS)[number]
+
+/**
  * Fields that stay editable after signing without counting as an amendment.
  *
  * `cost` and `status` are billing and workflow, not the clinical record: a
@@ -60,17 +74,21 @@ export type ChangeSet = Record<string, FieldChange>
 /**
  * Which clinical fields a proposed update would actually change.
  *
+ * `fields` defaults to a treatment's, and a free-standing note passes
+ * `STANDALONE_NOTE_FIELDS`. One comparison, two record types.
+ *
  * Only fields present in the request are considered, and a value equal to what
  * is already stored is not a change — resubmitting a form unchanged must not
  * manufacture an amendment record.
  */
 export function diffClinicalFields(
   existing: Record<string, unknown>,
-  update: Record<string, unknown>
+  update: Record<string, unknown>,
+  fields: readonly string[] = CLINICAL_NOTE_FIELDS
 ): ChangeSet {
   const changes: ChangeSet = {}
 
-  for (const field of CLINICAL_NOTE_FIELDS) {
+  for (const field of fields) {
     if (!(field in update)) continue
 
     const before = normalise(existing[field])

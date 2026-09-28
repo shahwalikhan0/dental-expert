@@ -163,7 +163,7 @@ export default function PricingPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
               D
             </div>
-            <span className="font-semibold">DentalERP</span>
+            <span className="font-semibold">Dental Expert</span>
           </Link>
           <nav className="flex items-center gap-4">
             <Button variant="ghost" size="sm" asChild>
@@ -294,7 +294,7 @@ export default function PricingPage() {
       {/* Footer */}
       <footer className="border-t mt-24 py-8">
         <div className="container text-center text-sm text-muted-foreground">
-          DentalERP - Complete Dental Practice Management Solution
+          Dental Expert - Complete Dental Practice Management Solution
         </div>
       </footer>
     </div>

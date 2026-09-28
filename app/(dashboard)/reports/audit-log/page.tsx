@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { GridPagination } from '@/components/ui/data-grid'
+import { GridBody, GridPagination } from '@/components/ui/data-grid'
 import {
   Select,
   SelectContent,
@@ -27,8 +27,7 @@ import {
 import { format } from 'date-fns'
 import { useToast } from '@/hooks/use-toast'
 import { downloadCSV } from '@/lib/export-utils'
-import { TablePageSkeleton } from '@/components/ui/page-skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AUDIT_GROUPS, auditLabel, auditTone } from '@/lib/audit-labels'
 import { ActiveFilters } from '@/components/ui/active-filters'
 
@@ -120,8 +119,6 @@ export default function AuditLogPage() {
       `audit-log-${format(new Date(), 'yyyy-MM-dd')}`
     )
   }
-
-  if (loading && logs.length === 0) return <TablePageSkeleton rows={8} cols={5} />
 
   return (
     <div className="space-y-6">
@@ -232,63 +229,77 @@ export default function AuditLogPage() {
       />
 
       {/* Log entries */}
-      {logs.length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title="No audit logs found"
-          description="No activity matches your current filters. Try adjusting your search criteria."
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="divide-y">
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[860px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>When</TableHead>
+                <TableHead>Who</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Entity</TableHead>
+                <TableHead>Details</TableHead>
+                <TableHead>IP</TableHead>
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={6}
+              loading={loading}
+              skeletonRows={8}
+              empty={logs.length === 0}
+              emptyIcon={Activity}
+              emptyTitle="No audit logs found"
+              emptyDescription="No activity matches your current filters. Try adjusting your search criteria."
+            >
               {logs.map((log) => {
                 const Icon = ENTITY_ICONS[log.entityType] || ENTITY_ICONS.default
                 return (
-                  <div
-                    key={log.id}
-                    className="flex items-start gap-3 p-4 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="rounded-full bg-muted p-2 mt-0.5">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{log.user?.name || 'System'}</span>
-                        <Badge variant="outline" className={auditTone(log.action)}>
-                          {auditLabel(log.action)}
-                        </Badge>
-                        <Badge variant="outline">{log.entityType}</Badge>
-                      </div>
-                      {log.details && (
-                        <p className="text-sm text-muted-foreground mt-1 truncate">{log.details}</p>
+                  <TableRow key={log.id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {format(new Date(log.createdAt), 'MMM dd, yyyy HH:mm:ss')}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{log.user?.name || 'System'}</div>
+                      {log.user?.role && (
+                        <div className="text-xs text-muted-foreground">{log.user.role}</div>
                       )}
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>{format(new Date(log.createdAt), 'MMM dd, yyyy HH:mm:ss')}</span>
-                        {log.user?.role && <span>{log.user.role}</span>}
-                        {log.ipAddress && <span>{log.ipAddress}</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={auditTone(log.action)}>
+                        {auditLabel(log.action)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="text-sm">{log.entityType}</span>
                       </div>
-                    </div>
-                  </div>
+                    </TableCell>
+                    <TableCell className="max-w-[28rem] text-sm text-muted-foreground">
+                      <span className="block truncate">{log.details || '—'}</span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {log.ipAddress || '—'}
+                    </TableCell>
+                  </TableRow>
                 )
               })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </GridBody>
+          </Table>
 
-      <GridPagination
-        page={page}
-        pageSize={limit}
-        total={total}
-        noun="entries"
-        onPageChange={setPage}
-        onPageSizeChange={(size) => {
-          setLimit(size)
-          setPage(1)
-        }}
-        className="rounded-lg border bg-card"
-      />
+          <GridPagination
+            page={page}
+            pageSize={limit}
+            total={total}
+            noun="entries"
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setLimit(size)
+              setPage(1)
+            }}
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

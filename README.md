@@ -1,8 +1,8 @@
-# DentalERP - Free Open Source Dental Clinic Management Software for India
+# Dental Expert - Free Open Source Dental Clinic Management Software for India
 
 A comprehensive, AI-powered **dental hospital management system** built with Next.js 16, designed for **dental clinics and multi-branch hospital chains in India**. Includes GST-compliant billing, Razorpay/PhonePe/Paytm payments, patient portal, tele-dentistry, 16 AI skills, and more — completely **free and open source**.
 
-> **Looking for dental practice management software in India?** DentalERP is a free alternative to expensive proprietary dental software. Self-host it on your own server with full control over your patient data.
+> **Looking for dental practice management software in India?** Dental Expert is a free alternative to expensive proprietary dental software. Self-host it on your own server with full control over your patient data.
 
 ## Features
 
@@ -20,7 +20,7 @@ A comprehensive, AI-powered **dental hospital management system** built with Nex
 ### Advanced Features
 
 - **AI Skills (16 built-in)** — Treatment advisor, smart scheduler, billing agent, patient intake, inventory forecaster, cashflow forecaster, patient segmentation, claim analyzer, consent generator, dynamic pricing, and more
-- **Patient Portal** — Online booking, medical records access, digital intake forms
+- **Patient Portal** — Read-only. Credentials are issued at the desk; patients sign in with their patient number to see their appointments, treatments, prescriptions and bills. They cannot change anything. Online booking is separate and needs no sign-in.
 - **CRM & Loyalty** — Patient segmentation, loyalty points, referral tracking
 - **Communications** — SMS/Email/WhatsApp messaging, campaign management, marketing automation
 - **Tele-Dentistry** — Video consultations via Jitsi Meet integration
@@ -73,7 +73,7 @@ npx prisma db seed          # sample data (optional)
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3001](http://localhost:3001).
 
 You still need to fill in `NEXTAUTH_SECRET`, `ENCRYPTION_KEY` and `CRON_SECRET`
 in `.env` — the app will not start without them. Each one has a
@@ -182,7 +182,7 @@ See [`.env.example`](.env.example) for all available variables. Key ones:
 | Variable                                    | Required | Description                                   |
 | ------------------------------------------- | -------- | --------------------------------------------- |
 | `DATABASE_URL`                              | Yes      | PostgreSQL connection string                  |
-| `NEXTAUTH_URL`                              | Yes      | App URL (e.g., `http://localhost:3000`)       |
+| `NEXTAUTH_URL`                              | Yes      | App URL (e.g., `http://localhost:3001`)       |
 | `NEXTAUTH_SECRET`                           | Yes      | Random secret for session encryption          |
 | `ENCRYPTION_KEY`                            | Yes      | 64-char hex string for AES-256-GCM encryption |
 | `CRON_SECRET`                               | Yes      | Secret for securing cron job endpoints        |
@@ -355,8 +355,8 @@ Compose plugin. Building or developing from source needs:
 
 ## Documentation
 
-- [Self-hosting](SELF_HOSTING.md) — running DentalERP on your own server from a published image, with backups, TLS and upgrades.
-- [Infrastructure Roadmap](docs/INFRASTRUCTURE.md) — how DentalERP is packaged and deployed, and what is planned next. Feedback welcome, especially on the phases not yet built.
+- [Self-hosting](SELF_HOSTING.md) — running Dental Expert on your own server from a published image, with backups, TLS and upgrades.
+- [Infrastructure Roadmap](docs/INFRASTRUCTURE.md) — how Dental Expert is packaged and deployed, and what is planned next. Feedback welcome, especially on the phases not yet built.
 - [File storage](docs/STORAGE.md) — local disk vs S3, and how to move between them without losing files.
 - [Localization](docs/LOCALIZATION.md) — locale support and the message catalogue.
 - [Scheduling](docs/SCHEDULING.md) — the four background jobs, what runs them, and the shared secret they authenticate on.

@@ -1,4 +1,4 @@
-# Development backing services for DentalERP.
+# Development backing services for Dental Expert.
 #
 #   docker compose -f docker-compose.dev.yml up -d
 #

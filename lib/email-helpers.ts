@@ -7,7 +7,7 @@
 import { emailService } from '@/lib/services/email.service'
 import { roleLabel } from '@/lib/rbac'
 
-const APP_NAME = 'DentalERP'
+const APP_NAME = 'Dental Expert'
 
 function baseUrl(): string {
   return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'

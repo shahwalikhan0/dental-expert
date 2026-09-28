@@ -8,13 +8,10 @@ import {
   Building2,
   LayoutDashboard,
   Calendar,
-  FileText,
+  Stethoscope,
   CreditCard,
   Pill,
-  CalendarPlus,
-  ClipboardCheck,
-  Camera,
-  Languages,
+  KeyRound,
   LogOut,
   Menu,
   X,
@@ -26,7 +23,6 @@ interface PortalShellProps {
   patient: {
     name: string
     patientId: string
-    phone: string
   }
   hospital: {
     name: string
@@ -36,16 +32,25 @@ interface PortalShellProps {
   children: React.ReactNode
 }
 
+/**
+ * Every item here leads somewhere that exists.
+ *
+ * This list used to hold nine, including Forms, Book Appointment and Upload
+ * Photo — pages nobody had written, in a component nothing imported. A
+ * navigation entry is a promise, and one that leads to a 404 is worse than an
+ * absent feature: the patient believes the clinic offers it.
+ *
+ * Nothing here writes. Changing an appointment means telephoning the desk,
+ * which is what the booking confirmation already tells patients to do; the
+ * clinic's number is on the overview page.
+ */
 const navItems = [
-  { href: '/portal', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/portal', label: 'Overview', icon: LayoutDashboard },
   { href: '/portal/appointments', label: 'Appointments', icon: Calendar },
-  { href: '/portal/records', label: 'Records', icon: FileText },
-  { href: '/portal/bills', label: 'Bills', icon: CreditCard },
+  { href: '/portal/treatments', label: 'Treatments', icon: Stethoscope },
   { href: '/portal/prescriptions', label: 'Prescriptions', icon: Pill },
-  { href: '/portal/forms', label: 'Forms', icon: ClipboardCheck },
-  { href: '/portal/book', label: 'Book Appointment', icon: CalendarPlus },
-  { href: '/portal/upload-photo', label: 'Upload Photo', icon: Camera },
-  { href: '/portal/profile', label: 'My Preferences', icon: Languages },
+  { href: '/portal/bills', label: 'Bills', icon: CreditCard },
+  { href: '/portal/password', label: 'Password', icon: KeyRound },
 ]
 
 export function PortalShell({ patient, hospital, children }: PortalShellProps) {
@@ -54,7 +59,7 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const handleLogout = async () => {
-    await fetch('/api/patient-portal/auth/logout', { method: 'POST' })
+    await fetch('/api/portal/auth/logout', { method: 'POST' })
     router.push('/portal/login?clinic=' + hospital.slug)
   }
 
@@ -98,6 +103,7 @@ export function PortalShell({ patient, hospital, children }: PortalShellProps) {
               variant="ghost"
               size="sm"
               onClick={handleLogout}
+              aria-label="Sign out"
               className="text-muted-foreground"
             >
               <LogOut className="h-4 w-4" />

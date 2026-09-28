@@ -224,6 +224,11 @@ export const navigation: NavSection[] = [
             icon: CreditCard,
           },
           {
+            title: 'Receivables',
+            href: '/billing/receivables',
+            icon: Clock,
+          },
+          {
             title: 'Financial Reports',
             href: '/billing/reports',
             icon: TrendingUp,

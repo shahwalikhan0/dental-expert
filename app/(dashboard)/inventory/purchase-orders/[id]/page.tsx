@@ -6,6 +6,14 @@ import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 interface OrderLine {
   id: string
@@ -285,37 +293,28 @@ export default function PurchaseOrderPage() {
           )}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-muted/50">
-              <tr>
+        <div>
+          <Table className="min-w-full">
+            <TableHeader>
+              <TableRow>
                 {['Item', 'Ordered', 'Received', 'Outstanding', 'Unit price', 'Amount'].map((h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
+                  <TableHead key={h}>{h}</TableHead>
                 ))}
-                {canReceive && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Receiving now
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="bg-background divide-y divide-border">
+                {canReceive && <TableHead>Receiving now</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {order.items.map((line) => (
-                <tr key={line.id}>
-                  <td className="px-6 py-4 text-sm">
+                <TableRow key={line.id}>
+                  <TableCell>
                     <div className="font-medium">{line.item.name}</div>
                     <div className="text-xs text-muted-foreground">
                       {line.item.sku} · {line.item.currentStock} {line.item.unit} in stock
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm">{line.quantity}</td>
-                  <td className="px-6 py-4 text-sm">{line.receivedQty}</td>
-                  <td className="px-6 py-4 text-sm">
+                  </TableCell>
+                  <TableCell>{line.quantity}</TableCell>
+                  <TableCell>{line.receivedQty}</TableCell>
+                  <TableCell>
                     {line.outstanding > 0 ? (
                       <span className="text-amber-700 font-medium dark:text-amber-300">
                         {line.outstanding}
@@ -323,12 +322,12 @@ export default function PurchaseOrderPage() {
                     ) : (
                       <span className="text-green-700 dark:text-green-300">Complete</span>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-sm">{formatCurrency(line.unitPrice)}</td>
-                  <td className="px-6 py-4 text-sm">{formatCurrency(line.amount)}</td>
+                  </TableCell>
+                  <TableCell>{formatCurrency(line.unitPrice)}</TableCell>
+                  <TableCell>{formatCurrency(line.amount)}</TableCell>
 
                   {canReceive && (
-                    <td className="px-6 py-4">
+                    <TableCell>
                       {line.outstanding === 0 ? (
                         <span className="text-xs text-muted-foreground">—</span>
                       ) : (
@@ -370,12 +369,12 @@ export default function PurchaseOrderPage() {
                           )}
                         </div>
                       )}
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
 
         {canReceive && (
@@ -411,38 +410,33 @@ export default function PurchaseOrderPage() {
               Every stock movement booked in against this order.
             </p>
           </div>
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-muted/50">
-              <tr>
+          <Table className="min-w-full">
+            <TableHeader>
+              <TableRow>
                 {['Date', 'Item', 'Quantity', 'Batch', 'Expires'].map((h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
+                  <TableHead key={h}>{h}</TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody className="bg-background divide-y divide-border">
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {order.receipts.map((receipt) => {
                 const line = order.items.find((l) => l.itemId === receipt.itemId)
                 return (
-                  <tr key={receipt.id}>
-                    <td className="px-6 py-3 text-sm">{formatDate(receipt.transactionDate)}</td>
-                    <td className="px-6 py-3 text-sm">{line?.item.name ?? '—'}</td>
-                    <td className="px-6 py-3 text-sm">{receipt.quantity}</td>
-                    <td className="px-6 py-3 text-sm">
+                  <TableRow key={receipt.id}>
+                    <TableCell>{formatDate(receipt.transactionDate)}</TableCell>
+                    <TableCell>{line?.item.name ?? '—'}</TableCell>
+                    <TableCell>{receipt.quantity}</TableCell>
+                    <TableCell>
                       {receipt.batch?.batchNumber ?? receipt.batchNumber ?? '—'}
-                    </td>
-                    <td className="px-6 py-3 text-sm">
+                    </TableCell>
+                    <TableCell>
                       {receipt.batch?.expiryDate ? formatDate(receipt.batch.expiryDate) : '—'}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

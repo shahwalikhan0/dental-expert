@@ -306,7 +306,7 @@ export function Sidebar({
         {/* Footer */}
         <div className={cn('border-t py-3 text-center', RULE, isCollapsed ? 'px-2' : 'px-4')}>
           <p className="text-[10px] text-muted-foreground/70">
-            {isCollapsed ? 'v1.0' : 'Dental ERP v1.0'}
+            {isCollapsed ? 'v1.0' : 'Dental Expert v1.0'}
           </p>
         </div>
       </div>

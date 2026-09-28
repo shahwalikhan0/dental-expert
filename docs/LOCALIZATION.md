@@ -4,7 +4,7 @@
 locale override described in §2.1; steps 2–5 are still proposals. See §3 for the
 running order.
 
-DentalERP was built for Indian dental clinics, and that assumption is not confined
+Dental Expert was built for Indian dental clinics, and that assumption is not confined
 to display strings — it reaches into the invoice schema, the tax maths and the seed
 data. This document maps what is actually India-specific today, proposes an
 architecture, and suggests an order of work.

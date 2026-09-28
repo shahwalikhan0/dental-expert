@@ -31,6 +31,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           select: { id: true, patientId: true, firstName: true, lastName: true },
         },
         medicalHistory: true,
+        // Who settles this patient's bills, and who this patient settles for.
+        // Both directions, because the record has to be able to say "her
+        // mother pays for this" and "she pays for these three".
+        guarantor: {
+          select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
+        },
+        dependants: {
+          select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
+          orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+        },
         appointments: {
           take: 10,
           orderBy: { startsAt: 'desc' },

@@ -6,16 +6,16 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ClickableRow, GridPagination, usePagedRows } from '@/components/ui/data-grid'
-import { useTrail } from '@/components/ui/trail'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  usePagedRows,
+} from '@/components/ui/data-grid'
+import { useTrail } from '@/components/ui/trail'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -146,113 +146,100 @@ export default function FormsSettingsPage() {
         <CardHeader>
           <CardTitle>All Templates</CardTitle>
         </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading...</div>
-          ) : templates.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium mb-1">No form templates yet</h3>
-              <p className="text-muted-foreground mb-4">
-                Create your first form template to start collecting patient information
-              </p>
-              <div className="flex items-center gap-3 justify-center">
-                <Button asChild>
-                  <Link href="/settings/forms/new">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Template
-                  </Link>
-                </Button>
-                <Button variant="outline" onClick={handleSeedDefaults}>
-                  Load Default Templates
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Submissions</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.rows.map((t) => (
-                  <ClickableRow
-                    key={t.id}
-                    href={trail.to(`/settings/forms/${t.id}`)}
-                    label={`Open ${t.name}`}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {typeIcons[t.type]}
-                        <div>
-                          <div className="font-medium">{t.name}</div>
-                          {t.description && (
-                            <div className="text-xs text-muted-foreground line-clamp-1">
-                              {t.description}
-                            </div>
-                          )}
-                        </div>
-                        {t.isDefault && (
-                          <Badge variant="secondary" className="text-xs">
-                            Default
-                          </Badge>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Submissions</TableHead>
+                <TableHead>Created</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={6}
+              loading={loading}
+              empty={templates.length === 0}
+              emptyIcon={FileText}
+              emptyTitle="No form templates yet"
+              emptyDescription="Create one from scratch with the button above, or start from the standard set and edit from there."
+              emptyActionLabel="Load Default Templates"
+              onEmptyAction={handleSeedDefaults}
+            >
+              {paged.rows.map((t) => (
+                <ClickableRow
+                  key={t.id}
+                  href={trail.to(`/settings/forms/${t.id}`)}
+                  label={`Open ${t.name}`}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {typeIcons[t.type]}
+                      <div>
+                        <div className="font-medium">{t.name}</div>
+                        {t.description && (
+                          <div className="text-xs text-muted-foreground line-clamp-1">
+                            {t.description}
+                          </div>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{typeLabels[t.type] || t.type}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={t.isActive ? 'default' : 'secondary'}>
-                        {t.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{t._count.submissions}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {new Date(t.createdAt).toLocaleDateString('en-PK')}
-                    </TableCell>
-                    <TableCell className="row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="More actions"
-                              className="h-8 w-8"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/settings/forms/${t.id}`}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View / Edit
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDelete(t.id, t.name)}
+                      {t.isDefault && (
+                        <Badge variant="secondary" className="text-xs">
+                          Default
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{typeLabels[t.type] || t.type}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={t.isActive ? 'default' : 'secondary'}>
+                      {t.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">{t._count.submissions}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {new Date(t.createdAt).toLocaleDateString('en-PK')}
+                  </TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="More actions"
+                            className="h-8 w-8"
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </ClickableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/settings/forms/${t.id}`}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View / Edit
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDelete(t.id, t.name)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={paged.page}
             pageSize={paged.pageSize}

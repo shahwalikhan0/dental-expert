@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,19 +16,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
+  ClickableRow,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  SortableHeader,
+  useSort,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import { DUE_BAND_LABELS, daysUntil, type DueBand } from '@/lib/recare'
-import { CalendarPlus, Check, Clock, Loader2, Search, Settings2 } from 'lucide-react'
+import { DUE_BAND_LABELS, RECALL_COOLDOWN_DAYS, daysUntil, type DueBand } from '@/lib/recare'
+import type { RecallRun } from '@/lib/recall'
+import { communicationPreferences, mayContact } from '@/lib/communication-preferences'
+import {
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  Clock,
+  Loader2,
+  Search,
+  Send,
+  Settings2,
+  X,
+} from 'lucide-react'
 import { displayDate } from '@/lib/dates'
 import { ActiveFilters } from '@/components/ui/active-filters'
 
@@ -38,7 +51,14 @@ import { ActiveFilters } from '@/components/ui/active-filters'
  * then this month. Each row does one of three things — book them, mark it done,
  * or defer it with a reason — and all three are one click from the list, since
  * this screen exists to be worked through quickly rather than read.
+ *
+ * The list can also be *worked in bulk*, which is the thing it was missing. A
+ * recall list nobody contacts is a report; ticking forty overdue patients and
+ * queueing forty messages is the loop closing. Whether it closed is the strip
+ * at the top: contacted out of due, and booked out of contacted.
  */
+
+type Channel = 'SMS' | 'EMAIL' | 'WHATSAPP'
 
 interface Recare {
   id: string
@@ -46,6 +66,8 @@ interface Recare {
   lastDoneAt: string | null
   snoozedUntil: string | null
   snoozeReason: string | null
+  lastContactedAt: string | null
+  contactAttempts: number
   band: DueBand
   recareType: { id: string; name: string; intervalMonths: number }
   patient: {
@@ -55,16 +77,59 @@ interface Recare {
     lastName: string
     phone: string | null
     email: string | null
+    communicationPrefs: unknown
   }
 }
 
+interface Performance {
+  due: number
+  contacted: number
+  booked: number
+  attended: number
+  bookingRate: number
+  coverage: number
+  messagesSent: number
+}
+
 const BANDS: DueBand[] = ['OVERDUE', 'DUE_SOON', 'UPCOMING', 'SNOOZED']
+
+const CHANNEL_LABELS: Record<Channel, string> = {
+  SMS: 'Text message',
+  EMAIL: 'Email',
+  WHATSAPP: 'WhatsApp',
+}
+
+const CONTACTED_LABELS: Record<string, string> = {
+  no: 'Not contacted recently',
+  yes: `Contacted in the last ${RECALL_COOLDOWN_DAYS} days`,
+}
 
 function dueLabel(dueDate: string): string {
   const days = daysUntil(dueDate)
   if (days === 0) return 'today'
   if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`
   return `in ${days} day${days === 1 ? '' : 's'}`
+}
+
+/**
+ * Why this patient cannot be sent a recall on this channel, or null.
+ *
+ * Checked here as well as on the server so the desk sees the refusal before it
+ * selects somebody rather than afterwards in a skipped count. The server still
+ * decides — this is a courtesy, not the control.
+ */
+function contactRefusal(recare: Recare, channel: Channel): string | null {
+  const verdict = mayContact(
+    communicationPreferences(recare.patient.communicationPrefs),
+    channel,
+    'recallReminders'
+  )
+  if (!verdict.allowed) return verdict.reason
+
+  if (channel === 'EMAIL' && !recare.patient.email) return 'No email address on file'
+  if (channel !== 'EMAIL' && !recare.patient.phone) return 'No phone number on file'
+
+  return null
 }
 
 export default function RecarePage() {
@@ -75,14 +140,20 @@ export default function RecarePage() {
   const [recares, setRecares] = useState<Recare[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [types, setTypes] = useState<{ id: string; name: string }[]>([])
+  const [performance, setPerformance] = useState<Performance | null>(null)
   const [band, setBand] = useState<DueBand>('OVERDUE')
   const [typeId, setTypeId] = useState('all')
+  const [contacted, setContacted] = useState('all')
   const [search, setSearch] = useState('')
   // What is in the box, and what we are willing to ask the server about.
   const debouncedSearch = useDebouncedValue(search)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0 })
+
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [channel, setChannel] = useState<Channel>('SMS')
+  const [sending, setSending] = useState(false)
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -103,6 +174,7 @@ export default function RecarePage() {
         direction: sort.direction,
       })
       if (typeId !== 'all') params.set('typeId', typeId)
+      if (contacted !== 'all') params.set('contacted', contacted)
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
 
       const res = await fetch(`/api/recare?${params}`)
@@ -113,6 +185,9 @@ export default function RecarePage() {
       setRecares(data.recares ?? [])
       setCounts(data.counts ?? {})
       setPagination((p) => ({ ...p, total: data.pagination?.total ?? 0 }))
+      // Selection belongs to the list that was on screen. Keeping ticks across
+      // a filter change is how somebody messages a patient they cannot see.
+      setSelected(new Set())
     } catch (err) {
       toast({
         title: 'Error',
@@ -125,6 +200,7 @@ export default function RecarePage() {
   }, [
     band,
     typeId,
+    contacted,
     debouncedSearch,
     pagination.page,
     pagination.limit,
@@ -145,6 +221,19 @@ export default function RecarePage() {
       .then((data) => setTypes(data.types ?? []))
       .catch(() => setTypes([]))
   }, [])
+
+  const loadPerformance = useCallback(() => {
+    // Reports are a separate permission from the list. Somebody who may work
+    // the recall list but not read reports simply does not get the strip.
+    fetch('/api/recare/performance?range=this_month')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setPerformance(data))
+      .catch(() => setPerformance(null))
+  }, [])
+
+  useEffect(() => {
+    loadPerformance()
+  }, [loadPerformance])
 
   const act = async (recare: Recare, action: 'complete' | 'snooze' | 'unsnooze') => {
     setBusyId(recare.id)
@@ -189,6 +278,85 @@ export default function RecarePage() {
     }
   }
 
+  /** The rows this channel could actually reach, in the order they are shown. */
+  const contactable = useMemo(
+    () => recares.filter((recare) => contactRefusal(recare, channel) === null),
+    [recares, channel]
+  )
+
+  /**
+   * The ticks that still mean something.
+   *
+   * Switching channel can make a selected patient unreachable — somebody with
+   * an email address and no mobile, ticked and then switched to SMS. Narrowing
+   * the selection as it is read, rather than pruning it in an effect, keeps the
+   * tick if the desk switches back and never sends a request the server would
+   * only skip.
+   */
+  const effective = useMemo(() => {
+    const reachable = new Set(contactable.map((recare) => recare.id))
+    return [...selected].filter((id) => reachable.has(id))
+  }, [contactable, selected])
+
+  const allSelected = contactable.length > 0 && effective.length === contactable.length
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(contactable.map((recare) => recare.id)))
+  }
+
+  const toggleOne = (id: string) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const send = async (force = false) => {
+    setSending(true)
+    try {
+      const res = await fetch('/api/recare/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recareIds: effective, channel, force }),
+      })
+      const data: RecallRun & { error?: string } = await res.json()
+      if (!res.ok) throw new Error(data.error || 'The messages were not queued')
+
+      // A cooling-off skip is the one worth offering to override: the desk
+      // usually knows the first message did not land.
+      const cooled = data.outcomes.filter((o) => o.reason === 'RECENTLY_CONTACTED').length
+
+      toast({
+        title:
+          data.queued > 0
+            ? `${data.queued} message${data.queued === 1 ? '' : 's'} queued`
+            : 'Nothing was queued',
+        description: [
+          data.queued > 0 && 'They go out in the clinic’s next send window.',
+          data.skipped > 0 && `${data.skipped} skipped.`,
+          cooled > 0 && `${cooled} were contacted in the last ${RECALL_COOLDOWN_DAYS} days.`,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        variant: data.queued === 0 ? 'destructive' : undefined,
+      })
+
+      setSelected(new Set())
+      await load()
+      loadPerformance()
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'The messages were not queued',
+        variant: 'destructive',
+      })
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -205,6 +373,25 @@ export default function RecarePage() {
           </Link>
         </Button>
       </div>
+
+      {performance && performance.due > 0 && (
+        <Card>
+          <CardContent className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
+            <Figure label="Due this month" value={String(performance.due)} />
+            <Figure
+              label="Contacted"
+              value={`${performance.contacted}`}
+              hint={`${performance.coverage}% of those due`}
+            />
+            <Figure
+              label="Booked after contact"
+              value={`${performance.booked}`}
+              hint={`${performance.bookingRate}% of those contacted`}
+            />
+            <Figure label="Attended" value={String(performance.attended)} />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {BANDS.map((option) => (
@@ -258,6 +445,22 @@ export default function RecarePage() {
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={contacted}
+          onValueChange={(value) => {
+            setContacted(value)
+            setPagination((p) => ({ ...p, page: 1 }))
+          }}
+        >
+          <SelectTrigger className="w-[220px]" aria-label="Filter by whether they were contacted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Contacted or not</SelectItem>
+            <SelectItem value="no">{CONTACTED_LABELS.no}</SelectItem>
+            <SelectItem value="yes">{CONTACTED_LABELS.yes}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <ActiveFilters
@@ -265,6 +468,7 @@ export default function RecarePage() {
         onClearAll={() => {
           setSearch('')
           setTypeId('all')
+          setContacted('all')
           setPagination((p) => ({ ...p, page: 1 }))
         }}
         filters={[
@@ -285,14 +489,64 @@ export default function RecarePage() {
               setPagination((p) => ({ ...p, page: 1 }))
             },
           },
+          {
+            label: 'Contact',
+            value: contacted === 'all' ? null : CONTACTED_LABELS[contacted],
+            onClear: () => {
+              setContacted('all')
+              setPagination((p) => ({ ...p, page: 1 }))
+            },
+          },
         ]}
       />
 
+      {effective.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
+          <span className="text-sm font-medium">{effective.length} selected</span>
+          <Select value={channel} onValueChange={(value) => setChannel(value as Channel)}>
+            <SelectTrigger className="w-[180px]" aria-label="How to contact them">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(CHANNEL_LABELS) as Channel[]).map((option) => (
+                <SelectItem key={option} value={option}>
+                  {CHANNEL_LABELS[option]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" disabled={sending} onClick={() => send(false)}>
+            {sending ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="mr-2 h-3.5 w-3.5" />
+            )}
+            Send reminder
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Clear
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Queued for the clinic’s next send window. Anyone contacted in the last{' '}
+            {RECALL_COOLDOWN_DAYS} days is skipped.
+          </span>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0 overflow-x-auto">
-          <Table className="min-w-[820px]">
+          <Table className="min-w-[980px]">
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected}
+                    disabled={contactable.length === 0}
+                    onCheckedChange={toggleAll}
+                    aria-label="Select everyone who can be contacted"
+                  />
+                </TableHead>
                 <SortableHeader column="patient" sort={sort}>
                   Patient
                 </SortableHeader>
@@ -303,39 +557,50 @@ export default function RecarePage() {
                 <SortableHeader column="lastDone" sort={sort}>
                   Last seen
                 </SortableHeader>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Contacted</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : recares.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    {/*
-                      A filtered list needs a different sentence. "Nobody is
-                      overdue" is good news and, under a search that matched
-                      nothing, it is also false — there may be plenty overdue,
-                      none of them called what was typed.
-                    */}
-                    {debouncedSearch || typeId !== 'all'
-                      ? 'No records found for this search.'
-                      : band === 'OVERDUE'
-                        ? 'Nobody is overdue. That is the number to keep at zero.'
-                        : 'Nothing in this band.'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                recares.map((recare) => (
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={recares.length === 0}
+              emptyIcon={CalendarClock}
+              emptyTitle={
+                debouncedSearch || typeId !== 'all' || contacted !== 'all'
+                  ? 'No records found'
+                  : band === 'OVERDUE'
+                    ? 'Nobody is overdue'
+                    : 'Nothing in this band'
+              }
+              emptyDescription={
+                debouncedSearch || typeId !== 'all' || contacted !== 'all'
+                  ? 'Nothing in this band matches that search.'
+                  : band === 'OVERDUE'
+                    ? 'That is the number to keep at zero.'
+                    : 'Recare falling due in this window will appear here.'
+              }
+            >
+              {recares.map((recare) => {
+                const refusal = contactRefusal(recare, channel)
+                return (
                   <ClickableRow
                     key={recare.id}
                     href={trail.to(`/patients/${recare.patient.id}`)}
                     label={`Open ${recare.patient.firstName} ${recare.patient.lastName}`}
                   >
+                    <TableCell data-no-row-click onClick={(event) => event.stopPropagation()}>
+                      <IconTooltip label={refusal ?? 'Select for a recall message'}>
+                        <span className="inline-flex">
+                          <Checkbox
+                            checked={selected.has(recare.id)}
+                            disabled={refusal !== null}
+                            onCheckedChange={() => toggleOne(recare.id)}
+                            aria-label={`Select ${recare.patient.firstName} ${recare.patient.lastName}`}
+                          />
+                        </span>
+                      </IconTooltip>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">
                         {recare.patient.firstName} {recare.patient.lastName}
@@ -344,6 +609,9 @@ export default function RecarePage() {
                         {recare.patient.patientId}
                         {recare.patient.phone ? ` · ${recare.patient.phone}` : ''}
                       </div>
+                      {refusal && (
+                        <div className="text-xs text-muted-foreground italic">{refusal}</div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div>{recare.recareType.name}</div>
@@ -372,6 +640,19 @@ export default function RecarePage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {recare.lastDoneAt ? displayDate(recare.lastDoneAt) : 'Never'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {recare.lastContactedAt ? (
+                        <>
+                          <div>{displayDate(recare.lastContactedAt)}</div>
+                          <div className="text-xs">
+                            {recare.contactAttempts} attempt
+                            {recare.contactAttempts === 1 ? '' : 's'}
+                          </div>
+                        </>
+                      ) : (
+                        'Not yet'
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -433,9 +714,9 @@ export default function RecarePage() {
                       </div>
                     </TableCell>
                   </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                )
+              })}
+            </GridBody>
           </Table>
 
           <GridPagination
@@ -448,6 +729,16 @@ export default function RecarePage() {
           />
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }

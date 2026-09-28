@@ -14,17 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Search,
@@ -394,152 +393,119 @@ export default function PaymentsPage() {
                 <TableHead>Method</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : payments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <CreditCard className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No payments found</p>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={payments.length === 0}
+              emptyIcon={CreditCard}
+              emptyTitle="No payments found"
+              emptyDescription="Nothing has been received under these filters. Payments appear here as they are recorded against an invoice."
+            >
+              {payments.map((payment) => (
+                <ClickableRow
+                  key={payment.id}
+                  href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
+                  label={`Open the invoice for payment ${payment.paymentNo}`}
+                >
+                  <TableCell>
+                    <div className="font-medium">{payment.paymentNo}</div>
+                    {payment.transactionId && (
+                      <div className="text-sm text-muted-foreground">
+                        TXN: {payment.transactionId}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-medium">
+                          {payment.invoice.patient.firstName} {payment.invoice.patient.lastName}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {payment.invoice.patient.patientId}
+                        </div>
+                      </div>
                     </div>
                   </TableCell>
-                </TableRow>
-              ) : (
-                payments.map((payment) => (
-                  <ClickableRow
-                    key={payment.id}
-                    href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
-                    label={`Open the invoice for payment ${payment.paymentNo}`}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{payment.paymentNo}</div>
-                      {payment.transactionId && (
-                        <div className="text-sm text-muted-foreground">
-                          TXN: {payment.transactionId}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {payment.invoice.patient.firstName} {payment.invoice.patient.lastName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {payment.invoice.patient.patientId}
-                          </div>
-                        </div>
+                  <TableCell>
+                    <Link
+                      href={`/billing/invoices/${payment.invoice.id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {payment.invoice.invoiceNo}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{formatDate(payment.paymentDate)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {getPaymentMethodIcon(payment.paymentMethod)}
+                      <span>
+                        {paymentMethodConfig[
+                          payment.paymentMethod as keyof typeof paymentMethodConfig
+                        ]?.label || payment.paymentMethod}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="font-medium">{formatCurrency(payment.amount)}</div>
+                    {payment.refundAmount && Number(payment.refundAmount) > 0 && (
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        Refund: {formatCurrency(payment.refundAmount)}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/billing/invoices/${payment.invoice.id}`}
-                        className="text-primary hover:underline"
-                      >
-                        {payment.invoice.invoiceNo}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{formatDate(payment.paymentDate)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getPaymentMethodIcon(payment.paymentMethod)}
-                        <span>
-                          {paymentMethodConfig[
-                            payment.paymentMethod as keyof typeof paymentMethodConfig
-                          ]?.label || payment.paymentMethod}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="font-medium">{formatCurrency(payment.amount)}</div>
-                      {payment.refundAmount && Number(payment.refundAmount) > 0 && (
-                        <div className="text-sm text-red-600 dark:text-red-400">
-                          Refund: {formatCurrency(payment.refundAmount)}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                    <TableCell className="text-right row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
+                    )}
+                  </TableCell>
+                  <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() =>
+                            router.push(trail.to(`/billing/invoices/${payment.invoice.id}`))
+                          }
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            router.push(trail.to(`/billing/payments/${payment.id}/receipt`))
+                          }
+                        >
+                          <ReceiptText className="h-4 w-4 mr-2" />
+                          Receipt
+                        </DropdownMenuItem>
+                        {/* A payment refunded in part can be refunded again —
+                            gating on COMPLETED alone hid the action on
+                            exactly the payment most likely to need it. */}
+                        {SETTLED.has(payment.status) && payment.status !== 'REFUNDED' && (
                           <DropdownMenuItem
                             onClick={() =>
-                              router.push(trail.to(`/billing/invoices/${payment.invoice.id}`))
+                              router.push(trail.to(`/billing/payments/${payment.id}/refund`))
                             }
                           >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Invoice
+                            <RotateCcw className="h-4 w-4 mr-2" />
+                            Process Refund
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              router.push(trail.to(`/billing/payments/${payment.id}/receipt`))
-                            }
-                          >
-                            <ReceiptText className="h-4 w-4 mr-2" />
-                            Receipt
-                          </DropdownMenuItem>
-                          {/* A payment refunded in part can be refunded again —
-                              gating on COMPLETED alone hid the action on
-                              exactly the payment most likely to need it. */}
-                          {SETTLED.has(payment.status) && payment.status !== 'REFUNDED' && (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(trail.to(`/billing/payments/${payment.id}/refund`))
-                              }
-                            >
-                              <RotateCcw className="h-4 w-4 mr-2" />
-                              Process Refund
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

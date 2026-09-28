@@ -159,22 +159,22 @@ describe('Security — CSRF Protection', () => {
 
   describe('Origin/Referer validation', () => {
     it('accepts requests from same origin', () => {
-      const origin = 'https://app.dentalerp.com'
-      const allowedOrigins = ['https://app.dentalerp.com']
+      const origin = 'https://app.dentalexpert.com'
+      const allowedOrigins = ['https://app.dentalexpert.com']
 
       expect(allowedOrigins.includes(origin)).toBe(true)
     })
 
     it('rejects requests from different origin', () => {
       const origin = 'https://evil.com'
-      const allowedOrigins = ['https://app.dentalerp.com']
+      const allowedOrigins = ['https://app.dentalexpert.com']
 
       expect(allowedOrigins.includes(origin)).toBe(false)
     })
 
     it('rejects requests with no origin header (non-browser)', () => {
       const origin = undefined
-      const allowedOrigins = ['https://app.dentalerp.com']
+      const allowedOrigins = ['https://app.dentalexpert.com']
 
       // Depending on config, missing origin may be blocked or allowed
       expect(origin).toBeUndefined()
@@ -189,13 +189,13 @@ describe('Security — CSRF Protection', () => {
 describe('Security — CORS', () => {
   it('only allows specified origins', () => {
     const corsConfig = {
-      allowedOrigins: ['https://app.dentalerp.com', 'https://portal.dentalerp.com'],
+      allowedOrigins: ['https://app.dentalexpert.com', 'https://portal.dentalexpert.com'],
       allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       credentials: true,
     }
 
-    expect(corsConfig.allowedOrigins).toContain('https://app.dentalerp.com')
+    expect(corsConfig.allowedOrigins).toContain('https://app.dentalexpert.com')
     expect(corsConfig.allowedOrigins).not.toContain('https://evil.com')
     expect(corsConfig.credentials).toBe(true)
   })

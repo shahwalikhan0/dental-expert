@@ -448,6 +448,7 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/settings', 'settings:read'],
   ['/staff', 'staff:read'],
   ['/inventory', 'inventory:read'],
+  ['/billing/receivables', 'reports:financial'],
   ['/billing/reports', 'reports:financial'],
   ['/billing', 'billing:read'],
   ['/lab', 'lab:read'],

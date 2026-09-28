@@ -1,5 +1,5 @@
 #!/bin/sh
-# Back up a running DentalERP stack: the database, and the uploads volume.
+# Back up a running Dental Expert stack: the database, and the uploads volume.
 #
 #   ./scripts/backup.sh                 # into ./backups/<timestamp>/
 #   ./scripts/backup.sh /mnt/backups    # somewhere else
@@ -97,7 +97,7 @@ fi
 # --- manifest -----------------------------------------------------------------
 {
   echo "created:        $STAMP"
-  echo "version:        ${DENTAL_ERP_VERSION:-latest}"
+  echo "version:        ${DENTAL_EXPERT_VERSION:-latest}"
   echo "database:       $POSTGRES_DB"
   echo "storage_driver: ${STORAGE_DRIVER:-local}"
 } >"$DEST/manifest.txt"

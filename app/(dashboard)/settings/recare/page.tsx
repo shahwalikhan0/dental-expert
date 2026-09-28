@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { GridActionsCell } from '@/components/ui/data-grid'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
@@ -234,7 +235,7 @@ export default function RecareTypesPage() {
                         aria-label={`${type.name} is active`}
                       />
                     </TableCell>
-                    <TableCell className="row-actions">
+                    <GridActionsCell>
                       <IconTooltip label={`Remove ${type.name}`}>
                         <Button
                           variant="ghost"
@@ -246,7 +247,7 @@ export default function RecareTypesPage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </IconTooltip>
-                    </TableCell>
+                    </GridActionsCell>
                   </TableRow>
                 ))
               )}

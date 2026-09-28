@@ -69,6 +69,22 @@ export const AUDIT_ACTIONS = {
   /// work.
   PUBLIC_BOOKING_CREATED: 'booking.public.created',
 
+  /// The clinic issued, reissued or withdrew a patient's portal sign-in.
+  /// Attributed to the staff member who decided, because that is the person
+  /// who will be asked why a patient could — or could not — read their record.
+  /// The password itself is never recorded; only that one was set.
+  PORTAL_ACCESS_GRANTED: 'portal.access.granted',
+  PORTAL_ACCESS_REVOKED: 'portal.access.revoked',
+  PORTAL_PASSWORD_REISSUED: 'portal.password.reissued',
+
+  /// A patient signing in to read their own record. No `userId` — there is no
+  /// staff member here, and the trail should say so rather than leave it
+  /// looking like desk work. The patient is the entity.
+  PORTAL_LOGIN_SUCCESS: 'portal.login.success',
+  PORTAL_LOGIN_FAILED: 'portal.login.failed',
+  /// The patient chose their own password, replacing the one the desk issued.
+  PORTAL_PASSWORD_CHANGED: 'portal.password.changed',
+
   /// Two records for one person, made one. Irreversible in practice — the
   /// clinical history has moved — so it is recorded with both patient IDs and
   /// who decided.
@@ -103,6 +119,15 @@ export const AUDIT_ACTIONS = {
   /// FR-014 — money leaving. The one financial movement that is not recoverable
   /// from the invoice arithmetic alone.
   REFUND_ISSUED: 'payment.refunded',
+
+  /// Who settles a patient's bills changed. Recorded because it moves a
+  /// balance onto somebody else's statement, and the person chased for the
+  /// money afterwards is not the person who was chased before.
+  GUARANTOR_CHANGED: 'patient.guarantor.changed',
+
+  /// The recall list was worked: somebody selected patients and sent them a
+  /// message. FR-019's paper trail for a send nobody else initiated.
+  RECALL_CONTACTED: 'recare.contacted',
 
   /// A walk-in became a patient, or was written off. Both are decisions about
   /// somebody's record that the clinic should be able to account for later.

@@ -53,7 +53,6 @@ const defaultProps = {
   patient: {
     name: 'John Doe',
     patientId: 'PAT-001',
-    phone: '9876543210',
   },
   hospital: {
     name: 'Bright Smile Dental',
@@ -140,14 +139,32 @@ describe('PortalShell', () => {
         <p>Content</p>
       </PortalShell>
     )
-    expect(screen.getAllByText('Dashboard').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Appointments').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Records').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Bills').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Prescriptions').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Forms').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Book Appointment').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Upload Photo').length).toBeGreaterThanOrEqual(1)
+    for (const label of [
+      'Overview',
+      'Appointments',
+      'Treatments',
+      'Prescriptions',
+      'Bills',
+      'Password',
+    ]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  /**
+   * The shell used to offer Records, Forms, Book Appointment and Upload Photo,
+   * none of which were ever built. They are gone rather than disabled: a
+   * navigation entry is a promise that the clinic offers the thing.
+   */
+  it('offers nothing the portal cannot do', () => {
+    render(
+      <PortalShell {...defaultProps}>
+        <p>Content</p>
+      </PortalShell>
+    )
+    for (const label of ['Records', 'Forms', 'Book Appointment', 'Upload Photo']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument()
+    }
   })
 
   it('renders nav links with correct hrefs', () => {
@@ -157,8 +174,8 @@ describe('PortalShell', () => {
       </PortalShell>
     )
     // Desktop sidebar has links — check at least the first occurrence
-    const dashboardLinks = screen.getAllByText('Dashboard')
-    const link = dashboardLinks[0].closest('a')
+    const overviewLinks = screen.getAllByText('Overview')
+    const link = overviewLinks[0].closest('a')
     expect(link).toHaveAttribute('href', '/portal')
   })
 
@@ -175,7 +192,7 @@ describe('PortalShell', () => {
     fireEvent.click(buttons[buttons.length - 1])
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/patient-portal/auth/logout', { method: 'POST' })
+      expect(fetchMock).toHaveBeenCalledWith('/api/portal/auth/logout', { method: 'POST' })
     })
 
     await waitFor(() => {
@@ -198,7 +215,7 @@ describe('PortalShell', () => {
     fireEvent.click(menuBtn)
     // After click, mobile nav should render (the overlay with nav items)
     // Both desktop + mobile nav items should be present
-    const dashboardLinks = screen.getAllByText('Dashboard')
-    expect(dashboardLinks.length).toBeGreaterThanOrEqual(2) // desktop + mobile
+    const overviewLinks = screen.getAllByText('Overview')
+    expect(overviewLinks.length).toBeGreaterThanOrEqual(2) // desktop + mobile
   })
 })

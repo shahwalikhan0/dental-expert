@@ -9,18 +9,17 @@ import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ClipboardList, Plus, Search, Eye, Trash2, Loader2 } from 'lucide-react'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ClipboardList, Plus, Search, Eye, Trash2 } from 'lucide-react'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { fetchHandedPatient } from '@/lib/prefill'
@@ -270,99 +269,93 @@ export default function PrescriptionsPage() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : prescriptions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <ClipboardList className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">No prescriptions found</p>
-              <p className="text-sm">Create your first prescription to get started.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Rx #</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead className="hidden md:table-cell">Doctor</TableHead>
-                  <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
-                  <TableHead className="hidden lg:table-cell">Medications</TableHead>
-                  <TableHead className="hidden md:table-cell">Date</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {prescriptions.map((rx) => (
-                  <ClickableRow
-                    key={rx.id}
-                    href={trail.to(`/prescriptions/${rx.id}`)}
-                    label={`Open prescription ${rx.prescriptionNo}`}
-                  >
-                    <TableCell className="font-mono text-sm">{rx.prescriptionNo}</TableCell>
-                    <TableCell className="font-medium">
-                      {rx.patient.firstName} {rx.patient.lastName}
-                      <br />
-                      <span className="text-xs text-muted-foreground">{rx.patient.patientId}</span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">{rx.doctor.name}</TableCell>
-                    <TableCell className="hidden md:table-cell text-sm">
-                      {rx.diagnosis || '—'}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {rx.medications.slice(0, 3).map((m) => (
-                          <Badge key={m.id} variant="outline" className="text-xs">
-                            {m.medicationName}
-                          </Badge>
-                        ))}
-                        {rx.medications.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{rx.medications.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {new Date(rx.createdAt).toLocaleDateString('en-PK', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </TableCell>
-                    <TableCell className="row-actions">
-                      <div className="flex gap-1">
-                        <IconTooltip label="Open this prescription">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Open this prescription"
-                            className="h-8 w-8"
-                            onClick={() => router.push(`/prescriptions/${rx.id}`)}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                        </IconTooltip>
-                        <IconTooltip label="Delete this prescription">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Delete this prescription"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => handleDelete(rx)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </IconTooltip>
-                      </div>
-                    </TableCell>
-                  </ClickableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[900px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Rx #</TableHead>
+                <TableHead>Patient</TableHead>
+                <TableHead>Doctor</TableHead>
+                <TableHead>Diagnosis</TableHead>
+                <TableHead>Medications</TableHead>
+                <TableHead>Date</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={prescriptions.length === 0}
+              emptyIcon={ClipboardList}
+              emptyTitle="No prescriptions found"
+              emptyDescription="Nothing has been prescribed under these filters."
+            >
+              {prescriptions.map((rx) => (
+                <ClickableRow
+                  key={rx.id}
+                  href={trail.to(`/prescriptions/${rx.id}`)}
+                  label={`Open prescription ${rx.prescriptionNo}`}
+                >
+                  <TableCell className="font-mono text-sm">{rx.prescriptionNo}</TableCell>
+                  <TableCell className="font-medium">
+                    {rx.patient.firstName} {rx.patient.lastName}
+                    <br />
+                    <span className="text-xs text-muted-foreground">{rx.patient.patientId}</span>
+                  </TableCell>
+                  <TableCell>{rx.doctor.name}</TableCell>
+                  <TableCell className="text-sm">{rx.diagnosis || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {rx.medications.slice(0, 3).map((m) => (
+                        <Badge key={m.id} variant="outline" className="text-xs">
+                          {m.medicationName}
+                        </Badge>
+                      ))}
+                      {rx.medications.length > 3 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{rx.medications.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(rx.createdAt).toLocaleDateString('en-PK', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </TableCell>
+                  <GridActionsCell>
+                    <div className="flex gap-1">
+                      <IconTooltip label="Open this prescription">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Open this prescription"
+                          className="h-8 w-8"
+                          onClick={() => router.push(`/prescriptions/${rx.id}`)}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Delete this prescription">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Delete this prescription"
+                          className="h-8 w-8 text-destructive"
+                          onClick={() => handleDelete(rx)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </IconTooltip>
+                    </div>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={pagination.page}
             pageSize={pagination.limit}

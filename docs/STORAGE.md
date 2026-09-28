@@ -1,6 +1,6 @@
 # File storage
 
-DentalERP stores uploaded files — patient documents, X-rays, clinic logos and
+Dental Expert stores uploaded files — patient documents, X-rays, clinic logos and
 data-import spreadsheets — through a driver, selected by `STORAGE_DRIVER`.
 
 | Driver        | `STORAGE_DRIVER`    | Where files go                    |

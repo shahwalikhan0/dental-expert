@@ -14,17 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
@@ -334,152 +332,115 @@ export default function StaffPage() {
                 <TableHead>Specialization</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-28" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : staff.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <UserCog className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No staff members found</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/staff/new">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Staff
-                        </Link>
-                      </Button>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={staff.length === 0}
+              emptyIcon={UserCog}
+              emptyTitle="No staff members found"
+              emptyDescription="Nobody on the team matches these filters."
+              emptyActionLabel="Add Staff"
+              emptyActionHref="/staff/new"
+            >
+              {staff.map((member) => (
+                <ClickableRow
+                  key={member.id}
+                  href={trail.to(`/staff/${member.id}`)}
+                  label={`Open ${member.firstName} ${member.lastName}`}
+                >
+                  <TableCell>
+                    <div className="font-medium">{member.employeeId}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                        <UserCog className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="font-medium">
+                        {member.firstName} {member.lastName}
+                      </div>
                     </div>
                   </TableCell>
-                </TableRow>
-              ) : (
-                staff.map((member) => (
-                  <ClickableRow
-                    key={member.id}
-                    href={trail.to(`/staff/${member.id}`)}
-                    label={`Open ${member.firstName} ${member.lastName}`}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{member.employeeId}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <UserCog className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="font-medium">
-                          {member.firstName} {member.lastName}
-                        </div>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1 text-sm">
+                        <Phone className="h-3 w-3 text-muted-foreground" />
+                        {member.phone}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1 text-sm">
-                          <Phone className="h-3 w-3 text-muted-foreground" />
-                          {member.phone}
+                      {member.email && (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Mail className="h-3 w-3" />
+                          {member.email}
                         </div>
-                        {member.email && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Mail className="h-3 w-3" />
-                            {member.email}
-                          </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${roleColor(member.user.role)} border-0`}>
+                      {roleLabel(member.user.role) || member.user.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      {member.specialization || member.qualification || '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">{formatDate(member.joiningDate)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={member.isActive ? 'default' : 'secondary'}>
+                      {member.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}`)}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}/edit`)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        {member.user.role === 'DOCTOR' && (
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/staff/${member.id}/performance`)}
+                          >
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            Performance
+                          </DropdownMenuItem>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${roleColor(member.user.role)} border-0`}>
-                        {roleLabel(member.user.role) || member.user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {member.specialization || member.qualification || '-'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">{formatDate(member.joiningDate)}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={member.isActive ? 'default' : 'secondary'}>
-                        {member.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}`)}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
+                        <DropdownMenuSeparator />
+                        {member.isActive && (
+                          <DropdownMenuItem
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => {
+                              setStaffToDelete(member)
+                              setDeleteDialogOpen(true)
+                            }}
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            Deactivate
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}/edit`)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          {member.user.role === 'DOCTOR' && (
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/staff/${member.id}/performance`)}
-                            >
-                              <BarChart3 className="h-4 w-4 mr-2" />
-                              Performance
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {member.isActive && (
-                            <DropdownMenuItem
-                              className="text-red-600 dark:text-red-400"
-                              onClick={() => {
-                                setStaffToDelete(member)
-                                setDeleteDialogOpen(true)
-                              }}
-                            >
-                              <UserX className="h-4 w-4 mr-2" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

@@ -19,7 +19,7 @@
   "auth": {
     "login": {
       "heading": "Welcome back",
-      "subheading": "Sign in to your DentalERP account",
+      "subheading": "Sign in to your Dental Expert account",
       "email": "Email",
       "password": "Password",
       "submit": "Sign in",

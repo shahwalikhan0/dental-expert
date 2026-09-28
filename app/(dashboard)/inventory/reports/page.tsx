@@ -2,6 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 export default function InventoryReportsPage() {
   const [activeReport, setActiveReport] = useState('summary')
@@ -87,74 +95,62 @@ export default function InventoryReportsPage() {
         {/* Category Breakdown */}
         <div className="bg-background p-6 rounded-lg shadow mb-6">
           <h3 className="text-lg font-bold mb-4">Inventory by Category</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Item Count
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Category Value
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-background divide-y divide-border">
+          <div>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Item Count</TableHead>
+                  <TableHead>Category Value</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {reportData.categoryBreakdown.map((cat: any, index: number) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                  <TableRow key={index}>
+                    <TableCell className="whitespace-nowrap font-medium">
                       {cat.category || 'Uncategorized'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
                       {cat.itemCount}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatCurrency(cat.categoryValue || 0)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
         {/* Type Breakdown */}
         <div className="bg-background p-6 rounded-lg shadow">
           <h3 className="text-lg font-bold mb-4">Inventory by Type</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Item Count
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Type Value
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-background divide-y divide-border">
+          <div>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Item Count</TableHead>
+                  <TableHead>Type Value</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {reportData.typeBreakdown.map((type: any, index: number) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                  <TableRow key={index}>
+                    <TableCell className="whitespace-nowrap font-medium">
                       {type.itemType.replace('_', ' ').toUpperCase()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
                       {type.itemCount}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatCurrency(type.typeValue || 0)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       </div>
@@ -166,49 +162,31 @@ export default function InventoryReportsPage() {
 
     return (
       <div className="bg-background rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Item Code
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Item Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Current Stock
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Minimum Stock
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Urgency
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Suggested Order
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Supplier
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-background divide-y divide-border">
+        <div>
+          <Table className="min-w-full">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item Code</TableHead>
+                <TableHead>Item Name</TableHead>
+                <TableHead>Current Stock</TableHead>
+                <TableHead>Minimum Stock</TableHead>
+                <TableHead>Urgency</TableHead>
+                <TableHead>Suggested Order</TableHead>
+                <TableHead>Supplier</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {reportData.map((item: any) => (
-                <tr key={item.id} className="hover:bg-muted/50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                    {item.sku}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                    {item.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                <TableRow key={item.id}>
+                  <TableCell className="whitespace-nowrap font-medium">{item.sku}</TableCell>
+                  <TableCell className="whitespace-nowrap">{item.name}</TableCell>
+                  <TableCell className="whitespace-nowrap">
                     {item.currentStock} {item.unit}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
                     {item.minimumStock} {item.unit}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <span
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         item.urgency === 'out_of_stock'
@@ -220,20 +198,20 @@ export default function InventoryReportsPage() {
                     >
                       {item.urgency.replace('_', ' ').toUpperCase()}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
                     {item.suggestedOrderQuantity} {item.unit}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
                     {item.supplierName || '-'}
                     {item.supplierPhone && (
                       <div className="text-xs text-muted-foreground">{item.supplierPhone}</div>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     )
@@ -269,57 +247,41 @@ export default function InventoryReportsPage() {
 
         {/* Items Table */}
         <div className="bg-background rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Item
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Batch Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Expiry Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Days to Expiry
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Quantity
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Value at Risk
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-background divide-y divide-border">
+          <div>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Batch Number</TableHead>
+                  <TableHead>Expiry Date</TableHead>
+                  <TableHead>Days to Expiry</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead>Value at Risk</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {reportData.items.map((item: any, index: number) => (
-                  <tr key={index} className="hover:bg-muted/50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                  <TableRow key={index}>
+                    <TableCell className="whitespace-nowrap font-medium">
                       {item.name}
                       <br />
                       <span className="text-xs text-muted-foreground">{item.sku}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
                       {item.batchNumber}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {new Date(item.expiryDate).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {item.daysToExpiry} days
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{item.daysToExpiry} days</TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {item.remainingQty} {item.unit}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatCurrency(item.valueAtRisk || 0)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           item.urgency === 'expired'
@@ -331,11 +293,11 @@ export default function InventoryReportsPage() {
                       >
                         {item.urgency.toUpperCase()}
                       </span>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       </div>
@@ -371,55 +333,39 @@ export default function InventoryReportsPage() {
 
         {/* Items Table */}
         <div className="bg-background rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Item Code
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Item Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Stock
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Unit Price
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                    Stock Value
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-background divide-y divide-border">
+          <div>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item Code</TableHead>
+                  <TableHead>Item Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Unit Price</TableHead>
+                  <TableHead>Stock Value</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {reportData.items.map((item: any) => (
-                  <tr key={item.id} className="hover:bg-muted/50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                      {item.sku}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {item.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  <TableRow key={item.id}>
+                    <TableCell className="whitespace-nowrap font-medium">{item.sku}</TableCell>
+                    <TableCell className="whitespace-nowrap">{item.name}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
                       {item.categoryName || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {item.currentStock} {item.unit}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatCurrency(item.purchasePrice)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-medium">
                       {formatCurrency(item.stockValue || 0)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       </div>

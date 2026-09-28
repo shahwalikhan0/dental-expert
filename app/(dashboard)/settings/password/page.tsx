@@ -3,10 +3,6 @@ import { redirect } from 'next/navigation'
 import { ChangePasswordCard } from '@/components/settings/change-password-card'
 import { auth } from '@/lib/auth'
 
-export const metadata = {
-  title: 'Change password',
-}
-
 /**
  * Where everybody changes their own password.
  *

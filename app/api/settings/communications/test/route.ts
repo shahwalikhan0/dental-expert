@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
         const testMessage =
           testData.message ||
-          'This is a test message from DentalERP. Your SMS gateway is configured correctly.'
+          'This is a test message from Dental Expert. Your SMS gateway is configured correctly.'
 
         await smsService.sendSMS({
           hospitalId,
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         await emailService.initialize(hospitalId)
 
         // Send test email
-        const testSubject = testData.subject || 'Test Email from DentalERP'
+        const testSubject = testData.subject || 'Test Email from Dental Expert'
 
         const testBody =
           testData.body ||
@@ -88,12 +88,12 @@ export async function POST(request: NextRequest) {
           <div style="font-family: Arial, sans-serif; padding: 20px;">
             <h2>Email Configuration Test</h2>
             <p>Hello,</p>
-            <p>This is a test email from DentalERP.</p>
+            <p>This is a test email from Dental Expert.</p>
             <p>If you're receiving this email, your SMTP settings are configured correctly.</p>
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
             <p style="color: #666; font-size: 12px;">
               Sent from Dental Hospital Management System<br>
-              DentalERP
+              Dental Expert
             </p>
           </div>
         `

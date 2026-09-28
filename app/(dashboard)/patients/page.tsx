@@ -14,17 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  SortableHeader,
+  useSort,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { Plus, Search, User, MoreHorizontal, Eye, Edit, FileText, Phone, Mail } from 'lucide-react'
 import {
@@ -293,136 +293,99 @@ export default function PatientsPage() {
                 <SortableHeader column="city" sort={sort}>
                   Location
                 </SortableHeader>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-28" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-12" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : patients.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <User className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No patients found</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/patients/new">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Patient
-                        </Link>
-                      </Button>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={patients.length === 0}
+              emptyIcon={User}
+              emptyTitle="No patients found"
+              emptyDescription="Nobody on the register matches this search."
+              emptyActionLabel="Add Patient"
+              emptyActionHref="/patients/new"
+            >
+              {patients.map((patient) => (
+                <ClickableRow
+                  key={patient.id}
+                  href={trail.to(`/patients/${patient.id}`)}
+                  label={`Open ${patient.firstName} ${patient.lastName}`}
+                >
+                  <TableCell>
+                    <div className="font-medium">{patient.patientId}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="font-medium">
+                        {patient.firstName} {patient.lastName}
+                      </div>
                     </div>
                   </TableCell>
-                </TableRow>
-              ) : (
-                patients.map((patient) => (
-                  <ClickableRow
-                    key={patient.id}
-                    href={trail.to(`/patients/${patient.id}`)}
-                    label={`Open ${patient.firstName} ${patient.lastName}`}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{patient.patientId}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="font-medium">
-                          {patient.firstName} {patient.lastName}
-                        </div>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1 text-sm">
+                        <Phone className="h-3 w-3 text-muted-foreground" />
+                        {patient.phone}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1 text-sm">
-                          <Phone className="h-3 w-3 text-muted-foreground" />
-                          {patient.phone}
+                      {patient.email && (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Mail className="h-3 w-3" />
+                          {patient.email}
                         </div>
-                        {patient.email && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Mail className="h-3 w-3" />
-                            {patient.email}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getGenderBadge(patient.gender)}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">{patient.age} years</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{bloodGroupLabel(patient.bloodGroup)}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">{patient.city || '—'}</div>
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/patients/${patient.id}`)}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/patients/${patient.id}/edit`)}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {/* Medical history lives on the overview of the
-                              patient's own record. This used to push at
-                              /patients/<id>/medical-history, a page that has
-                              never existed. */}
-                          <DropdownMenuItem
-                            onClick={() => router.push(trail.to(`/patients/${patient.id}`))}
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Medical History
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{getGenderBadge(patient.gender)}</TableCell>
+                  <TableCell>
+                    <div className="text-sm">{patient.age} years</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{bloodGroupLabel(patient.bloodGroup)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">{patient.city || '—'}</div>
+                  </TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/patients/${patient.id}`)}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/patients/${patient.id}/edit`)}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {/* Medical history lives on the overview of the
+                            patient's own record. This used to push at
+                            /patients/<id>/medical-history, a page that has
+                            never existed. */}
+                        <DropdownMenuItem
+                          onClick={() => router.push(trail.to(`/patients/${patient.id}`))}
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Medical History
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

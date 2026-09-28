@@ -1,5 +1,5 @@
 #!/bin/sh
-# Restore a DentalERP backup taken by scripts/backup.sh.
+# Restore a Dental Expert backup taken by scripts/backup.sh.
 #
 #   ./scripts/restore.sh ./backups/20260803T101500Z          # dry run
 #   ./scripts/restore.sh ./backups/20260803T101500Z --yes    # actually do it

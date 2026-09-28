@@ -7,7 +7,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -17,17 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { GridPagination } from '@/components/ui/data-grid'
+import {
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
@@ -492,117 +489,83 @@ export default function ProceduresSettingsPage() {
                 <TableHead>Duration</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : procedures.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Stethoscope className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No procedures found</p>
-                      {canEditCatalog && (
-                        <Button variant="outline" size="sm" onClick={openCreateDialog}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Procedure
-                        </Button>
-                      )}
-                    </div>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={procedures.length === 0}
+              emptyIcon={Stethoscope}
+              emptyTitle="No procedures yet"
+              emptyDescription="The catalogue is what a treatment is written from — its name, duration, price and default notes. Add the ones this clinic performs."
+              emptyActionLabel={canEditCatalog ? 'Add Procedure' : undefined}
+              onEmptyAction={canEditCatalog ? openCreateDialog : undefined}
+            >
+              {procedures.map((procedure) => (
+                <TableRow key={procedure.id} className={!procedure.isActive ? 'opacity-50' : ''}>
+                  <TableCell className="font-mono font-medium">{procedure.code}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{procedure.name}</div>
+                    {procedure.description && (
+                      <div className="text-sm text-muted-foreground line-clamp-1">
+                        {procedure.description}
+                      </div>
+                    )}
                   </TableCell>
-                </TableRow>
-              ) : (
-                procedures.map((procedure) => (
-                  <TableRow key={procedure.id} className={!procedure.isActive ? 'opacity-50' : ''}>
-                    <TableCell className="font-mono font-medium">{procedure.code}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{procedure.name}</div>
-                      {procedure.description && (
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {procedure.description}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={`${procedureCategoryConfig[procedure.category]?.bgColor} ${procedureCategoryConfig[procedure.category]?.color} border-0`}
-                      >
-                        {procedureCategoryConfig[procedure.category]?.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{procedure.defaultDuration} min</TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(procedure.basePrice)}
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={procedure.isActive}
-                        onCheckedChange={() => handleToggleActive(procedure)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      {/* The menu holds nothing but Edit and Delete, so a
+                  <TableCell>
+                    <Badge
+                      className={`${procedureCategoryConfig[procedure.category]?.bgColor} ${procedureCategoryConfig[procedure.category]?.color} border-0`}
+                    >
+                      {procedureCategoryConfig[procedure.category]?.label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{procedure.defaultDuration} min</TableCell>
+                  <TableCell className="font-medium">
+                    {formatCurrency(procedure.basePrice)}
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={procedure.isActive}
+                      onCheckedChange={() => handleToggleActive(procedure)}
+                    />
+                  </TableCell>
+                  <GridActionsCell>
+                    {/* The menu holds nothing but Edit and Delete, so a
                           reader gets an empty menu rather than no menu unless
                           the trigger goes too. */}
-                      {canEditCatalog && (
-                        <DropdownMenu>
-                          <IconTooltip label="More actions">
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </IconTooltip>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-red-600 dark:text-red-400"
-                              onClick={() => {
-                                setSelectedProcedure(procedure)
-                                setDeleteDialogOpen(true)
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
+                    {canEditCatalog && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => {
+                              setSelectedProcedure(procedure)
+                              setDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </GridActionsCell>
+                </TableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

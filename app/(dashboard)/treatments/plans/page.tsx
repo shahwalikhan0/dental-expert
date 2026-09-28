@@ -14,17 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -290,136 +288,102 @@ export default function TreatmentPlansPage() {
                 <TableHead>Progress</TableHead>
                 <TableHead>Estimated Cost</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={plans.length === 0}
+              emptyIcon={FileText}
+              emptyTitle="No treatment plans found"
+              emptyDescription="No plan matches these filters."
+              emptyActionLabel="Create Treatment Plan"
+              emptyActionHref="/treatments/plans/new"
+            >
+              {plans.map((plan) => {
+                const progress = calculatePlanProgress(plan.items)
+                return (
+                  <ClickableRow
+                    key={plan.id}
+                    href={trail.to(`/treatments/plans/${plan.id}`)}
+                    label={`Open plan ${plan.planNumber}`}
+                  >
                     <TableCell>
-                      <Skeleton className="h-4 w-24" />
+                      <div className="font-medium">{plan.planNumber}</div>
+                      <div className="text-sm text-muted-foreground">{plan.title}</div>
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-8" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : plans.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <FileText className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No treatment plans found</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/treatments/plans/new">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Create Treatment Plan
-                        </Link>
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                plans.map((plan) => {
-                  const progress = calculatePlanProgress(plan.items)
-                  return (
-                    <ClickableRow
-                      key={plan.id}
-                      href={trail.to(`/treatments/plans/${plan.id}`)}
-                      label={`Open plan ${plan.planNumber}`}
-                    >
-                      <TableCell>
-                        <div className="font-medium">{plan.planNumber}</div>
-                        <div className="text-sm text-muted-foreground">{plan.title}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                            <User className="h-4 w-4 text-primary" />
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                          <User className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <div className="font-medium">
+                            {plan.patient.firstName} {plan.patient.lastName}
                           </div>
-                          <div>
-                            <div className="font-medium">
-                              {plan.patient.firstName} {plan.patient.lastName}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {plan.patient.patientId}
-                            </div>
+                          <div className="text-sm text-muted-foreground">
+                            {plan.patient.patientId}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {plan._count.items} procedure{plan._count.items !== 1 ? 's' : ''}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="w-24 space-y-1">
-                          <Progress value={progress} className="h-2" />
-                          <div className="text-xs text-muted-foreground">{progress}% complete</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{formatCurrency(plan.estimatedCost)}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {getStatusBadge(plan.status)}
-                          {plan.consentGiven && (
-                            <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                              <CheckCircle className="h-3 w-3" />
-                              Consent
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right row-actions">
-                        <DropdownMenu>
-                          <IconTooltip label="More actions">
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </IconTooltip>
-                          <DropdownMenuContent align="end">
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {plan._count.items} procedure{plan._count.items !== 1 ? 's' : ''}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="w-24 space-y-1">
+                        <Progress value={progress} className="h-2" />
+                        <div className="text-xs text-muted-foreground">{progress}% complete</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{formatCurrency(plan.estimatedCost)}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {getStatusBadge(plan.status)}
+                        {plan.consentGiven && (
+                          <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                            <CheckCircle className="h-3 w-3" />
+                            Consent
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <GridActionsCell>
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/treatments/plans/${plan.id}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
                             <DropdownMenuItem
-                              onClick={() => router.push(`/treatments/plans/${plan.id}`)}
+                              onClick={() => router.push(`/treatments/plans/${plan.id}/edit`)}
                             >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
                             </DropdownMenuItem>
-                            {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/treatments/plans/${plan.id}/edit`)}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </ClickableRow>
-                  )
-                })
-              )}
-            </TableBody>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </GridActionsCell>
+                  </ClickableRow>
+                )
+              })}
+            </GridBody>
           </Table>
 
           <GridPagination

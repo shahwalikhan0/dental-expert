@@ -57,7 +57,7 @@ export default function SystemSettingsPage() {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `dental-erp-backup-${type}-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
+        a.download = `dental-expert-backup-${type}-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)

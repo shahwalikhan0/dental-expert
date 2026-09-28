@@ -251,7 +251,7 @@ describe('Sidebar', () => {
 
   it('renders version in footer', () => {
     render(<Sidebar role="ADMIN" hospitalName="X" />)
-    expect(screen.getByText('Dental ERP v1.0')).toBeInTheDocument()
+    expect(screen.getByText('Dental Expert v1.0')).toBeInTheDocument()
   })
 
   it('shows short version when collapsed', () => {

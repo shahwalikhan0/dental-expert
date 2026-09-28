@@ -81,7 +81,7 @@ describe('Settings Backup API', () => {
       const res = await backupModule.GET(makeRequest())
       expect(res.status).toBe(200)
       expect(res.headers.get('Content-Type')).toBe('application/json')
-      expect(res.headers.get('Content-Disposition')).toContain('dental-erp-backup')
+      expect(res.headers.get('Content-Disposition')).toContain('dental-expert-backup')
 
       const body = JSON.parse(await res.text())
       expect(body.version).toBe('1.0')

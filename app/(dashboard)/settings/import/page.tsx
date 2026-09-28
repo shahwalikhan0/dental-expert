@@ -27,6 +27,14 @@ import {
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -384,7 +392,7 @@ export default function DataImportPage() {
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+      <div className="flex items-center gap-2 pb-2">
         {STEPS.map((s, i) => {
           const Icon = s.icon
           const isActive = step === s.id
@@ -612,27 +620,27 @@ export default function DataImportPage() {
               </div>
             ) : (
               <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/50 border-b">
-                      <th className="text-left px-4 py-2.5 font-medium">Source Column</th>
-                      <th className="text-left px-4 py-2.5 font-medium">Sample Value</th>
-                      <th className="text-left px-4 py-2.5 font-medium">Maps To</th>
-                      <th className="px-4 py-2.5 font-medium w-16 text-center">Confidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="py-2.5">Source Column</TableHead>
+                      <TableHead className="py-2.5">Sample Value</TableHead>
+                      <TableHead className="py-2.5">Maps To</TableHead>
+                      <TableHead className="py-2.5 w-16 text-center">Confidence</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {sourceColumns.map((col) => {
                       const target = mapping[col]
                       const conf = confidence[col] ?? 0
                       const sample = sampleData[0]?.[col] || ''
                       return (
-                        <tr key={col} className="border-b last:border-0 hover:bg-muted/30">
-                          <td className="px-4 py-2.5 font-medium">{col}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground text-xs max-w-[200px] truncate">
+                        <TableRow key={col}>
+                          <TableCell className="py-2.5 font-medium">{col}</TableCell>
+                          <TableCell className="py-2.5 text-muted-foreground text-xs max-w-[200px] truncate">
                             {sample}
-                          </td>
-                          <td className="px-4 py-2.5">
+                          </TableCell>
+                          <TableCell className="py-2.5">
                             <select
                               value={target || ''}
                               onChange={(e) => updateMapping(col, e.target.value || null)}
@@ -649,8 +657,8 @@ export default function DataImportPage() {
                                 </option>
                               ))}
                             </select>
-                          </td>
-                          <td className="px-4 py-2.5 text-center">
+                          </TableCell>
+                          <TableCell className="py-2.5 text-center">
                             {target ? (
                               <span
                                 className={cn(
@@ -666,12 +674,12 @@ export default function DataImportPage() {
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       )
                     })}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
 
@@ -709,32 +717,29 @@ export default function DataImportPage() {
               </p>
             </div>
 
-            <div className="border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50 border-b">
-                    <th className="px-3 py-2 text-left font-medium text-xs">#</th>
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
                     {schema.fields
                       .filter((f) => Object.values(mapping).includes(f.name) || f.required)
                       .map((f) => (
-                        <th
-                          key={f.name}
-                          className="px-3 py-2 text-left font-medium text-xs whitespace-nowrap"
-                        >
+                        <TableHead key={f.name}>
                           {f.name}{' '}
                           {f.required && <span className="text-red-500 dark:text-red-400">*</span>}
-                        </th>
+                        </TableHead>
                       ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {previewData.slice(0, 5).map((row, i) => (
-                    <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="px-3 py-2 text-muted-foreground text-xs">{row._rowNum}</td>
+                    <TableRow key={i}>
+                      <TableCell className="text-muted-foreground text-xs">{row._rowNum}</TableCell>
                       {schema.fields
                         .filter((f) => Object.values(mapping).includes(f.name) || f.required)
                         .map((f) => (
-                          <td key={f.name} className="px-3 py-1.5">
+                          <TableCell key={f.name} className="py-1.5">
                             <input
                               type="text"
                               value={row[f.name] ?? ''}
@@ -746,12 +751,12 @@ export default function DataImportPage() {
                                   : 'border-transparent hover:border-border'
                               )}
                             />
-                          </td>
+                          </TableCell>
                         ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="flex justify-between">

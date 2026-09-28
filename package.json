@@ -1,12 +1,12 @@
 {
-  "name": "dental-erp",
+  "name": "dental-expert",
   "version": "1.0.0",
   "description": "Open-source dental hospital management system for Indian dental clinics \u2014 AI-powered, GST billing, patient portal, tele-dentistry",
   "private": true,
   "keywords": [
     "dental-software",
     "hospital-management-system",
-    "dental-erp",
+    "dental-expert",
     "dental-clinic",
     "nextjs",
     "prisma",
@@ -33,7 +33,7 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

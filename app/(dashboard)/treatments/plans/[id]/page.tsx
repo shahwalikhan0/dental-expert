@@ -51,9 +51,11 @@ import {
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { parseTeeth } from '@/lib/teeth'
 import { formatToothNumbers } from '@/lib/treatment-utils'
+import { groupByPhase } from '@/lib/treatment-phases'
 
 interface TreatmentPlanItem {
   id: string
+  phase: number
   priority: number
   toothNumbers: string | null
   estimatedCost: string | number
@@ -84,6 +86,7 @@ interface TreatmentPlan {
   expectedEndDate: string | null
   completedDate: string | null
   consentGiven: boolean
+  phaseNames: string[] | null
   createdAt: string
   updatedAt: string
   patient: {
@@ -228,6 +231,10 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
     )
   }
 
+  // Derived below the guards so the items are known to exist. A plan with one
+  // phase yields one group and the headings stay off — see the section below.
+  const phases = groupByPhase(plan.items, plan.phaseNames)
+
   const progress = calculatePlanProgress(plan.items)
 
   return (
@@ -319,70 +326,123 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
             </CardContent>
           </Card>
 
-          {/* Procedures */}
+          {/* Procedures, in the phases the plan is agreed in */}
           <Card>
-            <CardHeader>
-              <CardTitle>Treatment Procedures</CardTitle>
-              <CardDescription>
-                Procedures in this treatment plan, ordered by priority
-              </CardDescription>
+            <CardHeader className="flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+              <div>
+                <CardTitle>Treatment procedures</CardTitle>
+                <CardDescription>
+                  {phases.length > 1
+                    ? `${phases.length} phases — each one is a separate decision for the patient`
+                    : 'Procedures in this plan'}
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={trail.to(`/treatments/plans/${plan.id}/estimate`)}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  Patient estimate
+                </Link>
+              </Button>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Procedure</TableHead>
-                    <TableHead>Teeth</TableHead>
-                    <TableHead>Cost</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {plan.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.priority}</TableCell>
-                      <TableCell>
-                        <div className="font-medium">{item.procedure.name}</div>
-                        <div className="text-sm text-muted-foreground">{item.procedure.code}</div>
-                        <Badge
-                          variant="outline"
-                          className={`mt-1 ${procedureCategoryConfig[item.procedure.category]?.bgColor} ${procedureCategoryConfig[item.procedure.category]?.color} border-0`}
-                        >
-                          {procedureCategoryConfig[item.procedure.category]?.label}
-                        </Badge>
-                        {item.notes && (
-                          <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
-                        )}
-                      </TableCell>
-                      <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
-                      <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
-                      <TableCell>{getItemStatusBadge(item.status)}</TableCell>
-                      <TableCell>
-                        {item.status === 'PENDING' && plan.status === 'IN_PROGRESS' && (
-                          <Button size="sm" variant="outline" asChild>
-                            <Link
-                              href={`/treatments/new?patientId=${plan.patient.id}&procedureId=${item.procedure.id}`}
+
+            <CardContent className="space-y-8">
+              {phases.map((phase) => (
+                <section key={phase.number}>
+                  {/*
+                    The heading only appears once a plan actually has phases. A
+                    single-phase plan with "Phase 1" written over it is an
+                    interface explaining its own data model.
+                  */}
+                  {phases.length > 1 && (
+                    <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
+                      <h3 className="font-medium">
+                        <span className="text-muted-foreground">Phase {phase.number} · </span>
+                        {phase.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {formatCurrency(phase.subtotal)}
+                        {phase.completed > 0 &&
+                          ` · ${phase.completed} of ${phase.items.length} done`}
+                      </p>
+                    </header>
+                  )}
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>Procedure</TableHead>
+                        <TableHead>Teeth</TableHead>
+                        <TableHead className="text-right">Cost</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {phase.items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.priority}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">{item.procedure.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {item.procedure.code}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={`mt-1 ${procedureCategoryConfig[item.procedure.category]?.bgColor} ${procedureCategoryConfig[item.procedure.category]?.color} border-0`}
                             >
-                              Start
-                            </Link>
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-right font-medium">
-                      Total Estimated Cost:
-                    </TableCell>
-                    <TableCell className="font-bold text-lg">
-                      {formatCurrency(plan.estimatedCost)}
-                    </TableCell>
-                    <TableCell colSpan={2}></TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+                              {procedureCategoryConfig[item.procedure.category]?.label}
+                            </Badge>
+                            {item.notes && (
+                              <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
+                            )}
+                          </TableCell>
+                          <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatCurrency(item.estimatedCost)}
+                          </TableCell>
+                          <TableCell>{getItemStatusBadge(item.status)}</TableCell>
+                          <TableCell>
+                            {item.status === 'PENDING' && plan.status === 'IN_PROGRESS' && (
+                              <Button size="sm" variant="outline" asChild>
+                                <Link
+                                  href={`/treatments/new?patientId=${plan.patient.id}&procedureId=${item.procedure.id}`}
+                                >
+                                  Start
+                                </Link>
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+
+                      {phases.length > 1 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="text-right text-sm text-muted-foreground"
+                          >
+                            Phase {phase.number} subtotal
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {formatCurrency(phase.subtotal)}
+                          </TableCell>
+                          <TableCell colSpan={2} className="text-sm text-muted-foreground">
+                            {formatCurrency(phase.runningTotal)} agreed by the end of this phase
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </section>
+              ))}
+
+              <div className="flex items-baseline justify-between border-t pt-4">
+                <span className="font-medium">Total estimated cost</span>
+                <span className="text-lg font-bold tabular-nums">
+                  {formatCurrency(plan.estimatedCost)}
+                </span>
+              </div>
             </CardContent>
           </Card>
 

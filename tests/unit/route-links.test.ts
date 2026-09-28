@@ -75,17 +75,18 @@ function resolves(href: string): boolean {
 }
 
 /**
- * The patient portal. Nine links to pages that do not exist, in a component
- * nothing imports — the portal is §16 Future Enhancements, and this is the
- * shell somebody started. Listed rather than deleted because whether the
- * scaffolding stays is a decision about the roadmap, not about this test.
+ * Nothing is exempt any more.
+ *
+ * `components/portal/portal-shell.tsx` used to be listed here: nine links to
+ * pages nobody had written, in a component nothing imported. The portal is now
+ * built — read-only, credentials issued at the desk — and its navigation was
+ * cut to the pages that exist. The exemption going away is the point; a list of
+ * files this test agrees not to check is a list of places the rule does not
+ * hold.
  */
-const UNBUILT = ['components/portal/portal-shell.tsx']
-
 const SOURCES = files(join(ROOT, 'app'))
   .concat(files(join(ROOT, 'components')))
   .map((path) => ({ name: path.slice(ROOT.length + 1), source: readFileSync(path, 'utf8') }))
-  .filter((file) => !UNBUILT.includes(file.name))
 
 /**
  * Every internal destination a screen can send somebody to.
@@ -141,14 +142,5 @@ describe('internal links', () => {
   // crumbs are places you can actually go. A stale copy would put the 404s back.
   it('lib/routes.ts lists exactly the routes on disk', () => {
     expect([...APP_ROUTES].sort()).toEqual([...ROUTES].sort())
-  })
-
-  it('the exemption list is not stale', () => {
-    const names = new Set(
-      files(join(ROOT, 'app'))
-        .concat(files(join(ROOT, 'components')))
-        .map((path) => path.slice(ROOT.length + 1))
-    )
-    expect(UNBUILT.filter((name) => !names.has(name))).toEqual([])
   })
 })

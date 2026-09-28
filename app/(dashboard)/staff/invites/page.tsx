@@ -21,18 +21,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
-import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
+import {
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  usePagedRows,
+} from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
@@ -219,73 +216,67 @@ export default function StaffInvitesPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : invites.length === 0 ? (
-            <EmptyState
-              icon={MailPlus}
-              title="No invitations yet"
-              description="Invite a colleague by email and they will set their own password when they accept."
-              actionLabel="Invite someone"
-              onAction={() => setOpen(true)}
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[880px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Sent</TableHead>
+                <TableHead>Expires</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={invites.length === 0}
+              emptyIcon={MailPlus}
+              emptyTitle="No invitations yet"
+              emptyDescription="Invite a colleague by email and they will set their own password when they accept."
+              emptyActionLabel="Invite someone"
+              onEmptyAction={() => setOpen(true)}
+            >
+              {paged.rows.map((invite) => (
+                <TableRow key={invite.id}>
+                  <TableCell className="font-medium">{invite.name}</TableCell>
+                  <TableCell>{invite.email}</TableCell>
+                  <TableCell>{roleLabel(invite.role)}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={`border-0 ${STATUS_STYLES[invite.status] ?? STATUS_STYLES.EXPIRED}`}
+                    >
+                      {label(invite.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(invite.createdAt)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(invite.expiresAt)}
+                  </TableCell>
+                  <GridActionsCell>
+                    <div className="flex justify-end gap-1">
+                      {/* Resending issues a fresh token and a new seven days,
+                          which is the fix for an invitation that has lapsed —
+                          so it is offered for an expired one too. */}
+                      <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
+                        <RotateCw className="h-4 w-4 mr-1" />
+                        Resend
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => cancel(invite)}>
+                        <X className="h-4 w-4 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </GridActionsCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.rows.map((invite) => (
-                  <TableRow key={invite.id}>
-                    <TableCell className="font-medium">{invite.name}</TableCell>
-                    <TableCell>{invite.email}</TableCell>
-                    <TableCell>{roleLabel(invite.role)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        className={`border-0 ${STATUS_STYLES[invite.status] ?? STATUS_STYLES.EXPIRED}`}
-                      >
-                        {label(invite.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(invite.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(invite.expiresAt)}
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      <div className="flex justify-end gap-1">
-                        {/* Resending issues a fresh token and a new seven days,
-                            which is the fix for an invitation that has lapsed —
-                            so it is offered for an expired one too. */}
-                        <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
-                          <RotateCw className="h-4 w-4 mr-1" />
-                          Resend
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => cancel(invite)}>
-                          <X className="h-4 w-4 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={paged.page}
             pageSize={paged.pageSize}

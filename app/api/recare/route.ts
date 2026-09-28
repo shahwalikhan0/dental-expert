@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { bandFilter, dueBand, nextDueDate, type DueBand } from '@/lib/recare'
+import { RECALL_COOLDOWN_DAYS } from '@/lib/recall'
 
 const BANDS: DueBand[] = ['OVERDUE', 'DUE_SOON', 'UPCOMING', 'SNOOZED', 'NOT_DUE']
 
@@ -26,6 +27,13 @@ export async function GET(request: NextRequest) {
     const band = (searchParams.get('band') || 'OVERDUE') as DueBand
     const typeId = searchParams.get('typeId') || ''
     const search = searchParams.get('search')?.trim() || ''
+    /**
+     * `no` hides anybody already chased inside the cooling-off period, which
+     * is what makes the list workable a second time in the same fortnight.
+     * `yes` is the other half of the same question — who has been written to
+     * and has still not booked.
+     */
+    const contacted = searchParams.get('contacted') || ''
     const sort = searchParams.get('sort') || 'dueDate'
     const direction = searchParams.get('direction') === 'desc' ? 'desc' : 'asc'
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
@@ -36,11 +44,16 @@ export async function GET(request: NextRequest) {
     }
 
     const today = new Date()
+    const cooledOffAt = new Date(today.getTime() - RECALL_COOLDOWN_DAYS * 86400000)
 
     const base = {
       hospitalId,
       status: 'ACTIVE' as const,
       ...(typeId ? { recareTypeId: typeId } : {}),
+      ...(contacted === 'no'
+        ? { OR: [{ lastContactedAt: null }, { lastContactedAt: { lt: cooledOffAt } }] }
+        : {}),
+      ...(contacted === 'yes' ? { lastContactedAt: { gte: cooledOffAt } } : {}),
       ...(search
         ? {
             patient: {
@@ -80,6 +93,10 @@ export async function GET(request: NextRequest) {
               lastName: true,
               phone: true,
               email: true,
+              // So the list can grey out somebody who cannot be contacted
+              // rather than letting the desk select them and be told
+              // afterwards.
+              communicationPrefs: true,
             },
           },
         },

@@ -7,15 +7,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  SortableHeader,
+  useSort,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Search, Trash2, UserPlus } from 'lucide-react'
@@ -230,79 +231,73 @@ export default function WalkInsPage() {
                   First seen
                 </SortableHeader>
                 <TableHead>Outcome</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+            <GridBody
+              columns={6}
+              loading={loading}
+              empty={rows.length === 0}
+              emptyIcon={UserPlus}
+              emptyTitle={debouncedSearch ? 'No records found' : 'Nobody is waiting on a decision'}
+              emptyDescription={
+                debouncedSearch
+                  ? 'No walk-in matches that search.'
+                  : 'Walk-ins stay here until they are registered as a patient or discarded.'
+              }
+            >
+              {rows.map((visitor) => (
+                <ClickableRow
+                  key={visitor.id}
+                  href={trail.to(`/walk-ins/${visitor.id}`)}
+                  label={`Open ${visitor.name}`}
+                >
+                  <TableCell className="font-medium">{visitor.name}</TableCell>
+                  <TableCell>{visitor.phone || '—'}</TableCell>
+                  <TableCell>{visitor._count.appointments}</TableCell>
+                  <TableCell>{displayDate(visitor.createdAt)}</TableCell>
+                  <TableCell>
+                    {visitor.convertedPatient ? (
+                      <Badge variant="outline">
+                        Registered · {visitor.convertedPatient.patientId}
+                      </Badge>
+                    ) : visitor.discardedAt ? (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        Discarded
+                      </Badge>
+                    ) : (
+                      <Badge>To decide</Badge>
+                    )}
                   </TableCell>
-                </TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    {/* Under a search, "nobody is waiting" is the wrong fact. */}
-                    {debouncedSearch
-                      ? 'No records found for this search.'
-                      : 'Nobody is waiting on a decision.'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((visitor) => (
-                  <ClickableRow
-                    key={visitor.id}
-                    href={trail.to(`/walk-ins/${visitor.id}`)}
-                    label={`Open ${visitor.name}`}
-                  >
-                    <TableCell className="font-medium">{visitor.name}</TableCell>
-                    <TableCell>{visitor.phone || '—'}</TableCell>
-                    <TableCell>{visitor._count.appointments}</TableCell>
-                    <TableCell>{displayDate(visitor.createdAt)}</TableCell>
-                    <TableCell>
-                      {visitor.convertedPatient ? (
-                        <Badge variant="outline">
-                          Registered · {visitor.convertedPatient.patientId}
-                        </Badge>
-                      ) : visitor.discardedAt ? (
-                        <Badge variant="outline" className="text-muted-foreground">
-                          Discarded
-                        </Badge>
-                      ) : (
-                        <Badge>To decide</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right row-actions">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
-                            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                            Register
-                          </Link>
+                  <GridActionsCell>
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
+                          <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                          Register
+                        </Link>
+                      </Button>
+                      <IconTooltip label={`Discard ${visitor.name}`}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive"
+                          disabled={busyId === visitor.id}
+                          onClick={() => discard(visitor)}
+                          aria-label={`Discard ${visitor.name}`}
+                        >
+                          {busyId === visitor.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
                         </Button>
-                        <IconTooltip label={`Discard ${visitor.name}`}>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            disabled={busyId === visitor.id}
-                            onClick={() => discard(visitor)}
-                            aria-label={`Discard ${visitor.name}`}
-                          >
-                            {busyId === visitor.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        </IconTooltip>
-                      </div>
-                    </TableCell>
-                  </ClickableRow>
-                ))
-              )}
-            </TableBody>
+                      </IconTooltip>
+                    </div>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
           </Table>
 
           <GridPagination

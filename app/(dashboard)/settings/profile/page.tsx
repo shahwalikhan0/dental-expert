@@ -5,10 +5,6 @@ import { auth } from '@/lib/auth'
 import { locales } from '@/lib/i18n/config'
 import { prisma } from '@/lib/prisma'
 
-export const metadata = {
-  title: 'My Profile',
-}
-
 export default async function ProfileSettingsPage() {
   const session = await auth()
   if (!session?.user?.id) {

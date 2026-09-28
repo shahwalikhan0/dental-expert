@@ -14,17 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
@@ -557,106 +555,93 @@ export default function LabWorkPage() {
 
       {/* Orders Table */}
       <Card>
-        <CardContent className="pt-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[1000px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order No.</TableHead>
+                <TableHead>Patient</TableHead>
+                <TableHead>Work Type</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Order Date</TableHead>
+                <TableHead>Expected</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Cost</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={10}
+              loading={loading}
+              empty={orders.length === 0}
+              emptyIcon={FlaskConical}
+              emptyTitle="No lab orders found"
+              emptyDescription="Nothing is out with a laboratory under these filters."
+              emptyActionLabel="Create Lab Order"
+              onEmptyAction={() => router.push('/lab/orders/new')}
+            >
+              {orders.map((order) => (
+                <ClickableRow
+                  key={order.id}
+                  href={trail.to(`/lab/orders/${order.id}`)}
+                  label={`Open lab case ${order.orderNumber}`}
+                >
+                  <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{order.patientName}</div>
+                      <div className="text-sm text-muted-foreground">{order.patientPhone}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatWorkType(order.workType)}</TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{order.vendorName}</div>
+                      <div className="text-sm text-muted-foreground">{order.vendorPhone}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatDate(order.orderDate)}</TableCell>
+                  <TableCell>{formatDate(order.expectedDate)}</TableCell>
+                  <TableCell>{getStatusBadge(order.status)}</TableCell>
+                  <TableCell>{getPriorityBadge(order.priority)}</TableCell>
+                  <TableCell>{formatCurrency(order.estimatedCost)}</TableCell>
+                  <GridActionsCell>
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/lab/orders/${order.id}`)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/lab/orders/${order.id}/edit`)}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit Order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
               ))}
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="text-center py-12">
-              <FlaskConical className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No lab orders found</h3>
-              <p className="text-muted-foreground">Get started by creating your first lab order</p>
-              <Button className="mt-4" onClick={() => router.push('/lab/orders/new')}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Lab Order
-              </Button>
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order No.</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Work Type</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead>Order Date</TableHead>
-                    <TableHead>Expected</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Cost</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
-                    <ClickableRow
-                      key={order.id}
-                      href={trail.to(`/lab/orders/${order.id}`)}
-                      label={`Open lab case ${order.orderNumber}`}
-                    >
-                      <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{order.patientName}</div>
-                          <div className="text-sm text-muted-foreground">{order.patientPhone}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatWorkType(order.workType)}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{order.vendorName}</div>
-                          <div className="text-sm text-muted-foreground">{order.vendorPhone}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDate(order.orderDate)}</TableCell>
-                      <TableCell>{formatDate(order.expectedDate)}</TableCell>
-                      <TableCell>{getStatusBadge(order.status)}</TableCell>
-                      <TableCell>{getPriorityBadge(order.priority)}</TableCell>
-                      <TableCell>{formatCurrency(order.estimatedCost)}</TableCell>
-                      <TableCell className="text-right row-actions">
-                        <DropdownMenu>
-                          <IconTooltip label="More actions">
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More actions">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </IconTooltip>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/lab/orders/${order.id}`)}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/lab/orders/${order.id}/edit`)}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit Order
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </ClickableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            </GridBody>
+          </Table>
 
-              <GridPagination
-                page={pagination.page}
-                pageSize={pagination.limit}
-                total={pagination.total}
-                noun="lab cases"
-                onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-                onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
-              />
-            </>
-          )}
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="lab cases"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
         </CardContent>
       </Card>
     </div>

@@ -28,6 +28,7 @@ export const APP_ROUTES = [
   '/billing/payments',
   '/billing/payments/[id]/receipt',
   '/billing/payments/[id]/refund',
+  '/billing/receivables',
   '/billing/reports',
   // The patient-facing booking page. It is not a dashboard route and never
   // appears in a staff breadcrumb; it is listed because this file is checked
@@ -63,8 +64,20 @@ export const APP_ROUTES = [
   '/patients',
   '/patients/[id]',
   '/patients/[id]/edit',
+  '/patients/[id]/statement',
   '/patients/new',
   '/platform/tenants',
+  // The patient portal. Like /book/[slug] above, these are not dashboard routes
+  // and never appear in a staff breadcrumb; they are listed because this file
+  // is checked against the filesystem, and an exception would be a hole in that
+  // check.
+  '/portal',
+  '/portal/appointments',
+  '/portal/bills',
+  '/portal/login',
+  '/portal/password',
+  '/portal/prescriptions',
+  '/portal/treatments',
   '/prescriptions',
   '/prescriptions/[id]',
   '/prescriptions/new',
@@ -107,6 +120,7 @@ export const APP_ROUTES = [
   '/treatments/plans',
   '/treatments/plans/[id]',
   '/treatments/plans/[id]/edit',
+  '/treatments/plans/[id]/estimate',
   '/treatments/plans/new',
   '/verify-email',
   '/walk-ins',

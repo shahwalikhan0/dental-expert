@@ -12,10 +12,19 @@ import { bucketFor, callerKey, rateLimit } from '@/lib/rate-limit'
 
 // Public routes that don't require authentication.
 //
-// Everything under /portal and /pay is patient-facing and must not be gated by
-// the staff session: patients have their own cookie, issued by the OTP flow and
-// checked in app/portal/(secure)/layout.tsx. Gating them here sent patients to
-// the staff login page, which made the portal unreachable entirely.
+// Everything under /portal is patient-facing and must not be gated by the staff
+// session: patients hold their own cookie, issued by /api/portal/auth/login and
+// checked server-side in app/portal/(secure)/layout.tsx. Gating it here would
+// send patients to the staff sign-in page, which makes the portal unreachable.
+//
+// "Public" here means only "not gated by the staff session". The portal's own
+// pages are gated by their own layout; this list is navigation routing, not a
+// security boundary — see the note on the API short-circuit below.
+//
+// `/pay` used to be on this list alongside a comment describing an OTP flow and
+// a layout file, neither of which existed. A route listed public and never
+// built is a trap for whoever builds it: the first page created under it would
+// have been born unauthenticated.
 const publicRoutes = [
   '/login',
   '/forgot-password',
@@ -25,7 +34,6 @@ const publicRoutes = [
   '/verify-email',
   '/invite/accept',
   '/portal',
-  '/pay',
   // The patient booking application. It is a separate application that happens
   // to be served from the same deployment — no staff session, no clinic
   // navigation, no shared layout. See app/(patient)/layout.tsx.

@@ -10,7 +10,7 @@
 	email {$ACME_EMAIL}
 }
 
-{$DENTAL_ERP_DOMAIN} {
+{$DENTAL_EXPERT_DOMAIN} {
 	encode zstd gzip
 
 	reverse_proxy app:3000 {

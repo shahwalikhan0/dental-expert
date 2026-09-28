@@ -4,18 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
-import { GridPagination, usePagedRows } from '@/components/ui/data-grid'
+import { GridBody, GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, BellRing, Check, PackageX } from 'lucide-react'
@@ -228,97 +219,91 @@ export default function StockAlertsPage() {
       />
 
       <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : alerts.length === 0 ? (
-            <EmptyState
-              icon={showAcknowledged ? Check : BellRing}
-              title={showAcknowledged ? 'Nothing acknowledged yet' : 'Nothing needs attention'}
-              description={
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[880px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead>Alert</TableHead>
+                <TableHead>Batch</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead className="text-right">In stock</TableHead>
+                <TableHead>Raised</TableHead>
+                <TableHead className="text-right">
+                  {showAcknowledged ? 'Acknowledged by' : ''}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={7}
+              loading={loading}
+              empty={alerts.length === 0}
+              emptyIcon={showAcknowledged ? Check : BellRing}
+              emptyTitle={showAcknowledged ? 'Nothing acknowledged yet' : 'Nothing needs attention'}
+              emptyDescription={
                 showAcknowledged
                   ? 'Alerts somebody has dealt with appear here.'
                   : 'Every item is above its minimum and nothing is near its expiry date.'
               }
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Alert</TableHead>
-                  <TableHead>Batch</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">In stock</TableHead>
-                  <TableHead>Raised</TableHead>
-                  <TableHead className="text-right">
-                    {showAcknowledged ? 'Acknowledged by' : ''}
-                  </TableHead>
+            >
+              {paged.rows.map((alert) => (
+                <TableRow key={alert.id}>
+                  <TableCell>
+                    <div className="font-medium">{alert.itemName}</div>
+                    <div className="text-xs text-muted-foreground">{alert.sku}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={ALERT_STYLE[alert.alertType].className}>
+                      {ALERT_STYLE[alert.alertType].label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {/* A shortage is about the item; only an expiry names a
+                        batch, which is why this is often blank. */}
+                    {alert.batchNumber ?? <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {alert.expiryDate ? (
+                      <>
+                        {formatDate(alert.expiryDate)}
+                        <span className="block text-xs text-muted-foreground">
+                          {daysUntil(alert.expiryDate)}
+                          {alert.remainingQty != null && ` · ${alert.remainingQty} left`}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right text-sm">
+                    {alert.currentStock} {alert.unit}
+                    <span className="block text-xs text-muted-foreground">
+                      min {alert.minimumStock}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(alert.createdAt)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {alert.isAcknowledged ? (
+                      <div className="text-xs text-muted-foreground">
+                        {alert.acknowledgedByName ?? 'Someone'}
+                        {alert.acknowledgedAt && (
+                          <span className="block">{formatDate(alert.acknowledgedAt)}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => acknowledge(alert)}>
+                        <Check className="h-4 w-4 mr-1" />
+                        Acknowledge
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.rows.map((alert) => (
-                  <TableRow key={alert.id}>
-                    <TableCell>
-                      <div className="font-medium">{alert.itemName}</div>
-                      <div className="text-xs text-muted-foreground">{alert.sku}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={ALERT_STYLE[alert.alertType].className}>
-                        {ALERT_STYLE[alert.alertType].label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {/* A shortage is about the item; only an expiry names a
-                          batch, which is why this is often blank. */}
-                      {alert.batchNumber ?? <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {alert.expiryDate ? (
-                        <>
-                          {formatDate(alert.expiryDate)}
-                          <span className="block text-xs text-muted-foreground">
-                            {daysUntil(alert.expiryDate)}
-                            {alert.remainingQty != null && ` · ${alert.remainingQty} left`}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {alert.currentStock} {alert.unit}
-                      <span className="block text-xs text-muted-foreground">
-                        min {alert.minimumStock}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(alert.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {alert.isAcknowledged ? (
-                        <div className="text-xs text-muted-foreground">
-                          {alert.acknowledgedByName ?? 'Someone'}
-                          {alert.acknowledgedAt && (
-                            <span className="block">{formatDate(alert.acknowledgedAt)}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <Button variant="ghost" size="sm" onClick={() => acknowledge(alert)}>
-                          <Check className="h-4 w-4 mr-1" />
-                          Acknowledge
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+              ))}
+            </GridBody>
+          </Table>
+
           <GridPagination
             page={paged.page}
             pageSize={paged.pageSize}

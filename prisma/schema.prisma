@@ -114,6 +114,10 @@ model Hospital {
   messageLogs         MessageLog[]
   availability        Availability[]
   patientPortalEnabled Boolean   @default(false)
+  portalAccounts         PatientPortalAccount[]
+
+  clinicalNotes          ClinicalNote[]
+  clinicalNoteAmendments ClinicalNoteAmendment[]
 
   formTemplates       FormTemplate[]
   formSubmissions     FormSubmission[]
@@ -297,6 +301,9 @@ model User {
   visitorsConverted       Visitor[]            @relation("VisitorsConverted")
   visitorsDiscarded       Visitor[]            @relation("VisitorsDiscarded")
   treatmentAmendments     TreatmentAmendment[] @relation("TreatmentAmendments")
+  clinicalNotesAuthored        ClinicalNote[]          @relation("ClinicalNotesAuthored")
+  clinicalNotesSigned          ClinicalNote[]          @relation("ClinicalNotesSigned")
+  clinicalNoteAmendments       ClinicalNoteAmendment[] @relation("ClinicalNoteAmendments")
 
   @@unique([hospitalId, email])
   @@index([email])
@@ -455,6 +462,21 @@ model Patient {
   occupation      String?
   referredBy      String?
 
+  /// Who settles this patient's bills.
+  ///
+  /// A self-relation rather than a `Household` table, because what a practice
+  /// actually needs to answer is "send one statement to one person", and that
+  /// person is always another patient of the clinic — the mother whose three
+  /// children hold three records and one balance. A household table would add
+  /// a row nobody edits and would still have to name a payer inside it.
+  ///
+  /// NULL means the patient pays for themselves, which is the common case and
+  /// must stay the zero-configuration default. A patient who guarantees others
+  /// may still have a guarantor of their own; the ledger walks one hop and no
+  /// further, deliberately — see `familyOf` in lib/family.ts for why a chain is
+  /// refused rather than followed.
+  guarantorId String?
+
   emergencyContactName     String?
   emergencyContactPhone    String?
   emergencyContactRelation String?
@@ -493,6 +515,11 @@ model Patient {
   hospital        Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   mergedInto      Patient?   @relation("PatientMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedFrom      Patient[]  @relation("PatientMerge")
+  /// SetNull rather than Cascade: deleting the payer must not delete the
+  /// people they were paying for.
+  guarantor      Patient?              @relation("PatientGuarantor", fields: [guarantorId], references: [id], onDelete: SetNull)
+  dependants     Patient[]             @relation("PatientGuarantor")
+  clinicalNotes  ClinicalNote[]
   medicalHistory  MedicalHistory?
   appointments    Appointment[]
   treatments      Treatment[]
@@ -505,12 +532,15 @@ model Patient {
   invoices        Invoice[]
   documents       Document[]
   labOrders       LabOrder[]
+  portalAccount  PatientPortalAccount?
 
   @@unique([hospitalId, patientId])
   // FR-002 duplicate prevention. A CNIC identifies one person, so two patient
   // records carrying the same one are the same patient twice. NULLs stay
   // distinct, which matters: children hold a B-Form, not a CNIC.
   @@unique([hospitalId, cnic])
+  /// "Everyone this person pays for" is the statement query.
+  @@index([hospitalId, guarantorId])
   @@index([hospitalId, createdAt(sort: Desc)])
   @@index([hospitalId, isActive, createdAt(sort: Desc)])
   // Declared to match what 20260923110000_patient_merge actually created. The
@@ -538,6 +568,56 @@ model Patient {
 ///
 /// The habits and the dental-specific fields keep their own columns: they are
 /// answers to fixed questions with fixed ranges, not an open list.
+/// A patient's read-only sign-in to the portal.
+///
+/// Issued by the clinic, never self-registered. The desk decides which record
+/// an account belongs to, which is what makes the whole thing tractable: the
+/// alternative — proving identity from a phone number — cannot tell a mother
+/// from her two children, who share one number and hold one record each. See
+/// `matchPatientByPhone`, which refuses to guess for exactly this reason.
+///
+/// Its own table rather than columns on `Patient`, because a patient record is
+/// a clinical fact and an account is an access decision. Withdrawing access
+/// must not touch the record, most patients will never hold an account, and a
+/// record that is deactivated or merged away takes its account with it.
+///
+/// There is no username column. Sign-in is the clinic's own patient number,
+/// which is already unique per clinic, already printed on the patient's
+/// receipts and prescriptions, and already what the desk would read out. A
+/// second identifier would be one more thing to keep in step.
+model PatientPortalAccount {
+  id         String @id @default(cuid())
+  hospitalId String
+  patientId  String @unique
+
+  passwordHash String
+
+  /// Access withdrawn, without deleting the account or its history. Set when
+  /// the clinic revokes it, and when the patient record is deactivated.
+  isActive Boolean @default(true)
+
+  /// True from the moment the desk issues a password, because the desk has
+  /// seen that password. Nothing but the change-password screen is reachable
+  /// until it is false.
+  mustChangePassword Boolean @default(true)
+
+  lastLoginAt DateTime?
+
+  /// Per-account guessing limit, the same shape as the staff lockout. The
+  /// per-source limit is in lib/rate-limit.ts; neither substitutes for the
+  /// other.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalId])
+}
+
 model MedicalHistory {
   id                 String    @id @default(cuid())
   patientId          String    @unique
@@ -669,6 +749,7 @@ model Appointment {
   visitor         Visitor?          @relation(fields: [visitorId], references: [id], onDelete: Restrict)
   doctor          Staff             @relation("DoctorAppointments", fields: [doctorId], references: [id])
   treatments      Treatment[]
+  clinicalNotes ClinicalNote[]
 
   @@unique([hospitalId, appointmentNo])
   @@unique([hospitalId, tokenNumber])
@@ -680,8 +761,6 @@ model Appointment {
   /// The desk's "what came in overnight" list: online, not yet looked at.
   @@index([hospitalId, bookedOnline, reviewedAt])
 }
-
-
 
 enum AppointmentType {
   CONSULTATION
@@ -708,8 +787,6 @@ enum Priority {
   HIGH
   URGENT
 }
-
-
 
 // ==================== DENTAL CHART ====================
 
@@ -863,6 +940,18 @@ model TreatmentPlan {
   consentGiven    Boolean             @default(false)
   consentDate     DateTime?
 
+  /// What each phase is called, as `["Urgent", "Restorative", "Elective"]`.
+  ///
+  /// A plan is presented in phases because that is how it is agreed and paid
+  /// for: the abscess this month, the crowns when the money is there. Without
+  /// phases a nine-item plan is one number a patient says no to.
+  ///
+  /// The phase itself is an integer on each item, and this is only its label.
+  /// A table of phases would be three joins and a migration to rename one; the
+  /// names are display text, they are edited together, and an item whose phase
+  /// runs past the end of this array falls back to "Phase N".
+  phaseNames Json?
+
   notes           String?             @db.Text
 
   createdAt       DateTime            @default(now())
@@ -883,6 +972,15 @@ model TreatmentPlanItem {
   procedureId     String
 
   toothNumbers    String?
+
+  /// Which phase of the plan this belongs to, from 1.
+  ///
+  /// Distinct from `priority`, which orders items *within* a phase. The two
+  /// were conflated before: `priority` was the only ordering field and the
+  /// screens sorted by it, so "do this first" and "this is part of the first
+  /// course of treatment" were the same number, and a plan could not say
+  /// "these four things, then those three, and here is what each stage costs".
+  phase         Int                     @default(1)
   priority        Int                     @default(1)
   estimatedCost   Decimal                 @db.Decimal(10, 2)
   status          TreatmentPlanItemStatus @default(PENDING)
@@ -896,6 +994,7 @@ model TreatmentPlanItem {
   procedure       Procedure               @relation(fields: [procedureId], references: [id])
 
   @@index([treatmentPlanId])
+  @@index([treatmentPlanId, phase, priority])
 }
 
 enum TreatmentPlanStatus {
@@ -1511,7 +1610,6 @@ enum PaymentStatus {
 
 // ==================== INVENTORY MANAGEMENT ====================
 
-
 model InventoryItem {
   id              String    @id @default(cuid())
   hospitalId      String
@@ -1878,8 +1976,6 @@ enum StockAlertType {
 
 // ==================== LAB WORK MANAGEMENT ====================
 
-
-
 model LabOrder {
   id              String         @id @default(cuid())
   hospitalId      String
@@ -2118,7 +2214,6 @@ model CommunicationTemplate {
   @@index([category])
   @@index([channel])
 }
-
 
 /// Every message the clinic sent a patient, whatever it went out over.
 ///
@@ -2464,6 +2559,22 @@ model Recare {
   status          RecareStatus @default(ACTIVE)
   notes           String?      @db.Text
 
+  /// When the clinic last reached out about this, and how many times it has.
+  ///
+  /// Recare found the people who should be in the chair; nothing recorded
+  /// whether anybody had been told. The desk could work the overdue list twice
+  /// in a week and send the same patient the same message, and no report could
+  /// say what proportion of the list had been contacted at all — which is the
+  /// number that decides whether the recall is working.
+  ///
+  /// A count and a date rather than a `RecareContact` table: every message
+  /// already lands in `MessageLog` with `relatedType = 'Recare'` and
+  /// `relatedId` set, so the history is there and addressable. These two
+  /// columns exist so the due list can be filtered and sorted on contact
+  /// without joining the message log on every row.
+  lastContactedAt DateTime?
+  contactAttempts Int       @default(0)
+
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -2565,4 +2676,121 @@ model PerioToothFinding {
   exam            PerioExam @relation("PerioToothFindings", fields: [examId], references: [id], onDelete: Cascade)
 
   @@unique([examId, toothNumber])
+}
+
+// ==================== CLINICAL NOTES ====================
+
+/// A note about a patient that is not a procedure.
+///
+/// Every clinical fact in this application hung off `Treatment`, which is a
+/// procedure with a price. So a telephone call about post-operative pain, a
+/// consultation that ended in "come back when the swelling is down", a
+/// discussion about a plan the patient declined, and an observation made at
+/// reception had exactly one place to go: `Appointment.notes`. That column has
+/// no author, no signature and no amendment trail, and it is editable by
+/// anyone who can edit the booking. Those are clinical facts recorded in a
+/// scheduling field.
+///
+/// This is the same record `Treatment` is — authored, signable, locked once
+/// signed, amended only by addendum or by an attributed correction — minus the
+/// procedure and the money. FR-007 applies to it in full, and it shares
+/// `lib/clinical-notes.ts` with treatments so the two cannot drift on what
+/// "signed" means.
+model ClinicalNote {
+  id         String @id @default(cuid())
+  hospitalId String
+  patientId  String
+
+  /// The visit it was made at, when there was one. Null for a telephone call
+  /// or a note made between appointments, which is most of why this exists.
+  appointmentId String?
+
+  noteNo String
+
+  kind ClinicalNoteKind @default(CONSULTATION)
+
+  /// One line that shows in a list. Not derived from the body: the first
+  /// sentence of a clinical note is rarely the thing you are scanning for.
+  summary String
+
+  body String @db.Text
+
+  /// Teeth this concerns, in the same comma-separated form `Treatment` and
+  /// `Prescription` use.
+  toothNumbers String?
+
+  /// Who wrote it. Not nullable — an unattributed clinical note is not a
+  /// clinical note, and there is no historical data here to be charitable to.
+  authorId String
+
+  signedById String?
+  signedAt   DateTime?
+  amendedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hospital    Hospital                @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient     Patient                 @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment?            @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  author      User                    @relation("ClinicalNotesAuthored", fields: [authorId], references: [id])
+  signedBy    User?                   @relation("ClinicalNotesSigned", fields: [signedById], references: [id])
+  amendments  ClinicalNoteAmendment[]
+
+  @@unique([hospitalId, noteNo])
+  @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([hospitalId, createdAt(sort: Desc)])
+  @@index([appointmentId])
+  @@index([authorId])
+}
+
+/// Why a note is written rather than what was done.
+enum ClinicalNoteKind {
+  /// An examination or discussion with no procedure carried out.
+  CONSULTATION
+  /// A call to or from the patient. The commonest thing there was nowhere to
+  /// put.
+  PHONE_CALL
+  /// Post-operative review, healing check, a look at something that was
+  /// watched rather than treated.
+  FOLLOW_UP
+  /// Something noticed and recorded for next time.
+  OBSERVATION
+  /// Treatment offered and refused, and what the patient was told about the
+  /// consequences. Medico-legally the most important note a practice keeps and
+  /// the one that had no home at all.
+  DECLINED_TREATMENT
+  OTHER
+}
+
+/// The same append-only trail `TreatmentAmendment` keeps, for notes.
+///
+/// A separate table rather than a shared polymorphic one: a foreign key that
+/// points at one of two parents depending on a discriminator column cannot be
+/// enforced by the database, and this trail is the thing whose integrity the
+/// whole signing model rests on.
+model ClinicalNoteAmendment {
+  id         String @id @default(cuid())
+  hospitalId String
+  noteId     String
+
+  kind AmendmentKind
+
+  /// For an addendum, the addition itself. For a correction, the reason the
+  /// correction was needed.
+  body String @db.Text
+
+  /// Corrections only: `{ field: { from, to } }` for each field changed.
+  changes Json?
+
+  authorId  String
+  createdAt DateTime @default(now())
+
+  hospital Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  note     ClinicalNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author   User         @relation("ClinicalNoteAmendments", fields: [authorId], references: [id])
+
+  @@index([hospitalId])
+  @@index([noteId])
+  @@index([kind])
 }

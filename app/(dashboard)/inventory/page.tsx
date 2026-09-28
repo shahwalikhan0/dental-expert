@@ -24,7 +24,13 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -419,7 +425,14 @@ export default function InventoryPage() {
                     <TableHead>Urgency</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <GridBody
+                  columns={8}
+                  emptyIcon={Package}
+                  emptyTitle="No inventory items found"
+                  emptyDescription="Nothing in the cupboard matches these filters."
+                  emptyActionLabel="Add Item"
+                  emptyActionHref="/inventory/new"
+                >
                   {(forecastData.forecasts || [])
                     .filter(
                       (f: any) =>
@@ -488,7 +501,7 @@ export default function InventoryPage() {
                         </TableCell>
                       </TableRow>
                     ))}
-                </TableBody>
+                </GridBody>
               </Table>
             </CardContent>
           </Card>
@@ -617,7 +630,7 @@ export default function InventoryPage() {
                 <TableHead>Stock</TableHead>
                 <TableHead>Unit Price</TableHead>
                 <TableHead>Stock Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -724,7 +737,7 @@ export default function InventoryPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right row-actions">
+                    <GridActionsCell>
                       <DropdownMenu>
                         <IconTooltip label="More actions">
                           <DropdownMenuTrigger asChild>
@@ -753,7 +766,7 @@ export default function InventoryPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </TableCell>
+                    </GridActionsCell>
                   </ClickableRow>
                 ))
               )}

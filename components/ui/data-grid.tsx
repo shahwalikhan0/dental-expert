@@ -24,9 +24,19 @@
  */
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TableRow, TABLE_HEAD_CLASS } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableRow, TABLE_HEAD_CLASS } from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/utils'
 import { GLASS_FIELD } from '@/lib/surface'
 
@@ -104,6 +114,167 @@ export const ClickableRow = React.forwardRef<HTMLTableRowElement, ClickableRowPr
   }
 )
 ClickableRow.displayName = 'ClickableRow'
+
+/**
+ * The column a grid's row actions live in.
+ *
+ * Deliberately empty, and that is the whole point of it existing. Seventeen of
+ * the twenty-four list screens headed this column "Actions", which is fine on
+ * a desktop and wrong on a phone: below `sm` every row becomes a card and every
+ * cell a labelled line, and the labels are read off the header row at runtime
+ * (see components/ui/table.tsx). A heading here therefore produced a final card
+ * line reading "Actions  ⋯", right-aligned as though the menu were a value
+ * somebody had recorded. A column with no heading is laid out as what it is —
+ * controls, on their own line at the foot of the card.
+ *
+ * Nothing is lost to a screen reader: the buttons inside carry their own
+ * labels, which is where the name of an action belongs.
+ */
+export function GridActionsHead({ className }: { className?: string }) {
+  return <TableHead className={cn(TABLE_HEAD_CLASS, 'w-px text-right', className)} />
+}
+
+/**
+ * The cell those actions sit in.
+ *
+ * `row-actions` is what fades them back until the row is hovered or focused —
+ * see app/globals.css. It was applied on some grids and not others, so the same
+ * column of three-dot menus was quiet on one screen and a column of noise on
+ * the next.
+ */
+export function GridActionsCell({
+  className,
+  children,
+}: {
+  className?: string
+  children?: React.ReactNode
+}) {
+  return <TableCell className={cn('text-right row-actions', className)}>{children}</TableCell>
+}
+
+export interface GridBodyProps {
+  /** Columns in the header row. The loading and empty rows span them. */
+  columns: number
+  loading?: boolean
+  /** Placeholder rows to draw while loading. */
+  skeletonRows?: number
+  /**
+   * The fetch failed, which is not the same as the list being empty.
+   *
+   * The drug catalogue is the only screen that has ever drawn this
+   * distinction, and it is right: "no medications found" under a failed
+   * request tells somebody their catalogue has been wiped. It belongs here so
+   * the other twenty-three can say it too.
+   */
+  failed?: boolean
+  onRetry?: () => void
+  /** True when the fetch succeeded and returned nothing. */
+  empty?: boolean
+  emptyIcon: LucideIcon
+  emptyTitle: string
+  emptyDescription: string
+  /** "Add a procedure", "Clear the filters" — a link or a handler, not both. */
+  emptyActionLabel?: string
+  emptyActionHref?: string
+  onEmptyAction?: () => void
+  children?: React.ReactNode
+}
+
+/**
+ * A grid's body, in all three of the states it has.
+ *
+ * Every list screen wrote this ternary itself, and twenty-four copies drifted
+ * exactly as far as twenty-four copies do. Loading was skeleton rows on fifteen
+ * screens, a centred spinner on six — which throws the header away and collapses
+ * the card, so the page jumps when the data lands — and on three screens it was
+ * nothing at all. Empty was a row inside the table on ten, a block outside the
+ * card on eleven, and the shared `EmptyState` on three, with the icon, the
+ * wording and the offer of a way out different in almost every one.
+ *
+ * One implementation, so a screen declares what it has rather than how to draw
+ * it. The empty state is the application's own `EmptyState`, so a grid with no
+ * rows now looks like every other empty thing in the product.
+ *
+ * `columns` has to be passed because a `colSpan` cannot be counted from here:
+ * the header is a sibling, rendered by the screen.
+ */
+export function GridBody({
+  columns,
+  loading = false,
+  skeletonRows = 6,
+  failed = false,
+  onRetry,
+  empty = false,
+  emptyIcon,
+  emptyTitle,
+  emptyDescription,
+  emptyActionLabel,
+  emptyActionHref,
+  onEmptyAction,
+  children,
+}: GridBodyProps) {
+  if (loading) {
+    return (
+      <TableBody>
+        {Array.from({ length: skeletonRows }).map((_, row) => (
+          <TableRow key={row}>
+            {Array.from({ length: columns }).map((_, column) => (
+              <TableCell key={column}>
+                {/* Uneven on purpose, and the same unevenness every time: a
+                    column of identical grey bars reads as a rendering fault
+                    rather than as text that has not arrived. */}
+                <Skeleton className={cn('h-4', SKELETON_WIDTHS[column % SKELETON_WIDTHS.length])} />
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    )
+  }
+
+  if (failed) {
+    return (
+      <TableBody>
+        <TableRow>
+          <TableCell colSpan={columns} className="p-0">
+            <EmptyState
+              icon={AlertCircle}
+              title="This list could not be loaded"
+              description="That is not the same as it being empty — nothing has been lost. Try again."
+              actionLabel={onRetry ? 'Try again' : undefined}
+              onAction={onRetry}
+            />
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    )
+  }
+
+  if (empty) {
+    return (
+      <TableBody>
+        {/* One cell in the row, which is also how the stacked-card layout
+            recognises a message rather than a record. */}
+        <TableRow>
+          <TableCell colSpan={columns} className="p-0">
+            <EmptyState
+              icon={emptyIcon}
+              title={emptyTitle}
+              description={emptyDescription}
+              actionLabel={emptyActionLabel}
+              actionHref={emptyActionHref}
+              onAction={onEmptyAction}
+            />
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    )
+  }
+
+  return <TableBody>{children}</TableBody>
+}
+
+const SKELETON_WIDTHS = ['w-28', 'w-20', 'w-32', 'w-16', 'w-24']
 
 export interface GridPaginationProps {
   /** One-based. */

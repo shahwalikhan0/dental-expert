@@ -3,7 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { GridPagination } from '@/components/ui/data-grid'
+import { GridBody, GridPagination } from '@/components/ui/data-grid'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ArrowLeftRight } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { isoDay } from '@/lib/dates'
 import { ActiveFilters } from '@/components/ui/active-filters'
@@ -195,20 +200,10 @@ export default function TransactionsPage() {
     }
 
     return (
-      <span
-        className={`px-2 py-1 text-xs font-semibold rounded-full ${badges[type] || 'bg-muted text-foreground'}`}
-      >
-        {type.replace('_', ' ').toUpperCase()}
-      </span>
+      <Badge className={`border-0 ${badges[type] || 'bg-muted text-foreground'}`}>
+        {humanise(type)}
+      </Badge>
     )
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      minimumFractionDigits: 2,
-    }).format(amount)
   }
 
   return (
@@ -330,89 +325,65 @@ export default function TransactionsPage() {
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-background rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">Loading...</div>
-        ) : transactions.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">No transactions found</div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Item
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Quantity
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Unit Price
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Total Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Supplier
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Performed By
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-background divide-y divide-border">
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id} className="hover:bg-muted/50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {new Date(transaction.transactionDate).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getTransactionTypeBadge(transaction.type)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {transaction.itemName}
-                        <br />
-                        <span className="text-xs text-muted-foreground">{transaction.sku}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {transaction.quantity}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {formatCurrency(transaction.unitPrice)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                        {formatCurrency(transaction.totalPrice)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {transaction.supplierName || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {transaction.performedByName}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>Quantity</TableHead>
+                <TableHead>Unit Price</TableHead>
+                <TableHead>Total Amount</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Performed By</TableHead>
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={8}
+              loading={loading}
+              empty={transactions.length === 0}
+              emptyIcon={ArrowLeftRight}
+              emptyTitle="No stock movements found"
+              emptyDescription="Every receipt, issue, adjustment and write-off is recorded here. Nothing has moved yet, or nothing matches the filters above."
+            >
+              {transactions.map((transaction) => (
+                <TableRow key={transaction.id}>
+                  <TableCell>
+                    {new Date(transaction.transactionDate).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>{getTransactionTypeBadge(transaction.type)}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{transaction.itemName}</div>
+                    <div className="text-xs text-muted-foreground">{transaction.sku}</div>
+                  </TableCell>
+                  <TableCell>{transaction.quantity}</TableCell>
+                  <TableCell>{formatCurrency(transaction.unitPrice)}</TableCell>
+                  <TableCell className="font-medium">
+                    {formatCurrency(transaction.totalPrice)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {transaction.supplierName || '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {transaction.performedByName}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </GridBody>
+          </Table>
 
-            <GridPagination
-              page={pagination.page}
-              pageSize={pagination.limit}
-              total={pagination.total}
-              noun="movements"
-              onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-              onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
-            />
-          </>
-        )}
-      </div>
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="movements"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
+        </CardContent>
+      </Card>
 
       {/* Add Transaction Modal */}
       {showAddModal && (

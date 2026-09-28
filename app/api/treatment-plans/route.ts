@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
+import { normalisePhaseNames, phaseOf } from '@/lib/treatment-phases'
 
 // Generate unique plan number for a hospital
 async function generatePlanNumber(hospitalId: string): Promise<string> {
@@ -91,9 +92,9 @@ export async function GET(request: NextRequest) {
                 },
               },
             },
-            orderBy: {
-              priority: 'asc',
-            },
+            // Phase first, then the order within it. Sorting on `priority`
+            // alone interleaved the phases, so a plan read as one list again.
+            orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
           },
           _count: {
             select: {
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { patientId, title, notes, startDate, expectedEndDate, items = [] } = body
+    const { patientId, title, notes, startDate, expectedEndDate, phaseNames, items = [] } = body
 
     // Validate required fields
     if (!patientId || !title) {
@@ -212,10 +213,14 @@ export async function POST(request: NextRequest) {
         startDate: startDate ? new Date(startDate) : null,
         expectedEndDate: expectedEndDate ? new Date(expectedEndDate) : null,
         consentGiven: false,
+        phaseNames: normalisePhaseNames(phaseNames) ?? undefined,
         items: {
           create: items.map((item: any, index: number) => ({
             procedureId: item.procedureId,
             toothNumbers: item.toothNumbers || null,
+            // Clamped rather than trusted: `phase` comes from a form and is
+            // what the printed estimate groups on.
+            phase: phaseOf(item),
             priority: item.priority || index + 1,
             estimatedCost: item.estimatedCost ?? 0,
             notes: item.notes || null,
@@ -244,9 +249,7 @@ export async function POST(request: NextRequest) {
               },
             },
           },
-          orderBy: {
-            priority: 'asc',
-          },
+          orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
         },
       },
     })

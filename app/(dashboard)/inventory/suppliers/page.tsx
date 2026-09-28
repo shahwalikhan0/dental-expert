@@ -4,9 +4,28 @@ import { useState, useEffect, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { GridPagination } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+} from '@/components/ui/data-grid'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { MoreHorizontal, Pencil, Truck } from 'lucide-react'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
+import { formatCurrency } from '@/lib/utils'
 
 interface Supplier {
   id: number
@@ -76,29 +95,15 @@ export default function SuppliersPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-      INACTIVE: 'bg-muted text-foreground',
-      BLOCKED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-    }
-
-    return (
-      <span
-        className={`px-2 py-1 text-xs font-semibold rounded-full ${badges[status as keyof typeof badges]}`}
-      >
-        {status.charAt(0) + status.slice(1).toLowerCase()}
-      </span>
-    )
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      minimumFractionDigits: 0,
-    }).format(amount)
-  }
+  /**
+   * Was a hand-rolled `<span>` with its own colour table, and its own currency
+   * formatter hard-coded to en-PK beside it. Both exist already — `Badge`, and
+   * `formatCurrency` in lib/utils.ts, which follows the clinic's locale rather
+   * than assuming one.
+   */
+  const getStatusBadge = (status: string) => (
+    <Badge variant={status === 'BLOCKED' ? 'destructive' : 'secondary'}>{humanise(status)}</Badge>
+  )
 
   return (
     <div>
@@ -181,104 +186,82 @@ export default function SuppliersPage() {
       </div>
 
       {/* Suppliers Table */}
-      <div className="bg-background rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">Loading...</div>
-        ) : suppliers.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">No suppliers found</div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Code
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Contact Person
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Phone
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Items
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Total Business
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-background divide-y divide-border">
-                  {suppliers.map((supplier) => (
-                    <tr key={supplier.id} className="hover:bg-muted/50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                        {supplier.code}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {supplier.name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {supplier.contactPerson || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {supplier.phone}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {supplier.email || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(supplier.status)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {supplier.itemsSupplied}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {formatCurrency(supplier.totalBusiness)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium row-actions">
-                        <Link
-                          href={`/inventory/suppliers/${supplier.id}`}
-                          className="text-blue-600 hover:text-blue-900 mr-3 dark:text-blue-400"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          href={`/inventory/suppliers/${supplier.id}/edit`}
-                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400"
-                        >
-                          Edit
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Contact Person</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Total Business</TableHead>
+                <GridActionsHead />
+              </TableRow>
+            </TableHeader>
+            <GridBody
+              columns={9}
+              loading={loading}
+              empty={suppliers.length === 0}
+              emptyIcon={Truck}
+              emptyTitle="No suppliers found"
+              emptyDescription="Suppliers are who stock is ordered from. Add one to raise a purchase order against it."
+            >
+              {suppliers.map((supplier) => (
+                <ClickableRow
+                  key={supplier.id}
+                  href={`/inventory/suppliers/${supplier.id}`}
+                  label={`Open ${supplier.name}`}
+                >
+                  <TableCell className="font-medium">{supplier.code}</TableCell>
+                  <TableCell>{supplier.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {supplier.contactPerson || '—'}
+                  </TableCell>
+                  <TableCell>{supplier.phone}</TableCell>
+                  <TableCell className="text-muted-foreground">{supplier.email || '—'}</TableCell>
+                  <TableCell>{getStatusBadge(supplier.status)}</TableCell>
+                  <TableCell>{supplier.itemsSupplied}</TableCell>
+                  <TableCell>{formatCurrency(supplier.totalBusiness)}</TableCell>
+                  <GridActionsCell>
+                    {/* View has gone: the row itself is the link now, which is
+                        what every other grid in the application does. */}
+                    <DropdownMenu>
+                      <IconTooltip label="More actions">
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </IconTooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/inventory/suppliers/${supplier.id}/edit`}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </GridActionsCell>
+                </ClickableRow>
+              ))}
+            </GridBody>
+          </Table>
 
-            <GridPagination
-              page={pagination.page}
-              pageSize={pagination.limit}
-              total={pagination.total}
-              noun="suppliers"
-              onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-              onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
-            />
-          </>
-        )}
-      </div>
+          <GridPagination
+            page={pagination.page}
+            pageSize={pagination.limit}
+            total={pagination.total}
+            noun="suppliers"
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+          />
+        </CardContent>
+      </Card>
 
       {/* Add Supplier Modal - Placeholder */}
       {showAddModal && (

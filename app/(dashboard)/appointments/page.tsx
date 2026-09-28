@@ -14,17 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow, GridPagination, SortableHeader, useSort } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  SortableHeader,
+  useSort,
+} from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import {
   Calendar,
@@ -816,192 +816,158 @@ export default function AppointmentsPage() {
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
                     {showRisk && <TableHead>Risk</TableHead>}
-                    <TableHead className="text-right">Actions</TableHead>
+                    <GridActionsHead />
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-36" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-8" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : appointments.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <Calendar className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-muted-foreground">No appointments found</p>
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href="/appointments/new">
-                              <Plus className="h-4 w-4 mr-2" />
-                              Book New Appointment
-                            </Link>
-                          </Button>
+                <GridBody
+                  columns={8}
+                  loading={loading}
+                  empty={appointments.length === 0}
+                  emptyIcon={Calendar}
+                  emptyTitle="No appointments found"
+                  emptyDescription="Nothing is booked under these filters. Widen the date range, or book the first one."
+                  emptyActionLabel="Book New Appointment"
+                  emptyActionHref="/appointments/new"
+                >
+                  {appointments.map((appointment) => (
+                    <ClickableRow
+                      key={appointment.id}
+                      href={trail.to(`/appointments/${appointment.id}`)}
+                      label={`Open appointment ${appointment.appointmentNo}`}
+                    >
+                      <TableCell>
+                        <div className="font-medium">{appointment.appointmentNo}</div>
+                        {appointment.tokenNumber && (
+                          <div className="text-sm text-muted-foreground tabular-nums">
+                            Token {formatToken(appointment.tokenNumber)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                            <User className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{subjectName(appointment)}</span>
+                              {!appointment.patient && (
+                                <Badge variant="outline" className="text-xs">
+                                  Walk-in
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Phone className="h-3 w-3" />
+                              {appointment.patient?.phone ?? appointment.visitor?.phone ?? '—'}
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
-                    </TableRow>
-                  ) : (
-                    appointments.map((appointment) => (
-                      <ClickableRow
-                        key={appointment.id}
-                        href={trail.to(`/appointments/${appointment.id}`)}
-                        label={`Open appointment ${appointment.appointmentNo}`}
-                      >
-                        <TableCell>
-                          <div className="font-medium">{appointment.appointmentNo}</div>
-                          {appointment.tokenNumber && (
-                            <div className="text-sm text-muted-foreground tabular-nums">
-                              Token {formatToken(appointment.tokenNumber)}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                              <User className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{subjectName(appointment)}</span>
-                                {!appointment.patient && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Walk-in
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <Phone className="h-3 w-3" />
-                                {appointment.patient?.phone ?? appointment.visitor?.phone ?? '—'}
-                              </div>
-                            </div>
+                      <TableCell>
+                        <div className="font-medium">{getDoctorName(appointment.doctor)}</div>
+                        {appointment.doctor.specialization && (
+                          <div className="text-sm text-muted-foreground">
+                            {appointment.doctor.specialization}
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{getDoctorName(appointment.doctor)}</div>
-                          {appointment.doctor.specialization && (
-                            <div className="text-sm text-muted-foreground">
-                              {appointment.doctor.specialization}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <div className="font-medium">
-                                {formatDate(appointment.scheduledDate)}
-                              </div>
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                {formatTime(appointment.scheduledTime)}
-                                <span className="text-xs">({appointment.duration} min)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getTypeBadge(appointment.appointmentType)}</TableCell>
-                        <TableCell>{getStatusBadge(appointment.status)}</TableCell>
-                        {showRisk && (
-                          <TableCell>
-                            {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) ? (
-                              getRiskBadge(appointment.id)
-                            ) : (
-                              <span className="text-xs text-muted-foreground">N/A</span>
-                            )}
-                          </TableCell>
                         )}
-                        <TableCell className="text-right row-actions">
-                          <DropdownMenu>
-                            <IconTooltip label="More actions">
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="More actions">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </IconTooltip>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/appointments/${appointment.id}`)}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/appointments/${appointment.id}/edit`)}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
-                                <DropdownMenuItem onClick={() => handleCheckIn(appointment.id)}>
-                                  <LogIn className="h-4 w-4 mr-2" />
-                                  Check In
-                                </DropdownMenuItem>
-                              )}
-                              {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
-                                <DropdownMenuItem onClick={() => handleCheckOut(appointment.id)}>
-                                  <LogOut className="h-4 w-4 mr-2" />
-                                  Check Out
-                                </DropdownMenuItem>
-                              )}
-                              {appointment.status === 'SCHEDULED' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(appointment.id, 'CONFIRMED')}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Confirm
-                                </DropdownMenuItem>
-                              )}
-                              {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(
-                                appointment.status
-                              ) && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => handleStatusChange(appointment.id, 'NO_SHOW')}
-                                    className="text-amber-600 dark:text-amber-400"
-                                  >
-                                    <XCircle className="h-4 w-4 mr-2" />
-                                    Mark No Show
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
-                                    className="text-red-600 dark:text-red-400"
-                                  >
-                                    <XCircle className="h-4 w-4 mr-2" />
-                                    Cancel
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="font-medium">
+                              {formatDate(appointment.scheduledDate)}
+                            </div>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {formatTime(appointment.scheduledTime)}
+                              <span className="text-xs">({appointment.duration} min)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getTypeBadge(appointment.appointmentType)}</TableCell>
+                      <TableCell>{getStatusBadge(appointment.status)}</TableCell>
+                      {showRisk && (
+                        <TableCell>
+                          {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) ? (
+                            getRiskBadge(appointment.id)
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
                         </TableCell>
-                      </ClickableRow>
-                    ))
-                  )}
-                </TableBody>
+                      )}
+                      <GridActionsCell>
+                        <DropdownMenu>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/appointments/${appointment.id}`)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/appointments/${appointment.id}/edit`)}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
+                              <DropdownMenuItem onClick={() => handleCheckIn(appointment.id)}>
+                                <LogIn className="h-4 w-4 mr-2" />
+                                Check In
+                              </DropdownMenuItem>
+                            )}
+                            {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
+                              <DropdownMenuItem onClick={() => handleCheckOut(appointment.id)}>
+                                <LogOut className="h-4 w-4 mr-2" />
+                                Check Out
+                              </DropdownMenuItem>
+                            )}
+                            {appointment.status === 'SCHEDULED' && (
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(appointment.id, 'CONFIRMED')}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Confirm
+                              </DropdownMenuItem>
+                            )}
+                            {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(
+                              appointment.status
+                            ) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleStatusChange(appointment.id, 'NO_SHOW')}
+                                  className="text-amber-600 dark:text-amber-400"
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" />
+                                  Mark No Show
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
+                                  className="text-red-600 dark:text-red-400"
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" />
+                                  Cancel
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </GridActionsCell>
+                    </ClickableRow>
+                  ))}
+                </GridBody>
               </Table>
 
               <GridPagination
