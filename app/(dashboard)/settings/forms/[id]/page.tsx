@@ -27,7 +27,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
 import { FormRenderer, type FormField } from '@/components/forms/form-renderer'
 
 const FIELD_TYPES = [
@@ -56,6 +56,7 @@ function generateId() {
 }
 
 export default function EditFormTemplatePage({ params }: { params: Promise<{ id: string }> }) {
+  const { toast } = useToast()
   const { id } = use(params)
   const router = useRouter()
   const [name, setName] = useState('')
@@ -85,11 +86,11 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
         setFields(data.template.fields as FormField[])
         setSubmissionCount(data.template._count?.submissions || 0)
       } else {
-        toast.error('Template not found')
+        toast({ variant: 'destructive', title: 'Template not found' })
         router.push('/settings/forms')
       }
     } catch {
-      toast.error('Failed to load template')
+      toast({ variant: 'destructive', title: 'Failed to load template' })
     } finally {
       setLoading(false)
     }
@@ -155,11 +156,11 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast.error('Template name is required')
+      toast({ variant: 'destructive', title: 'Template name is required' })
       return
     }
     if (fields.length === 0) {
-      toast.error('Add at least one field')
+      toast({ variant: 'destructive', title: 'Add at least one field' })
       return
     }
 
@@ -172,12 +173,12 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
       })
       const data = await res.json()
       if (res.ok) {
-        toast.success('Template updated')
+        toast({ title: 'Template updated' })
       } else {
-        toast.error(data.error || 'Failed to save')
+        toast({ variant: 'destructive', title: data.error || 'Failed to save' })
       }
     } catch {
-      toast.error('Failed to save template')
+      toast({ variant: 'destructive', title: 'Failed to save template' })
     } finally {
       setSaving(false)
     }
@@ -221,7 +222,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
           <CardContent>
             <FormRenderer
               fields={fields}
-              onSubmit={() => toast.info('Preview mode — form not submitted')}
+              onSubmit={() => toast({ title: 'Preview mode — form not submitted' })}
               submitLabel="Submit (Preview)"
             />
           </CardContent>

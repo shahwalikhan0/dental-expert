@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -95,6 +96,7 @@ interface PaginationInfo {
 export default function InventoryPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Inventory')
+  const { toast } = useToast()
   const router = useRouter()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -123,6 +125,11 @@ export default function InventoryPage() {
       setCategories(data.data)
     } catch (error) {
       console.error('Error fetching categories:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the inventory categories',
+        description: error instanceof Error ? error.message : undefined,
+      })
     }
   }
 
@@ -160,6 +167,13 @@ export default function InventoryPage() {
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching inventory items:', error)
+      if (requestId === latestRequest.current) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the inventory',
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }

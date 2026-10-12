@@ -18,6 +18,7 @@ import {
   FilePlus2,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useToast } from '@/hooks/use-toast'
 import {
   LineChart,
   Line,
@@ -120,6 +121,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     fetchDashboardStats()
@@ -128,6 +130,7 @@ export default function DashboardPage() {
   const fetchDashboardStats = async () => {
     try {
       setLoading(true)
+      setError(null)
       const response = await fetch('/api/dashboard/stats')
 
       if (!response.ok) {
@@ -139,6 +142,11 @@ export default function DashboardPage() {
     } catch (err: any) {
       console.error('Error fetching dashboard stats:', err)
       setError(err.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the dashboard figures',
+        description: err.message,
+      })
     } finally {
       setLoading(false)
     }

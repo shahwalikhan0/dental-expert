@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { useToast } from '@/hooks/use-toast'
 import {
   TemplateForm,
   blankItem,
@@ -19,6 +20,7 @@ export default function EditPrescriptionTemplatePage({
   const { id } = use(params)
   const [draft, setDraft] = useState<TemplateDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     let cancelled = false
@@ -53,12 +55,20 @@ export default function EditPrescriptionTemplatePage({
         })
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message)
+        if (cancelled) return
+        // The card below stays so the page is not blank; the toast is what
+        // says so wherever the user happens to be looking.
+        setError(err.message)
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the template',
+          description: err.message,
+        })
       })
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, toast])
 
   return (
     <div className="space-y-6">

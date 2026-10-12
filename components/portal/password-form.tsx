@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useToast } from '@/hooks/use-toast'
 
 interface PortalPasswordFormProps {
   /** The desk issued this password, so it must be replaced before anything else. */
@@ -17,21 +18,24 @@ interface PortalPasswordFormProps {
 
 export function PortalPasswordForm({ forced, name }: PortalPasswordFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
 
     // Checked here as well as on the server, because this one is a typo rather
     // than a policy and the person can fix it without a round trip.
     if (newPassword !== confirm) {
-      setError('The two new passwords do not match.')
+      toast({
+        variant: 'destructive',
+        title: 'Passwords do not match',
+        description: 'The two new passwords do not match.',
+      })
       return
     }
 
@@ -44,14 +48,22 @@ export function PortalPasswordForm({ forced, name }: PortalPasswordFormProps) {
       })
       const result = await res.json()
       if (!res.ok) {
-        setError(result.error || 'Could not change your password.')
+        toast({
+          variant: 'destructive',
+          title: 'Password not changed',
+          description: result.error || 'Could not change your password.',
+        })
         return
       }
       setDone(true)
       router.push('/portal')
       router.refresh()
     } catch {
-      setError('Could not reach the clinic. Please check your connection.')
+      toast({
+        variant: 'destructive',
+        title: 'Password not changed',
+        description: 'Could not reach the clinic. Please check your connection.',
+      })
     } finally {
       setBusy(false)
     }
@@ -107,12 +119,6 @@ export function PortalPasswordForm({ forced, name }: PortalPasswordFormProps) {
               required
             />
           </div>
-
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
 
           <Button type="submit" className="w-full" disabled={busy || done}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

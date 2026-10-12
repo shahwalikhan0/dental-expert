@@ -34,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Stethoscope, AlertCircle } from 'lucide-react'
+import { Plus, Search, MoreHorizontal, Edit, Trash2, Stethoscope } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -128,7 +128,6 @@ export default function ProceduresSettingsPage() {
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
-  const [error, setError] = useState('')
 
   // Form state
   const [formData, setFormData] = useState({
@@ -225,7 +224,6 @@ export default function ProceduresSettingsPage() {
       defaultFollowUpDays: '',
       isActive: true,
     })
-    setError('')
   }
 
   const openCreateDialog = () => {
@@ -262,16 +260,17 @@ export default function ProceduresSettingsPage() {
   }
 
   const handleSubmit = async () => {
-    setError('')
+    const incomplete = (description: string) =>
+      toast({ variant: 'destructive', title: 'Procedure not saved', description })
 
     // Validation
     if (dialogMode === 'create' && !formData.code) {
-      setError('Code is required')
+      incomplete('Code is required')
       return
     }
 
     if (!formData.name || !formData.category || !formData.basePrice) {
-      setError('Name, category, and base price are required')
+      incomplete('Name, category, and base price are required')
       return
     }
 
@@ -317,9 +316,8 @@ export default function ProceduresSettingsPage() {
       setDialogOpen(false)
       fetchProcedures()
     } catch (error: any) {
-      setError(error.message)
       toast({
-        title: 'Error',
+        title: 'Could not save the procedure',
         description: error.message,
         variant: 'destructive',
       })
@@ -355,9 +353,8 @@ export default function ProceduresSettingsPage() {
       setSelectedProcedure(null)
       fetchProcedures()
     } catch (error: any) {
-      setError(error.message)
       toast({
-        title: 'Error',
+        title: 'Could not delete the procedure',
         description: error.message,
         variant: 'destructive',
       })
@@ -592,13 +589,6 @@ export default function ProceduresSettingsPage() {
                 : 'Update procedure details'}
             </DialogDescription>
           </DialogHeader>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </div>
-          )}
 
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">

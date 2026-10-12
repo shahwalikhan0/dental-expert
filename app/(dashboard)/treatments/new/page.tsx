@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchHandedPatient } from '@/lib/prefill'
 import { usePatientSearch } from '@/hooks/use-patient-search'
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Search, User, Stethoscope, Save, AlertCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, Search, User, Stethoscope, Save, Loader2 } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
 import { VoiceInput } from '@/components/clinical/voice-input'
@@ -137,7 +138,7 @@ export default function NewTreatmentPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const { toast } = useToast()
   const patientSearch = usePatientSearch<Patient>()
 
   // Form state
@@ -262,19 +263,20 @@ export default function NewTreatmentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
 
     // Validation
+    const incomplete = (description: string) =>
+      toast({ variant: 'destructive', title: 'Treatment not saved', description })
     if (!formData.patientId) {
-      setError('Please select a patient')
+      incomplete('Please select a patient')
       return
     }
     if (!formData.doctorId) {
-      setError('Please select a doctor')
+      incomplete('Please select a doctor')
       return
     }
     if (!formData.procedureId) {
-      setError('Please select a procedure')
+      incomplete('Please select a procedure')
       return
     }
 
@@ -299,7 +301,11 @@ export default function NewTreatmentPage() {
       const treatment = await response.json()
       router.push(`/treatments/${treatment.id}`)
     } catch (error: any) {
-      setError(error.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not save the treatment',
+        description: error.message,
+      })
     } finally {
       setLoading(false)
     }
@@ -319,13 +325,6 @@ export default function NewTreatmentPage() {
           <p className="text-muted-foreground">Record a new treatment for a patient</p>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
 
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Patient Selection */}

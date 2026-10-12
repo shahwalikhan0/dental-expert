@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/hooks/use-toast'
 
 /**
  * Choosing a new password from a reset link.
@@ -24,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 function ResetPasswordForm() {
   const router = useRouter()
   const token = useSearchParams().get('token') ?? ''
+  const { toast } = useToast()
 
   const [checking, setChecking] = useState(true)
   const [valid, setValid] = useState(false)
@@ -33,7 +35,6 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
 
@@ -70,12 +71,15 @@ function ResetPasswordForm() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    setError(null)
 
     // Checked here as well as on the server, because retyping is this form's
     // only guard against setting a password with a typo in it.
     if (password !== confirm) {
-      setError('Those two passwords do not match.')
+      toast({
+        variant: 'destructive',
+        title: 'Passwords do not match',
+        description: 'Those two passwords do not match.',
+      })
       return
     }
 
@@ -88,12 +92,20 @@ function ResetPasswordForm() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'That password could not be set.')
+        toast({
+          variant: 'destructive',
+          title: 'Password not changed',
+          description: data.error || 'That password could not be set.',
+        })
         return
       }
       setDone(true)
     } catch {
-      setError('That password could not be set. Try again.')
+      toast({
+        variant: 'destructive',
+        title: 'Password not changed',
+        description: 'That password could not be set. Try again.',
+      })
     } finally {
       setSubmitting(false)
     }
@@ -195,12 +207,6 @@ function ResetPasswordForm() {
               required
             />
           </div>
-
-          {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

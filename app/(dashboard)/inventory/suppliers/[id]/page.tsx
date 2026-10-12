@@ -18,6 +18,7 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
 import { Edit, Loader2, Package, Phone, Mail, MapPin } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { useToast } from '@/hooks/use-toast'
 
 /**
  * A supplier's record.
@@ -75,6 +76,7 @@ export default function SupplierDetailPage() {
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   const trail = useTrail(supplier?.name ?? null)
 
@@ -86,13 +88,21 @@ export default function SupplierDetailPage() {
         if (!res.ok || !data.success) throw new Error(data.error || 'Supplier not found')
         setSupplier(data.data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load the supplier')
+        const message = err instanceof Error ? err.message : 'Failed to load the supplier'
+        // The page still says so in place of the supplier; the toast makes sure
+        // the failure is noticed rather than read as an empty page.
+        setError(message)
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the supplier',
+          description: message,
+        })
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [supplierId])
+  }, [supplierId, toast])
 
   if (loading) {
     return (

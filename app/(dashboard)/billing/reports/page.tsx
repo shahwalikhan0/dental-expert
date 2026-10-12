@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -90,6 +91,7 @@ interface DoctorRevenue {
 export default function FinancialReportsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Billing Reports')
+  const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [datePreset, setDatePreset] = useState('this_month')
   const [dateFrom, setDateFrom] = useState('')
@@ -158,6 +160,11 @@ export default function FinancialReportsPage() {
       }
     } catch (error) {
       console.error(`Error fetching ${type} report:`, error)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the report',
+        description: error instanceof Error ? error.message : undefined,
+      })
     } finally {
       setLoading(false)
     }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -74,7 +75,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const { toast } = useToast()
 
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -113,6 +114,10 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           setPriority(data.priority)
           setChiefComplaint(data.chiefComplaint || '')
           setNotes(data.notes || '')
+        } else if (appointmentRes.status !== 404) {
+          // A 404 is answered by the "not found" view below; anything else is
+          // a failure the receptionist should hear about.
+          toast({ variant: 'destructive', title: 'Could not load the appointment' })
         }
 
         if (doctorsRes.ok) {
@@ -121,13 +126,14 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
         }
       } catch (err) {
         console.error('Error fetching data:', err)
+        toast({ variant: 'destructive', title: 'Could not load the appointment' })
       } finally {
         setLoading(false)
       }
     }
 
     fetchData()
-  }, [id])
+  }, [id, toast])
 
   // Fetch available time slots when doctor and date change
   useEffect(() => {
@@ -173,20 +179,22 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+
+    const incomplete = (description: string) =>
+      toast({ variant: 'destructive', title: 'Appointment not saved', description })
 
     if (!selectedDoctor) {
-      setError('Please select a doctor')
+      incomplete('Please select a doctor')
       return
     }
 
     if (!selectedDate) {
-      setError('Please select a date')
+      incomplete('Please select a date')
       return
     }
 
     if (!selectedTime) {
-      setError('Please select a time slot')
+      incomplete('Please select a time slot')
       return
     }
 
@@ -215,7 +223,11 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
 
       router.push(`/appointments/${id}`)
     } catch (err: any) {
-      setError(err.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not save the appointment',
+        description: err.message,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -452,12 +464,6 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
             </CardContent>
           </Card>
         </div>
-
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
-            {error}
-          </div>
-        )}
 
         <div className="mt-6 flex justify-end gap-4">
           <Button type="button" variant="outline" asChild>

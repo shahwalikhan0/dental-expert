@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useToast } from '@/hooks/use-toast'
 import { AlertTriangle, Loader2, Search } from 'lucide-react'
 
 interface Candidate {
@@ -52,7 +53,7 @@ export function MergeDialog({
   const [searching, setSearching] = useState(false)
   const [chosen, setChosen] = useState<Candidate | null>(null)
   const [merging, setMerging] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (debounced.trim().length < 2) {
@@ -86,7 +87,8 @@ export function MergeDialog({
   const merge = async () => {
     if (!chosen) return
     setMerging(true)
-    setError(null)
+    const fail = (description: string) =>
+      toast({ variant: 'destructive', title: 'Could not merge the records', description })
     try {
       const res = await fetch(`/api/patients/${patient.id}/merge`, {
         method: 'POST',
@@ -95,13 +97,13 @@ export function MergeDialog({
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Those records could not be merged.')
+        fail(data.error || 'Those records could not be merged.')
         return
       }
       close(false)
       onMerged()
     } catch {
-      setError('Those records could not be merged.')
+      fail('Those records could not be merged.')
     } finally {
       setMerging(false)
     }
@@ -114,7 +116,6 @@ export function MergeDialog({
       setSearch('')
       setResults([])
       setChosen(null)
-      setError(null)
     }
     onOpenChange(next)
   }
@@ -207,8 +208,6 @@ export function MergeDialog({
             </div>
           </div>
         )}
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => close(false)} disabled={merging}>

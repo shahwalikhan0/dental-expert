@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchHandedPatient } from '@/lib/prefill'
 import Link from 'next/link'
@@ -55,10 +56,10 @@ export default function NewAppointmentPage() {
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  // Kept apart from `error` above: why a day has no times is a statement about
-  // the diary, not a complaint about the form, and it clears on its own when
-  // the next day is picked.
+  const { toast } = useToast()
+  // Shown in the slot list rather than as a toast: why a day has no times is a
+  // statement about the diary, not a complaint about the form, and it clears
+  // on its own when the next day is picked.
   const [slotsError, setSlotsError] = useState('')
 
   // Data
@@ -218,6 +219,7 @@ export default function NewAppointmentPage() {
         if (!response.ok) {
           setTimeSlots([])
           setSlotsError('Those times could not be loaded. Try again.')
+          toast({ variant: 'destructive', title: 'Could not load the available times' })
           return
         }
 
@@ -235,6 +237,7 @@ export default function NewAppointmentPage() {
         if (!current) return
         setTimeSlots([])
         setSlotsError('Those times could not be loaded. Try again.')
+        toast({ variant: 'destructive', title: 'Could not load the available times' })
       } finally {
         if (current) setLoadingSlots(false)
       }
@@ -244,34 +247,36 @@ export default function NewAppointmentPage() {
     return () => {
       current = false
     }
-  }, [selectedDoctor, selectedDate, duration])
+  }, [selectedDoctor, selectedDate, duration, toast])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+
+    const incomplete = (description: string) =>
+      toast({ variant: 'destructive', title: 'Appointment not booked', description })
 
     if (isWalkIn) {
       if (visitorName.trim().length < 2) {
-        setError('A walk-in needs a name')
+        incomplete('A walk-in needs a name')
         return
       }
     } else if (!selectedPatient) {
-      setError('Please select a patient')
+      incomplete('Please select a patient')
       return
     }
 
     if (!selectedDoctor) {
-      setError('Please select a doctor')
+      incomplete('Please select a doctor')
       return
     }
 
     if (!selectedDate) {
-      setError('Please select a date')
+      incomplete('Please select a date')
       return
     }
 
     if (!selectedTime) {
-      setError('Please select a time slot')
+      incomplete('Please select a time slot')
       return
     }
 
@@ -303,7 +308,11 @@ export default function NewAppointmentPage() {
 
       router.push('/appointments')
     } catch (err: any) {
-      setError(err.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not book the appointment',
+        description: err.message,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -679,12 +688,6 @@ export default function NewAppointmentPage() {
             </CardContent>
           </Card>
         </div>
-
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
-            {error}
-          </div>
-        )}
 
         <div className="mt-6 flex justify-end gap-4">
           <Button type="button" variant="outline" asChild>

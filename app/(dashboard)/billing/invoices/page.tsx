@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -89,6 +90,7 @@ export default function InvoicesPage() {
   const trail = useTrail('Invoices')
   const router = useRouter()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -141,6 +143,13 @@ export default function InvoicesPage() {
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching invoices:', error)
+      if (requestId === latestRequest.current) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the invoices',
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
@@ -193,10 +202,18 @@ export default function InvoicesPage() {
       const response = await fetch(`/api/invoices/${id}`, {
         method: 'DELETE',
       })
-      if (!response.ok) throw new Error('Failed to delete invoice')
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to delete invoice')
+      }
       fetchInvoices()
     } catch (error) {
       console.error('Error deleting invoice:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Could not cancel the invoice',
+        description: error instanceof Error ? error.message : 'Failed to delete invoice',
+      })
     }
   }
 

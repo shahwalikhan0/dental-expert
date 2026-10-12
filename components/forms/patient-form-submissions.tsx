@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { FormRenderer, type FormField } from './form-renderer'
 import { FileText, Eye, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
 
 interface FormSubmission {
   id: string
@@ -58,6 +58,7 @@ interface PatientFormSubmissionsProps {
 }
 
 export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProps) {
+  const { toast } = useToast()
   const [submissions, setSubmissions] = useState<FormSubmission[]>([])
   const [loading, setLoading] = useState(true)
   const [viewSubmission, setViewSubmission] = useState<FormSubmission | null>(null)
@@ -75,7 +76,7 @@ export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProp
       const data = await res.json()
       if (data.submissions) setSubmissions(data.submissions)
     } catch {
-      toast.error('Failed to load form submissions')
+      toast({ variant: 'destructive', title: 'Failed to load form submissions' })
     } finally {
       setLoading(false)
     }
@@ -92,7 +93,7 @@ export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProp
         setReviewNotes(data.submission.reviewNotes || '')
       }
     } catch {
-      toast.error('Failed to load submission details')
+      toast({ variant: 'destructive', title: 'Failed to load submission details' })
     }
   }
 
@@ -106,15 +107,15 @@ export function PatientFormSubmissions({ patientId }: PatientFormSubmissionsProp
         body: JSON.stringify({ status: reviewStatus, reviewNotes }),
       })
       if (res.ok) {
-        toast.success('Review saved')
+        toast({ title: 'Review saved' })
         setViewSubmission(null)
         fetchSubmissions()
       } else {
         const err = await res.json()
-        toast.error(err.error || 'Failed to save review')
+        toast({ variant: 'destructive', title: err.error || 'Failed to save review' })
       }
     } catch {
-      toast.error('Failed to save review')
+      toast({ variant: 'destructive', title: 'Failed to save review' })
     } finally {
       setReviewing(false)
     }

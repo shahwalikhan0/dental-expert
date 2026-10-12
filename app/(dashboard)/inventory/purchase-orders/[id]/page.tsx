@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/hooks/use-toast'
 import {
   Table,
   TableBody,
@@ -87,8 +88,7 @@ export default function PurchaseOrderPage() {
   const [drafts, setDrafts] = useState<Record<string, ReceiptDraft>>({})
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const { toast } = useToast()
 
   const fetchOrder = useCallback(async () => {
     setLoading(true)
@@ -98,13 +98,24 @@ export default function PurchaseOrderPage() {
       if (data.success) {
         setOrder(data.data)
         setDrafts({})
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the purchase order',
+          description: data.error || 'That order could not be found.',
+        })
       }
     } catch (err) {
       console.error('Error loading purchase order:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the purchase order',
+        description: 'Check the connection and try again.',
+      })
     } finally {
       setLoading(false)
     }
-  }, [params.id])
+  }, [params.id, toast])
 
   useEffect(() => {
     fetchOrder()
@@ -118,8 +129,6 @@ export default function PurchaseOrderPage() {
 
   const patch = async (body: Record<string, unknown>, done: string) => {
     setBusy(true)
-    setError(null)
-    setMessage(null)
     try {
       const response = await fetch(`/api/inventory/purchase-orders/${params.id}`, {
         method: 'PATCH',
@@ -128,19 +137,30 @@ export default function PurchaseOrderPage() {
       })
       const data = await response.json()
       if (!response.ok) {
-        setError(data.error || 'That did not work')
+        toast({
+          variant: 'destructive',
+          title: 'Could not update the order',
+          description: data.error || 'That did not work',
+        })
         return
       }
-      setMessage(done)
+      toast({ title: done })
       await fetchOrder()
+    } catch (err) {
+      console.error('Error updating purchase order:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Could not update the order',
+        description: 'Check the connection and try again.',
+      })
     } finally {
       setBusy(false)
     }
   }
 
   const receive = async () => {
-    setError(null)
-    setMessage(null)
+    const fail = (description: string) =>
+      toast({ variant: 'destructive', title: 'Could not receive the goods', description })
 
     const items = Object.entries(drafts)
       .filter(([, draft]) => Number(draft.quantity) > 0)
@@ -152,7 +172,7 @@ export default function PurchaseOrderPage() {
       }))
 
     if (items.length === 0) {
-      setError('Enter the quantity received against at least one line')
+      fail('Enter the quantity received against at least one line')
       return
     }
 
@@ -165,14 +185,14 @@ export default function PurchaseOrderPage() {
       })
       const data = await response.json()
       if (!response.ok) {
-        setError(data.error || 'Could not receive the goods')
+        fail(data.error || 'The server refused the receipt.')
         return
       }
-      setMessage(data.message)
+      toast({ title: 'Goods received', description: data.message })
       await fetchOrder()
     } catch (err) {
       console.error('Error receiving goods:', err)
-      setError('Could not receive the goods')
+      fail('Check the connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -189,7 +209,16 @@ export default function PurchaseOrderPage() {
     const response = await fetch(`/api/inventory/purchase-orders/${params.id}`, {
       method: 'DELETE',
     })
-    if (response.ok) router.push('/inventory/purchase-orders')
+    if (response.ok) {
+      router.push('/inventory/purchase-orders')
+      return
+    }
+    const data = await response.json().catch(() => ({}))
+    toast({
+      variant: 'destructive',
+      title: 'Could not delete the order',
+      description: data.error || 'The draft order was not removed.',
+    })
   }
 
   if (loading) return <div>Loading...</div>
@@ -254,17 +283,6 @@ export default function PurchaseOrderPage() {
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm dark:bg-red-950/30 dark:text-red-300">
-          {error}
-        </div>
-      )}
-      {message && (
-        <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-800 text-sm dark:bg-green-950/30 dark:text-green-300">
-          {message}
-        </div>
-      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[

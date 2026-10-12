@@ -67,6 +67,7 @@ import {
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { isoDay } from '@/lib/dates'
+import { useToast } from '@/hooks/use-toast'
 
 interface Invoice {
   id: string
@@ -150,7 +151,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(invoice?.invoiceNo ?? null)
-  const [error, setError] = useState('')
+  const { toast } = useToast()
 
   // Payment dialog state
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(showPaymentDialog)
@@ -160,9 +161,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [paymentDate, setPaymentDate] = useState(isoDay(new Date()))
   const [transactionId, setTransactionId] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
-  // Shown inside the dialog. The page's own error banner sits behind the
-  // modal, so a refused payment used to look like a button that did nothing.
-  const [paymentError, setPaymentError] = useState('')
 
   const [issuing, setIssuing] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
@@ -178,7 +176,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setPaymentAmount(String(Number(data.balanceAmount)))
     } catch (error) {
       console.error('Error fetching invoice:', error)
-      setError('Failed to load invoice')
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the invoice',
+        description: 'Failed to load invoice',
+      })
     } finally {
       setLoading(false)
     }
@@ -198,24 +200,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     return () => cancelAnimationFrame(frame)
   }, [printOnLoad, invoice])
 
-  const openPaymentDialog = (open: boolean) => {
-    if (open) setPaymentError('')
-    setPaymentDialogOpen(open)
-  }
-
   const handleRecordPayment = async () => {
+    // A toast sits above the dialog, so a refused payment is seen while the
+    // dialog is still open rather than looking like a button that did nothing.
+    const paymentFailed = (description: string) =>
+      toast({ variant: 'destructive', title: 'Could not record the payment', description })
+
     if (!paymentAmount || Number(paymentAmount) <= 0) {
-      setPaymentError('Please enter a valid payment amount')
+      paymentFailed('Please enter a valid payment amount')
       return
     }
     if (!paymentMethod) {
-      setPaymentError('Please select a payment method')
+      paymentFailed('Please select a payment method')
       return
     }
 
     try {
       setPaymentSubmitting(true)
-      setPaymentError('')
 
       const response = await fetch(`/api/invoices/${id}/payments`, {
         method: 'POST',
@@ -243,7 +244,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setTransactionId('')
       setPaymentNotes('')
     } catch (error: any) {
-      setPaymentError(error.message)
+      paymentFailed(error.message)
     } finally {
       setPaymentSubmitting(false)
     }
@@ -267,7 +268,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     if (!ok) return
     try {
       setIssuing(true)
-      setError('')
       const response = await fetch(`/api/invoices/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -279,7 +279,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       }
       await fetchInvoice()
     } catch (error: any) {
-      setError(error.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not issue the invoice',
+        description: error.message,
+      })
     } finally {
       setIssuing(false)
     }
@@ -382,20 +386,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </>
           )}
           {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-            <Button onClick={() => openPaymentDialog(true)}>
+            <Button onClick={() => setPaymentDialogOpen(true)}>
               <CreditCard className="h-4 w-4 mr-2" />
               Record Payment
             </Button>
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
@@ -714,22 +711,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={openPaymentDialog}>
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Record a payment for invoice {invoice.invoiceNo}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {paymentError && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                {paymentError}
-              </div>
-            )}
             <div className="space-y-2">
               <Label>Amount</Label>
               <div className="relative">
@@ -788,7 +776,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => openPaymentDialog(false)}>
+            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleRecordPayment} disabled={paymentSubmitting}>

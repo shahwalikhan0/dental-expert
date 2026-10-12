@@ -8,6 +8,7 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
 import { Loader2, Printer } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { useToast } from '@/hooks/use-toast'
 
 /**
  * A receipt for one payment — UAT-07, "receive partial payment and issue
@@ -81,6 +82,7 @@ export default function PaymentReceiptPage() {
   const [payment, setPayment] = useState<Payment | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   const trail = useTrail(payment?.paymentNo ?? null)
 
@@ -92,13 +94,17 @@ export default function PaymentReceiptPage() {
         if (!res.ok) throw new Error(data.error || 'That payment could not be loaded')
         setPayment(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load the payment')
+        const message = err instanceof Error ? err.message : 'Failed to load the payment'
+        // The page still says so in place of the receipt; the toast makes sure
+        // the failure is noticed rather than read as an empty page.
+        setError(message)
+        toast({ variant: 'destructive', title: 'Could not load the receipt', description: message })
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [paymentId])
+  }, [paymentId, toast])
 
   if (loading) {
     return (

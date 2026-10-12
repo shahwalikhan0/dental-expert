@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useToast } from '@/hooks/use-toast'
 
 /**
  * Signing in to read your own record.
@@ -22,15 +23,14 @@ function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const clinic = params.get('clinic') ?? ''
+  const { toast } = useToast()
 
   const [patientId, setPatientId] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
     setBusy(true)
     try {
       const res = await fetch('/api/portal/auth/login', {
@@ -40,7 +40,11 @@ function LoginForm() {
       })
       const result = await res.json()
       if (!res.ok) {
-        setError(result.error || 'Could not sign you in.')
+        toast({
+          variant: 'destructive',
+          title: 'Sign-in failed',
+          description: result.error || 'Could not sign you in.',
+        })
         return
       }
       // Straight to the password screen when the desk issued this one, because
@@ -48,7 +52,11 @@ function LoginForm() {
       router.push(result.mustChangePassword ? '/portal/password' : '/portal')
       router.refresh()
     } catch {
-      setError('Could not reach the clinic. Please check your connection.')
+      toast({
+        variant: 'destructive',
+        title: 'Sign-in failed',
+        description: 'Could not reach the clinic. Please check your connection.',
+      })
     } finally {
       setBusy(false)
     }
@@ -103,12 +111,6 @@ function LoginForm() {
               required
             />
           </div>
-
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
 
           <Button type="submit" className="w-full" disabled={busy}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -34,7 +34,7 @@ import {
   MessageSquareText,
   FilePlus2,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
 
 interface FormTemplate {
   id: string
@@ -64,6 +64,7 @@ const typeLabels: Record<string, string> = {
 }
 
 export default function FormsSettingsPage() {
+  const { toast } = useToast()
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Forms')
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
@@ -82,7 +83,7 @@ export default function FormsSettingsPage() {
       const data = await res.json()
       if (data.templates) setTemplates(data.templates)
     } catch {
-      toast.error('Failed to load form templates')
+      toast({ variant: 'destructive', title: 'Failed to load form templates' })
     } finally {
       setLoading(false)
     }
@@ -93,13 +94,13 @@ export default function FormsSettingsPage() {
       const res = await fetch('/api/settings/forms/seed', { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
-        toast.success(data.message)
+        toast({ title: data.message })
         fetchTemplates()
       } else {
-        toast.error(data.error || 'Failed to load defaults')
+        toast({ variant: 'destructive', title: data.error || 'Failed to load defaults' })
       }
     } catch {
-      toast.error('Failed to load defaults')
+      toast({ variant: 'destructive', title: 'Failed to load defaults' })
     }
   }
 
@@ -114,14 +115,14 @@ export default function FormsSettingsPage() {
     try {
       const res = await fetch(`/api/settings/forms/${id}`, { method: 'DELETE' })
       if (res.ok) {
-        toast.success('Template removed')
+        toast({ title: 'Template removed' })
         fetchTemplates()
       } else {
         const data = await res.json()
-        toast.error(data.error || 'Failed to delete')
+        toast({ variant: 'destructive', title: data.error || 'Failed to delete' })
       }
     } catch {
-      toast.error('Failed to delete template')
+      toast({ variant: 'destructive', title: 'Failed to delete template' })
     }
   }
 

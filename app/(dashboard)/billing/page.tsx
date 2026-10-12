@@ -30,6 +30,7 @@ import {
 import { formatCurrency, dateRangePresets, getDateRangeFromPreset } from '@/lib/billing-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { useCan } from '@/hooks/use-can'
+import { useToast } from '@/hooks/use-toast'
 
 interface SummaryData {
   summary: {
@@ -70,18 +71,17 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<SummaryData | null>(null)
   const [datePreset, setDatePreset] = useState('this_month')
-  const [error, setError] = useState<string | null>(null)
   const [agingData, setAgingData] = useState<AgingData | null>(null)
   // Every figure on this screen comes from the billing reports, which need
   // `reports:financial`. Dentists and the front desk have Billing in their
   // menu for the invoice and payment lists, and used to land on "Forbidden"
   // and a row of zeros.
   const canSeeFigures = useCan('reports:financial')
+  const { toast } = useToast()
 
   const fetchSummary = async () => {
     try {
       setLoading(true)
-      setError(null)
       const response = await fetch(`/api/billing/reports?type=summary&preset=${datePreset}`)
       if (!response.ok) {
         const errorData = await response.json()
@@ -94,7 +94,11 @@ export default function BillingPage() {
       setData(result)
     } catch (error) {
       console.error('Error fetching billing summary:', error)
-      setError(error instanceof Error ? error.message : 'Failed to fetch summary')
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the billing figures',
+        description: error instanceof Error ? error.message : 'Failed to fetch summary',
+      })
     } finally {
       setLoading(false)
     }
@@ -261,23 +265,6 @@ export default function BillingPage() {
           </Button>
         </div>
       </div>
-
-      {/* Error Display */}
-      {error && (
-        <Card className="border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-              <div>
-                <p className="font-medium text-red-900 dark:text-red-200">
-                  Error loading billing data
-                </p>
-                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

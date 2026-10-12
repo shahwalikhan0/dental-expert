@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -35,7 +36,6 @@ import {
   Search,
   Plus,
   Trash2,
-  AlertCircle,
   IndianRupee,
   Calculator,
   FileText,
@@ -82,10 +82,10 @@ export default function NewInvoicePage() {
   const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preSelectedPatientId = searchParams.get('patientId')
+  const { toast } = useToast()
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
 
   // Patient selection
   const [patients, setPatients] = useState<Patient[]>([])
@@ -282,35 +282,37 @@ export default function NewInvoicePage() {
   }
 
   const handleSubmit = async (status: 'DRAFT' | 'PENDING') => {
+    const invalid = (description: string) =>
+      toast({ variant: 'destructive', title: 'Could not create the invoice', description })
+
     if (!selectedPatient) {
-      setError('Please select a patient')
+      invalid('Please select a patient')
       return
     }
 
     if (items.length === 0) {
-      setError('Please add at least one item to the invoice')
+      invalid('Please add at least one item to the invoice')
       return
     }
 
     // Validate items
     for (const item of items) {
       if (!item.description.trim()) {
-        setError('All items must have a description')
+        invalid('All items must have a description')
         return
       }
       if (item.quantity <= 0) {
-        setError('Quantity must be greater than 0')
+        invalid('Quantity must be greater than 0')
         return
       }
       if (item.unitPrice < 0) {
-        setError('Unit price cannot be negative')
+        invalid('Unit price cannot be negative')
         return
       }
     }
 
     try {
       setSubmitting(true)
-      setError('')
 
       const response = await fetch('/api/invoices', {
         method: 'POST',
@@ -341,7 +343,11 @@ export default function NewInvoicePage() {
       const invoice = await response.json()
       router.push(`/billing/invoices/${invoice.id}`)
     } catch (error: any) {
-      setError(error.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not create the invoice',
+        description: error.message,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -361,13 +367,6 @@ export default function NewInvoicePage() {
           <p className="text-muted-foreground">Create a new invoice for a patient</p>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-red-950/30 dark:border-red-800/60 dark:text-red-300">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}

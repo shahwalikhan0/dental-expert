@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -139,11 +140,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(treatment?.treatmentNo ?? null)
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [addendumOpen, setAddendumOpen] = useState(false)
   const [addendumText, setAddendumText] = useState('')
-  const [noteError, setNoteError] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -174,6 +175,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       })
     } catch (error) {
       console.error('Error fetching treatment:', error)
+      toast({ variant: 'destructive', title: 'Could not load the treatment' })
     } finally {
       setLoading(false)
     }
@@ -193,6 +195,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       fetchTreatment()
     } catch (error) {
       console.error('Error starting treatment:', error)
+      toast({ variant: 'destructive', title: 'Could not start the treatment' })
     } finally {
       setActionLoading(false)
     }
@@ -211,6 +214,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       fetchTreatment()
     } catch (error) {
       console.error('Error completing treatment:', error)
+      toast({ variant: 'destructive', title: 'Could not complete the treatment' })
     } finally {
       setActionLoading(false)
     }
@@ -219,14 +223,17 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const handleSignTreatment = async () => {
     try {
       setActionLoading(true)
-      setNoteError(null)
       const response = await fetch(`/api/treatments/${id}/sign`, { method: 'POST' })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to sign the treatment')
       setSignDialogOpen(false)
       fetchTreatment()
     } catch (error: any) {
-      setNoteError(error.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not sign the treatment',
+        description: error.message,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -235,7 +242,6 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const handleAddAddendum = async () => {
     try {
       setActionLoading(true)
-      setNoteError(null)
       const response = await fetch(`/api/treatments/${id}/addenda`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -247,7 +253,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       setAddendumText('')
       fetchTreatment()
     } catch (error: any) {
-      setNoteError(error.message)
+      toast({
+        variant: 'destructive',
+        title: 'Could not add the addendum',
+        description: error.message,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -266,6 +276,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       fetchTreatment()
     } catch (error) {
       console.error('Error cancelling treatment:', error)
+      toast({ variant: 'destructive', title: 'Could not cancel the treatment' })
     } finally {
       setActionLoading(false)
     }
@@ -403,12 +414,6 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               Amended {formatDateTime(treatment.amendedAt)}
             </Badge>
           )}
-        </div>
-      )}
-
-      {noteError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
-          {noteError}
         </div>
       )}
 

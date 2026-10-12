@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/i18n/format'
@@ -39,7 +40,7 @@ export default function NewPurchaseOrderPage() {
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     Promise.all([
@@ -73,11 +74,13 @@ export default function NewPurchaseOrderPage() {
   const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0)
 
   const save = async (place: boolean) => {
-    setError(null)
+    const fail = (description: string) => {
+      toast({ variant: 'destructive', title: 'Could not save the order', description })
+    }
 
-    if (!supplierId) return setError('Choose a supplier')
-    if (lines.length === 0) return setError('Add at least one item')
-    if (lines.some((line) => !line.itemId)) return setError('Every line needs an item')
+    if (!supplierId) return fail('Choose a supplier')
+    if (lines.length === 0) return fail('Add at least one item')
+    if (lines.some((line) => !line.itemId)) return fail('Every line needs an item')
 
     setSaving(true)
     try {
@@ -95,14 +98,14 @@ export default function NewPurchaseOrderPage() {
 
       const data = await response.json()
       if (!response.ok) {
-        setError(data.error || 'Could not save the order')
+        fail(data.error || 'The server refused the order.')
         return
       }
 
       router.push(`/inventory/purchase-orders/${data.data.id}`)
     } catch (err) {
       console.error('Error saving purchase order:', err)
-      setError('Could not save the order')
+      fail('The order could not be sent. Check the connection and try again.')
     } finally {
       setSaving(false)
     }
@@ -119,12 +122,6 @@ export default function NewPurchaseOrderPage() {
           Cancel
         </Link>
       </div>
-
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 text-sm dark:bg-red-950/30 dark:text-red-300">
-          {error}
-        </div>
-      )}
 
       <div className="bg-background rounded-lg shadow p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

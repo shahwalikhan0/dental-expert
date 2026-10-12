@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -99,6 +100,7 @@ interface Summary {
 export default function PaymentsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Payments')
+  const { toast } = useToast()
   const router = useRouter()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
@@ -154,6 +156,13 @@ export default function PaymentsPage() {
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching payments:', error)
+      if (requestId === latestRequest.current) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not load the payments',
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }

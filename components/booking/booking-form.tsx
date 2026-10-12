@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/hooks/use-toast'
 import { displayDate } from '@/lib/dates'
 
 /**
@@ -85,8 +86,8 @@ export function BookingForm({
   const [reason, setReason] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<Confirmation | null>(null)
+  const { toast } = useToast()
 
   const loadSlots = useCallback(async () => {
     if (!doctorId || !date) return
@@ -166,7 +167,6 @@ export function BookingForm({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    setError(null)
     setSubmitting(true)
 
     try {
@@ -179,7 +179,11 @@ export function BookingForm({
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || 'That booking could not be made.')
+        toast({
+          variant: 'destructive',
+          title: 'Booking not made',
+          description: data.error || 'That booking could not be made.',
+        })
         // The slot may have gone while the form was being filled in, which is
         // the most likely reason to be here, so the times are reloaded.
         void loadSlots()
@@ -188,7 +192,11 @@ export function BookingForm({
 
       setConfirmed(data.appointment)
     } catch {
-      setError('That booking could not be made. Please try again, or telephone the clinic.')
+      toast({
+        variant: 'destructive',
+        title: 'Booking not made',
+        description: 'That booking could not be made. Please try again, or telephone the clinic.',
+      })
     } finally {
       setSubmitting(false)
     }
@@ -411,12 +419,6 @@ export function BookingForm({
           />
         </div>
       </fieldset>
-
-      {error && (
-        <p role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      )}
 
       <div className="space-y-3">
         <Button type="submit" className="w-full" disabled={submitting || !doctorId || !time}>
