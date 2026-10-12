@@ -2,12 +2,10 @@ import { prisma } from '@/lib/prisma'
 import type { AttendanceStatus, Prisma, Role } from '@prisma/client'
 import { DEFAULT_TIMEZONE, clinicTimezone, localDay } from '@/lib/appointment-time'
 import { ALL_ROLES } from '@/lib/rbac'
-import { hoursOn } from '@/lib/working-hours'
 import { appliesOn, closureOn, type AvailabilityRow } from '@/lib/availability'
 import {
   daysBetween,
   summarise,
-  weekdayLong,
   type AttendanceMark,
   type AttendanceSummary,
   type RegisterCell,
@@ -19,9 +17,9 @@ import {
  * Server-only — this opens the database. Client components take their labels
  * and day arithmetic from `lib/attendance.ts`.
  *
- * A cell's state is worked out here, once, from four facts: the clinic's week
- * (`Hospital.workingHours`), its holidays and each person's booked leave (both
- * `Availability` rows), when the person joined, and whatever has been saved.
+ * A cell's state is worked out here, once, from three facts: the clinic's
+ * holidays and each person's booked leave (both `Availability` rows), when the
+ * person joined, and whatever has been saved.
  * The screens and the exports all read the result, so a day that is Off on the
  * register is Off in the spreadsheet too.
  */
@@ -183,10 +181,12 @@ export interface ClinicCalendar {
 /**
  * Which days in the range the clinic was open.
  *
- * Closed means one of two things: the weekday has no hours in the clinic's
- * settings (how the settings screen records Sunday), or a whole-day holiday
- * is on the calendar for everybody. A holiday with times narrows the day
- * rather than closing it and does not count.
+ * Every day of the week is a working day — the clinic has no weekly day off,
+ * Sunday included — so the weekday's hours in the clinic's settings play no
+ * part here. Those hours govern when appointments can be booked, not whether
+ * staff are on the register. Only a whole-day holiday on the calendar for
+ * everybody closes a day; a holiday with times narrows the day rather than
+ * closing it and does not count.
  */
 export async function clinicCalendar(
   hospitalId: string,
@@ -196,7 +196,7 @@ export async function clinicCalendar(
   const [hospital, holidays] = await Promise.all([
     prisma.hospital.findUnique({
       where: { id: hospitalId },
-      select: { workingHours: true, timezone: true },
+      select: { timezone: true },
     }),
     prisma.availability.findMany({
       where: {
@@ -214,11 +214,7 @@ export async function clinicCalendar(
 
   const days = daysBetween(from, to).map((date) => {
     const holiday = closureOn(holidays as AvailabilityRow[], date)
-    if (holiday) return { date, closed: holiday.reason }
-    if (!hoursOn(hospital?.workingHours, date)) {
-      return { date, closed: `Closed on ${weekdayLong(date)}s` }
-    }
-    return { date, closed: null }
+    return { date, closed: holiday ? holiday.reason : null }
   })
 
   return { timezone, today: localDay(new Date(), timezone), days }
@@ -288,7 +284,7 @@ function cellFor(
   if (date > today) return { date, state: 'FUTURE', status: null }
   if (date < joinedOn) return { date, state: 'NOT_JOINED', status: null }
   // A saved day wins over everything, including a closed one: somebody who
-  // came in on a Sunday was present on a Sunday.
+  // came in on a holiday was present on a holiday.
   if (saved) {
     return {
       date,

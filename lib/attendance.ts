@@ -47,7 +47,7 @@ export const STATUS_TONE: Record<AttendanceMark, string> = {
  *    Present (or Absent, when leave was booked in the staff calendar) because
  *    that is what the manager would otherwise have to click, but counted as
  *    unmarked until it is saved.
- *  - `OFF` — the clinic was closed: its weekly day off, or a holiday.
+ *  - `OFF` — the clinic was closed for a holiday. There is no weekly day off.
  *  - `FUTURE` — has not happened. Nobody can be marked present tomorrow.
  *  - `NOT_JOINED` — before this person started.
  */

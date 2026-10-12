@@ -2827,8 +2827,9 @@ enum AttendanceStatus {
 /// and show the rest as unmarked, so a week nobody looked at cannot pass for a
 /// week everybody attended.
 ///
-/// A day the clinic is closed (its weekly day off, a holiday) has no row either,
-/// and reads as Off. Somebody who came in on a Sunday gets a PRESENT row for it.
+/// Every day of the week is a working day, Sunday included. A day the clinic is
+/// closed for a holiday has no row either, and reads as Off. Somebody who came
+/// in on a holiday gets a PRESENT row for it.
 model Attendance {
   id         String           @id @default(cuid())
   hospitalId String
