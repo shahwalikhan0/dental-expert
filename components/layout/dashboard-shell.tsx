@@ -4,9 +4,6 @@ import { Sidebar } from './sidebar'
 import { MobileSidebar } from './mobile-sidebar'
 import { Header } from './header'
 import { SidebarProvider } from './sidebar-context'
-import { AIProvider } from '@/components/ai/ai-provider'
-import { CommandBar } from '@/components/ai/command-bar'
-import { ChatWidget } from '@/components/ai/chat-widget'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { KeyboardShortcutHelp } from '@/components/layout/keyboard-shortcut-help'
@@ -31,7 +28,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, user, hospital }: DashboardShellProps) {
   return (
-    <AIProvider>
+    <>
       {/*
         One provider for every tooltip under the dashboard. The icon-only
         actions in the grids each need one, and a provider per button would
@@ -71,10 +68,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
             {/* Main content */}
             <div className="flex flex-1 flex-col overflow-hidden">
               <Header user={user} />
-              {/* The floating chat button sits at bottom-right over this area.
-                The extra bottom padding is what stops it covering the last row
-                of a list — on a phone it was landing on top of one. */}
-              <main className="flex-1 overflow-auto p-4 pb-24 md:p-6 md:pb-24">
+              <main className="flex-1 overflow-auto p-4 md:p-6">
                 <Breadcrumb className="mb-4" />
                 {children}
               </main>
@@ -82,9 +76,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
           </div>
         </SidebarProvider>
       </TooltipProvider>
-      <CommandBar />
-      <ChatWidget />
       <KeyboardShortcutHelp />
-    </AIProvider>
+    </>
   )
 }

@@ -22,11 +22,11 @@ import {
   X,
   Check,
   ArrowLeft,
-  Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
+import { suggestMapping } from '@/lib/import/column-match'
 import {
   Table,
   TableBody,
@@ -156,8 +156,6 @@ export default function DataImportPage() {
   const [totalRows, setTotalRows] = useState(0)
   const [mapping, setMapping] = useState<Record<string, string | null>>({})
   const [confidence, setConfidence] = useState<Record<string, number>>({})
-  const [splitFields, setSplitFields] = useState<any[]>([])
-  const [aiError, setAiError] = useState<string | null>(null)
 
   // Step 3
   const [previewData, setPreviewData] = useState<Record<string, any>[]>([])
@@ -215,10 +213,12 @@ export default function DataImportPage() {
       setSourceColumns(data.columns)
       setSampleData(data.sampleData)
       setTotalRows(data.totalRows)
+      if (schema) {
+        const suggestion = suggestMapping(data.columns, schema)
+        setMapping(suggestion.mapping)
+        setConfidence(suggestion.confidence)
+      }
       setStep(2)
-
-      // Auto-trigger AI mapping
-      await runAiMapping(data.jobId)
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Upload Failed', description: err.message })
     } finally {
@@ -227,37 +227,8 @@ export default function DataImportPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Step 2: AI Mapping
+  // Step 2: Mapping — suggested from the headings on upload, then reviewed here
   // ---------------------------------------------------------------------------
-  const runAiMapping = async (jId: string) => {
-    setLoading(true)
-    setAiError(null)
-    try {
-      const res = await fetch('/api/data-import/ai-mapping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: jId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Mapping failed')
-
-      setMapping(data.mapping || {})
-      setConfidence(data.confidence || {})
-      setSplitFields(data.splitFields || [])
-      if (data.aiError) setAiError(data.aiError)
-    } catch (err: any) {
-      setAiError(err.message)
-      // Initialize empty mappings
-      const empty: Record<string, null> = {}
-      sourceColumns.forEach((col) => {
-        empty[col] = null
-      })
-      setMapping(empty)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const updateMapping = (sourceCol: string, targetField: string | null) => {
     setMapping((prev) => ({ ...prev, [sourceCol]: targetField }))
   }
@@ -366,8 +337,6 @@ export default function DataImportPage() {
     setTotalRows(0)
     setMapping({})
     setConfidence({})
-    setSplitFields([])
-    setAiError(null)
     setPreviewData([])
     setEditedRows({})
     setValidation(null)
@@ -573,16 +542,10 @@ export default function DataImportPage() {
             <div>
               <h2 className="text-lg font-semibold mb-1">Map columns to {schema.label} fields</h2>
               <p className="text-sm text-muted-foreground">
-                AI has suggested mappings below. Review and adjust as needed.
+                Columns whose heading names a field are matched already. Check each one, and choose
+                a field for any left on skip.
               </p>
             </div>
-
-            {aiError && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
-                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-400" />
-                <p className="text-xs text-amber-800 dark:text-amber-300">{aiError}</p>
-              </div>
-            )}
 
             {unmappedRequired.length > 0 && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200">
@@ -598,90 +561,68 @@ export default function DataImportPage() {
               </div>
             )}
 
-            {splitFields.length > 0 && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0 dark:text-blue-400" />
-                <p className="text-xs text-blue-800 dark:text-blue-300">
-                  AI detected columns that may need splitting:{' '}
-                  {splitFields
-                    .map((s: any) => `"${s.sourceColumn}" → ${s.targetFields.join(' + ')}`)
-                    .join('; ')}
-                  . Name splitting will be handled automatically during import.
-                </p>
-              </div>
-            )}
-
-            {loading ? (
-              <div className="flex items-center justify-center py-12 gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">
-                  AI is analyzing your columns...
-                </span>
-              </div>
-            ) : (
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="py-2.5">Source Column</TableHead>
-                      <TableHead className="py-2.5">Sample Value</TableHead>
-                      <TableHead className="py-2.5">Maps To</TableHead>
-                      <TableHead className="py-2.5 w-16 text-center">Confidence</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sourceColumns.map((col) => {
-                      const target = mapping[col]
-                      const conf = confidence[col] ?? 0
-                      const sample = sampleData[0]?.[col] || ''
-                      return (
-                        <TableRow key={col}>
-                          <TableCell className="py-2.5 font-medium">{col}</TableCell>
-                          <TableCell className="py-2.5 text-muted-foreground text-xs max-w-[200px] truncate">
-                            {sample}
-                          </TableCell>
-                          <TableCell className="py-2.5">
-                            <select
-                              value={target || ''}
-                              onChange={(e) => updateMapping(col, e.target.value || null)}
-                              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary"
-                            >
-                              <option value="">— Skip this column —</option>
-                              {schema.fields.map((f) => (
-                                <option
-                                  key={f.name}
-                                  value={f.name}
-                                  disabled={usedTargets.has(f.name) && mapping[col] !== f.name}
-                                >
-                                  {f.name} {f.required ? '*' : ''} — {f.description}
-                                </option>
-                              ))}
-                            </select>
-                          </TableCell>
-                          <TableCell className="py-2.5 text-center">
-                            {target ? (
-                              <span
-                                className={cn(
-                                  'inline-block w-2.5 h-2.5 rounded-full',
-                                  conf >= 0.8
-                                    ? 'bg-green-500'
-                                    : conf >= 0.5
-                                      ? 'bg-yellow-500'
-                                      : 'bg-red-500'
-                                )}
-                                title={`${Math.round(conf * 100)}% confidence`}
-                              />
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="py-2.5">Source Column</TableHead>
+                    <TableHead className="py-2.5">Sample Value</TableHead>
+                    <TableHead className="py-2.5">Maps To</TableHead>
+                    <TableHead className="py-2.5 w-16 text-center">Confidence</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sourceColumns.map((col) => {
+                    const target = mapping[col]
+                    const conf = confidence[col] ?? 0
+                    const sample = sampleData[0]?.[col] || ''
+                    return (
+                      <TableRow key={col}>
+                        <TableCell className="py-2.5 font-medium">{col}</TableCell>
+                        <TableCell className="py-2.5 text-muted-foreground text-xs max-w-[200px] truncate">
+                          {sample}
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <select
+                            value={target || ''}
+                            onChange={(e) => updateMapping(col, e.target.value || null)}
+                            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="">— Skip this column —</option>
+                            {schema.fields.map((f) => (
+                              <option
+                                key={f.name}
+                                value={f.name}
+                                disabled={usedTargets.has(f.name) && mapping[col] !== f.name}
+                              >
+                                {f.name} {f.required ? '*' : ''} — {f.description}
+                              </option>
+                            ))}
+                          </select>
+                        </TableCell>
+                        <TableCell className="py-2.5 text-center">
+                          {target ? (
+                            <span
+                              className={cn(
+                                'inline-block w-2.5 h-2.5 rounded-full',
+                                conf >= 0.8
+                                  ? 'bg-green-500'
+                                  : conf >= 0.5
+                                    ? 'bg-yellow-500'
+                                    : 'bg-red-500'
+                              )}
+                              title={`${Math.round(conf * 100)}% confidence`}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
 
             <div className="flex justify-between">
               <button

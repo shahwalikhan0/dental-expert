@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { parseRange } from '@/lib/attendance'
+import { personalRecord } from '@/lib/attendance-records'
+import { localDay, clinicTimezone } from '@/lib/appointment-time'
 
 // GET - Get staff member's performance statistics
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -144,7 +147,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     })
 
+    // From the attendance register — the same figures the person's attendance
+    // record shows. The page used to read an `attendance` block this route
+    // stopped sending when the old attendance model went (39fdd2e), and
+    // crashed on every open. Null when the period cannot be read as a range
+    // or the person has never signed in (they are not on the register).
+    const today = localDay(new Date(), await clinicTimezone(prisma, hospitalId))
+    const range = parseRange(startDate, endDate, today)
+    const record =
+      'error' in range ? null : await personalRecord(hospitalId, staff.userId, range.from, range.to)
+    const attendance = record
+      ? {
+          userId: staff.userId,
+          present: record.summary.present,
+          late: record.summary.late,
+          absent: record.summary.absent,
+          totalAbsent: record.summary.totalAbsent,
+          unmarked: record.summary.unmarked,
+          rate: record.summary.rate,
+        }
+      : null
+
     return NextResponse.json({
+      attendance,
       staff: {
         id: staff.id,
         employeeId: staff.employeeId,

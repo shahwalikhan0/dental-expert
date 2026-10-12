@@ -129,6 +129,11 @@ export const AUDIT_ACTIONS = {
   /// message. FR-019's paper trail for a send nobody else initiated.
   RECALL_CONTACTED: 'recare.contacted',
 
+  /// Attendance was marked or altered. One entry per save, naming who and
+  /// which days — the register row itself says who last touched each day, and
+  /// this is what shows the value it had before.
+  ATTENDANCE_MARKED: 'attendance.marked',
+
   /// A walk-in became a patient, or was written off. Both are decisions about
   /// somebody's record that the clinic should be able to account for later.
   VISITOR_CONVERTED: 'visitor.converted',

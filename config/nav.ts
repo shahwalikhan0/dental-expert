@@ -34,11 +34,12 @@ import {
   Zap,
   Star,
   Cpu,
-  DollarSign,
   Activity,
   Upload,
   BookOpen,
   ListTree,
+  UserCheck,
+  FileSpreadsheet,
   type LucideIcon,
 } from 'lucide-react'
 import { holderCan, permissionForRoute, type Permission, type RoleHolder } from '@/lib/rbac'
@@ -290,6 +291,23 @@ export const navigation: NavSection[] = [
         ],
       },
       {
+        title: 'Attendance',
+        href: '/attendance',
+        icon: UserCheck,
+        subItems: [
+          {
+            title: 'Register',
+            href: '/attendance',
+            icon: UserCheck,
+          },
+          {
+            title: 'Report',
+            href: '/attendance/report',
+            icon: FileSpreadsheet,
+          },
+        ],
+      },
+      {
         title: 'Reports',
         href: '/reports',
         icon: BarChart3,
@@ -325,11 +343,6 @@ export const navigation: NavSection[] = [
             title: 'Forms',
             href: '/settings/forms',
             icon: ClipboardCheck,
-          },
-          {
-            title: 'Pricing Advisor',
-            href: '/settings/pricing',
-            icon: DollarSign,
           },
           {
             title: 'Data Import',

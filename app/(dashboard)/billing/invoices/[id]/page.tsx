@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useRef, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -51,10 +51,8 @@ import {
   Banknote,
   Smartphone,
   Building2,
-  Share2,
-  Copy,
-  Check,
-  Loader2,
+  Pencil,
+  Send,
 } from 'lucide-react'
 import {
   invoiceStatusConfig,
@@ -67,6 +65,7 @@ import {
   numberToWords,
 } from '@/lib/billing-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { isoDay } from '@/lib/dates'
 
 interface Invoice {
@@ -144,6 +143,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter()
   const searchParams = useSearchParams()
   const showPaymentDialog = searchParams.get('action') === 'payment'
+  // The invoice list's "Print Invoice" opens this page with `?print=1`.
+  const printOnLoad = searchParams.get('print') === '1'
 
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<Invoice | null>(null)
@@ -159,11 +160,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [paymentDate, setPaymentDate] = useState(isoDay(new Date()))
   const [transactionId, setTransactionId] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
+  // Shown inside the dialog. The page's own error banner sits behind the
+  // modal, so a refused payment used to look like a button that did nothing.
+  const [paymentError, setPaymentError] = useState('')
 
-  // Payment link state
-  const [linkLoading, setLinkLoading] = useState(false)
-  const [paymentLink, setPaymentLink] = useState('')
-  const [linkCopied, setLinkCopied] = useState(false)
+  const [issuing, setIssuing] = useState(false)
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   const fetchInvoice = async () => {
     try {
@@ -186,19 +188,34 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     fetchInvoice()
   }, [id])
 
+  // Once, after the invoice has rendered — printing on arrival would print the
+  // loading skeleton.
+  const printed = useRef(false)
+  useEffect(() => {
+    if (!printOnLoad || !invoice || printed.current) return
+    printed.current = true
+    const frame = requestAnimationFrame(() => window.print())
+    return () => cancelAnimationFrame(frame)
+  }, [printOnLoad, invoice])
+
+  const openPaymentDialog = (open: boolean) => {
+    if (open) setPaymentError('')
+    setPaymentDialogOpen(open)
+  }
+
   const handleRecordPayment = async () => {
     if (!paymentAmount || Number(paymentAmount) <= 0) {
-      setError('Please enter a valid payment amount')
+      setPaymentError('Please enter a valid payment amount')
       return
     }
     if (!paymentMethod) {
-      setError('Please select a payment method')
+      setPaymentError('Please select a payment method')
       return
     }
 
     try {
       setPaymentSubmitting(true)
-      setError('')
+      setPaymentError('')
 
       const response = await fetch(`/api/invoices/${id}/payments`, {
         method: 'POST',
@@ -226,33 +243,45 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setTransactionId('')
       setPaymentNotes('')
     } catch (error: any) {
-      setError(error.message)
+      setPaymentError(error.message)
     } finally {
       setPaymentSubmitting(false)
     }
   }
 
-  const handleSharePaymentLink = async () => {
+  /**
+   * A draft becomes an invoice the patient owes.
+   *
+   * Nothing is sent anywhere — there is no route that emails or messages an
+   * invoice — so this is the whole of "issuing": the status moves to Pending,
+   * and from then on it can be paid, and it counts in receivables.
+   */
+  const handleIssue = async () => {
+    if (!invoice) return
+    const ok = await confirm({
+      title: 'Issue invoice',
+      description: `${invoice.invoiceNo} will be issued for ${formatCurrency(invoice.totalAmount)}. Its lines cannot be edited once a payment is recorded against it.`,
+      confirmLabel: 'Issue invoice',
+      variant: 'default',
+    })
+    if (!ok) return
     try {
-      setLinkLoading(true)
-      const res = await fetch('/api/payments/link', {
-        method: 'POST',
+      setIssuing(true)
+      setError('')
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: id }),
+        body: JSON.stringify({ status: 'PENDING' }),
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to generate link')
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to issue the invoice')
       }
-      const data = await res.json()
-      setPaymentLink(data.link.url)
-      await navigator.clipboard.writeText(data.link.url)
-      setLinkCopied(true)
-      setTimeout(() => setLinkCopied(false), 3000)
-    } catch (err: any) {
-      setError(err.message)
+      await fetchInvoice()
+    } catch (error: any) {
+      setError(error.message)
     } finally {
-      setLinkLoading(false)
+      setIssuing(false)
     }
   }
 
@@ -320,9 +349,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
+      {ConfirmDialogComponent}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
           <div>
             <div className="flex items-center gap-3">
@@ -337,8 +367,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <Printer className="h-4 w-4 mr-2" />
             Print
           </Button>
+          {invoice.status === 'DRAFT' && (
+            <>
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Link>
+              </Button>
+              <Button onClick={handleIssue} disabled={issuing}>
+                <Send className="h-4 w-4 mr-2" />
+                {issuing ? 'Issuing…' : 'Issue invoice'}
+              </Button>
+            </>
+          )}
           {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-            <Button onClick={() => setPaymentDialogOpen(true)}>
+            <Button onClick={() => openPaymentDialog(true)}>
               <CreditCard className="h-4 w-4 mr-2" />
               Record Payment
             </Button>
@@ -646,23 +690,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={handleSharePaymentLink}
-                  disabled={linkLoading}
-                >
-                  {linkLoading ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : linkCopied ? (
-                    <Check className="h-4 w-4 mr-2 text-green-500 dark:text-green-400" />
-                  ) : (
-                    <Share2 className="h-4 w-4 mr-2" />
-                  )}
-                  {linkCopied ? 'Link Copied!' : 'Share Payment Link'}
-                </Button>
-              )}
               <Button
                 variant="outline"
                 className="w-full justify-start"
@@ -687,13 +714,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+      <Dialog open={paymentDialogOpen} onOpenChange={openPaymentDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Record a payment for invoice {invoice.invoiceNo}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {paymentError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {paymentError}
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Amount</Label>
               <div className="relative">
@@ -752,7 +788,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
+            <Button variant="outline" onClick={() => openPaymentDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleRecordPayment} disabled={paymentSubmitting}>

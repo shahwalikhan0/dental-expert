@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { formatCNIC } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useCan } from '@/hooks/use-can'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -92,6 +93,10 @@ const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 
 export default function StaffDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
+  // Only those who may change this account are offered to — see
+  // `staffChangeRefusal` in lib/rbac.ts for why an administrator's is apart.
+  const canWrite = useCan('staff:write') === true
+  const canManageAdmins = useCan('users:manage') === true
   const router = useRouter()
   const { toast } = useToast()
   const [staff, setStaff] = useState<StaffDetail | null>(null)
@@ -209,14 +214,16 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href={`/staff/${staff.id}/edit`}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Profile
-            </Link>
-          </Button>
-        </div>
+        {canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins) && (
+          <div className="flex gap-2">
+            <Button asChild>
+              <Link href={`/staff/${staff.id}/edit`}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Profile
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
@@ -390,9 +397,11 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="text-center py-8 text-muted-foreground">
                   <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No work schedule configured</p>
-                  <Button variant="outline" className="mt-4" asChild>
-                    <Link href={`/staff/${staff.id}/edit`}>Configure Schedule</Link>
-                  </Button>
+                  {canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins) && (
+                    <Button variant="outline" className="mt-4" asChild>
+                      <Link href={`/staff/${staff.id}/edit`}>Configure Schedule</Link>
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="grid gap-2">

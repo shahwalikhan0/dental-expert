@@ -23,10 +23,7 @@ const SHORTCUTS = [
   },
   {
     section: 'General',
-    items: [
-      { keys: ['Esc'], description: 'Close dialog / modal' },
-      { keys: ['Ctrl', 'K'], description: 'Open AI command bar' },
-    ],
+    items: [{ keys: ['Esc'], description: 'Close dialog / modal' }],
   },
 ]
 

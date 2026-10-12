@@ -21,10 +21,12 @@ import { Separator } from '@/components/ui/separator'
 import { ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
+import { useCan } from '@/hooks/use-can'
 import { isoDay } from '@/lib/dates'
 
 export default function NewStaffPage() {
   const router = useRouter()
+  const canManageAdmins = useCan('users:manage') === true
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard()
   const { toast } = useToast()
@@ -229,7 +231,11 @@ export default function NewStaffPage() {
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ALL_ROLES.map((r) => (
+                    {/* Administrator is offered only to an administrator: the
+                        server refuses anybody else — see staffChangeRefusal. */}
+                    {ALL_ROLES.filter(
+                      (r) => r !== 'ADMIN' || canManageAdmins || formData.role === 'ADMIN'
+                    ).map((r) => (
                       <SelectItem key={r} value={r}>
                         {ROLE_LABELS[r]}
                       </SelectItem>

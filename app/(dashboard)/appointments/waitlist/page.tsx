@@ -130,11 +130,13 @@ export default function WaitlistPage() {
     fetchWaitlist()
   }, [fetchWaitlist])
 
-  // Load doctors on mount
+  // Load doctors on mount. `/api/staff/doctors`, as every other booking screen
+  // uses: the staff list needs `staff:read`, which the front desk — the people
+  // who run the waitlist — does not hold, so the picker came back empty.
   useEffect(() => {
-    fetch('/api/staff?role=DOCTOR')
+    fetch('/api/staff/doctors')
       .then((r) => r.json())
-      .then((data) => setDoctors(data.staff || []))
+      .then((data) => setDoctors(data.doctors || []))
       .catch(() => {})
   }, [])
 

@@ -17,21 +17,24 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { NavBadgeKey } from '@/config/nav'
+import { useCan } from '@/hooks/use-can'
 
 export type NavBadges = Partial<Record<NavBadgeKey, number>>
 
 export function useNavBadges(): NavBadges {
   const pathname = usePathname()
   const [badges, setBadges] = useState<NavBadges>({})
+  // Only somebody who can see the walk-in queue has a menu item to put the
+  // count on. Asking anyway was a 403 on every navigation for everyone else;
+  // while the session is still loading (`null`) there is nobody to ask for.
+  const canSeeVisitors = useCan('patients:read')
 
   useEffect(() => {
+    if (!canSeeVisitors) return
     let current = true
     ;(async () => {
       try {
         const response = await fetch('/api/visitors/count')
-        // A role without `patients:read` gets a 403 here. That is not an
-        // error to report: the item it would sit on is already filtered out
-        // of this person's menu.
         if (!response.ok) return
         const data = await response.json()
         if (!current) return
@@ -44,7 +47,7 @@ export function useNavBadges(): NavBadges {
     return () => {
       current = false
     }
-  }, [pathname])
+  }, [pathname, canSeeVisitors])
 
   return badges
 }

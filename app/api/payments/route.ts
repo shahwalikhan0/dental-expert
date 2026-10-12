@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PaymentMethod, PaymentStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 
@@ -37,10 +38,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
+      // Checked here rather than left to Prisma, which rejects an unknown enum
+      // value by throwing — a bookmarked `?status=all` came back as a 500.
+      if (!(Object.values(PaymentStatus) as string[]).includes(status)) {
+        return NextResponse.json({ error: `Unknown status: ${status}` }, { status: 400 })
+      }
       where.status = status
     }
 
     if (paymentMethod) {
+      if (!(Object.values(PaymentMethod) as string[]).includes(paymentMethod)) {
+        return NextResponse.json(
+          { error: `Unknown payment method: ${paymentMethod}` },
+          { status: 400 }
+        )
+      }
       where.paymentMethod = paymentMethod
     }
 

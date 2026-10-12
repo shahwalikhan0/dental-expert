@@ -17,6 +17,10 @@ import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 
 const toast = vi.fn()
+// Screens hide the actions a role cannot take; these tests are about the
+// forms themselves, so the viewer may do everything.
+vi.mock('@/hooks/use-can', () => ({ useCan: () => true }))
+
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast }) }))
 
 // Radix's Select does not open under jsdom, so it is stood in for — the same

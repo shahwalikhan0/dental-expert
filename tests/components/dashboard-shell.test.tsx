@@ -50,18 +50,6 @@ vi.mock('@/components/layout/sidebar-context', () => ({
   SidebarProvider: ({ children }: any) => <div data-testid="sidebar-provider">{children}</div>,
 }))
 
-vi.mock('@/components/ai/ai-provider', () => ({
-  AIProvider: ({ children }: any) => <div data-testid="ai-provider">{children}</div>,
-}))
-
-vi.mock('@/components/ai/command-bar', () => ({
-  CommandBar: () => <div data-testid="command-bar">CommandBar</div>,
-}))
-
-vi.mock('@/components/ai/chat-widget', () => ({
-  ChatWidget: () => <div data-testid="chat-widget">ChatWidget</div>,
-}))
-
 vi.mock('@/components/ui/breadcrumb', () => ({
   Breadcrumb: ({ className }: any) => (
     <nav data-testid="breadcrumb" className={className}>
@@ -130,15 +118,6 @@ describe('DashboardShell', () => {
     expect(screen.getByText('Page content here')).toBeInTheDocument()
   })
 
-  it('wraps in AIProvider', () => {
-    render(
-      <DashboardShell user={defaultUser} hospital={defaultHospital}>
-        <p>Content</p>
-      </DashboardShell>
-    )
-    expect(screen.getByTestId('ai-provider')).toBeInTheDocument()
-  })
-
   it('wraps in SidebarProvider', () => {
     render(
       <DashboardShell user={defaultUser} hospital={defaultHospital}>
@@ -146,24 +125,6 @@ describe('DashboardShell', () => {
       </DashboardShell>
     )
     expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
-  })
-
-  it('renders CommandBar', () => {
-    render(
-      <DashboardShell user={defaultUser} hospital={defaultHospital}>
-        <p>Content</p>
-      </DashboardShell>
-    )
-    expect(screen.getByTestId('command-bar')).toBeInTheDocument()
-  })
-
-  it('renders ChatWidget', () => {
-    render(
-      <DashboardShell user={defaultUser} hospital={defaultHospital}>
-        <p>Content</p>
-      </DashboardShell>
-    )
-    expect(screen.getByTestId('chat-widget')).toBeInTheDocument()
   })
 
   it('renders KeyboardShortcutHelp', () => {

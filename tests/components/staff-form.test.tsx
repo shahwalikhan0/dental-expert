@@ -10,6 +10,10 @@ import React from 'react'
 const mockPush = vi.fn()
 const mockToast = vi.fn()
 
+// Screens hide the actions a role cannot take; these tests are about the
+// forms themselves, so the viewer may do everything.
+vi.mock('@/hooks/use-can', () => ({ useCan: () => true }))
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),

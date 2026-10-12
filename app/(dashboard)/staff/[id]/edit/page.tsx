@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { ArrowLeft, Loader2, Eye, EyeOff, Clock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
+import { useCan } from '@/hooks/use-can'
 import { isoDay } from '@/lib/dates'
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -30,6 +31,7 @@ const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 export default function EditStaffPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
+  const canManageAdmins = useCan('users:manage') === true
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard()
   const { toast } = useToast()
@@ -307,7 +309,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ALL_ROLES.map((r) => (
+                    {/* Administrator is offered only to an administrator: the
+                        server refuses anybody else — see staffChangeRefusal. */}
+                    {ALL_ROLES.filter(
+                      (r) => r !== 'ADMIN' || canManageAdmins || formData.role === 'ADMIN'
+                    ).map((r) => (
                       <SelectItem key={r} value={r}>
                         {ROLE_LABELS[r]}
                       </SelectItem>

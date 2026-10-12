@@ -1,5 +1,6 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -112,8 +113,20 @@ const settingsCategories = [
   },
 ]
 
+const noSubscription = () => () => {}
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
+  // next-themes knows the theme only in the browser. Rendering the selection
+  // from it on the server drew every button as unselected, and the browser's
+  // first render then disagreed — a hydration mismatch on every visit. The
+  // selection waits for the client; the server and the first client render
+  // both show none.
+  const hydrated = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false
+  )
 
   return (
     <div className="space-y-6">
@@ -164,7 +177,7 @@ export default function SettingsPage() {
               ).map((opt) => (
                 <Button
                   key={opt.value}
-                  variant={theme === opt.value ? 'default' : 'outline'}
+                  variant={hydrated && theme === opt.value ? 'default' : 'outline'}
                   className="flex items-center gap-2"
                   onClick={() => setTheme(opt.value)}
                 >

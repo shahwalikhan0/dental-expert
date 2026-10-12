@@ -70,7 +70,7 @@ test.describe('Billing & Invoices', () => {
       // The form gates submission by disabling the action until a patient is
       // chosen — that is the validation. Clicking a disabled button just hangs
       // until the test times out, so assert the disabled state directly.
-      await expect(page.getByRole('button', { name: 'Create & Send Invoice' })).toBeDisabled()
+      await expect(page.getByRole('button', { name: 'Create & issue invoice' })).toBeDisabled()
     })
 
     test('should show GST calculation', async ({ adminPage: page }) => {

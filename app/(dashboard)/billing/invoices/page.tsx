@@ -36,7 +36,6 @@ import {
   CreditCard,
   FileText,
   Printer,
-  Mail,
   Trash2,
   AlertCircle,
   Clock,
@@ -424,16 +423,16 @@ export default function InvoicesPage() {
                               Record Payment
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => window.print()}>
+                          {/* Opens the invoice to print it. `window.print()` here
+                              printed this list, not the invoice. "Send via
+                              Email" sat below it with no handler; there is no
+                              route that emails an invoice (docs/DEFERRED.md). */}
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/billing/invoices/${invoice.id}?print=1`)}
+                          >
                             <Printer className="h-4 w-4 mr-2" />
                             Print Invoice
                           </DropdownMenuItem>
-                          {invoice.patient.email && (
-                            <DropdownMenuItem>
-                              <Mail className="h-4 w-4 mr-2" />
-                              Send via Email
-                            </DropdownMenuItem>
-                          )}
                           <DropdownMenuSeparator />
                           {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
                             <DropdownMenuItem

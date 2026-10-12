@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { ageInYears, birthDateForAge } from '@/lib/age'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { DuplicateDetector } from '@/components/patients/duplicate-detector'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
@@ -69,6 +70,28 @@ export default function NewPatientPage() {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  // There is no age column — age is read from the date of birth — so an age
+  // typed on its own used to be sent and dropped. Each field now fills the
+  // other: a date gives the age, and an age gives the date it implies, marked
+  // as an estimate until somebody types the real one.
+  const [dobEstimated, setDobEstimated] = useState(false)
+
+  function updateDateOfBirth(value: string) {
+    const age = ageInYears(value)
+    setForm((prev) => ({ ...prev, dateOfBirth: value, age: age === null ? '' : String(age) }))
+    setDobEstimated(false)
+  }
+
+  function updateAge(value: string) {
+    const estimate = value === '' ? null : birthDateForAge(Number(value))
+    setForm((prev) => ({
+      ...prev,
+      age: value,
+      dateOfBirth: estimate ?? (value === '' && dobEstimated ? '' : prev.dateOfBirth),
+    }))
+    setDobEstimated(estimate !== null || (value !== '' && dobEstimated))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
@@ -90,7 +113,6 @@ export default function NewPatientPage() {
       }
 
       if (form.dateOfBirth) payload.dateOfBirth = form.dateOfBirth
-      if (form.age) payload.age = parseInt(form.age)
       if (form.gender) payload.gender = form.gender
       if (form.bloodGroup) payload.bloodGroup = form.bloodGroup
       if (form.alternatePhone) payload.alternatePhone = form.alternatePhone
@@ -191,7 +213,7 @@ export default function NewPatientPage() {
                 id="dateOfBirth"
                 type="date"
                 value={form.dateOfBirth}
-                onChange={(e) => updateField('dateOfBirth', e.target.value)}
+                onChange={(e) => updateDateOfBirth(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -200,11 +222,17 @@ export default function NewPatientPage() {
                 id="age"
                 type="number"
                 value={form.age}
-                onChange={(e) => updateField('age', e.target.value)}
+                onChange={(e) => updateAge(e.target.value)}
                 placeholder="Age"
                 min="0"
                 max="150"
               />
+              {dobEstimated && (
+                <p className="text-xs text-muted-foreground">
+                  Date of birth estimated from the age. Replace it if the patient knows the real
+                  one.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="gender">Gender</Label>

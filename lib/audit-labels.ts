@@ -32,6 +32,7 @@ export const AUDIT_LABELS: Record<string, string> = {
 
   [AUDIT_ACTIONS.GUARANTOR_CHANGED]: 'Account payer changed',
   [AUDIT_ACTIONS.RECALL_CONTACTED]: 'Recall list worked',
+  [AUDIT_ACTIONS.ATTENDANCE_MARKED]: 'Attendance marked',
   [AUDIT_ACTIONS.VISITOR_CONVERTED]: 'Walk-in registered',
   [AUDIT_ACTIONS.VISITOR_DISCARDED]: 'Walk-in discarded',
   [AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED]: 'Booked online',
@@ -109,6 +110,11 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.GUARANTOR_CHANGED,
       AUDIT_ACTIONS.RECALL_CONTACTED,
     ],
+  },
+  {
+    key: 'staff',
+    label: 'Staff',
+    actions: [AUDIT_ACTIONS.ATTENDANCE_MARKED],
   },
   {
     key: 'portal',

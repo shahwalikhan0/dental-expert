@@ -199,16 +199,20 @@ describe('12.3 Test Coverage Targets — Configuration', () => {
     expect(config).toContain('.next')
   })
 
-  // Coverage is produced locally (`npm run test:coverage`), not in CI: the
-  // test suites deliberately have no job in .github/workflows/ci.yml, so there
-  // is no run there to collect it from.
-  it('CI workflow does not run the test suites', () => {
+  // The pre-push hook runs only the tests related to what is pushed, so the
+  // CI job is the one place the whole unit suite runs. Without it, a change
+  // that breaks a module nobody touched would never be caught.
+  it('CI workflow runs the whole unit suite', () => {
     const ciConfig = readFile('.github/workflows/ci.yml')
-    if (ciConfig) {
-      // A `run:` step, not a mention: the workflow's own comment explains
-      // where the suites do run, and naming them there is not running them.
-      expect(ciConfig).not.toMatch(/run: *(npx |npm run )?(vitest|playwright)/i)
-    }
+    // A `run:` step, not a mention in the workflow's comment.
+    expect(ciConfig).toMatch(/run: *npm run test\s*$/m)
+  })
+
+  // Playwright needs a running app and a seeded database, neither of which
+  // CI has; it stays on demand (`npm run test:e2e`).
+  it('CI workflow does not run the e2e suite', () => {
+    const ciConfig = readFile('.github/workflows/ci.yml')
+    expect(ciConfig).not.toMatch(/run: *(npx |npm run )?(playwright|test:e2e)/i)
   })
 })
 
@@ -250,6 +254,9 @@ describe('12.2 Git Hooks — Pre-commit & Pre-push', () => {
   it('pre-push hook file exists', () => {
     expect(fileExists('.husky/pre-push')).toBe(true)
     const hook = readFile('.husky/pre-push')
+    // Only the tests reached from the changed files, and everything when the
+    // test setup, the config or the dependencies change.
+    expect(hook).toContain('vitest related --run')
     expect(hook).toContain('npm run test')
   })
 

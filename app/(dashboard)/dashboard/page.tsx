@@ -33,7 +33,6 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { InsightsPanel } from '@/components/ai/insights-panel'
 import { CHART_COLORS } from '@/lib/chart-theme'
 import { displayDate, displayDateShort } from '@/lib/dates'
 import { formatTime } from '@/lib/appointment-utils'
@@ -290,9 +289,6 @@ export default function DashboardPage() {
 
       {/* What you came here to do */}
       {quickActions}
-
-      {/* Anything that wants a decision, before anything that wants reading */}
-      <InsightsPanel />
 
       {lowStock.length > 0 && (
         <Card className="border-amber-300 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-950/20">

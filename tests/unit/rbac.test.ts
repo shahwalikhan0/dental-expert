@@ -31,6 +31,7 @@ import {
   permissionForRoute,
   permissionsFor,
   roleLabel,
+  staffChangeRefusal,
 } from '@/lib/rbac'
 import type { Permission } from '@/lib/rbac'
 
@@ -188,8 +189,35 @@ describe('§4 — Clinic Manager: restricted from changing signed clinical notes
     expect(canAll('CLINIC_MANAGER', ['billing:discount', 'billing:refund'])).toBe(true)
   })
 
-  it('cannot create staff or change configuration', () => {
-    expect(canAny('CLINIC_MANAGER', ['staff:write', 'settings:write', 'users:manage'])).toBe(false)
+  it('runs the staff list and the settings, but not user management', () => {
+    expect(canAll('CLINIC_MANAGER', ['staff:write', 'settings:write'])).toBe(true)
+    expect(can('CLINIC_MANAGER', 'users:manage')).toBe(false)
+  })
+
+  it('cannot make an administrator, or take over one', () => {
+    const manager = { role: 'CLINIC_MANAGER' }
+    expect(staffChangeRefusal(manager, { newRole: 'ADMIN' })).not.toBeNull()
+    expect(staffChangeRefusal(manager, { currentRole: 'DOCTOR', newRole: 'ADMIN' })).not.toBeNull()
+    expect(
+      staffChangeRefusal(manager, { currentRole: 'ADMIN', resetsPassword: true })
+    ).not.toBeNull()
+    expect(
+      staffChangeRefusal(manager, { currentRole: 'ADMIN', changesAccess: true })
+    ).not.toBeNull()
+    expect(staffChangeRefusal(manager, { currentRole: 'ADMIN', newRole: 'DOCTOR' })).not.toBeNull()
+  })
+
+  it('manages every other account', () => {
+    const manager = { role: 'CLINIC_MANAGER' }
+    expect(staffChangeRefusal(manager, { newRole: 'DOCTOR' })).toBeNull()
+    expect(
+      staffChangeRefusal(manager, { currentRole: 'RECEPTIONIST', resetsPassword: true })
+    ).toBeNull()
+    // Editing an administrator's name or phone is not a change to their access.
+    expect(staffChangeRefusal(manager, { currentRole: 'ADMIN', newRole: 'ADMIN' })).toBeNull()
+    expect(
+      staffChangeRefusal({ role: 'ADMIN' }, { currentRole: 'ADMIN', resetsPassword: true })
+    ).toBeNull()
   })
 })
 

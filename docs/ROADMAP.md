@@ -164,16 +164,17 @@ buyer asks.
 
 ## 4. The AI layer
 
-**Undecided, and deliberately untouched.** Nine components in `components/ai/`
-are mounted on the dashboard, the patient record, the treatments form, the
-reports screen and the security settings, plus a global command bar and chat
-widget in `components/layout/dashboard-shell.tsx`. They call six endpoints —
-`/api/ai/{chat,clinical,command,insights,query,usage}` — and `app/api/ai` does
-not exist. Every one of them 404s.
+**Removed** (29 September 2026, after the test pass in `docs/BUG_REPORT.md`).
+The chat widget, the command bar, the dashboard insights, the patient 360
+panel, the treatment assistant, the report builder, the security audit
+monitor, the appointment no-show risk, the cash-flow and inventory forecasts
+and the Pricing Advisor page are gone, with `components/ai/` and
+`hooks/use-web-voice.ts`. Data Import's column mapping now comes from the
+headings (`lib/import/column-match.ts`) instead of `/api/data-import/ai-mapping`.
 
-Either direction closes it. Kept, they need routes and a provider decision.
-Removed, five screens get simpler. What cannot continue is the present state,
-because it puts visibly broken widgets on the screens a clinic sees most.
+Nothing that worked was lost: every one of them called `app/api/ai`, which had
+not existed since `39fdd2e`. Bringing AI back is a new piece of work — a
+provider, routes, prompts and usage limits — not a restoration.
 
 ---
 
@@ -293,12 +294,4 @@ upload and the viewer cannot. The X-ray-specific work — per-tooth linkage on
 `Document`, a bitewing mount, before/after pairing — is a separate item and not
 needed to close this one.
 
-### 8.2 The AI layer — see §4
-
-Unchanged since §4 was written: nine mounted components, six endpoints,
-`app/api/ai` does not exist, every call 404s on the dashboard, the patient
-record, the treatments form, the reports screen and the security settings.
-Repeated here because §4 reads as a design question ("which provider?") and
-this is the operational half of it: **until it is decided either way, five of
-the most-used screens in the product carry a visibly broken widget.** Deleting
-the components closes this in an afternoon and loses nothing that works today.
+### 8.2 ~~The AI layer~~ — removed, see §4

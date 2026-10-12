@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { MessageSquare, Mail, FileText, MessageCircle, Send } from 'lucide-react'
+import { MessageSquare, Mail, FileText, Send } from 'lucide-react'
 
 export default function CommunicationsPage() {
   const { toast } = useToast()
@@ -141,10 +141,6 @@ export default function CommunicationsPage() {
           <TabsTrigger value="templates">
             <FileText className="w-4 h-4 mr-2" />
             Templates
-          </TabsTrigger>
-          <TabsTrigger value="surveys">
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Surveys
           </TabsTrigger>
         </TabsList>
 
@@ -293,35 +289,6 @@ export default function CommunicationsPage() {
                 <div className="border rounded-lg p-4">
                   <p className="text-sm text-muted-foreground">
                     Template list will be displayed here
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Surveys Tab */}
-        <TabsContent value="surveys">
-          <Card>
-            <CardHeader>
-              <CardTitle>Patient Surveys & Feedback</CardTitle>
-              <CardDescription>Create and manage patient satisfaction surveys</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">Active Surveys</h3>
-                    <p className="text-sm text-muted-foreground">Collect feedback from patients</p>
-                  </div>
-                  <Button asChild>
-                    <Link href="/communications/feedback">Manage Surveys</Link>
-                  </Button>
-                </div>
-
-                <div className="border rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">
-                    Survey list will be displayed here
                   </p>
                 </div>
               </div>

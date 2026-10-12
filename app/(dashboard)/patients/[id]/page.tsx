@@ -57,7 +57,6 @@ import {
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
-import { Patient360 } from '@/components/ai/patient-360'
 import { PatientFormSubmissions } from '@/components/forms/patient-form-submissions'
 import { formatDate, formatTime } from '@/lib/appointment-utils'
 import { ClickableRow } from '@/components/ui/data-grid'
@@ -409,8 +408,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
-          <Patient360 patientId={patient.id} />
-          <PortalAccessCard patientId={patient.id} canManage={canManagePortal} />
+          {/* Its status is read with `patients:write`, the permission that
+              manages it, so anyone without it was only ever refused (403). */}
+          {canManagePortal && <PortalAccessCard patientId={patient.id} canManage />}
           <FamilyCard
             patientId={patient.id}
             patientName={`${patient.firstName} ${patient.lastName}`}

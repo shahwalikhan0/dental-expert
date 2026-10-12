@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
+import { useCan } from '@/hooks/use-can'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -91,6 +92,14 @@ export default function StaffPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Staff')
   const router = useRouter()
+  // A dentist reads this list (`staff:read`) but cannot change it. The buttons
+  // used to be offered to them anyway, and refused after the form was filled.
+  const canWrite = useCan('staff:write') === true
+  const canSeePerformance = useCan('staff:hr') === true
+  // An administrator's account is changed only by an administrator — see
+  // `staffChangeRefusal` in lib/rbac.ts.
+  const canManageAdmins = useCan('users:manage') === true
+  const canChange = (role: string) => canWrite && (role !== 'ADMIN' || canManageAdmins)
   const { toast } = useToast()
   const [staff, setStaff] = useState<Staff[]>([])
   const [loading, setLoading] = useState(true)
@@ -244,12 +253,14 @@ export default function StaffPage() {
               Invitations
             </Link>
           </Button>
-          <Button asChild>
-            <Link href="/staff/new">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Staff
-            </Link>
-          </Button>
+          {canWrite && (
+            <Button asChild>
+              <Link href="/staff/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Staff
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -342,8 +353,8 @@ export default function StaffPage() {
               emptyIcon={UserCog}
               emptyTitle="No staff members found"
               emptyDescription="Nobody on the team matches these filters."
-              emptyActionLabel="Add Staff"
-              emptyActionHref="/staff/new"
+              emptyActionLabel={canWrite ? 'Add Staff' : undefined}
+              emptyActionHref={canWrite ? '/staff/new' : undefined}
             >
               {staff.map((member) => (
                 <ClickableRow
@@ -410,11 +421,13 @@ export default function StaffPage() {
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}/edit`)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        {member.user.role === 'DOCTOR' && (
+                        {canChange(member.user.role) && (
+                          <DropdownMenuItem onClick={() => router.push(`/staff/${member.id}/edit`)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                        )}
+                        {canSeePerformance && member.user.role === 'DOCTOR' && (
                           <DropdownMenuItem
                             onClick={() => router.push(`/staff/${member.id}/performance`)}
                           >
@@ -422,8 +435,10 @@ export default function StaffPage() {
                             Performance
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator />
-                        {member.isActive && (
+                        {canChange(member.user.role) && member.isActive && (
+                          <DropdownMenuSeparator />
+                        )}
+                        {canChange(member.user.role) && member.isActive && (
                           <DropdownMenuItem
                             className="text-red-600 dark:text-red-400"
                             onClick={() => {

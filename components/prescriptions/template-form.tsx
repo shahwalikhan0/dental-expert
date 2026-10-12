@@ -10,7 +10,7 @@
  * No teeth here, deliberately. A template says "post-extraction analgesia"; it
  * cannot know it is tooth 46. Teeth belong to the prescription issued from it.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
@@ -48,6 +48,8 @@ export interface TemplateDraft {
   items: TemplateItemDraft[]
 }
 
+/** A React key per row, so a removed row does not hand its state to the next.
+ *  Module state, so it must never reach the DOM — see `idBase` below. */
 let draftKey = 0
 
 export function blankItem(): TemplateItemDraft {
@@ -77,6 +79,12 @@ interface TemplateFormProps {
 }
 
 export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormProps) {
+  // The label ↔ input ids. Not `item.key`: that counter is module state, and
+  // the server's copy has been counting since it started while the browser's
+  // starts at zero — so the ids never matched and React reported a hydration
+  // mismatch on every open. `useId` is the same on both; the index keeps rows
+  // apart.
+  const idBase = useId()
   const router = useRouter()
   const { toast } = useToast()
   const formRef = useFormGuard()
@@ -298,7 +306,7 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
 
               <div className="form-grid">
                 <div className="space-y-2">
-                  <Label className="label-required" htmlFor={`medicine-${item.key}`}>
+                  <Label className="label-required" htmlFor={`${idBase}-medicine-${index}`}>
                     Medicine
                   </Label>
                   {/*
@@ -310,7 +318,7 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
                     unlinked line on every prescription made from it.
                   */}
                   <SearchSelect
-                    id={`medicine-${item.key}`}
+                    id={`${idBase}-medicine-${index}`}
                     value={item.medicationId}
                     selectedLabel={item.medicationName}
                     options={medOptions}

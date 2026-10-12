@@ -99,52 +99,8 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }))
 
-vi.mock('@/components/ai/ai-provider', () => ({
-  useAI: () => ({
-    messages: [],
-    chatMessages: [],
-    chatLoading: false,
-    sendChat: vi.fn(),
-    clearChat: vi.fn(),
-    executeCommand: vi.fn(),
-    insights: [],
-    suggestions: [],
-    loadInsights: vi.fn(),
-    loadSuggestions: vi.fn(),
-    dismissInsight: vi.fn(),
-    generateInsights: vi.fn(),
-    isLoading: false,
-  }),
-  AIProvider: ({ children }: any) => <>{children}</>,
-}))
-
-vi.mock('@/hooks/use-web-voice', () => ({
-  useWebVoice: () => ({
-    isListening: false,
-    isSpeaking: false,
-    transcript: '',
-    startListening: vi.fn(),
-    stopListening: vi.fn(),
-    speak: vi.fn(),
-    stopSpeaking: vi.fn(),
-    isSupported: false,
-  }),
-}))
-
 vi.mock('@/components/ui/export-menu', () => ({
   ExportMenu: () => <button>Export</button>,
-}))
-
-vi.mock('@/components/ai/insights-panel', () => ({
-  InsightsPanel: () => <div data-testid="insights-panel">Insights</div>,
-}))
-
-vi.mock('@/components/ai/voice-orb', () => ({
-  VoiceOrb: () => <div data-testid="voice-orb" />,
-}))
-
-vi.mock('@/components/ai/audio-waveform', () => ({
-  AudioWaveform: () => <div data-testid="audio-waveform" />,
 }))
 
 vi.mock('lucide-react', async (importOriginal) => {

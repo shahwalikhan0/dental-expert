@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
-import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
+import { SECONDARY_ROLES, isAssignableSecondaryRole, isRole, staffChangeRefusal } from '@/lib/rbac'
 import { validatePassword } from '@/lib/password-policy'
 import { passwordPolicyFor } from '@/lib/security-settings'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
@@ -125,6 +125,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         )
       }
     }
+
+    if (role !== undefined && role !== null && role !== '' && !isRole(role)) {
+      return NextResponse.json({ error: 'That is not a role' }, { status: 400 })
+    }
+    const refusal = staffChangeRefusal(session?.user, {
+      currentRole: existingStaff.user?.role,
+      newRole: role || null,
+      resetsPassword: !!newPassword,
+      changesAccess: isActive !== undefined && isActive !== existingStaff.user?.isActive,
+    })
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 403 })
 
     // `clinicalRole: null` clears it; any other value must be a clinical role
     // that differs from the primary one. See SECONDARY_ROLES in lib/rbac.ts.
@@ -258,6 +269,12 @@ export async function DELETE(
     if (!staff) {
       return NextResponse.json({ error: 'Staff not found' }, { status: 404 })
     }
+
+    const refusal = staffChangeRefusal(session?.user, {
+      currentRole: staff.user?.role,
+      changesAccess: true,
+    })
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 403 })
 
     // Soft delete - deactivate both user and staff
     await prisma.$transaction([

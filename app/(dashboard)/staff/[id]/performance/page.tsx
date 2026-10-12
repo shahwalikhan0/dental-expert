@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { isoDay } from '@/lib/dates'
+import { LATES_PER_ABSENCE } from '@/lib/attendance'
 
 interface PerformanceData {
   staff: {
@@ -61,14 +62,17 @@ interface PerformanceData {
   }>
   patientsTreated: number
   prescriptionsWritten: number
+  /** From the attendance register; null when the person is not on it. */
   attendance: {
-    totalDays: number
+    userId: string
     present: number
-    absent: number
     late: number
-    halfDay: number
-    onLeave: number
-  }
+    absent: number
+    /** Absences plus those charged for lateness — see LATES_PER_ABSENCE. */
+    totalAbsent: number
+    unmarked: number
+    rate: number | null
+  } | null
 }
 
 const categoryLabels: Record<string, string> = {
@@ -152,13 +156,6 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
   const getCompletionRate = () => {
     if (!data || data.appointments.total === 0) return 0
     return Math.round((data.appointments.completed / data.appointments.total) * 100)
-  }
-
-  const getAttendanceRate = () => {
-    if (!data || data.attendance.totalDays === 0) return 0
-    return Math.round(
-      ((data.attendance.present + data.attendance.late) / data.attendance.totalDays) * 100
-    )
   }
 
   if (loading) {
@@ -357,47 +354,55 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
             <CardDescription>Attendance statistics for the selected period</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Attendance Rate</span>
-              <span className="text-sm font-medium">{getAttendanceRate()}%</span>
-            </div>
-            <Progress value={getAttendanceRate()} className="h-2" />
+            {!data.attendance ? (
+              <p className="text-sm text-muted-foreground">
+                Not on the attendance register — they have not signed in yet.
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Attendance Rate</span>
+                  <span className="text-sm font-medium">
+                    {data.attendance.rate === null ? '—' : `${data.attendance.rate}%`}
+                  </span>
+                </div>
+                <Progress value={data.attendance.rate ?? 0} className="h-2" />
 
-            <div className="grid grid-cols-3 gap-4 mt-4">
-              <div className="p-3 bg-green-50 rounded-lg text-center dark:bg-green-950/30">
-                <p className="text-sm text-green-600 dark:text-green-400">Present</p>
-                <p className="text-xl font-bold text-green-700 dark:text-green-300">
-                  {data.attendance.present}
+                <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-4">
+                  <div className="p-3 bg-green-50 rounded-lg text-center dark:bg-green-950/30">
+                    <p className="text-sm text-green-600 dark:text-green-400">Present</p>
+                    <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                      {data.attendance.present}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-yellow-50 rounded-lg text-center dark:bg-yellow-950/30">
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400">Late</p>
+                    <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
+                      {data.attendance.late}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-red-50 rounded-lg text-center dark:bg-red-950/30">
+                    <p className="text-sm text-red-600 dark:text-red-400">Absent</p>
+                    <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                      {data.attendance.totalAbsent}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg text-center">
+                    <p className="text-sm text-muted-foreground">Not marked</p>
+                    <p className="text-xl font-bold">{data.attendance.unmarked}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Absent includes one day for every {LATES_PER_ABSENCE} lates.{' '}
+                  <Link
+                    href={`/attendance/${data.attendance.userId}?start=${startDate}&end=${endDate}`}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Open the attendance record
+                  </Link>
                 </p>
-              </div>
-              <div className="p-3 bg-red-50 rounded-lg text-center dark:bg-red-950/30">
-                <p className="text-sm text-red-600 dark:text-red-400">Absent</p>
-                <p className="text-xl font-bold text-red-700 dark:text-red-300">
-                  {data.attendance.absent}
-                </p>
-              </div>
-              <div className="p-3 bg-yellow-50 rounded-lg text-center dark:bg-yellow-950/30">
-                <p className="text-sm text-yellow-600 dark:text-yellow-400">Late</p>
-                <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
-                  {data.attendance.late}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-orange-50 rounded-lg text-center dark:bg-orange-950/30">
-                <p className="text-sm text-orange-600 dark:text-orange-400">Half Day</p>
-                <p className="text-xl font-bold text-orange-700 dark:text-orange-300">
-                  {data.attendance.halfDay}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-50 rounded-lg text-center dark:bg-blue-950/30">
-                <p className="text-sm text-blue-600 dark:text-blue-400">On Leave</p>
-                <p className="text-xl font-bold text-blue-700 dark:text-blue-300">
-                  {data.attendance.onLeave}
-                </p>
-              </div>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

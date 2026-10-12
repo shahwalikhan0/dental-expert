@@ -172,16 +172,25 @@ describe('GET /api/payments', () => {
     vi.mocked(prisma.payment.count).mockResolvedValue(0)
     vi.mocked(prisma.payment.aggregate).mockResolvedValue({ _sum: { amount: null } } as any)
 
-    await paymentsGET(makeReq('/api/payments?status=COMPLETED&paymentMethod=RAZORPAY'))
+    await paymentsGET(makeReq('/api/payments?status=COMPLETED&paymentMethod=WALLET'))
 
     expect(prisma.payment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           status: 'COMPLETED',
-          paymentMethod: 'RAZORPAY',
+          paymentMethod: 'WALLET',
         }),
       })
     )
+  })
+
+  it('refuses a filter value that is not in the enum, as a 400 not a 500', async () => {
+    mockAuth()
+    const status = await paymentsGET(makeReq('/api/payments?status=all'))
+    expect(status.status).toBe(400)
+    const method = await paymentsGET(makeReq('/api/payments?paymentMethod=RAZORPAY'))
+    expect(method.status).toBe(400)
+    expect(prisma.payment.findMany).not.toHaveBeenCalled()
   })
 
   it('applies date range filters', async () => {

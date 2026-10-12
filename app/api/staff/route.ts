@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
-import { SECONDARY_ROLES, isAssignableSecondaryRole } from '@/lib/rbac'
+import { SECONDARY_ROLES, isAssignableSecondaryRole, isRole, staffChangeRefusal } from '@/lib/rbac'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 import { validatePassword } from '@/lib/password-policy'
@@ -157,6 +157,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    if (!isRole(role)) {
+      return NextResponse.json({ error: 'That is not a role' }, { status: 400 })
+    }
+    const refusal = staffChangeRefusal(session?.user, { newRole: role })
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 403 })
 
     // A second role is clinical only, and must differ from the primary one —
     // see SECONDARY_ROLES in lib/rbac.ts for why this is not a general

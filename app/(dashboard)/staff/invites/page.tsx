@@ -35,6 +35,7 @@ import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
 import { MailPlus, RotateCw, X, ArrowLeft } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useCan } from '@/hooks/use-can'
 
 /**
  * An outstanding invitation.
@@ -72,6 +73,9 @@ export default function StaffInvitesPage() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
+  // The list is `staff:read`; sending, resending and cancelling are
+  // `staff:write`, which a dentist reading this page does not hold.
+  const canWrite = useCan('staff:write') === true
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: '' })
   // The route hands back every invitation, so the paging is done here.
@@ -190,10 +194,12 @@ export default function StaffInvitesPage() {
               Back to Staff
             </Link>
           </Button>
-          <Button onClick={() => setOpen(true)}>
-            <MailPlus className="h-4 w-4 mr-2" />
-            Invite someone
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setOpen(true)}>
+              <MailPlus className="h-4 w-4 mr-2" />
+              Invite someone
+            </Button>
+          )}
         </div>
       </div>
 
@@ -236,8 +242,8 @@ export default function StaffInvitesPage() {
               emptyIcon={MailPlus}
               emptyTitle="No invitations yet"
               emptyDescription="Invite a colleague by email and they will set their own password when they accept."
-              emptyActionLabel="Invite someone"
-              onEmptyAction={() => setOpen(true)}
+              emptyActionLabel={canWrite ? 'Invite someone' : undefined}
+              onEmptyAction={canWrite ? () => setOpen(true) : undefined}
             >
               {paged.rows.map((invite) => (
                 <TableRow key={invite.id}>
@@ -258,7 +264,7 @@ export default function StaffInvitesPage() {
                     {formatDate(invite.expiresAt)}
                   </TableCell>
                   <GridActionsCell>
-                    <div className="flex justify-end gap-1">
+                    <div className={canWrite ? 'flex justify-end gap-1' : 'hidden'}>
                       {/* Resending issues a fresh token and a new seven days,
                           which is the fix for an invitation that has lapsed —
                           so it is offered for an expired one too. */}

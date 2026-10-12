@@ -26,12 +26,10 @@ import {
   CheckCircle,
   XCircle,
   BarChart3,
-  Brain,
-  Loader2,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { formatCurrency, dateRangePresets, getDateRangeFromPreset } from '@/lib/billing-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
+import { useCan } from '@/hooks/use-can'
 
 interface SummaryData {
   summary: {
@@ -74,23 +72,11 @@ export default function BillingPage() {
   const [datePreset, setDatePreset] = useState('this_month')
   const [error, setError] = useState<string | null>(null)
   const [agingData, setAgingData] = useState<AgingData | null>(null)
-
-  // AI Cash Flow Forecast
-  const [cashFlowData, setCashFlowData] = useState<any>(null)
-  const [cashFlowLoading, setCashFlowLoading] = useState(false)
-
-  const fetchCashFlowForecast = async () => {
-    try {
-      setCashFlowLoading(true)
-      const res = await fetch('/api/ai/cashflow-forecast')
-      if (!res.ok) return
-      setCashFlowData(await res.json())
-    } catch {
-      // non-critical
-    } finally {
-      setCashFlowLoading(false)
-    }
-  }
+  // Every figure on this screen comes from the billing reports, which need
+  // `reports:financial`. Dentists and the front desk have Billing in their
+  // menu for the invoice and payment lists, and used to land on "Forbidden"
+  // and a row of zeros.
+  const canSeeFigures = useCan('reports:financial')
 
   const fetchSummary = async () => {
     try {
@@ -131,9 +117,10 @@ export default function BillingPage() {
   }
 
   useEffect(() => {
+    if (canSeeFigures !== true) return
     fetchSummary()
     fetchRevenueCycle()
-  }, [datePreset])
+  }, [datePreset, canSeeFigures])
 
   const paymentMethodLabels: Record<string, string> = {
     CASH: 'Cash',
@@ -151,6 +138,53 @@ export default function BillingPage() {
     OVERDUE: { label: 'Overdue', color: 'text-red-600 dark:text-red-400' },
     CANCELLED: { label: 'Cancelled', color: 'text-muted-foreground' },
     REFUNDED: { label: 'Refunded', color: 'text-purple-600 dark:text-purple-400' },
+  }
+
+  if (canSeeFigures === false) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="page-title">Billing</h1>
+            <p className="text-muted-foreground">Invoices and payments</p>
+          </div>
+          <Button asChild>
+            <Link href="/billing/invoices/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Invoice
+            </Link>
+          </Button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Link href="/billing/invoices" className="block">
+            <Card className="h-full transition-colors hover:bg-foreground/[0.03]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Invoices
+                </CardTitle>
+                <CardDescription>Raise, issue and look up invoices</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+          <Link href="/billing/payments" className="block">
+            <Card className="h-full transition-colors hover:bg-foreground/[0.03]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Payments
+                </CardTitle>
+                <CardDescription>Payments taken and their receipts</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          The clinic&apos;s billing figures are part of the financial reports, which your role does
+          not include.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -239,11 +273,6 @@ export default function BillingPage() {
                   Error loading billing data
                 </p>
                 <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-                {error.includes('permission') && (
-                  <p className="text-xs text-red-600 mt-1 dark:text-red-400">
-                    Your account needs ADMIN or ACCOUNTANT role to view billing reports.
-                  </p>
-                )}
               </div>
             </div>
           </CardContent>
@@ -514,109 +543,6 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* AI Cash Flow Forecast */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                Cash Flow Forecast
-              </CardTitle>
-              <CardDescription>AI-projected income for the next 30 days</CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchCashFlowForecast}
-              disabled={cashFlowLoading}
-            >
-              {cashFlowLoading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Brain className="h-4 w-4 mr-2" />
-              )}
-              {cashFlowData ? 'Refresh' : 'Generate Forecast'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!cashFlowData ? (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              Click &quot;Generate Forecast&quot; to project cash flow using AI analysis
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {/* Summary row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
-                  <div className="text-lg font-bold text-green-700 dark:text-green-300">
-                    {formatCurrency(cashFlowData.summary?.total30Day || 0)}
-                  </div>
-                  <div className="text-xs text-green-600 dark:text-green-400">30-Day Projected</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                    {formatCurrency(cashFlowData.summary?.avgDaily || 0)}
-                  </div>
-                  <div className="text-xs text-blue-600 dark:text-blue-400">Avg Daily</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30">
-                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                    {cashFlowData.summary?.bestDay || 'N/A'}
-                  </div>
-                  <div className="text-xs text-purple-600 dark:text-purple-400">Best Day</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
-                  <Badge
-                    className={
-                      cashFlowData.summary?.trend === 'GROWING'
-                        ? 'bg-green-100 text-green-700 border-0 dark:bg-green-950/40 dark:text-green-300'
-                        : cashFlowData.summary?.trend === 'DECLINING'
-                          ? 'bg-red-100 text-red-700 border-0 dark:bg-red-950/40 dark:text-red-300'
-                          : 'bg-muted text-muted-foreground border-0'
-                    }
-                  >
-                    {cashFlowData.summary?.trend || 'STABLE'}
-                  </Badge>
-                  <div className="text-xs text-amber-600 mt-1 dark:text-amber-400">Trend</div>
-                </div>
-              </div>
-
-              {/* Weekly totals */}
-              {cashFlowData.weeklyTotals?.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium">Weekly Breakdown</h4>
-                  {cashFlowData.weeklyTotals.map((week: any) => (
-                    <div key={week.week} className="flex items-center justify-between text-sm">
-                      <span>
-                        Week {week.week}: {week.startDate} — {week.endDate}
-                      </span>
-                      <span className="font-medium">{formatCurrency(week.projected)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Shortfall warnings */}
-              {cashFlowData.summary?.potentialShortfalls?.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 dark:bg-amber-950/30 dark:border-amber-800/60">
-                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 mb-1 dark:text-amber-300">
-                    <AlertCircle className="h-4 w-4" />
-                    Potential Shortfalls
-                  </div>
-                  {cashFlowData.summary.potentialShortfalls.map((s: string, i: number) => (
-                    <p key={i} className="text-xs text-amber-600 dark:text-amber-400">
-                      • {s}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Revenue Cycle Section */}
       <div className="grid gap-6 md:grid-cols-2">

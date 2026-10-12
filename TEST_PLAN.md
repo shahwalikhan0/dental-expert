@@ -460,16 +460,16 @@
 
 ### 1.4 Regression Tests (`tests/regression/`)
 
-- [x] Hospital isolation — hospitalId scoping, cross-tenant prevention (tests/regression/regression.test.ts — 3 tests)
-- [x] Authentication edge cases — expired sessions, null fields, missing hospitalId, password hash exposure (tests/regression/regression.test.ts — 4 tests)
-- [x] Input validation — empty/spaced phones, null optionals, long strings, XSS, SQL injection, unicode, timezone boundaries (tests/regression/regression.test.ts — 8 tests)
-- [x] Billing calculations — zero amounts, floating point precision, negative/excess discounts, GST, partial payments, overpayment (tests/regression/regression.test.ts — 7 tests)
-- [x] Appointment scheduling — overlap detection, back-to-back, midnight crossing, holidays, date roundtrip (tests/regression/regression.test.ts — 5 tests)
-- [x] Inventory management — negative stock, low stock flag, zero reorder, expiry detection, batch uniqueness (tests/regression/regression.test.ts — 5 tests)
-- [x] Pagination — page 0, negative page, large page, zero limit, skip calculation, zero total (tests/regression/regression.test.ts — 6 tests)
-- [x] File uploads — size limit, MIME validation, no extension, double extension, empty filename (tests/regression/regression.test.ts — 5 tests)
-- [x] Concurrency — concurrent stock updates, double-submit prevention (tests/regression/regression.test.ts — 2 tests)
-- [x] API response format — error format, pagination format, ISO dates, internal field exclusion (tests/regression/regression.test.ts — 4 tests)
+- [ ] Hospital isolation — hospitalId scoping, cross-tenant prevention (tests/regression/regression.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Authentication edge cases — expired sessions, null fields, missing hospitalId, password hash exposure (tests/regression/regression.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Input validation — empty/spaced phones, null optionals, long strings, XSS, SQL injection, unicode, timezone boundaries (tests/regression/regression.test.ts — 8 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Billing calculations — zero amounts, floating point precision, negative/excess discounts, GST, partial payments, overpayment (tests/regression/regression.test.ts — 7 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Appointment scheduling — overlap detection, back-to-back, midnight crossing, holidays, date roundtrip (tests/regression/regression.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Inventory management — negative stock, low stock flag, zero reorder, expiry detection, batch uniqueness (tests/regression/regression.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Pagination — page 0, negative page, large page, zero limit, skip calculation, zero total (tests/regression/regression.test.ts — 6 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] File uploads — size limit, MIME validation, no extension, double extension, empty filename (tests/regression/regression.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Concurrency — concurrent stock updates, double-submit prevention (tests/regression/regression.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] API response format — error format, pagination format, ISO dates, internal field exclusion (tests/regression/regression.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 1.5 Smoke Tests (`tests/smoke/smoke.test.tsx`)
 
@@ -569,14 +569,14 @@
 
 ### 2.2 Responsive Design Tests
 
-- [x] Dashboard — mobile (375px), tablet (768px), desktop (1280px), wide (1920px) (tests/components/responsive-design.test.tsx — 12 viewport tests)
-- [x] Patient list — table → card layout on mobile (tests/components/responsive-design.test.tsx — 3 tests)
-- [x] Appointment calendar — single day view on mobile, week on tablet (tests/components/responsive-design.test.tsx — 4 tests)
-- [x] Billing invoice — print-friendly layout (tests/components/responsive-design.test.tsx — 2 tests)
-- [x] Settings pages — stacked layout on mobile (tests/components/responsive-design.test.tsx — 2 tests)
-- [x] Patient portal — full mobile-first design verification (tests/components/responsive-design.test.tsx — 2 tests)
-- [x] Sidebar — collapse to icons on tablet, drawer on mobile (tests/components/responsive-design.test.tsx — 3 tests)
-- [x] Modals/dialogs — full-screen on mobile, centered on desktop (tests/components/responsive-design.test.tsx — 2 tests)
+- [ ] Dashboard — mobile (375px), tablet (768px), desktop (1280px), wide (1920px) (tests/components/responsive-design.test.tsx — 12 viewport tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Patient list — table → card layout on mobile (tests/components/responsive-design.test.tsx — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Appointment calendar — single day view on mobile, week on tablet (tests/components/responsive-design.test.tsx — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Billing invoice — print-friendly layout (tests/components/responsive-design.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Settings pages — stacked layout on mobile (tests/components/responsive-design.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Patient portal — full mobile-first design verification (tests/components/responsive-design.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Sidebar — collapse to icons on tablet, drawer on mobile (tests/components/responsive-design.test.tsx — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Modals/dialogs — full-screen on mobile, centered on desktop (tests/components/responsive-design.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 2.3 Cross-Browser Tests (via Playwright projects)
 
@@ -610,9 +610,9 @@
 
 - [x] Sidebar navigation — all links valid paths, non-empty titles, icons present, unique top-level hrefs (tests/components/navigation.test.tsx — 4 tests)
 - [x] Breadcrumbs — hierarchical structure verified, sub-routes under parents (tests/components/navigation.test.tsx — 1 test)
-- [x] Back button behavior — router.back(), breadcrumb parent navigation, nested route parents, top-level fallback (tests/components/navigation-extended.test.tsx — 4 tests)
+- [ ] Back button behavior — router.back(), breadcrumb parent navigation, nested route parents, top-level fallback (tests/components/navigation-extended.test.tsx — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [x] Deep linking — all top-level routes directly accessible, valid absolute paths (tests/components/navigation.test.tsx — 1 test)
-- [x] Keyboard shortcuts — Cmd+K/Ctrl+K search, Escape close modals, Tab navigation, Shift+Tab reverse, input guards, modifier combos, chord shortcuts (n→p, n→a), ?/shortcut help, / search focus (tests/components/navigation-extended.test.tsx — 16 tests)
+- [ ] Keyboard shortcuts — Cmd+K/Ctrl+K search, Escape close modals, Tab navigation, Shift+Tab reverse, input guards, modifier combos, chord shortcuts (n→p, n→a), ?/shortcut help, / search focus (tests/components/navigation-extended.test.tsx — 16 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ---
 
@@ -620,37 +620,37 @@
 
 ### 3.1 Page Load Performance (`tests/performance/`)
 
-- [x] Dashboard — data fetching efficiency, aggregated single-call, pagination (tests/performance/performance.test.ts — 3 tests)
-- [x] Patient list (100+ records) — list fields, server-side search (tests/performance/performance.test.ts — 2 tests)
+- [ ] Dashboard — data fetching efficiency, aggregated single-call, pagination (tests/performance/performance.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Patient list (100+ records) — list fields, server-side search (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [x] Appointment calendar (month view, 500+ appointments) — (runtime E2E needed)
 - [x] Billing reports (1 year data) — (runtime E2E needed)
-- [x] AI chat — SSE streaming content type, small chunks for fast first-token (tests/performance/performance.test.ts — 2 tests)
-- [x] Dental chart SVG — flat data structure, 32-tooth independent rendering (tests/performance/performance.test.ts — 2 tests)
-- [x] Data import (1000 rows CSV) — batch processing, skipErrorRows (tests/performance/performance.test.ts — 2 tests)
+- [ ] AI chat — SSE streaming content type, small chunks for fast first-token (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Dental chart SVG — flat data structure, 32-tooth independent rendering (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Data import (1000 rows CSV) — batch processing, skipErrorRows (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 3.2 API Response Time
 
-- [x] CRUD endpoints — efficient select/include, count separation (tests/performance/performance.test.ts — 2 tests)
-- [x] Search endpoints — indexed field usage, OR multi-field matching (tests/performance/performance.test.ts — 2 tests)
-- [x] Dashboard stats — aggregate/groupBy, date-range indexed queries (tests/performance/performance.test.ts — 2 tests)
-- [x] Report generation — groupBy for procedure/doctor revenue (tests/performance/performance.test.ts — 1 test)
+- [ ] CRUD endpoints — efficient select/include, count separation (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Search endpoints — indexed field usage, OR multi-field matching (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Dashboard stats — aggregate/groupBy, date-range indexed queries (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Report generation — groupBy for procedure/doctor revenue (tests/performance/performance.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] AI endpoints — first token < 3s (runtime benchmark needed)
 
 ### 3.3 Load Testing (k6 / Artillery)
 
-- [x] Database connection pool — reasonable limits (5-50), keep-alive, unlimited queue (tests/performance/performance.test.ts — 2 tests)
-- [x] File upload — 10MB size limit enforced (tests/performance/performance.test.ts — 1 test)
-- [x] Server actions body size — 10MB limit configured (tests/performance/performance.test.ts — 1 test)
+- [ ] Database connection pool — reasonable limits (5-50), keep-alive, unlimited queue (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] File upload — 10MB size limit enforced (tests/performance/performance.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Server actions body size — 10MB limit configured (tests/performance/performance.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] 50 concurrent users — all pages respond < 3s (runtime load test needed)
 - [ ] 100 concurrent API requests — no 5xx errors (runtime load test needed)
 
 ### 3.4 Bundle Size
 
-- [x] Standalone output, compression, powered-by disabled (tests/performance/performance.test.ts — 5 tests)
-- [x] Code splitting — client components, tree-shakeable imports, server-only API routes (tests/performance/performance.test.ts — 3 tests)
-- [x] Security headers at config level, CORS for API only (tests/performance/performance.test.ts — 2 tests)
-- [x] Caching — SSE no-cache, dynamic data not aggressively cached (tests/performance/performance.test.ts — 2 tests)
-- [x] Rendering — pagination, debounced search, toast limits, lazy dialogs, validation strategy (tests/performance/performance.test.ts — 5 tests)
+- [ ] Standalone output, compression, powered-by disabled (tests/performance/performance.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Code splitting — client components, tree-shakeable imports, server-only API routes (tests/performance/performance.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Security headers at config level, CORS for API only (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Caching — SSE no-cache, dynamic data not aggressively cached (tests/performance/performance.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Rendering — pagination, debounced search, toast limits, lazy dialogs, validation strategy (tests/performance/performance.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] Main bundle < 500KB gzipped (build analysis needed)
 - [ ] Image optimization — all images served as WebP/AVIF
 
@@ -663,8 +663,8 @@
 - [x] Password hashing — bcrypt format, verify match, reject wrong password, unique salts (tests/security/security.test.ts — 4 tests)
 - [x] Token generation — correct length, alphanumeric, uniqueness across 100 runs (tests/security/security.test.ts — 5 tests)
 - [x] OTP (patient portal) — 6-digit format, range 100000-999999, uniqueness (tests/security/security.test.ts — 3 tests)
-- [x] Session expiry — session created with expiry, expired detection, valid session acceptance, configurable duration (tests/security/security-extended.test.ts — 4 tests)
-- [x] Brute force protection — rate limiting via attempt count, window expiry, reset on success, block after N attempts, error message (tests/security/security-extended.test.ts — 5 tests)
+- [ ] Session expiry — session created with expiry, expired detection, valid session acceptance, configurable duration (tests/security/security-extended.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Brute force protection — rate limiting via attempt count, window expiry, reset on success, block after N attempts, error message (tests/security/security-extended.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 4.2 Authorization
 
@@ -673,7 +673,7 @@
 - [x] Hospital isolation — getAuthenticatedHospital returns hospitalId, 401 on missing session (tests/security/security.test.ts — 2 tests)
 - [x] Plan limits — FREE/PROFESSIONAL/ENTERPRISE limits, checkPatientLimit block/allow/unlimited, checkStaffLimit, missing hospital (tests/security/security.test.ts — 7 tests)
 - [x] All roles matrix — each of 5 roles accepted/rejected correctly (tests/security/security.test.ts — 10 tests)
-- [x] Patient portal isolation — own-record access, cross-patient rejection, patientId filter, admin endpoint blocked, separate OTP auth (tests/security/security-extended.test.ts — 5 tests)
+- [ ] Patient portal isolation — own-record access, cross-patient rejection, patientId filter, admin endpoint blocked, separate OTP auth (tests/security/security-extended.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 4.3 Input Validation & Injection
 
@@ -683,7 +683,7 @@
 - [x] CNIC validation — 13-digit format, province digit, rejects letters and 12-digit Aadhaar numbers (tests/unit/cnic.test.ts, tests/api/cnic-validation.test.ts)
 - [x] NL query injection — whitelist-only Prisma model names (tests/security/security.test.ts)
 - [x] Path traversal — reject ../ patterns (tests/security/security.test.ts)
-- [x] CSRF — SameSite cookie attribute (lax/strict), origin/referer validation (same-origin accept, cross-origin reject) (tests/security/security-extended.test.ts — 5 tests)
+- [ ] CSRF — SameSite cookie attribute (lax/strict), origin/referer validation (same-origin accept, cross-origin reject) (tests/security/security-extended.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 4.4 Data Protection
 
@@ -692,7 +692,7 @@
 - [x] Cookie security — HttpOnly, Secure, SameSite=lax flags verified (tests/security/security.test.ts)
 - [x] File upload — allowed MIME types, size limit enforcement (tests/security/security.test.ts — 2 tests)
 - [x] HTTPS enforcement — HSTS header (max-age ≥1yr, includeSubDomains, preload), HTTP→HTTPS redirect, secure cookies, mixed content prevention (CSP upgrade-insecure-requests), TLS 1.2+ minimum, weak cipher exclusion, security headers (tests/security/https-enforcement.test.ts — 17 tests)
-- [x] Secure headers — CSP script-src, X-Frame-Options DENY, X-Content-Type-Options nosniff, HSTS, X-XSS-Protection, Referrer-Policy (tests/security/security-extended.test.ts — 6 tests)
+- [ ] Secure headers — CSP script-src, X-Frame-Options DENY, X-Content-Type-Options nosniff, HSTS, X-XSS-Protection, Referrer-Policy (tests/security/security-extended.test.ts — 6 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 4.5 API Security
 
@@ -700,8 +700,8 @@
 - [x] Error response format — 401/403 consistent format (tests/security/security.test.ts — 2 tests)
 - [x] Webhook signature verification — HMAC-SHA256 verify, tamper reject, wrong secret reject (tests/security/security.test.ts — 3 tests)
 - [x] Secret masking — API key shows only last 4 chars (tests/security/security.test.ts)
-- [x] CORS — allowed origins config, no sensitive header exposure, preflight OPTIONS support (tests/security/security-extended.test.ts — 3 tests)
-- [x] API key exposure — server env vars not NEXT_PUBLIC_, API key masking (last 4 chars), no secret leaks in errors (tests/security/security-extended.test.ts — 3 tests)
+- [ ] CORS — allowed origins config, no sensitive header exposure, preflight OPTIONS support (tests/security/security-extended.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] API key exposure — server env vars not NEXT_PUBLIC_, API key masking (last 4 chars), no secret leaks in errors (tests/security/security-extended.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ---
 
@@ -757,30 +757,30 @@
 
 ### 6.1 Browser Compatibility (`tests/compatibility/browser-compatibility.test.ts`)
 
-- [x] Chrome (latest) — Playwright chromium project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests)
-- [x] Firefox (latest) — Playwright firefox project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests)
-- [x] Safari 17+ — Playwright webkit project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests)
-- [x] Edge (latest) — Playwright edge project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests)
-- [x] Chrome Android — Playwright mobile-chrome (Pixel 5) + touch/orientation detection (tests/compatibility/browser-compatibility.test.ts — 10 tests)
-- [x] Safari iOS 17+ — Playwright mobile-safari (iPhone 13) + touch/orientation detection (tests/compatibility/browser-compatibility.test.ts — 10 tests)
-- [x] CSS features — Grid, Custom Properties, Container Queries, dialog element across all 6 browsers (tests/compatibility/browser-compatibility.test.ts — 24 tests)
-- [x] JS runtime — ES2020+/2021+/2022+ features, Intl APIs, AbortController, URL, TextEncoder, FormData, Headers, Response (tests/compatibility/browser-compatibility.test.ts — 18 tests)
+- [ ] Chrome (latest) — Playwright chromium project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Firefox (latest) — Playwright firefox project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Safari 17+ — Playwright webkit project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Edge (latest) — Playwright edge project + feature detection (tests/compatibility/browser-compatibility.test.ts — 7 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Chrome Android — Playwright mobile-chrome (Pixel 5) + touch/orientation detection (tests/compatibility/browser-compatibility.test.ts — 10 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Safari iOS 17+ — Playwright mobile-safari (iPhone 13) + touch/orientation detection (tests/compatibility/browser-compatibility.test.ts — 10 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] CSS features — Grid, Custom Properties, Container Queries, dialog element across all 6 browsers (tests/compatibility/browser-compatibility.test.ts — 24 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] JS runtime — ES2020+/2021+/2022+ features, Intl APIs, AbortController, URL, TextEncoder, FormData, Headers, Response (tests/compatibility/browser-compatibility.test.ts — 18 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 6.2 Device/Resolution Testing (`tests/compatibility/device-resolution.test.ts`)
 
-- [x] Mobile — 375×667 (iPhone SE) — responsive-design.test.tsx + existing tests
-- [x] Tablet — 768×1024 (iPad) — responsive-design.test.tsx + existing tests
-- [x] Desktop — 1280×800 — sidebar, stat cards, tables, calendar, filters, billing layout (tests/compatibility/device-resolution.test.ts — 10 tests)
-- [x] Wide — 1920×1080 — expanded content, 5-col grids, split panels, calendar month view (tests/compatibility/device-resolution.test.ts — 10 tests)
-- [x] Ultra-wide — 2560×1440 — max-width constraints, capped columns, generous spacing (tests/compatibility/device-resolution.test.ts — 10 tests)
-- [x] All resolutions tested on dashboard, patients, appointments, billing pages — cross-resolution consistency (tests/compatibility/device-resolution.test.ts — 6 tests + 3 describe blocks per resolution)
+- [ ] Mobile — 375×667 (iPhone SE) — responsive-design.test.tsx + existing tests — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Tablet — 768×1024 (iPad) — responsive-design.test.tsx + existing tests — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Desktop — 1280×800 — sidebar, stat cards, tables, calendar, filters, billing layout (tests/compatibility/device-resolution.test.ts — 10 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Wide — 1920×1080 — expanded content, 5-col grids, split panels, calendar month view (tests/compatibility/device-resolution.test.ts — 10 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Ultra-wide — 2560×1440 — max-width constraints, capped columns, generous spacing (tests/compatibility/device-resolution.test.ts — 10 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] All resolutions tested on dashboard, patients, appointments, billing pages — cross-resolution consistency (tests/compatibility/device-resolution.test.ts — 6 tests + 3 describe blocks per resolution) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 6.3 Network Conditions (`tests/compatibility/network-resilience.test.ts`)
 
-- [x] Slow 3G — loading states shown while fetch pending, concurrent requests resolve (tests/compatibility/network-resilience.test.ts — 3 tests)
-- [x] Offline — graceful error messages, AbortController, navigator.onLine, offline handler (tests/compatibility/network-resilience.test.ts — 6 tests)
-- [x] Intermittent connection — retry logic, exponential backoff, SWR, optimistic rollback (tests/compatibility/network-resilience.test.ts — 5 tests)
-- [x] Large data on slow network — pagination limits, chunked responses, deduplication (tests/compatibility/network-resilience.test.ts — 3 tests)
+- [ ] Slow 3G — loading states shown while fetch pending, concurrent requests resolve (tests/compatibility/network-resilience.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Offline — graceful error messages, AbortController, navigator.onLine, offline handler (tests/compatibility/network-resilience.test.ts — 6 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Intermittent connection — retry logic, exponential backoff, SWR, optimistic rollback (tests/compatibility/network-resilience.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Large data on slow network — pagination limits, chunked responses, deduplication (tests/compatibility/network-resilience.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ---
 
@@ -788,48 +788,48 @@
 
 ### 7.1 Screen Reader Compatibility
 
-- [x] All pages have descriptive page titles — document title verification (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] All images have alt text — img alt pass/fail, violation detection (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] All form inputs have associated labels — labeled inputs pass, unlabeled fail, aria-label alternative (tests/accessibility/accessibility.test.tsx — 3 tests)
-- [x] All buttons/links have accessible names — text buttons pass, icon+aria-label pass, no-name fail (tests/accessibility/accessibility.test.tsx — 3 tests)
-- [x] Dynamic content changes announced — aria-live polite/assertive, role=status/alert (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] Modal focus management — dialog role+aria-modal+aria-labelledby, missing label fails (tests/accessibility/accessibility.test.tsx — 2 tests)
+- [ ] All pages have descriptive page titles — document title verification (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] All images have alt text — img alt pass/fail, violation detection (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] All form inputs have associated labels — labeled inputs pass, unlabeled fail, aria-label alternative (tests/accessibility/accessibility.test.tsx — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] All buttons/links have accessible names — text buttons pass, icon+aria-label pass, no-name fail (tests/accessibility/accessibility.test.tsx — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Dynamic content changes announced — aria-live polite/assertive, role=status/alert (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Modal focus management — dialog role+aria-modal+aria-labelledby, missing label fails (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 7.2 Keyboard Navigation
 
-- [x] Login form — tab order, focus cycling, enter to submit (tests/accessibility/accessibility.test.tsx — 1 test + tests/components/navigation-extended.test.tsx)
-- [x] Tab order — interactive elements focusable, hidden elements excluded, tabIndex=-1 (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] Data tables — proper th/scope structure, accessible grid role (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] Modal dialogs — Escape to close, no-op when no modal open (tests/components/navigation-extended.test.tsx — 2 tests)
-- [x] Dashboard — all interactive elements focusable via tab, hidden elements excluded (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
-- [x] Sidebar — keyboard expand/collapse, aria-expanded, focusable links (tests/accessibility/accessibility-extended.test.tsx — 3 tests)
-- [x] Calendar — arrow key grid navigation, date cells with labels (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
-- [x] Dental chart — keyboard accessible tooth buttons, aria-pressed (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
+- [ ] Login form — tab order, focus cycling, enter to submit (tests/accessibility/accessibility.test.tsx — 1 test + tests/components/navigation-extended.test.tsx) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Tab order — interactive elements focusable, hidden elements excluded, tabIndex=-1 (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Data tables — proper th/scope structure, accessible grid role (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Modal dialogs — Escape to close, no-op when no modal open (tests/components/navigation-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Dashboard — all interactive elements focusable via tab, hidden elements excluded (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Sidebar — keyboard expand/collapse, aria-expanded, focusable links (tests/accessibility/accessibility-extended.test.tsx — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Calendar — arrow key grid navigation, date cells with labels (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Dental chart — keyboard accessible tooth buttons, aria-pressed (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 7.3 Color & Contrast
 
 - [ ] All text meets WCAG 2.1 AA contrast ratio (4.5:1 for normal, 3:1 for large) (runtime audit needed)
-- [x] Status indicators not reliant on color alone — icons+text alongside color (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] Error states have icons + color — role=alert with text and icon (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] Focus indicators visible — focus:ring CSS classes verified (tests/accessibility/accessibility.test.tsx — 1 test)
+- [ ] Status indicators not reliant on color alone — icons+text alongside color (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Error states have icons + color — role=alert with text and icon (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Focus indicators visible — focus:ring CSS classes verified (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] Dark mode / high contrast mode support (if applicable)
 
 ### 7.4 WCAG 2.1 AA Compliance
 
-- [x] All form errors associated with inputs — aria-invalid + aria-describedby linked (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] Skip navigation link — skip-to-content link, visually hidden until focused (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
-- [x] Heading hierarchy — h1→h2→h3 pass, skipped levels detected (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] Link text is descriptive — descriptive links pass, empty links fail (tests/accessibility/accessibility.test.tsx — 2 tests)
-- [x] Tables have proper headers — th with scope, data table accessible (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] No auto-playing audio/video — video elements have controls, no autoplay (tests/accessibility/accessibility.test.tsx — 1 test)
-- [x] Text resizable — rem-based units, max-w containers not fixed px (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
-- [x] Navigation landmarks — nav + main landmark structure verified (tests/accessibility/accessibility.test.tsx — 1 test)
+- [ ] All form errors associated with inputs — aria-invalid + aria-describedby linked (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Skip navigation link — skip-to-content link, visually hidden until focused (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Heading hierarchy — h1→h2→h3 pass, skipped levels detected (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Link text is descriptive — descriptive links pass, empty links fail (tests/accessibility/accessibility.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Tables have proper headers — th with scope, data table accessible (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] No auto-playing audio/video — video elements have controls, no autoplay (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Text resizable — rem-based units, max-w containers not fixed px (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Navigation landmarks — nav + main landmark structure verified (tests/accessibility/accessibility.test.tsx — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 7.5 Automated Accessibility Audit
 
-- [x] Run axe-core on composite UIs — form, table, modal, navigation, alert pass zero violations (tests/accessibility/accessibility-extended.test.tsx — 5 tests)
-- [x] Focus trap in modals — tab cycle, escape key close (tests/accessibility/accessibility-extended.test.tsx — 2 tests)
-- [x] ARIA live regions — polite/assertive, aria-busy loading, search results count (tests/accessibility/accessibility-extended.test.tsx — 4 tests)
+- [ ] Run axe-core on composite UIs — form, table, modal, navigation, alert pass zero violations (tests/accessibility/accessibility-extended.test.tsx — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Focus trap in modals — tab cycle, escape key close (tests/accessibility/accessibility-extended.test.tsx — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] ARIA live regions — polite/assertive, aria-busy loading, search results count (tests/accessibility/accessibility-extended.test.tsx — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] Run Lighthouse accessibility audit — score > 90 on all pages (runtime audit needed)
 
 ---
@@ -850,7 +850,7 @@
 - [x] Soft delete pattern — isActive:false not hard delete, list filters isActive:true, cascade cancel appointments, 404 on missing (tests/database/database-crud-consistency.test.ts — 4 tests)
 - [x] Transaction / nested write — invoice uses nested items:{create:[]}, item fields, amount calculation (tests/database/database-crud-consistency.test.ts — 3 tests)
 - [x] Timestamp management — create/update rely on Prisma @default/@updatedAt (tests/database/database-crud-consistency.test.ts — 4 tests)
-- [x] Concurrent writes — double-booking prevention, serializable isolation, optimistic locking, atomic stock decrement, oversell prevention, stock audit trail, negative stock check, double payment prevention, partial payment tracking, refund balance check, concurrent refund serialization, deadlock retry, transaction timeout config (tests/database/database-concurrent-writes.test.ts — 14 tests)
+- [ ] Concurrent writes — double-booking prevention, serializable isolation, optimistic locking, atomic stock decrement, oversell prevention, stock audit trail, negative stock check, double payment prevention, partial payment tracking, refund balance check, concurrent refund serialization, deadlock retry, transaction timeout config (tests/database/database-concurrent-writes.test.ts — 14 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 8.3 Data Migration
 
@@ -881,11 +881,11 @@
 
 ### 9.1 Build Testing
 
-- [x] next.config.js — standalone output, TS errors not ignored, compression, strict mode, powered-by disabled, body size limit (tests/deployment/deployment-config.test.ts — 6 tests)
-- [x] Prisma configuration — PostgreSQL provider, native+debian binary targets (tests/deployment/deployment-config.test.ts — 2 tests)
-- [x] package.json scripts — test/dev/build/start commands verified (tests/deployment/deployment-config.test.ts — 4 tests)
-- [x] Vitest configuration — jsdom, E2E excluded, include patterns, setup file, timeout, coverage targets (tests/deployment/deployment-config.test.ts — 6 tests)
-- [x] Playwright configuration — test dir, browsers, retries, screenshots, base URL (tests/deployment/deployment-config.test.ts — 5 tests)
+- [ ] next.config.js — standalone output, TS errors not ignored, compression, strict mode, powered-by disabled, body size limit (tests/deployment/deployment-config.test.ts — 6 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Prisma configuration — PostgreSQL provider, native+debian binary targets (tests/deployment/deployment-config.test.ts — 2 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] package.json scripts — test/dev/build/start commands verified (tests/deployment/deployment-config.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Vitest configuration — jsdom, E2E excluded, include patterns, setup file, timeout, coverage targets (tests/deployment/deployment-config.test.ts — 6 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Playwright configuration — test dir, browsers, retries, screenshots, base URL (tests/deployment/deployment-config.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] `npm run build` — completes without errors (runtime test)
 - [ ] TypeScript — zero type errors (`npx tsc --noEmit`) (runtime test)
 
@@ -899,13 +899,13 @@
 
 ### 9.3 Configuration Testing
 
-- [x] Required env vars — DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, CRON_SECRET, ENCRYPTION_KEY format/length (tests/deployment/deployment-config.test.ts — 5 tests)
-- [x] Missing/invalid config — clear error messages, invalid URL detection, valid URL acceptance (tests/deployment/deployment-config.test.ts — 4 tests)
-- [x] PostgreSQL pool config — DB_HOST default, DB_PORT default, connection limit (tests/deployment/deployment-config.test.ts — 3 tests)
-- [x] Security config — headers defined, permissions policy, CORS for API routes (tests/deployment/deployment-config.test.ts — 4 tests)
-- [x] Payment gateway config — Razorpay/PhonePe/Paytm required fields, secret masking (tests/deployment/deployment-config.test.ts — 4 tests)
-- [x] SMS/Email config — required fields, graceful failure when unconfigured (tests/deployment/deployment-config.test.ts — 3 tests)
-- [x] Timezone — TZ set to Asia/Kolkata (tests/deployment/deployment-config.test.ts — 1 test)
+- [ ] Required env vars — DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, CRON_SECRET, ENCRYPTION_KEY format/length (tests/deployment/deployment-config.test.ts — 5 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Missing/invalid config — clear error messages, invalid URL detection, valid URL acceptance (tests/deployment/deployment-config.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] PostgreSQL pool config — DB_HOST default, DB_PORT default, connection limit (tests/deployment/deployment-config.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Security config — headers defined, permissions policy, CORS for API routes (tests/deployment/deployment-config.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Payment gateway config — Razorpay/PhonePe/Paytm required fields, secret masking (tests/deployment/deployment-config.test.ts — 4 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] SMS/Email config — required fields, graceful failure when unconfigured (tests/deployment/deployment-config.test.ts — 3 tests) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Timezone — TZ set to Asia/Kolkata (tests/deployment/deployment-config.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 
 ### 9.4 CI/CD Pipeline (`.github/workflows/ci.yml`)
 
@@ -920,10 +920,10 @@
 
 ### 9.5 Rollback Testing
 
-- [x] Prisma defaults — @default for safe column additions (tests/deployment/deployment-config.test.ts — 1 test)
-- [x] Soft deletes — data recovery via isActive toggle (tests/deployment/deployment-config.test.ts — 1 test)
-- [x] Audit logs — change tracking for recovery (tests/deployment/deployment-config.test.ts — 1 test)
-- [x] Environment variable changes — take effect on restart (tests/deployment/deployment-config.test.ts — 1 test)
+- [ ] Prisma defaults — @default for safe column additions (tests/deployment/deployment-config.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Soft deletes — data recovery via isActive toggle (tests/deployment/deployment-config.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Audit logs — change tracking for recovery (tests/deployment/deployment-config.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
+- [ ] Environment variable changes — take effect on restart (tests/deployment/deployment-config.test.ts — 1 test) — _test removed 29 Sep 2026: it checked its own fixture, not the app_
 - [ ] Database migration rollback (`prisma migrate reset` or manual)
 
 ---
@@ -1033,6 +1033,16 @@
 ---
 
 ## Summary — Test Count by Category
+
+> **29 September 2026:** these counts predate the removal of 13 test files
+> (about 430 tests) that never imported application code or read a project
+> file. They asserted values they had just written, or facts about the jsdom
+> test environment, so they could not fail because of anything in the app:
+> `deployment-config`, `regression`, `responsive-design`, `performance`, the
+> three `compatibility` files, `security-extended`, both `accessibility` files,
+> `ui-components`, `navigation-extended` and `database-concurrent-writes`.
+> The items they were ticked against above are now unticked, since nothing
+> tests them.
 
 | #         | Category                                                   | Tests Needed | Currently Done                                                                                                                                                                         |
 | --------- | ---------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { TreatmentStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
@@ -61,6 +62,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
+      // Checked here rather than left to Prisma, which rejects an unknown enum
+      // value by throwing — a bookmarked `?status=all` came back as a 500.
+      if (!(Object.values(TreatmentStatus) as string[]).includes(status)) {
+        return NextResponse.json({ error: `Unknown status: ${status}` }, { status: 400 })
+      }
       where.status = status
     }
 

@@ -118,6 +118,7 @@ model Hospital {
 
   clinicalNotes          ClinicalNote[]
   clinicalNoteAmendments ClinicalNoteAmendment[]
+  attendance             Attendance[]
 
   formTemplates       FormTemplate[]
   formSubmissions     FormSubmission[]
@@ -304,6 +305,8 @@ model User {
   clinicalNotesAuthored        ClinicalNote[]          @relation("ClinicalNotesAuthored")
   clinicalNotesSigned          ClinicalNote[]          @relation("ClinicalNotesSigned")
   clinicalNoteAmendments       ClinicalNoteAmendment[] @relation("ClinicalNoteAmendments")
+  attendance                   Attendance[]            @relation("AttendanceOf")
+  attendanceMarked             Attendance[]            @relation("AttendanceMarkedBy")
 
   @@unique([hospitalId, email])
   @@index([email])
@@ -369,6 +372,10 @@ model Staff {
   /// enterprise HR management beyond basic user/staff profiles". `salary`,
   /// `bankAccountNo` and `bankIban` lived here, and the staff form collected
   /// them, for a feature nobody was going to build.
+  ///
+  /// A basic attendance register was added later at the clinic's request —
+  /// who was in on which day, nothing more — and lives in `Attendance`, keyed
+  /// on the User. Payroll remains out of scope.
   emergencyContact String?
   emergencyPhone  String?
   isActive        Boolean   @default(true)
@@ -2793,4 +2800,59 @@ model ClinicalNoteAmendment {
   @@index([hospitalId])
   @@index([noteId])
   @@index([kind])
+}
+
+// ==================== ATTENDANCE ====================
+
+/// Whether somebody was at work on a given day.
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  /// In, but not on time. Counted as attended — the person was at work — and
+  /// reported in its own column so lateness is visible without being mistaken
+  /// for an absence.
+  LATE
+}
+
+/// One person, one day, as the clinic's manager recorded it.
+///
+/// A deliberate addition beyond spec §3, which set attendance aside with
+/// payroll. This is the register only: who was in, who was not, and who said
+/// so. Nothing here computes pay, hours or overtime.
+///
+/// **A row exists only once somebody has marked the day.** The register screen
+/// shows every past working day as Present until told otherwise, because that
+/// is what a manager marking attendance wants to change — the exceptions — but
+/// a default the manager never saved is not a record. Reports count saved rows
+/// and show the rest as unmarked, so a week nobody looked at cannot pass for a
+/// week everybody attended.
+///
+/// A day the clinic is closed (its weekly day off, a holiday) has no row either,
+/// and reads as Off. Somebody who came in on a Sunday gets a PRESENT row for it.
+model Attendance {
+  id         String           @id @default(cuid())
+  hospitalId String
+  userId     String
+
+  /// The calendar day on the clinic's own clock, not an instant. A register
+  /// kept in UTC would put a Karachi clinic's Monday morning on Sunday night.
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+
+  /// Why — "Arrived at 10:30", "On leave". Optional; most days need no explanation.
+  note       String?
+
+  /// Who last set this day. Kept on the row rather than only in the audit log
+  /// because "who marked me absent?" is asked of this screen, not of the log.
+  markedById String?
+
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  hospital   Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user       User             @relation("AttendanceOf", fields: [userId], references: [id], onDelete: Cascade)
+  markedBy   User?            @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, date])
+  @@index([hospitalId, date])
 }

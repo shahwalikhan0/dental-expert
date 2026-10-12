@@ -262,6 +262,19 @@
     }
 
     /*
+     * Every list gives its table a minimum width — `min-w-[900px]` and the
+     * like — so that on a tablet it scrolls sideways rather than crushing its
+     * columns. As a stack of cards that minimum is wrong: the cards came out
+     * 900px wide inside a 375px screen, with every value off the right-hand
+     * edge. `!important` because the minimum is a utility class, and utilities
+     * are meant to win over components everywhere else.
+     */
+    .table-stacked,
+    .table-stacked td {
+      min-width: 0 !important;
+    }
+
+    /*
      * The same material as `.glass`, minus the blur.
      *
      * Spelled out rather than sharing the class because a `<tr>` gets its

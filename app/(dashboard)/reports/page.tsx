@@ -47,7 +47,6 @@ import {
   Area,
 } from 'recharts'
 
-import { ReportBuilder } from '@/components/ai/report-builder'
 import { useToast } from '@/hooks/use-toast'
 
 // Chart colors
@@ -324,13 +323,6 @@ export default function ReportsPage() {
           </Select>
         </div>
       </div>
-
-      {/* AI Report Builder */}
-      <Card>
-        <CardContent className="pt-6">
-          <ReportBuilder />
-        </CardContent>
-      </Card>
 
       {/* Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

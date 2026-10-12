@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Shield, Lock, Clock, UserX, AlertTriangle, Users } from 'lucide-react'
-import { AuditMonitor } from '@/components/ai/audit-monitor'
 import { useToast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_SECURITY, type SecuritySettings } from '@/lib/security-settings'
@@ -377,12 +376,6 @@ export default function SecuritySettingsPage() {
               issued runs to its end. The address is the one your hosting reports, so behind a proxy
               that does not forward it, these lists cannot see anything to match.
             </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <AuditMonitor />
           </CardContent>
         </Card>
 

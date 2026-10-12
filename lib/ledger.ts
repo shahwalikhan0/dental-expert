@@ -55,6 +55,9 @@ export const CHARGEABLE_INVOICE_STATUSES: InvoiceStatus[] = [
 
 export type LedgerEntryKind = 'INVOICE' | 'PAYMENT' | 'REFUND'
 
+/** At the same moment, the charge first, then what settles it. */
+const KIND_ORDER: Record<LedgerEntryKind, number> = { INVOICE: 0, PAYMENT: 1, REFUND: 2 }
+
 export interface LedgerEntry {
   id: string
   date: Date
@@ -144,6 +147,21 @@ export async function buildLedger(
   const family = patientIds.length > 1
 
   const entries: LedgerEntry[] = []
+  /**
+   * Where each entry sorts, which is not always its own date. A payment's date
+   * is the day it was taken — midnight — while an invoice's is the moment it
+   * was raised, so a payment taken the same afternoon sorted *before* the
+   * invoice it paid, and the printed statement showed the patient in credit
+   * before they had been billed. Nothing can come before what it settles:
+   * each entry sorts no earlier than its parent.
+   */
+  const sortAt = new Map<LedgerEntry, number>()
+  const push = (entry: LedgerEntry, notBefore: number): number => {
+    const at = Math.max(entry.date.getTime(), notBefore)
+    entries.push(entry)
+    sortAt.set(entry, at)
+    return at
+  }
   let charged = 0
   let paid = 0
   let refunded = 0
@@ -153,33 +171,39 @@ export async function buildLedger(
     const total = money(invoice.totalAmount)
     charged += total
 
-    entries.push({
-      id: invoice.id,
-      date: invoice.createdAt,
-      kind: 'INVOICE',
-      reference: invoice.invoiceNo,
-      description: `${who}Invoice`,
-      debit: total,
-      credit: 0,
-      balance: 0,
-      href: `/billing/invoices/${invoice.id}`,
-    })
+    const invoiceAt = push(
+      {
+        id: invoice.id,
+        date: invoice.createdAt,
+        kind: 'INVOICE',
+        reference: invoice.invoiceNo,
+        description: `${who}Invoice`,
+        debit: total,
+        credit: 0,
+        balance: 0,
+        href: `/billing/invoices/${invoice.id}`,
+      },
+      0
+    )
 
     for (const payment of invoice.payments) {
       const amount = money(payment.amount)
       paid += amount
 
-      entries.push({
-        id: payment.id,
-        date: payment.paymentDate,
-        kind: 'PAYMENT',
-        reference: payment.paymentNo,
-        description: `${who}Payment against ${invoice.invoiceNo}`,
-        debit: 0,
-        credit: amount,
-        balance: 0,
-        href: `/billing/payments/${payment.id}/receipt`,
-      })
+      const paymentAt = push(
+        {
+          id: payment.id,
+          date: payment.paymentDate,
+          kind: 'PAYMENT',
+          reference: payment.paymentNo,
+          description: `${who}Payment against ${invoice.invoiceNo}`,
+          debit: 0,
+          credit: amount,
+          balance: 0,
+          href: `/billing/payments/${payment.id}/receipt`,
+        },
+        invoiceAt
+      )
 
       for (const refund of payment.refunds) {
         const back = money(refund.amount)
@@ -189,22 +213,25 @@ export async function buildLedger(
         // owe goes up — the mirror image of the payment above it, and the
         // reason it cannot simply be netted off that payment: the two happened
         // on different days and the account has to show both.
-        entries.push({
-          id: refund.id,
-          date: refund.refundedAt,
-          kind: 'REFUND',
-          reference: refund.refundNo,
-          description: `${who}Refund of ${payment.paymentNo}`,
-          debit: back,
-          credit: 0,
-          balance: 0,
-          href: `/billing/payments/${payment.id}/receipt`,
-        })
+        push(
+          {
+            id: refund.id,
+            date: refund.refundedAt,
+            kind: 'REFUND',
+            reference: refund.refundNo,
+            description: `${who}Refund of ${payment.paymentNo}`,
+            debit: back,
+            credit: 0,
+            balance: 0,
+            href: `/billing/payments/${payment.id}/receipt`,
+          },
+          paymentAt
+        )
       }
     }
   }
 
-  entries.sort((a, b) => a.date.getTime() - b.date.getTime())
+  entries.sort((a, b) => sortAt.get(a)! - sortAt.get(b)! || KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
 
   let running = 0
   for (const entry of entries) {

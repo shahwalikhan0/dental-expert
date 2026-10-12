@@ -220,15 +220,15 @@ describe('NewInvoicePage', () => {
       expect(screen.queryByText(/SGST/)).not.toBeInTheDocument()
     })
 
-    it('renders "Create & Send Invoice" and "Save as Draft" buttons', () => {
+    it('renders "Create & issue invoice" and "Save as Draft" buttons', () => {
       renderPage()
-      expect(screen.getByText('Create & Send Invoice')).toBeInTheDocument()
+      expect(screen.getByText('Create & issue invoice')).toBeInTheDocument()
       expect(screen.getByText('Save as Draft')).toBeInTheDocument()
     })
 
     it('disables submit buttons when no patient or items', () => {
       renderPage()
-      expect(screen.getByText('Create & Send Invoice').closest('button')).toBeDisabled()
+      expect(screen.getByText('Create & issue invoice').closest('button')).toBeDisabled()
       expect(screen.getByText('Save as Draft').closest('button')).toBeDisabled()
     })
 
@@ -288,8 +288,8 @@ describe('NewInvoicePage', () => {
     it('shows error when submitting without patient', async () => {
       renderPage()
 
-      // Try clicking "Create & Send" — it's disabled, so validation is via disabled state
-      expect(screen.getByText('Create & Send Invoice').closest('button')).toBeDisabled()
+      // Try clicking "Create & issue" — it's disabled, so validation is via disabled state
+      expect(screen.getByText('Create & issue invoice').closest('button')).toBeDisabled()
     })
 
     it('shows error when submitting with no items', async () => {
@@ -342,7 +342,7 @@ describe('NewInvoicePage', () => {
       })
 
       // Try to submit — no items
-      expect(screen.getByText('Create & Send Invoice').closest('button')).toBeDisabled()
+      expect(screen.getByText('Create & issue invoice').closest('button')).toBeDisabled()
     })
   })
 

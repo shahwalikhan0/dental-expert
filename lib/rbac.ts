@@ -76,6 +76,12 @@ export const PERMISSIONS = [
   'staff:read',
   'staff:write', // create/edit staff, issue invites
   'staff:hr', // performance figures for an individual staff member
+  // The attendance register. Kept by the people who run the clinic, and read by
+  // nobody else — a colleague's absences are not reception's business. Split
+  // into read and write only so a clinic whose subscription has lapsed can
+  // still read and export its register, as it can every other record.
+  'attendance:read',
+  'attendance:write', // mark a day, and alter one already marked
 
   // Master data (§5.10, FR-025): the procedure/fee catalogue, medication list,
   // clinic holidays. Split from `settings:read` because almost every role has
@@ -126,6 +132,7 @@ export const READ_ONLY_PERMISSIONS = [
   'reports:financial',
   'reports:export',
   'staff:read',
+  'attendance:read',
   'masters:read',
   'settings:read',
   'audit:read',
@@ -183,6 +190,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'staff:read',
     'staff:write',
     'staff:hr',
+    'attendance:read',
+    'attendance:write',
     'masters:read',
     'settings:read',
     'settings:write',
@@ -200,6 +209,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
    * The approver role: this is who FR-013 and FR-014 escalate to. Reads the
    * clinical record for oversight but cannot write or sign it, which is what
    * "without controlled process" means in practice.
+   *
+   * `staff:write` and `settings:write` since 29 September 2026: the clinic
+   * runs as the manager's practice, and its manager could see the Add Staff,
+   * Invite and Data Import screens and was refused on every one. What stays
+   * with the administrator is the administrator account itself — see
+   * `staffChangeRefusal` below — and `users:manage`.
    */
   CLINIC_MANAGER: [
     'patients:read',
@@ -218,9 +233,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports:financial',
     'reports:export',
     'staff:read',
+    'staff:write',
     'staff:hr',
+    'attendance:read',
+    'attendance:write',
     'masters:read',
     'settings:read',
+    'settings:write',
     'audit:read',
     'communications:read',
     'communications:write',
@@ -447,6 +466,7 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/settings/procedures', 'masters:read'],
   ['/settings', 'settings:read'],
   ['/staff', 'staff:read'],
+  ['/attendance', 'attendance:read'],
   ['/inventory', 'inventory:read'],
   ['/billing/receivables', 'reports:financial'],
   ['/billing/reports', 'reports:financial'],
@@ -454,6 +474,11 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/lab', 'lab:read'],
   ['/treatments', 'clinical:read'],
   ['/prescriptions', 'clinical:read'],
+  // Its only data is `/api/audit-log`, which needs `audit:read`. Inheriting
+  // `reports:operational` from the prefix below put it in the menu of the
+  // dentist, the assistant and the front desk, who were refused and shown
+  // "No audit logs found" — an empty history rather than a closed door.
+  ['/reports/audit-log', 'audit:read'],
   ['/reports', 'reports:operational'],
   ['/communications', 'communications:read'],
   ['/crm', 'communications:read'],
@@ -595,6 +620,45 @@ export const INVITABLE_ROLES = [
   'INVENTORY_STAFF',
   'LAB_TECH',
 ] as const satisfies readonly Role[]
+
+export function isRole(value: unknown): value is Role {
+  return typeof value === 'string' && (ALL_ROLES as readonly string[]).includes(value)
+}
+
+/**
+ * Why `staff:write` alone may not make this change to an account, or null.
+ *
+ * `staff:write` is held by the clinic manager as well as the administrator.
+ * Without this, it would be the administrator's powers under another name:
+ * make anybody an administrator, or reset an administrator's password and sign
+ * in as them. So the administrator role, and the accounts that hold it, need
+ * `users:manage` — the administrator's own capability — to hand out or to act
+ * on. Everything else about staff stays with `staff:write`.
+ */
+export function staffChangeRefusal(
+  actor: RoleHolder | undefined | null,
+  change: {
+    /** The account's role now; absent when creating one. */
+    currentRole?: string | null
+    /** The role being given, if it changes. */
+    newRole?: string | null
+    resetsPassword?: boolean
+    changesAccess?: boolean
+  }
+): string | null {
+  if (holderCan(actor, 'users:manage')) return null
+  if (change.newRole === 'ADMIN' && change.currentRole !== 'ADMIN') {
+    return 'Only an administrator can make somebody an administrator'
+  }
+  const touchesAccount =
+    (change.newRole && change.newRole !== change.currentRole) ||
+    change.resetsPassword ||
+    change.changesAccess
+  if (change.currentRole === 'ADMIN' && touchesAccount) {
+    return 'Only an administrator can change an administrator’s role, password or access'
+  }
+  return null
+}
 
 export function roleLabel(role: string | undefined | null): string {
   if (!role) return 'Unknown'

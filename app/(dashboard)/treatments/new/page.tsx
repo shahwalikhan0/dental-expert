@@ -24,7 +24,6 @@ import {
 import { ArrowLeft, Search, User, Stethoscope, Save, AlertCircle, Loader2 } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
-import { TreatmentAssist } from '@/components/ai/treatment-assist'
 import { VoiceInput } from '@/components/clinical/voice-input'
 
 interface Patient {
@@ -599,18 +598,6 @@ export default function NewTreatmentPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* AI Treatment Assistant */}
-        {formData.patientId && formData.procedureId && (
-          <TreatmentAssist
-            patientId={formData.patientId}
-            procedureId={formData.procedureId}
-            procedureName={procedures.find((p) => p.id === formData.procedureId)?.name}
-            diagnosis={formData.diagnosis}
-            findings={formData.findings}
-            procedureNotes={formData.procedureNotes}
-          />
-        )}
 
         {/* Follow-up */}
         <Card>

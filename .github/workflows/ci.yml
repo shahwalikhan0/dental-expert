@@ -1,10 +1,11 @@
 name: CI
 
-# The test suites do not run here — deliberately. Vitest runs locally on every
-# push via the pre-push hook (`npm run test`), and Playwright on demand with
-# `npm run test:e2e`; neither has a job in this workflow and the nightly e2e
-# workflow was removed. What is left is the checks that catch a broken tree
-# without a database: types, lint, formatting and a production build.
+# Types, lint, formatting, the unit suite and a production build. The unit
+# suite (Vitest) needs no database — Prisma is mocked in tests/__mocks__ — so
+# it runs here in full. The pre-push hook runs only the tests related to the
+# files being pushed, which keeps a push fast; this job is what catches a
+# change that breaks a module nobody touched. Playwright stays on demand
+# (`npm run test:e2e`), since it needs a running app and a seeded database.
 
 on:
   push:
@@ -59,6 +60,31 @@ jobs:
       - name: Format check
         working-directory: .
         run: npx prettier --check .
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: .
+        run: npx prisma generate
+
+      - name: Vitest
+        working-directory: .
+        run: npm run test
 
   build:
     name: Production Build

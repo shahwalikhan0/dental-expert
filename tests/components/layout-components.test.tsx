@@ -154,6 +154,9 @@ vi.mock('next/navigation', () => ({
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
+// The nav badges ask the session whether to fetch; there is no provider here.
+vi.mock('@/hooks/use-can', () => ({ useCan: () => false }))
+
 import { Sidebar } from '@/components/layout/sidebar'
 import { MobileSidebar } from '@/components/layout/mobile-sidebar'
 import { GlobalSearch } from '@/components/layout/global-search'

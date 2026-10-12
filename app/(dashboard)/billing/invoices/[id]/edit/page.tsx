@@ -28,7 +28,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
-import { Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { Loader2, Plus, Save, Send, Trash2 } from 'lucide-react'
 
 /**
  * Edit a draft invoice.
@@ -139,9 +139,13 @@ export default function EditInvoicePage() {
     setItems(next)
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-
+  /**
+   * Saves the draft; with `issue`, also moves it to Pending in the same
+   * request, so the lines saved are exactly the lines issued. This page is the
+   * only place a draft is changed, and it had no way to finish one — a draft
+   * could be edited forever and never paid.
+   */
+  const save = async (issue: boolean) => {
     if (items.length === 0) {
       toast({
         title: 'An invoice needs at least one line',
@@ -172,12 +176,18 @@ export default function EditInvoicePage() {
           taxRate: Number(taxRate) || 0,
           dueDate: dueDate || null,
           notes,
+          ...(issue ? { status: 'PENDING' } : {}),
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save the invoice')
 
-      toast({ title: 'Saved', description: `${invoiceNo ?? 'The invoice'} has been updated.` })
+      toast({
+        title: issue ? 'Issued' : 'Saved',
+        description: issue
+          ? `${invoiceNo ?? 'The invoice'} has been issued and can now be paid.`
+          : `${invoiceNo ?? 'The invoice'} has been updated.`,
+      })
       router.push(`/billing/invoices/${invoiceId}`)
     } catch (err) {
       toast({
@@ -188,6 +198,11 @@ export default function EditInvoicePage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    void save(false)
   }
 
   if (loading) {
@@ -425,13 +440,17 @@ export default function EditInvoicePage() {
         <Button type="button" variant="outline" asChild>
           <Link href={`/billing/invoices/${invoiceId}`}>Cancel</Link>
         </Button>
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" variant="outline" disabled={saving}>
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <Save className="h-4 w-4 mr-2" />
           )}
           Save changes
+        </Button>
+        <Button type="button" disabled={saving} onClick={() => void save(true)}>
+          <Send className="h-4 w-4 mr-2" />
+          Save &amp; issue
         </Button>
       </div>
     </form>

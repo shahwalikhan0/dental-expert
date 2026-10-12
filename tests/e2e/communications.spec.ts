@@ -95,21 +95,6 @@ test.describe('Communications', () => {
     })
   })
 
-  test.describe('Surveys', () => {
-    test('should navigate to surveys section', async ({ adminPage: page }) => {
-      await page.goto('/communications')
-      const surveysTab = page
-        .getByRole('tab', { name: /survey/i })
-        .or(page.getByRole('link', { name: /survey/i }))
-        .first()
-      if (await surveysTab.isVisible()) {
-        await surveysTab.click()
-        await page.waitForTimeout(1000)
-        await expect(page.locator('body')).toBeVisible()
-      }
-    })
-  })
-
   test.describe('Automations', () => {
     test('should navigate to automations section', async ({ adminPage: page }) => {
       await page.goto('/communications')

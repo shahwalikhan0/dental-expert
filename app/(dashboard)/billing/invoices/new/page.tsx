@@ -185,11 +185,14 @@ export default function NewInvoicePage() {
       const fetchPatient = async () => {
         try {
           setLoading(true)
-          const response = await fetch(`/api/patients?search=${preSelectedPatientId}`)
+          // By id, not through search: search matches a name, a phone or the
+          // PAT number, never the database id, so this found nobody.
+          const response = await fetch(`/api/patients/${encodeURIComponent(preSelectedPatientId)}`)
           if (!response.ok) throw new Error('Failed to fetch patient')
           const data = await response.json()
-          if (data.patients.length > 0) {
-            setSelectedPatient(data.patients[0])
+          if (data.patient) {
+            const { id, patientId, firstName, lastName, phone, email } = data.patient
+            setSelectedPatient({ id, patientId, firstName, lastName, phone, email: email ?? null })
           }
         } catch (error) {
           console.error('Error fetching patient:', error)
@@ -726,7 +729,7 @@ export default function NewInvoicePage() {
                   onClick={() => handleSubmit('PENDING')}
                   disabled={submitting || !selectedPatient || items.length === 0}
                 >
-                  {submitting ? 'Creating...' : 'Create & Send Invoice'}
+                  {submitting ? 'Creating...' : 'Create & issue invoice'}
                 </Button>
                 <Button
                   variant="outline"
