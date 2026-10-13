@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
+import { linkDefaultRecareProcedures } from '@/lib/recare'
 
 const procedureSchema = z.object({
   code: z.string().min(1).toUpperCase(),
@@ -114,6 +115,16 @@ export async function POST(req: NextRequest) {
         hospitalId,
       },
     })
+
+    // A new clinic's catalogue is built after signup, one procedure at a time,
+    // so this is where the default recall types get their links: a scaling
+    // added here moves the "Scale and polish" recall when it is completed
+    // (bug report 12 Oct, finding 46). Only the default types, by their
+    // default names, and only this procedure; the recall types screen shows
+    // the link and can undo it. Not worth failing the save over.
+    await linkDefaultRecareProcedures(prisma, hospitalId, [procedure.id]).catch((err) =>
+      console.error('Linking a new procedure to the default recalls failed:', err)
+    )
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { ageInYears } from '@/lib/age'
 import { nextDueDate, startDefaultRecare } from '@/lib/recare'
+import { clinicTimezone } from '@/lib/appointment-time'
 
 /**
  * Which recall a newly registered patient starts on.
@@ -69,6 +70,7 @@ export async function startRegistrationRecare(
     })
 
     if (childType) {
+      const timezone = await clinicTimezone(db, hospitalId)
       await db.recare.upsert({
         where: { patientId_recareTypeId: { patientId, recareTypeId: childType.id } },
         update: {},
@@ -76,7 +78,7 @@ export async function startRegistrationRecare(
           hospitalId,
           patientId,
           recareTypeId: childType.id,
-          dueDate: nextDueDate(from, childType.intervalMonths),
+          dueDate: nextDueDate(from, childType.intervalMonths, timezone),
         },
       })
       return

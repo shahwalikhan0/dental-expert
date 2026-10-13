@@ -13,9 +13,9 @@ type Db = PrismaClient | Prisma.TransactionClient
  *
  *  - the plan step it carries out is completed, and the plan with it once
  *    nothing is left (bug report 12 Oct, finding 11);
- *  - the patient's recalls that this procedure is the visit for are moved on,
- *    exactly as Mark as done would (finding 46). See
- *    `recareTypeMatchesProcedure` for what counts.
+ *  - the patient's recalls whose type the clinic has linked to this
+ *    procedure (on the recall types screen) are moved on, exactly as Mark as
+ *    done would (finding 46). See `recaresForProcedureWhere`.
  *
  * Returns the recalls that moved, so the screen can say where to.
  */
@@ -25,7 +25,7 @@ export async function afterTreatmentCompleted(
     id: string
     hospitalId: string
     patientId: string
-    procedure: { name: string; category: string }
+    procedure: { id: string }
   },
   completedAt: Date,
   /** Recalls the caller has already moved by id, so they are not moved twice. */
@@ -36,7 +36,7 @@ export async function afterTreatmentCompleted(
   return completeRecaresForProcedure(db, {
     hospitalId: treatment.hospitalId,
     patientId: treatment.patientId,
-    procedure: treatment.procedure,
+    procedureId: treatment.procedure.id,
     completedAt,
     except: alreadyMoved,
   })

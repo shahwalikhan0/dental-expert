@@ -10,19 +10,19 @@ The 29 September report follows this one, unchanged.
 
 ## Resolution — 13 October 2026
 
-All 68 findings were worked on. 64 are fixed. Four are partly fixed:
+All 68 findings are fixed. Four were only partly fixed on 13 October and were finished on 14 October:
 
-| #   | What remains                                                                                                                                                                                                                                                               |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 38  | A payment is attached to the open till when there is one, preferring the cashier's own. Payments are still accepted with no till open, because there is no screen to open or close a till; requiring one would stop every payment. Needs a till screen first.              |
-| 46  | Completing a scale and polish, an examination or periodontal care now moves the matching recall. The match is by procedure category and name, because a recall type has no link to the procedures that satisfy it. A stored link on `RecareType` would be the lasting fix. |
-| 55  | The dental chart and its API take primary teeth (51–85), with a Permanent/Primary switch. The tooth picker on the treatment and prescription forms still draws permanent teeth only; primary numbers passed to it are kept and saved.                                      |
-| 57  | SKUs are stored upper-case and compared without case from now on. SKUs already in the database are not normalised; that needs a data migration.                                                                                                                            |
+- **38 — Till.** There is now a till screen at Billing → Till to open a till with a float, see what it should hold per payment method, and count it down with expected, counted and variance per method. A payment, and a refund paid out in cash, is refused with `NO_OPEN_TILL` while no till is open; card, transfer, cheque and wallet refunds are not. Opening and closing are audited.
+- **46 — Recalls.** A recall type stores the procedures that count as its visit (`RecareType.procedures`), chosen at Settings → Recare. Completing a treatment moves only the recalls linked to its procedure; the name matching is gone. The migration wrote the old matches into the links so existing clinics keep their behaviour. The new due date is now counted from the clinic's calendar day, not the UTC day, which put recalls completed after midnight in Karachi a day early.
+- **55 — Primary teeth.** The tooth picker on New Treatment and New Prescription has the chart's Permanent/Primary switch, keeps teeth chosen in both dentitions, and opens on Primary for a child under 12.
+- **57 — SKUs.** Existing SKUs are trimmed and upper-cased by migration. Where two items in one clinic would collide, one keeps the SKU and the others get `-DUP2`, `-DUP3`, … to be merged or renamed by hand.
 
 Schema and data changes that came with the fixes:
 
 - `TreatmentPlanItem.treatmentId` and `LabOrder.treatmentId` (migration `20261012120000_plan_item_and_lab_order_treatment`), for 11 and 60.
 - `Appointment.waitTime` cleared (migration `20261013090000_clear_wait_time`): the old values measured lateness, not waiting (32).
+- SKUs normalised (migration `20261013110000_normalise_skus`), for 57.
+- Recall types linked to procedures, with the old name matches backfilled (migration `20261013120000_recare_type_procedures`), for 46.
 
 Found and fixed during the retest on 13 October:
 

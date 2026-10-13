@@ -68,6 +68,10 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { isoDay } from '@/lib/dates'
 import { useToast } from '@/hooks/use-toast'
+import { useOpenTill } from '@/hooks/use-open-till'
+import { ToastAction } from '@/components/ui/toast'
+import { NoTillNotice } from '@/components/billing/no-till-notice'
+import { NO_OPEN_TILL, TILL_PATH } from '@/lib/till'
 
 interface Invoice {
   id: string
@@ -162,6 +166,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [transactionId, setTransactionId] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
 
+  // Asked each time the dialog opens: a payment needs an open till (finding
+  // 38), and the till may have been opened or closed since this page loaded.
+  const openTill = useOpenTill(paymentDialogOpen)
+
   const [issuing, setIssuing] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
@@ -231,7 +239,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json().catch(() => ({}))
+        // The till was closed (or never opened) while the dialog was up. The
+        // dialog swaps to the notice, and the toast offers the way there.
+        if (data.code === NO_OPEN_TILL) {
+          openTill.markNoTill()
+          toast({
+            variant: 'destructive',
+            title: 'No till is open',
+            description: data.error,
+            action: (
+              <ToastAction altText="Go to the till" onClick={() => router.push(TILL_PATH)}>
+                Open till
+              </ToastAction>
+            ),
+          })
+          return
+        }
         throw new Error(data.error || 'Failed to record payment')
       }
 
@@ -717,72 +741,92 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Record a payment for invoice {invoice.invoiceNo}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Amount</Label>
-              <div className="relative">
-                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="number"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="pl-9"
-                  max={Number(invoice.balanceAmount)}
-                />
+          {openTill.noTill ? (
+            <>
+              <NoTillNotice className="my-2" />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              {openTill.till && (
+                <p className="text-sm text-muted-foreground">
+                  {openTill.till.openedBy?.name
+                    ? `Going into till ${openTill.till.sessionNo}, opened by ${openTill.till.openedBy.name}.`
+                    : `Going into till ${openTill.till.sessionNo}.`}
+                </p>
+              )}
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label>Amount</Label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="pl-9"
+                      max={Number(invoice.balanceAmount)}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Balance due: {formatCurrency(invoice.balanceAmount)}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="CARD">Card</SelectItem>
+                      <SelectItem value="WALLET">Mobile Wallet</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                      <SelectItem value="CHEQUE">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment Date</Label>
+                  <Input
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Transaction ID (Optional)</Label>
+                  <Input
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    placeholder="Transaction reference number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes (Optional)</Label>
+                  <Textarea
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    placeholder="Any additional notes..."
+                    rows={2}
+                  />
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Balance due: {formatCurrency(invoice.balanceAmount)}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Payment Method</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="CARD">Card</SelectItem>
-                  <SelectItem value="WALLET">Mobile Wallet</SelectItem>
-                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                  <SelectItem value="CHEQUE">Cheque</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Payment Date</Label>
-              <Input
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Transaction ID (Optional)</Label>
-              <Input
-                value={transactionId}
-                onChange={(e) => setTransactionId(e.target.value)}
-                placeholder="Transaction reference number"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (Optional)</Label>
-              <Textarea
-                value={paymentNotes}
-                onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder="Any additional notes..."
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRecordPayment} disabled={paymentSubmitting}>
-              {paymentSubmitting ? 'Recording...' : 'Record Payment'}
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleRecordPayment} disabled={paymentSubmitting}>
+                  {paymentSubmitting ? 'Recording...' : 'Record Payment'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

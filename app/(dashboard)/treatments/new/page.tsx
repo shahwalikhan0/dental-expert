@@ -35,6 +35,9 @@ interface Patient {
   lastName: string
   phone: string
   email: string | null
+  /** On a patient fetched by id. The search answers with `age` instead. */
+  dateOfBirth?: string | null
+  age?: number | null
 }
 
 interface Doctor {
@@ -539,6 +542,9 @@ export default function NewTreatmentPage() {
             selected={formData.toothNumbers}
             onChange={(teeth) => setFormData({ ...formData, toothNumbers: teeth })}
             defaultToFindings
+            // A child opens on the primary teeth (bug report 12 Oct, finding 55).
+            age={selectedPatient.age}
+            dateOfBirth={selectedPatient.dateOfBirth}
           />
         )}
 

@@ -68,6 +68,13 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
       hospitalId: 'h1',
       session: { user: { role: 'ADMIN' } },
     })
+    // A payment needs an open till (finding 38). The cases below are about
+    // something else, so one is open unless a case says otherwise.
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue({
+      id: 'cs1',
+      sessionNo: 'CS-202610-0001',
+      status: 'OPEN',
+    } as any)
   })
 
   it('GET returns invoice payments', async () => {
@@ -165,6 +172,80 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
         data: expect.objectContaining({ action: 'payment.recorded', entityId: 'pay1' }),
       })
     )
+  })
+
+  // Finding 38: Bilal's Rs 4,400 was taken with no till open and belonged to
+  // no session, so no closing would ever have expected it.
+  it('POST refuses a payment when no till is open, and draws no number', async () => {
+    const { POST } = await import('@/app/api/invoices/[id]/payments/route')
+
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValueOnce({
+      id: 'inv1',
+      hospitalId: 'h1',
+      status: 'PENDING',
+      totalAmount: 4400,
+      paidAmount: 0,
+      balanceAmount: 4400,
+    } as any)
+    vi.mocked(prisma.payment.findMany).mockResolvedValueOnce([] as any)
+
+    const req = makeRequest('http://localhost/api/invoices/inv1/payments', {
+      method: 'POST',
+      body: { amount: 4400, paymentMethod: 'CASH' },
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'inv1' }) })
+    const data = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(data.code).toBe('NO_OPEN_TILL')
+    expect(data.error).toContain('Billing → Till')
+    expect(prisma.payment.create).not.toHaveBeenCalled()
+    expect(mockGeneratePaymentNo).not.toHaveBeenCalled()
+  })
+
+  it('POST attaches the payment to the open till', async () => {
+    const { POST } = await import('@/app/api/invoices/[id]/payments/route')
+
+    vi.mocked(prisma.invoice.findUnique)
+      .mockResolvedValueOnce({
+        id: 'inv1',
+        hospitalId: 'h1',
+        status: 'PENDING',
+        totalAmount: 4400,
+        paidAmount: 0,
+        balanceAmount: 4400,
+      } as any)
+      .mockResolvedValueOnce({ id: 'inv1', status: 'PAID', patient: {}, payments: [] } as any)
+    mockGeneratePaymentNo.mockResolvedValue('PAY002')
+    vi.mocked(prisma.payment.create).mockResolvedValue({
+      id: 'pay2',
+      paymentNo: 'PAY002',
+      amount: 4400,
+      cashierSessionId: 'cs1',
+    } as any)
+    vi.mocked(prisma.invoice.update).mockResolvedValue({} as any)
+    vi.mocked(prisma.payment.findMany)
+      .mockResolvedValueOnce([] as any)
+      .mockResolvedValueOnce([{ amount: 4400, status: 'COMPLETED', refunds: [] }] as any)
+
+    const req = makeRequest('http://localhost/api/invoices/inv1/payments', {
+      method: 'POST',
+      body: { amount: 4400, paymentMethod: 'CASH' },
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'inv1' }) })
+
+    expect(res.status).toBe(201)
+    expect(vi.mocked(prisma.payment.create).mock.calls[0][0].data).toMatchObject({
+      cashierSessionId: 'cs1',
+    })
+    // Read behind a lock that a closing waits on.
+    const share = vi
+      .mocked(prisma.$queryRaw)
+      .mock.calls.find((call: any[]) =>
+        String(call[0]?.join?.('') ?? call[0]).includes('FOR SHARE')
+      )
+    expect(share).toBeDefined()
   })
 
   it('POST sets PARTIALLY_PAID when partial payment', async () => {

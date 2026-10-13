@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { bandFilter, dueBand, nextDueDate, type DueBand } from '@/lib/recare'
 import { RECALL_COOLDOWN_DAYS } from '@/lib/recall'
+import { clinicTimezone } from '@/lib/appointment-time'
 
 const BANDS: DueBand[] = ['OVERDUE', 'DUE_SOON', 'UPCOMING', 'SNOOZED', 'NOT_DUE']
 
@@ -150,7 +151,9 @@ export async function POST(request: NextRequest) {
     if (!patient) return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     if (!type) return NextResponse.json({ error: 'Recare type not found' }, { status: 404 })
 
-    const due = dueDate ? new Date(dueDate) : nextDueDate(new Date(), type.intervalMonths)
+    const due = dueDate
+      ? new Date(dueDate)
+      : nextDueDate(new Date(), type.intervalMonths, await clinicTimezone(prisma, hospitalId))
 
     const recare = await prisma.recare.upsert({
       where: { patientId_recareTypeId: { patientId, recareTypeId } },

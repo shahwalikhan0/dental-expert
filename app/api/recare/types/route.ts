@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
+import {
+  RECARE_TYPE_PROCEDURES_SELECT,
+  checkRecareProcedureIds,
+  parseProcedureIds,
+} from '@/lib/recare'
 
 /** The kinds of recurring visit a clinic runs, and how often each comes round. */
 export async function GET(request: NextRequest) {
@@ -16,11 +22,17 @@ export async function GET(request: NextRequest) {
     const types = await prisma.recareType.findMany({
       where: { hospitalId, ...(includeInactive ? {} : { isActive: true }) },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { recares: true } } },
+      include: {
+        _count: { select: { recares: true } },
+        // Which procedures count as the visit for it (finding 46).
+        procedures: RECARE_TYPE_PROCEDURES_SELECT,
+      },
     })
 
     return NextResponse.json({ types })
   } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error listing recare types:', err)
     return NextResponse.json({ error: 'Failed to load recare types' }, { status: 500 })
   }
@@ -45,6 +57,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // The procedures that count as the visit for it (bug report 12 Oct,
+    // finding 46). This clinic's, and active — see `checkRecareProcedureIds`.
+    let procedureIds: string[] = []
+    if (body.procedureIds !== undefined) {
+      const requested = parseProcedureIds(body.procedureIds)
+      const found = await prisma.procedure.findMany({
+        where: { hospitalId, id: { in: requested } },
+        select: { id: true, name: true, isActive: true },
+      })
+      const check = checkRecareProcedureIds(requested, found)
+      if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 })
+      procedureIds = check.ids
+    }
+
     const duplicate = await prisma.recareType.findFirst({
       where: { hospitalId, name },
       select: { id: true },
@@ -67,12 +93,16 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() || null,
           sortOrder: Number(body.sortOrder) || 0,
           isDefault: Boolean(body.isDefault),
+          procedures: { connect: procedureIds.map((id) => ({ id })) },
         },
+        include: { procedures: RECARE_TYPE_PROCEDURES_SELECT },
       })
     })
 
     return NextResponse.json({ type }, { status: 201 })
   } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error creating recare type:', err)
     return NextResponse.json({ error: 'Failed to create the recare type' }, { status: 500 })
   }

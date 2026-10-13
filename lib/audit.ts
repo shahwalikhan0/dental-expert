@@ -120,6 +120,13 @@ export const AUDIT_ACTIONS = {
   /// from the invoice arithmetic alone.
   REFUND_ISSUED: 'payment.refunded',
 
+  /// FR-015 — the till. Opening records the float that went into the drawer;
+  /// closing records what was counted against what was expected, and the
+  /// variance. A closing is the record a missing Rs 500 is traced back to, so
+  /// who signed it off belongs in the same trail as the money (finding 38).
+  TILL_OPENED: 'cashier_session.opened',
+  TILL_CLOSED: 'cashier_session.closed',
+
   /// Who settles a patient's bills changed. Recorded because it moves a
   /// balance onto somebody else's statement, and the person chased for the
   /// money afterwards is not the person who was chased before.

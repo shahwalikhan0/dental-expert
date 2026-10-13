@@ -126,6 +126,61 @@ describe('POST /api/cashier-sessions — opening the till', () => {
     signedInAs('LAB_TECH')
     expect((await POST(req('/api/cashier-sessions', 'POST', {}))).status).toBe(403)
   })
+
+  // Finding 38: with a screen to press "Open till" on, two people can press it
+  // at once. The check and the insert happen behind a lock on the clinic.
+  it('checks for an open till and opens one under a lock on the clinic', async () => {
+    signedInAs('RECEPTIONIST')
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue(null as never)
+    vi.mocked(prisma.cashierSession.create).mockResolvedValue({
+      id: 's1',
+      sessionNo: 'CS-202610-0001',
+      openingFloat: 2000,
+    } as never)
+
+    await POST(req('/api/cashier-sessions', 'POST', { openingFloat: 2000 }))
+
+    expect(prisma.$transaction).toHaveBeenCalled()
+    const lock = vi
+      .mocked(prisma.$queryRaw)
+      .mock.calls.find((call: any[]) => String(call[0]?.join?.('')).includes('"Hospital"'))
+    expect(lock).toBeDefined()
+  })
+
+  it('records the opening and its float in the audit trail', async () => {
+    signedInAs('RECEPTIONIST', 'desk-1')
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue(null as never)
+    vi.mocked(prisma.cashierSession.create).mockResolvedValue({
+      id: 's1',
+      sessionNo: 'CS-202610-0001',
+      openingFloat: 2000,
+      openingNotes: null,
+    } as never)
+
+    await POST(req('/api/cashier-sessions', 'POST', { openingFloat: 2000 }))
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'cashier_session.opened',
+          entityType: 'CashierSession',
+          entityId: 's1',
+          userId: 'desk-1',
+        }),
+      })
+    )
+  })
+
+  it('does not audit an opening that was refused', async () => {
+    signedInAs('RECEPTIONIST')
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue({
+      id: 's1',
+      sessionNo: 'CS-202610-0001',
+    } as never)
+
+    await POST(req('/api/cashier-sessions', 'POST', {}))
+    expect(prisma.auditLog.create).not.toHaveBeenCalled()
+  })
 })
 
 describe('GET /api/cashier-sessions', () => {
@@ -291,6 +346,53 @@ describe('POST /api/cashier-sessions/[id]/close — the variance record', () => 
     )
     expect(res.status).toBe(400)
     expect(prisma.cashierSession.update).not.toHaveBeenCalled()
+  })
+
+  // A payment arriving while the drawer is counted must either land before
+  // the figures are read or be refused — never in a session already stamped.
+  it('holds the session row while it counts and closes', async () => {
+    closingAs('ADMIN')
+
+    await CLOSE(req('/api/cashier-sessions/s1/close', 'POST', { counts: [] }), params('s1'))
+
+    const lock = vi
+      .mocked(prisma.$queryRaw)
+      .mock.calls.find((call: any[]) => String(call[0]?.join?.('')).includes('FOR UPDATE'))
+    expect(lock).toBeDefined()
+  })
+
+  it('records the closing, with its variance, in the audit trail', async () => {
+    closingAs('CLINIC_MANAGER')
+    vi.mocked(prisma.payment.groupBy).mockResolvedValue([
+      { paymentMethod: 'CASH', _sum: { amount: 4400 } },
+    ] as never)
+
+    await CLOSE(
+      req('/api/cashier-sessions/s1/close', 'POST', {
+        counts: [{ paymentMethod: 'CASH', countedAmount: 9000 }], // expected 5000 + 4400
+      }),
+      params('s1')
+    )
+
+    const call = vi.mocked(prisma.auditLog.create).mock.calls[0]?.[0] as any
+    expect(call.data).toMatchObject({
+      action: 'cashier_session.closed',
+      entityType: 'CashierSession',
+      entityId: 's1',
+      userId: 'manager-1',
+    })
+    expect(JSON.parse(call.data.newValues)).toMatchObject({ totalVariance: -400 })
+  })
+
+  it('does not audit a closing that was refused', async () => {
+    signedInAs('ADMIN')
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue({
+      ...OPEN,
+      status: 'CLOSED',
+    } as never)
+
+    await CLOSE(req('/api/cashier-sessions/s1/close', 'POST', { counts: [] }), params('s1'))
+    expect(prisma.auditLog.create).not.toHaveBeenCalled()
   })
 
   it('rejects a payment method that does not exist', async () => {

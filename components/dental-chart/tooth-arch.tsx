@@ -22,7 +22,17 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { quadrantsOf, QUADRANTS, type Dentition } from '@/lib/teeth'
+import { primaryToothNames, toothNames } from '@/lib/treatment-utils'
 import { ToothGlyph } from '@/components/dental-chart/tooth-glyph'
+
+/**
+ * A tooth's name, either dentition. Shared by the chart and the picker, whose
+ * picker read `toothNames` alone and so announced a primary tooth as just
+ * "tooth" (bug report 12 Oct, finding 55).
+ */
+export function toothName(tooth: number): string {
+  return toothNames[tooth] ?? primaryToothNames[tooth] ?? 'Tooth'
+}
 
 /**
  * How far each tooth sits from its row's baseline, in pixels, indexed by its
@@ -180,6 +190,12 @@ export function ToothArch({
     )
   }
 
+  /*
+   * Spacing tightens below `sm` so a child's twenty primary teeth fit across a
+   * phone without scrolling (bug report 12 Oct, finding 55). The thirty-two
+   * permanent teeth cannot fit at that width at any legible size, and scroll
+   * inside this box rather than widening the page.
+   */
   return (
     <div className={cn('overflow-x-auto', className)}>
       <div className="mx-auto w-fit space-y-1 pb-1">
@@ -187,15 +203,17 @@ export function ToothArch({
           {heading('upperRight')}
           {heading('upperLeft')}
         </div>
-        <div className="flex items-end justify-center gap-1 pb-8">
-          <div className="flex items-end gap-1">
+        <div className="flex items-end justify-center gap-0.5 pb-8 sm:gap-1">
+          <div className="flex items-end gap-0.5 sm:gap-1">
             {rows.upperRight.map((t) => tooth(t, 'upper'))}
           </div>
-          <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
-          <div className="flex items-end gap-1">{rows.upperLeft.map((t) => tooth(t, 'upper'))}</div>
+          <div className="mx-0.5 h-10 w-px self-center bg-border sm:mx-1" aria-hidden />
+          <div className="flex items-end gap-0.5 sm:gap-1">
+            {rows.upperLeft.map((t) => tooth(t, 'upper'))}
+          </div>
         </div>
 
-        <div className="flex items-start justify-center gap-1 pt-8">
+        <div className="flex items-start justify-center gap-0.5 pt-8 sm:gap-1">
           {/*
             Each lower row has to run *towards* the midline it meets at, and
             `FDI_QUADRANTS` (and `PRIMARY_QUADRANTS`) store both of them running
@@ -203,11 +221,11 @@ export function ToothArch({
             centre line, the way they sit in a mouth. Reversed here rather than
             in lib/teeth.ts, which is shared and is in FDI's own order.
           */}
-          <div className="flex items-start gap-1">
+          <div className="flex items-start gap-0.5 sm:gap-1">
             {[...rows.lowerRight].reverse().map((t) => tooth(t, 'lower'))}
           </div>
-          <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
-          <div className="flex items-start gap-1">
+          <div className="mx-0.5 h-10 w-px self-center bg-border sm:mx-1" aria-hidden />
+          <div className="flex items-start gap-0.5 sm:gap-1">
             {[...rows.lowerLeft].reverse().map((t) => tooth(t, 'lower'))}
           </div>
         </div>

@@ -4,11 +4,15 @@ import { requirePermission } from '@/lib/api-helpers'
 import {
   PAYMENT_METHODS,
   computeExpectedTotals,
+  lockSessionForClose,
   reconcile,
   totalVariance,
   type CountedLine,
 } from '@/lib/cashier'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { BillingRefusal, billingRefusalResponse } from '@/lib/invoice-settlement'
 
 /**
  * POST /api/cashier-sessions/[id]/close — FR-015's reconciliation and variance
@@ -54,26 +58,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       seen.add(line.paymentMethod)
     }
 
-    const session = await prisma.cashierSession.findFirst({ where: { id, hospitalId } })
-    if (!session) {
-      return NextResponse.json({ error: 'Cashier session not found' }, { status: 404 })
-    }
-    // Closing twice would overwrite the first reconciliation, which is the one
-    // record FR-015 exists to keep.
-    if (session.status === 'CLOSED') {
-      return NextResponse.json(
-        { error: `${session.sessionNo} was already closed` },
-        { status: 409 }
-      )
-    }
+    // The session row is held from before the figures are read until the
+    // counts are written. A payment already writing into the till is waited
+    // for, and one arriving now waits, then finds the till closed and is
+    // refused (finding 38) — so nothing can land in a session after its
+    // expected totals were stamped.
+    const outcome = await prisma.$transaction(async (tx) => {
+      await lockSessionForClose(tx, id, hospitalId)
 
-    const expected = await computeExpectedTotals(session)
-    const lines = reconcile(expected, body.counts as CountedLine[])
+      const session = await tx.cashierSession.findFirst({ where: { id, hospitalId } })
+      if (!session) {
+        throw new BillingRefusal(404, 'Cashier session not found')
+      }
+      // Closing twice would overwrite the first reconciliation, which is the one
+      // record FR-015 exists to keep.
+      if (session.status === 'CLOSED') {
+        throw new BillingRefusal(409, `${session.sessionNo} was already closed`)
+      }
 
-    // Written together: a session marked closed without its counts would be an
-    // unreconcilable record of a reconciliation.
-    const [closed] = await prisma.$transaction([
-      prisma.cashierSession.update({
+      const expected = await computeExpectedTotals(session, tx)
+      const lines = reconcile(expected, body.counts as CountedLine[])
+
+      // Written together: a session marked closed without its counts would be
+      // an unreconcilable record of a reconciliation.
+      const closed = await tx.cashierSession.update({
         where: { id },
         data: {
           status: 'CLOSED',
@@ -85,8 +93,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           openedBy: { select: { id: true, name: true } },
           closedBy: { select: { id: true, name: true } },
         },
-      }),
-      prisma.cashierSessionCount.createMany({
+      })
+      await tx.cashierSessionCount.createMany({
         data: lines.map((line) => ({
           sessionId: id,
           paymentMethod: line.paymentMethod,
@@ -95,15 +103,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           varianceAmount: line.varianceAmount,
           notes: line.notes,
         })),
-      }),
-    ])
+      })
+
+      return { closed, lines }
+    })
+
+    const { closed, lines } = outcome
+    const variance = totalVariance(lines)
+
+    // Who signed the drawer off, and what they found. The counts are on the
+    // session too; this puts the closing in the one trail an auditor reads.
+    await recordAudit({
+      hospitalId,
+      userId: user.id,
+      action: AUDIT_ACTIONS.TILL_CLOSED,
+      entityType: 'CashierSession',
+      entityId: closed.id,
+      oldValues: { status: 'OPEN' },
+      newValues: {
+        sessionNo: closed.sessionNo,
+        status: 'CLOSED',
+        totalVariance: variance,
+        counts: lines.map((line) => ({
+          method: line.paymentMethod,
+          expected: line.expected,
+          counted: line.countedAmount,
+          variance: line.varianceAmount,
+        })),
+        closingNotes: closed.closingNotes,
+      },
+      ...requestContext(req.headers),
+    })
 
     return NextResponse.json({
       success: true,
       data: {
         ...closed,
         totals: lines,
-        totalVariance: totalVariance(lines),
+        totalVariance: variance,
       },
     })
   } catch (err) {
@@ -113,6 +150,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 400 }
       )
     }
+    const known = billingRefusalResponse(err) ?? knownErrorResponse(err)
+    if (known) return known
     console.error('Close cashier session error:', err)
     return NextResponse.json({ error: 'Failed to close cashier session' }, { status: 500 })
   }

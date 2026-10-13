@@ -61,6 +61,13 @@ describe('Payments Detail & Refund API', () => {
       user: { id: 'user-1', role: 'ADMIN' },
       session: { user: { id: 'user-1', role: 'ADMIN' } },
     })
+    // Taking money needs an open till (finding 38); these cases are about
+    // other things, so one is open unless a case says otherwise.
+    ;(prisma.cashierSession.findFirst as any).mockResolvedValue({
+      id: 'cs-1',
+      sessionNo: 'CS-202610-0001',
+      status: 'OPEN',
+    })
   })
 
   // ─── GET /api/payments/[id] ───────────────────────────
@@ -170,6 +177,51 @@ describe('Payments Detail & Refund API', () => {
           data: { paidAmount: 2000, balanceAmount: 0, status: 'PAID' },
         })
       )
+    })
+
+    // Finding 38: money completed with no till open would belong to no till.
+    it('refuses to complete a pending payment when no till is open', async () => {
+      ;(prisma.cashierSession.findFirst as any).mockResolvedValue(null)
+      ;(prisma.payment.findUnique as any).mockResolvedValue({
+        id: 'pay-1',
+        status: 'PENDING',
+        amount: 2000,
+        invoiceId: 'inv-1',
+        invoice: { paidAmount: 0, totalAmount: 2000, status: 'PENDING' },
+      })
+      ;(prisma.payment.findMany as any).mockResolvedValueOnce([])
+
+      const res = await detailModule.PUT(makeRequest('PUT', { status: 'COMPLETED' }), ctx)
+      expect(res.status).toBe(409)
+      await expect(res.json()).resolves.toMatchObject({ code: 'NO_OPEN_TILL' })
+      expect(prisma.payment.update).not.toHaveBeenCalled()
+    })
+
+    it('puts a completed pending payment in the till open now', async () => {
+      ;(prisma.payment.findUnique as any).mockResolvedValue({
+        id: 'pay-1',
+        status: 'PENDING',
+        amount: 2000,
+        invoiceId: 'inv-1',
+        cashierSessionId: null,
+        invoice: { paidAmount: 0, totalAmount: 2000, status: 'PENDING' },
+      })
+      ;(prisma.invoice.update as any).mockResolvedValue({})
+      ;(prisma.payment.update as any).mockResolvedValue({
+        id: 'pay-1',
+        status: 'COMPLETED',
+        invoice: { id: 'inv-1', status: 'PAID' },
+      })
+      ;(prisma.payment.findMany as any)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ amount: 2000, status: 'COMPLETED', refunds: [] }])
+
+      const res = await detailModule.PUT(makeRequest('PUT', { status: 'COMPLETED' }), ctx)
+      expect(res.status).toBe(200)
+      expect((prisma.payment.update as any).mock.calls[0][0].data).toMatchObject({
+        status: 'COMPLETED',
+        cashierSessionId: 'cs-1',
+      })
     })
 
     it('refuses to complete a pending payment on a cancelled invoice', async () => {
@@ -286,7 +338,6 @@ describe('Payments Detail & Refund API', () => {
   // refunds, till attachment) is covered in refund-and-discount-approval.test.
   describe('POST /api/payments/[id]/refund', () => {
     beforeEach(() => {
-      ;(prisma.cashierSession.findFirst as any).mockResolvedValue(null)
       ;(prisma.refund.findFirst as any).mockResolvedValue(null)
       ;(prisma.refund.create as any).mockResolvedValue({ id: 'ref-1', refundNo: 'REF-1' })
       ;(prisma.payment.update as any).mockResolvedValue({})

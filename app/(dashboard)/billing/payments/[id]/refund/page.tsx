@@ -16,6 +16,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { useOpenTill } from '@/hooks/use-open-till'
+import { NoTillNotice } from '@/components/billing/no-till-notice'
+import { NO_OPEN_TILL, refundNeedsOpenTill } from '@/lib/till'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
 import { Loader2, Undo2 } from 'lucide-react'
@@ -81,6 +84,11 @@ export default function RefundPaymentPage() {
   const [transactionId, setTransactionId] = useState('')
 
   const trail = useTrail(payment?.paymentNo ?? null)
+
+  // Cash paid back out needs an open till to come out of (finding 38); other
+  // methods do not — see refundNeedsOpenTill.
+  const openTill = useOpenTill()
+  const blockedByTill = openTill.noTill && refundNeedsOpenTill(method)
 
   useEffect(() => {
     const load = async () => {
@@ -151,7 +159,11 @@ export default function RefundPaymentPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'The refund could not be recorded')
+      if (!res.ok) {
+        // The till was closed since this page loaded; show the notice.
+        if (data.code === NO_OPEN_TILL) openTill.markNoTill()
+        throw new Error(data.error || 'The refund could not be recorded')
+      }
 
       toast({ title: 'Refund recorded', description: data.message })
       router.push(`/billing/invoices/${payment?.invoice.id}`)
@@ -320,11 +332,13 @@ export default function RefundPaymentPage() {
                 />
               </div>
 
+              {blockedByTill && <NoTillNotice what="cash-refund" />}
+
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" asChild>
                   <Link href={`/billing/invoices/${payment.invoice.id}`}>Cancel</Link>
                 </Button>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || blockedByTill}>
                   {submitting ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (

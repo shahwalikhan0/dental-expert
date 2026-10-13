@@ -302,7 +302,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       if (statusChanged && body.status === 'COMPLETED') {
-        // The plan step, and the recalls this procedure is the visit for —
+        // The plan step, and the recalls whose type is linked to this procedure —
         // the same as the Complete button's own route.
         await afterTreatmentCompleted(
           tx,

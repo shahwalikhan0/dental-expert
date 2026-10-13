@@ -101,3 +101,12 @@ describe('dueBand', () => {
     expect(dueBand({ dueDate: at(UPCOMING_DAYS + 1) }, TODAY)).toBe('NOT_DUE')
   })
 })
+
+describe('nextDueDate in the clinic calendar', () => {
+  it('counts from the clinic day, not the UTC day', () => {
+    // 00:20 on 14 October in Karachi is still 13 October in UTC.
+    const visit = new Date('2026-10-13T19:20:00Z')
+    expect(nextDueDate(visit, 6, 'Asia/Karachi').toISOString().slice(0, 10)).toBe('2027-04-14')
+    expect(nextDueDate(visit, 6, 'UTC').toISOString().slice(0, 10)).toBe('2027-04-13')
+  })
+})

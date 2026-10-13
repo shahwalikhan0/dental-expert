@@ -59,7 +59,9 @@ interface Patient {
   firstName: string
   lastName: string
   phone: string
-  dateOfBirth: string | null
+  /** On a patient fetched by id. The search answers with `age` instead. */
+  dateOfBirth?: string | null
+  age?: number | null
   /** Allergies live here, not flat on the patient. This page declared
       `allergies: string | null` and rendered a warning against it, which meant
       the warning was never once shown. */
@@ -931,6 +933,9 @@ export default function NewPrescriptionPage() {
                   selected={teeth}
                   onChange={setTeeth}
                   defaultToFindings
+                  // A child opens on the primary teeth (bug report 12 Oct, finding 55).
+                  age={selectedPatient.age}
+                  dateOfBirth={selectedPatient.dateOfBirth}
                 />
               ) : (
                 <p className="text-muted-foreground rounded-xl border border-dashed border-border/60 px-4 py-6 text-center text-sm">

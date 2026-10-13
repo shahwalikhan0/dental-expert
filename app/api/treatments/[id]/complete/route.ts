@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { completeRecare, nextDueDate, type RecallMoved } from '@/lib/recare'
 import { afterTreatmentCompleted } from '@/lib/treatment-completion'
+import { clinicTimezone } from '@/lib/appointment-time'
 
 // POST - Complete treatment
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -66,12 +67,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     //
     // Two ways. A caller can name the recall (`recareId`), which is checked to
     // be this patient's. And whether or not it does, the patient's recalls
-    // that this procedure is the visit for are moved too — a scale and polish
-    // moves the "Scale and polish" recall, as Mark as done would (bug report
-    // 12 Oct, finding 46). No screen ever sent `recareId`, so without the
-    // second the recall waited for somebody to remember. The match is narrow
-    // on purpose — see `recareTypeMatchesProcedure` — so a filling never moves
-    // a hygiene recall.
+    // whose type the clinic has linked to this procedure are moved too — a
+    // scale and polish moves the "Scale and polish" recall, as Mark as done
+    // would (bug report 12 Oct, finding 46). No screen ever sent `recareId`,
+    // so without the second the recall waited for somebody to remember. Only
+    // the stored link counts — see `recaresForProcedureWhere` — so a filling,
+    // linked to no recall, never moves a hygiene recall.
     let namedRecare: { id: string; recareType: { name: string; intervalMonths: number } } | null =
       null
     if (body.recareId) {
@@ -124,7 +125,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       recallsMoved.push({
         id: namedRecare.id,
         name: namedRecare.recareType.name,
-        dueDate: nextDueDate(updateData.endTime, namedRecare.recareType.intervalMonths),
+        dueDate: nextDueDate(
+          updateData.endTime,
+          namedRecare.recareType.intervalMonths,
+          await clinicTimezone(prisma, hospitalId)
+        ),
       })
     }
 

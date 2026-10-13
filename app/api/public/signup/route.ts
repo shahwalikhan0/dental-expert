@@ -126,6 +126,12 @@ export async function POST(request: Request) {
       // The recall types, for the same reason. A clinic with none registers
       // patients, puts nobody on a recall list, and gives no hint that the
       // module is switched off.
+      //
+      // They are not linked to procedures here because a new clinic has
+      // none: its catalogue is built afterwards, and each procedure added is
+      // linked to the default type it is the visit for as it is created —
+      // `linkDefaultRecareProcedures` in the procedure routes (bug report
+      // 12 Oct, finding 46).
       await tx.recareType.createMany({ data: defaultRecareTypesFor(hospital.id) })
 
       return { hospital, user }

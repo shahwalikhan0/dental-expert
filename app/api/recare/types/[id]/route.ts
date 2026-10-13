@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
+import {
+  RECARE_TYPE_PROCEDURES_SELECT,
+  checkRecareProcedureIds,
+  parseProcedureIds,
+} from '@/lib/recare'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, hospitalId } = await requirePermission('settings:write')
@@ -14,7 +20,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const existing = await prisma.recareType.findFirst({
       where: { id, hospitalId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, procedures: { select: { id: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'Recare type not found' }, { status: 404 })
 
@@ -29,6 +35,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           { status: 400 }
         )
       }
+    }
+
+    // The procedures that count as the visit for it (bug report 12 Oct,
+    // finding 46). Replaces the list. This clinic's only; a procedure that has
+    // since been deactivated may stay linked but may not be newly added — see
+    // `checkRecareProcedureIds`.
+    let procedureIds: string[] | undefined
+    if (body.procedureIds !== undefined) {
+      const requested = parseProcedureIds(body.procedureIds)
+      const found = await prisma.procedure.findMany({
+        where: { hospitalId, id: { in: requested } },
+        select: { id: true, name: true, isActive: true },
+      })
+      const check = checkRecareProcedureIds(
+        requested,
+        found,
+        existing.procedures.map((procedure) => procedure.id)
+      )
+      if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 })
+      procedureIds = check.ids
     }
 
     if (name !== existing.name) {
@@ -57,12 +83,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           ...(body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
           ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
           ...(body.isDefault !== undefined ? { isDefault: Boolean(body.isDefault) } : {}),
+          ...(procedureIds !== undefined
+            ? { procedures: { set: procedureIds.map((procedureId) => ({ id: procedureId })) } }
+            : {}),
         },
+        include: { procedures: RECARE_TYPE_PROCEDURES_SELECT },
       })
     })
 
     return NextResponse.json({ type })
   } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error updating recare type:', err)
     return NextResponse.json({ error: 'Failed to update the recare type' }, { status: 500 })
   }
@@ -104,6 +136,8 @@ export async function DELETE(
     await prisma.recareType.delete({ where: { id } })
     return NextResponse.json({ success: true, message: `${type.name} was deleted` })
   } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error deleting recare type:', err)
     return NextResponse.json({ error: 'Failed to delete the recare type' }, { status: 500 })
   }

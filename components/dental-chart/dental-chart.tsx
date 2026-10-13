@@ -50,13 +50,18 @@ import { displayDate } from '@/lib/dates'
 import {
   ALL_PRIMARY_TEETH,
   ALL_TEETH,
-  isPrimaryTooth,
+  defaultDentition,
   quadrantOf,
   QUADRANTS,
   type Dentition,
 } from '@/lib/teeth'
-import { primaryToothNames, toothConditionConfig, toothNames } from '@/lib/treatment-utils'
-import { ToothArch, ToothButton } from '@/components/dental-chart/tooth-arch'
+import { toothConditionConfig } from '@/lib/treatment-utils'
+import {
+  ToothArch,
+  ToothButton,
+  toothName as toothLabel,
+} from '@/components/dental-chart/tooth-arch'
+import { DentitionSwitch } from '@/components/dental-chart/dentition-switch'
 
 interface DentalChartEntry {
   id: string
@@ -105,16 +110,6 @@ const ABSENT = new Set(['MISSING', 'EXTRACTION'])
 function conditionLabel(condition: string): string {
   return toothConditionConfig[condition]?.label ?? condition
 }
-
-/** The name of a tooth, with the quadrant spelled out rather than implied. */
-function toothLabel(tooth: number): string {
-  return toothNames[tooth] ?? primaryToothNames[tooth] ?? 'Tooth'
-}
-
-const DENTITIONS: { value: Dentition; label: string }[] = [
-  { value: 'permanent', label: 'Permanent' },
-  { value: 'primary', label: 'Primary' },
-]
 
 export function DentalChart({ patientId }: DentalChartProps) {
   const { toast } = useToast()
@@ -182,13 +177,13 @@ export function DentalChart({ patientId }: DentalChartProps) {
   /**
    * The dentition on screen: the one chosen, or — before any choice — primary
    * when every current finding is on a primary tooth, which is a child's
-   * chart; otherwise permanent.
+   * chart; otherwise permanent. The rule is `defaultDentition`'s, which the
+   * tooth picker opens by too.
    */
-  const dentition: Dentition = useMemo(() => {
-    if (chosenDentition) return chosenDentition
-    const charted = Object.keys(current).map(Number)
-    return charted.length > 0 && charted.every(isPrimaryTooth) ? 'primary' : 'permanent'
-  }, [chosenDentition, current])
+  const dentition: Dentition = useMemo(
+    () => chosenDentition ?? defaultDentition({ findings: Object.keys(current).map(Number) }),
+    [chosenDentition, current]
+  )
   const shownTeeth = dentition === 'primary' ? ALL_PRIMARY_TEETH : ALL_TEETH
 
   const counts = useMemo(() => {
@@ -381,28 +376,8 @@ export function DentalChart({ patientId }: DentalChartProps) {
       <CardContent>
         <TooltipProvider delayDuration={200}>
           <div className="rounded-xl border border-border/60 bg-card/60 p-4">
-            <div
-              role="radiogroup"
-              aria-label="Dentition"
-              className="mb-3 flex w-fit gap-1 rounded-lg bg-foreground/[0.05] p-0.5"
-            >
-              {DENTITIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={dentition === option.value}
-                  onClick={() => setChosenDentition(option.value)}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                    dentition === option.value
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            {/* Shared with the tooth picker on the treatment and prescription forms. */}
+            <DentitionSwitch value={dentition} onChange={setChosenDentition} className="mb-3" />
             <ToothArch tooth={renderTooth} dentition={dentition} />
 
             {/* A key, only for what this mouth has */}

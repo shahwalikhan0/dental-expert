@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { PAYMENT_METHODS, generateRefundNo, getOpenSession, round2 } from '@/lib/cashier'
+import { PAYMENT_METHODS, generateRefundNo, lockOpenSession, round2 } from '@/lib/cashier'
+import { NO_OPEN_TILL, NO_OPEN_TILL_REFUND_MESSAGE, refundNeedsOpenTill } from '@/lib/till'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { knownErrorResponse } from '@/lib/api-errors'
@@ -103,9 +104,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       // Money going out belongs to whichever till is open, so the closing
-      // count sees the outflow. Refunds outside an open session are still
-      // recorded — they simply do not land in anyone's drawer count.
-      const openSession = await getOpenSession(hospitalId, { db: tx, userId: user.id })
+      // count sees the outflow. A cash refund needs one: it leaves the drawer,
+      // and with no session to charge it to the next closing would come up
+      // short with nothing on the record to say why (finding 38). A refund by
+      // card, transfer, cheque or wallet does not touch the drawer, so it is
+      // still recorded with no till open rather than holding up money owed to
+      // a patient — see `refundNeedsOpenTill`. Read behind the same lock a
+      // payment takes, so a closing cannot count the drawer mid-refund.
+      const refundMethod = body.refundMethod ?? payment.paymentMethod
+      const openSession = await lockOpenSession(tx, hospitalId, user.id)
+      if (!openSession && refundNeedsOpenTill(refundMethod)) {
+        throw new BillingRefusal(409, NO_OPEN_TILL_REFUND_MESSAGE, NO_OPEN_TILL)
+      }
 
       const refundedTotal = round2(alreadyRefunded + refundAmount)
       const fullyRefunded = refundedTotal >= paymentAmount
@@ -119,7 +129,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           paymentId: payment.id,
           amount: refundAmount,
           // Defaults to however the money came in, which is the common case.
-          refundMethod: body.refundMethod ?? payment.paymentMethod,
+          refundMethod,
           reason: body.refundReason,
           authorisedById: user.id,
           cashierSessionId: openSession?.id ?? null,

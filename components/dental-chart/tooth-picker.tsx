@@ -27,12 +27,29 @@
  * **The legend shows only what this mouth has.** Fourteen swatches above a
  * healthy patient is decoration; three above a patient with three problems is
  * a key.
+ *
+ * **Both dentitions, one selection.** The Permanent/Primary switch is the
+ * dental chart's own, so a child's 51–85 can be chosen here as well as charted
+ * there — before, 75 could be charted and then not picked for the treatment
+ * that followed (bug report 12 Oct, finding 55). Switching changes what is
+ * drawn, never what is chosen: a mixed dentition is treated across both, so a
+ * tooth chosen on the other view stays chosen, is counted on the switch and is
+ * listed in the summary underneath.
  */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
-import { describeTeeth, groupTeeth, parseTeeth } from '@/lib/teeth'
-import { toothConditionConfig, toothNames } from '@/lib/treatment-utils'
-import { ToothArch, ToothButton } from '@/components/dental-chart/tooth-arch'
+import {
+  defaultDentition,
+  dentitionOf,
+  describeTeeth,
+  groupTeeth,
+  parseTeeth,
+  type Dentition,
+} from '@/lib/teeth'
+import { ageInYears } from '@/lib/age'
+import { toothConditionConfig } from '@/lib/treatment-utils'
+import { ToothArch, ToothButton, toothName } from '@/components/dental-chart/tooth-arch'
+import { DENTITIONS, DentitionSwitch } from '@/components/dental-chart/dentition-switch'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { X, Stethoscope } from 'lucide-react'
@@ -58,6 +75,14 @@ export interface ToothPickerProps {
    * only that case.
    */
   defaultToFindings?: boolean
+  /**
+   * How old the patient is, when the caller already knows — the patient
+   * search answers with an age rather than a date of birth. A child opens on
+   * the primary teeth; see `defaultDentition` in lib/teeth.ts.
+   */
+  age?: number | null
+  /** The same, from a date of birth. Read after mount: it depends on today. */
+  dateOfBirth?: string | Date | null
   disabled?: boolean
   className?: string
 }
@@ -76,16 +101,41 @@ const DEFECTIVE = new Set([
 /** Conditions that mean the tooth is no longer in the mouth. */
 const ABSENT = new Set(['MISSING', 'EXTRACTION'])
 
+/** For `useSyncExternalStore`, used only to tell the server from the client. */
+const noSubscription = () => () => {}
+
 export function ToothPicker({
   selected,
   onChange,
   patientId,
   findings: givenFindings,
   defaultToFindings,
+  age: givenAge,
+  dateOfBirth,
   disabled,
   className,
 }: ToothPickerProps) {
   const [fetched, setFetched] = React.useState<Record<number, ToothFinding>>({})
+
+  /**
+   * The view somebody chose, or null while the picker is still choosing for
+   * them. Set by the switch, and pinned by the first tooth pressed — so the
+   * default can follow a selection or a chart that arrives late, but never
+   * moves the arch out from under somebody who has started picking.
+   */
+  const [chosenDentition, setChosenDentition] = React.useState<Dentition | null>(null)
+
+  /*
+   * An age worked out from a date of birth depends on today's date, which the
+   * server and the browser need not agree on — so it is not read until the
+   * picker is on the client, and the first render matches the server's.
+   */
+  const hydrated = React.useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false
+  )
+  const age = givenAge ?? (hydrated ? ageInYears(dateOfBirth) : null)
 
   /*
    * The latest selection, readable from the fetch callback below without
@@ -173,8 +223,36 @@ export function ToothPicker({
   const findings = givenFindings ?? fetched
   const chosen = React.useMemo(() => new Set(selected), [selected])
 
+  const dentition: Dentition =
+    chosenDentition ??
+    defaultDentition({ selected, age, findings: Object.keys(findings).map(Number) })
+
+  /** Keep the view on screen now that somebody is working in it. */
+  const pinView = () => {
+    if (!chosenDentition) setChosenDentition(dentition)
+  }
+
+  /** Selected teeth in each dentition, for the counts on the switch. */
+  const selectedCounts = React.useMemo(() => {
+    const counts: Record<Dentition, number> = { permanent: 0, primary: 0 }
+    for (const tooth of selected) {
+      const of = dentitionOf(tooth)
+      if (of) counts[of] += 1
+    }
+    return counts
+  }, [selected])
+
+  /** Chosen, and not drawn on the view on screen. */
+  const offView = selected.filter((tooth) => {
+    const of = dentitionOf(tooth)
+    return of !== null && of !== dentition
+  })
+  const otherDentition: Dentition = dentition === 'primary' ? 'permanent' : 'primary'
+  const otherLabel = DENTITIONS.find((d) => d.value === otherDentition)!.label
+
   const toggle = (tooth: number) => {
     if (disabled) return
+    pinView()
     const next = new Set(chosen)
     if (next.has(tooth)) next.delete(tooth)
     else next.add(tooth)
@@ -183,6 +261,7 @@ export function ToothPicker({
 
   const toggleQuadrant = (teeth: readonly number[]) => {
     if (disabled) return
+    pinView()
     const next = new Set(chosen)
     const allChosen = teeth.every((t) => next.has(t))
     for (const t of teeth) {
@@ -235,16 +314,14 @@ export function ToothPicker({
             absent={ABSENT.has(finding?.condition ?? '')}
             disabled={disabled}
             aria-pressed={isChosen}
-            aria-label={`Tooth ${tooth}, ${toothNames[tooth] ?? 'tooth'}${
-              config ? `, ${config.label}` : ''
-            }`}
+            aria-label={`Tooth ${tooth}, ${toothName(tooth)}${config ? `, ${config.label}` : ''}`}
             onClick={() => toggle(tooth)}
             conditionColor={config && finding?.condition !== 'HEALTHY' ? config.fillColor : null}
           />
         </TooltipTrigger>
         <TooltipContent side={arch === 'upper' ? 'top' : 'bottom'}>
           <p className="font-medium">
-            {tooth} · {toothNames[tooth] ?? 'Tooth'}
+            {tooth} · {toothName(tooth)}
           </p>
           {config ? (
             <p className="text-xs">
@@ -261,8 +338,35 @@ export function ToothPicker({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={cn('rounded-xl border border-border/60 bg-card/60 p-4', className)}>
-        <ToothArch tooth={renderTooth} onQuadrant={toggleQuadrant} disabled={disabled} />
+      <div className={cn('rounded-xl border border-border/60 bg-card/60 p-3 sm:p-4', className)}>
+        {/*
+          The switch stays usable on a disabled picker: looking at the other
+          dentition changes nothing, and is the only way to see a primary
+          tooth that was chosen on a form now read-only.
+        */}
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <DentitionSwitch
+            value={dentition}
+            onChange={setChosenDentition}
+            selectedCounts={selectedCounts}
+          />
+          {offView.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setChosenDentition(otherDentition)}
+              className="text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Also selected on {otherLabel}: {describeTeeth(offView)} — show
+            </button>
+          )}
+        </div>
+
+        <ToothArch
+          tooth={renderTooth}
+          onQuadrant={toggleQuadrant}
+          disabled={disabled}
+          dentition={dentition}
+        />
 
         {/* A key, only for what this mouth has */}
         {presentConditions.length > 0 && (
@@ -296,7 +400,10 @@ export function ToothPicker({
               variant="outline"
               size="sm"
               disabled={disabled}
-              onClick={() => onChange(defective)}
+              onClick={() => {
+                pinView()
+                onChange(defective)
+              }}
             >
               <Stethoscope className="mr-2 h-3.5 w-3.5" />
               Select the {defective.length} {defective.length === 1 ? 'tooth' : 'teeth'} with
@@ -314,7 +421,8 @@ export function ToothPicker({
         <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
           {selected.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              No teeth selected. Click a tooth, or a quadrant name to take all eight.
+              No teeth selected. Click a tooth, or a quadrant name to take all{' '}
+              {dentition === 'primary' ? 'five' : 'eight'}.
             </p>
           ) : (
             <>
@@ -330,19 +438,29 @@ export function ToothPicker({
                   >
                     {group.label}
                   </span>
-                  {group.teeth.map((tooth) => (
-                    <button
-                      key={tooth}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => toggle(tooth)}
-                      aria-label={`Remove tooth ${tooth}, ${group.label}`}
-                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed"
-                    >
-                      {tooth}
-                      <X className="h-3 w-3" />
-                    </button>
-                  ))}
+                  {group.teeth.map((tooth) => {
+                    // Every chosen tooth is listed here, whichever view is
+                    // drawn; one not on the arch above is outlined instead
+                    // of filled, so it reads as chosen but elsewhere.
+                    const elsewhere = dentitionOf(tooth) !== dentition
+                    return (
+                      <button
+                        key={tooth}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => toggle(tooth)}
+                        aria-label={`Remove tooth ${tooth}, ${toothName(tooth)}`}
+                        title={elsewhere ? `On the ${otherLabel} view` : undefined}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed',
+                          elsewhere ? 'border border-dashed border-primary/50' : 'bg-primary/10'
+                        )}
+                      >
+                        {tooth}
+                        <X className="h-3 w-3" />
+                      </button>
+                    )
+                  })}
                 </div>
               ))}
             </>

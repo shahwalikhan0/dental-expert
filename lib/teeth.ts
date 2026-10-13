@@ -82,6 +82,64 @@ export function isTooth(value: unknown): boolean {
   return isPermanentTooth(value) || isPrimaryTooth(value)
 }
 
+/** Which dentition a tooth belongs to, or null if it is not a tooth. */
+export function dentitionOf(tooth: number): Dentition | null {
+  if (isPermanentTooth(tooth)) return 'permanent'
+  if (isPrimaryTooth(tooth)) return 'primary'
+  return null
+}
+
+/**
+ * Below this age a mouth is drawn as primary teeth first.
+ *
+ * The last primary molars are usually shed at eleven or twelve. Before that a
+ * child's mouth is mostly primary teeth even where the first permanent molars
+ * have come through, so that is the view the dentist most often wants; past it
+ * the primary teeth left are the exception. Either view is one click away.
+ */
+export const PRIMARY_DENTITION_AGE = 12
+
+/**
+ * Which dentition a tooth picker opens on, before anybody chooses one.
+ *
+ * In order (bug report 12 Oct, finding 55):
+ *
+ * 1. The teeth already selected, when they are all of one dentition. A
+ *    prescription written from a treatment on 75 opens on the tooth it is
+ *    about, whatever the patient's age; one on 46 opens on 46.
+ * 2. The patient's age, when it is known: under {@link PRIMARY_DENTITION_AGE}
+ *    is primary. A mixed selection falls through to here, because it is on
+ *    both views and the age says which the dentist is more likely to want.
+ * 3. The chart: primary when every current finding is on a primary tooth —
+ *    the same rule the patient's dental chart opens on. Only without an age,
+ *    because an adult's one retained 53 should not hide their other teeth.
+ * 4. Otherwise permanent.
+ */
+export function defaultDentition({
+  selected,
+  age,
+  findings,
+}: {
+  selected?: readonly number[] | null
+  age?: number | null
+  findings?: readonly number[] | null
+}): Dentition {
+  const chosen = (selected ?? []).filter(isTooth)
+  if (chosen.length > 0) {
+    if (chosen.every(isPrimaryTooth)) return 'primary'
+    if (chosen.every(isPermanentTooth)) return 'permanent'
+  }
+
+  if (typeof age === 'number' && Number.isFinite(age) && age >= 0) {
+    return age < PRIMARY_DENTITION_AGE ? 'primary' : 'permanent'
+  }
+
+  const charted = (findings ?? []).filter(isTooth)
+  if (charted.length > 0 && charted.every(isPrimaryTooth)) return 'primary'
+
+  return 'permanent'
+}
+
 /** What a refused tooth number is told. One wording, on every form that takes teeth. */
 export const TOOTH_NUMBER_HINT =
   'Use FDI numbers: 11–48 for permanent teeth, 51–85 for primary teeth.'

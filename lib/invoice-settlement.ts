@@ -33,11 +33,15 @@ type Db = PrismaClient | Prisma.TransactionClient
  * A request refused for a reason the person at the desk can act on. Thrown
  * from inside a transaction, so the refusal also rolls back anything the
  * transaction had already written — a reference number included.
+ *
+ * `code` is for a refusal a screen should recognise rather than just show —
+ * `NO_OPEN_TILL` sends the person to the Till screen (finding 38).
  */
 export class BillingRefusal extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
+    public readonly code?: string
   ) {
     super(message)
     this.name = 'BillingRefusal'
@@ -47,7 +51,10 @@ export class BillingRefusal extends Error {
 /** The answer a route gives for a refusal, or null if `err` is not one. */
 export function billingRefusalResponse(err: unknown): NextResponse | null {
   return err instanceof BillingRefusal
-    ? NextResponse.json({ error: err.message }, { status: err.status })
+    ? NextResponse.json(
+        err.code ? { error: err.message, code: err.code } : { error: err.message },
+        { status: err.status }
+      )
     : null
 }
 

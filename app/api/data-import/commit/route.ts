@@ -772,6 +772,11 @@ async function importPayments(
       const paymentNo =
         row.paymentNo || (await generateId(hospitalId, 'payment', 'PAY', 'paymentNo'))
 
+      // Not attached to a till and not refused when none is open, unlike a
+      // payment taken at the desk (finding 38). An import brings across money
+      // received in the old system, on earlier days, into drawers that were
+      // counted then; putting it in today's till would make today's closing
+      // expect cash that was never in it.
       await prisma.payment.create({
         data: {
           hospitalId,

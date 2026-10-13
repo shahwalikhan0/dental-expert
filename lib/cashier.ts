@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
-import type { PaymentMethod, Prisma, PrismaClient } from '@prisma/client'
+import { expectedTotals, type MethodTotal } from '@/lib/till'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -14,15 +15,17 @@ type Db = PrismaClient | Prisma.TransactionClient
  * had no authoriser, and a till could not be reconciled at all.
  */
 
-/** Every method a till can take money by, so a closing counts them all. */
-export const PAYMENT_METHODS = [
-  'CASH',
-  'CARD',
-  'BANK_TRANSFER',
-  'CHEQUE',
-  'WALLET',
-  'ONLINE',
-] as const satisfies readonly PaymentMethod[]
+// The pure arithmetic lives in lib/till.ts so the Till screen can use it too;
+// re-exported here so the routes keep one import for the cashier.
+export {
+  PAYMENT_METHODS,
+  round2,
+  reconcile,
+  totalVariance,
+  type MethodTotal,
+  type CountedLine,
+  type ReconciledLine,
+} from '@/lib/till'
 
 /**
  * Payment statuses that represent money actually received. A failed or pending
@@ -76,10 +79,10 @@ export function discountNeedsApproval(discountAmount: number, threshold: number)
  * desk, and "daily closing" means one reconciliation at the end of the day.
  * Payments attach to whichever session is open when they are taken.
  *
- * With `userId`, a till that person opened is preferred. Opening is not yet
- * atomic, so two can be open at once, and a payment belongs in the drawer of
- * the person who took it (finding 38). `db` lets a caller read it inside the
- * transaction that records the payment.
+ * With `userId`, a till that person opened is preferred: a payment belongs in
+ * the drawer of the person who took it (finding 38). Opening is serialised per
+ * clinic now, but tills opened before that may still be open side by side.
+ * `db` lets a caller read it inside the transaction that records the payment.
  */
 export async function getOpenSession(
   hospitalId: string,
@@ -97,6 +100,51 @@ export async function getOpenSession(
     where: { hospitalId, status: 'OPEN' },
     orderBy: { openedAt: 'desc' },
   })
+}
+
+/**
+ * The open till a payment or refund is about to be written into, held for the
+ * rest of the transaction.
+ *
+ * Money is now refused with no till open (finding 38), and a till can be
+ * closed from the Till screen while somebody else is mid-payment. Without a
+ * lock a payment could read the session as open, the closing could count the
+ * drawer and mark it closed, and the payment would then commit into a session
+ * whose figures were already stamped — the same orphaned money by a narrower
+ * door. `FOR SHARE` lets payments run side by side but makes the closing's
+ * `FOR UPDATE` (see `lockSessionForClose`) wait for them; a payment that
+ * arrives while a closing holds the row waits, re-reads it as closed, and is
+ * refused.
+ *
+ * Must be called inside a transaction.
+ */
+export async function lockOpenSession(
+  db: Prisma.TransactionClient,
+  hospitalId: string,
+  userId?: string | null
+) {
+  await db.$queryRaw`
+    SELECT "id" FROM "CashierSession"
+    WHERE "hospitalId" = ${hospitalId} AND "status" = 'OPEN'
+    FOR SHARE
+  `
+  return getOpenSession(hospitalId, { db, userId })
+}
+
+/**
+ * Hold a session against new payments while it is counted down and closed.
+ * Waits for any payment already writing into it to commit first.
+ */
+export async function lockSessionForClose(
+  db: Prisma.TransactionClient,
+  sessionId: string,
+  hospitalId: string
+): Promise<void> {
+  await db.$queryRaw`
+    SELECT "id" FROM "CashierSession"
+    WHERE "id" = ${sessionId} AND "hospitalId" = ${hospitalId}
+    FOR UPDATE
+  `
 }
 
 /** `CS-YYYYMM-0001`, matching the invoice and payment numbering. */
@@ -144,30 +192,23 @@ export async function generateRefundNo(hospitalId: string, db: Db = prisma): Pro
   })
 }
 
-export interface MethodTotal {
-  paymentMethod: PaymentMethod
-  received: number
-  refunded: number
-  /** received − refunded, plus the opening float for CASH. */
-  expected: number
-}
-
 /**
- * What each payment method should hold for a session.
+ * What each payment method should hold for a session — see `expectedTotals`
+ * for the rules.
  *
- * Refunds are subtracted from the method they were *paid out by*, not the one
- * the original payment came in by — refunding a card payment in cash takes
- * cash out of the drawer, and a reconciliation that ignored that would report
- * a shortfall every time.
- *
- * The opening float lands on CASH alone; there is no float on a card terminal.
+ * Pass the transaction when the figures are about to be stamped on a closing,
+ * so they are read behind the same lock that keeps a payment from landing in
+ * the session halfway through (finding 38).
  */
-export async function computeExpectedTotals(session: {
-  id: string
-  openingFloat: Prisma.Decimal | number
-}): Promise<MethodTotal[]> {
+export async function computeExpectedTotals(
+  session: {
+    id: string
+    openingFloat: Prisma.Decimal | number
+  },
+  db: Db = prisma
+): Promise<MethodTotal[]> {
   const [payments, refunds] = await Promise.all([
-    prisma.payment.groupBy({
+    db.payment.groupBy({
       by: ['paymentMethod'],
       where: {
         cashierSessionId: session.id,
@@ -175,75 +216,16 @@ export async function computeExpectedTotals(session: {
       },
       _sum: { amount: true },
     }),
-    prisma.refund.groupBy({
+    db.refund.groupBy({
       by: ['refundMethod'],
       where: { cashierSessionId: session.id },
       _sum: { amount: true },
     }),
   ])
 
-  const receivedBy = new Map<string, number>()
-  for (const row of payments) {
-    receivedBy.set(row.paymentMethod, Number(row._sum.amount ?? 0))
-  }
-  const refundedBy = new Map<string, number>()
-  for (const row of refunds) {
-    refundedBy.set(row.refundMethod, Number(row._sum.amount ?? 0))
-  }
-
-  const float = Number(session.openingFloat ?? 0)
-
-  return PAYMENT_METHODS.map((method) => {
-    const received = receivedBy.get(method) ?? 0
-    const refunded = refundedBy.get(method) ?? 0
-    return {
-      paymentMethod: method,
-      received,
-      refunded,
-      expected: round2(received - refunded + (method === 'CASH' ? float : 0)),
-    }
-  })
-}
-
-/** Money is compared to the paisa; floating-point drift is not a variance. */
-export function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100
-}
-
-export interface CountedLine {
-  paymentMethod: PaymentMethod
-  countedAmount: number
-  notes?: string | null
-}
-
-export interface ReconciledLine extends MethodTotal {
-  countedAmount: number
-  varianceAmount: number
-  notes: string | null
-}
-
-/**
- * Line up the physical count against what the session should hold.
- *
- * A method nobody counted is treated as zero counted rather than skipped: an
- * uncounted drawer with money expected in it is precisely the variance a
- * closing exists to surface.
- */
-export function reconcile(expected: MethodTotal[], counted: CountedLine[]): ReconciledLine[] {
-  const countedBy = new Map(counted.map((c) => [c.paymentMethod, c]))
-
-  return expected.map((line) => {
-    const entry = countedBy.get(line.paymentMethod)
-    const countedAmount = round2(Number(entry?.countedAmount ?? 0))
-    return {
-      ...line,
-      countedAmount,
-      varianceAmount: round2(countedAmount - line.expected),
-      notes: entry?.notes ?? null,
-    }
-  })
-}
-
-export function totalVariance(lines: ReconciledLine[]): number {
-  return round2(lines.reduce((sum, l) => sum + l.varianceAmount, 0))
+  return expectedTotals(
+    payments.map((row) => ({ method: row.paymentMethod, amount: Number(row._sum.amount ?? 0) })),
+    refunds.map((row) => ({ method: row.refundMethod, amount: Number(row._sum.amount ?? 0) })),
+    Number(session.openingFloat ?? 0)
+  )
 }

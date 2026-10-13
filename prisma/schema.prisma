@@ -909,6 +909,8 @@ model Procedure {
   hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   treatments      Treatment[]
   treatmentPlanItems TreatmentPlanItem[]
+  /// The recall types this procedure is the visit for. See RecareType.procedures.
+  recareTypes     RecareType[]
 
   @@unique([hospitalId, code])
   @@index([hospitalId, isActive, category])
@@ -2554,6 +2556,13 @@ model RecareType {
 
   hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   recares         Recare[]
+
+  /// The procedures that count as the visit for this recall: completing a
+  /// treatment with one of them moves the patient's recall of this type on, as
+  /// Mark as done would. Chosen by the clinic on the recall types screen; both
+  /// sides are always the same clinic's (the API checks it). Bug report 12 Oct,
+  /// finding 46 — before this the link was guessed from names.
+  procedures      Procedure[]
 
   @@unique([hospitalId, name])
   @@index([hospitalId, isActive, sortOrder])

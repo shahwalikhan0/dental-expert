@@ -133,6 +133,11 @@ describe('POST /api/payments/[id]/refund — FR-014', () => {
   it('allows a refund method different from the original payment', async () => {
     signedInAs('ADMIN')
     vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAYMENT as never)
+    // Cash out of the drawer needs a till to charge it to (finding 38).
+    vi.mocked(prisma.cashierSession.findFirst).mockResolvedValue({
+      id: 's1',
+      sessionNo: 'CS-202609-0001',
+    } as never)
 
     await REFUND(
       post('/api/payments/p1/refund', {
@@ -251,7 +256,9 @@ describe('POST /api/payments/[id]/refund — FR-014', () => {
     })
   })
 
-  it('still records a refund when no till is open', async () => {
+  // A card reversal does not go through the drawer, so it is not held up for
+  // want of a till — see refundNeedsOpenTill.
+  it('still records a card refund when no till is open', async () => {
     signedInAs('ADMIN')
     vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAYMENT as never)
 
@@ -262,8 +269,46 @@ describe('POST /api/payments/[id]/refund — FR-014', () => {
 
     expect(res.status).toBe(201)
     expect(vi.mocked(prisma.refund.create).mock.calls[0][0].data).toMatchObject({
+      refundMethod: 'CARD',
       cashierSessionId: null,
     })
+  })
+
+  // Finding 38 the other way round: cash leaving with no till open would leave
+  // the next closing short with nothing on the record to explain it.
+  it('refuses a cash refund when no till is open', async () => {
+    signedInAs('ADMIN')
+    vi.mocked(prisma.payment.findFirst).mockResolvedValue(PAYMENT as never)
+
+    const res = await REFUND(
+      post('/api/payments/p1/refund', {
+        refundAmount: 100,
+        refundReason: 'Overcharged',
+        refundMethod: 'CASH',
+      }),
+      params('p1')
+    )
+
+    expect(res.status).toBe(409)
+    await expect(res.json()).resolves.toMatchObject({ code: 'NO_OPEN_TILL' })
+    expect(prisma.refund.create).not.toHaveBeenCalled()
+    expect(prisma.payment.update).not.toHaveBeenCalled()
+  })
+
+  it('refuses a refund of a cash payment, by default in cash, when no till is open', async () => {
+    signedInAs('ADMIN')
+    vi.mocked(prisma.payment.findFirst).mockResolvedValue({
+      ...PAYMENT,
+      paymentMethod: 'CASH',
+    } as never)
+
+    const res = await REFUND(
+      post('/api/payments/p1/refund', { refundAmount: 100, refundReason: 'Overcharged' }),
+      params('p1')
+    )
+
+    expect(res.status).toBe(409)
+    expect(prisma.refund.create).not.toHaveBeenCalled()
   })
 
   it('refuses to refund a payment that never settled', async () => {

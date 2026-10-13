@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { PaymentStatus } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
-import { SETTLED_PAYMENT_STATUSES, getOpenSession } from '@/lib/cashier'
+import { SETTLED_PAYMENT_STATUSES, lockOpenSession } from '@/lib/cashier'
+import { NO_OPEN_TILL, NO_OPEN_TILL_MESSAGE } from '@/lib/till'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import {
@@ -179,11 +180,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             )
           }
 
-          // Money received now belongs to the till open now (finding 38).
-          if (!existingPayment.cashierSessionId) {
-            const openSession = await getOpenSession(hospitalId, { db: tx, userId: user?.id })
-            if (openSession) updateData.cashierSessionId = openSession.id
+          // Money received now belongs to the till open now, and with no till
+          // open it belongs to none — so, as when taking a payment fresh, it is
+          // refused until one is opened (finding 38). It goes into the till
+          // open now even if it was once attached to another: the money is
+          // arriving in today's drawer, and a session closed since was counted
+          // without it.
+          const openSession = await lockOpenSession(tx, hospitalId, user?.id)
+          if (!openSession) {
+            throw new BillingRefusal(409, NO_OPEN_TILL_MESSAGE, NO_OPEN_TILL)
           }
+          updateData.cashierSessionId = openSession.id
           completed = true
         }
       }
@@ -235,6 +242,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           amount: Number(payment.amount),
           method: payment.paymentMethod,
           status: 'COMPLETED',
+          cashierSessionId: payment.cashierSessionId ?? null,
         },
         ...requestContext(request.headers),
       })

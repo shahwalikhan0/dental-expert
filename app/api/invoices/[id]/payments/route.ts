@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { generatePaymentNo } from '@/lib/billing-utils'
-import { getOpenSession, round2 } from '@/lib/cashier'
+import { lockOpenSession, round2 } from '@/lib/cashier'
+import { NO_OPEN_TILL, NO_OPEN_TILL_MESSAGE } from '@/lib/till'
 import { PaymentMethod } from '@prisma/client'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
@@ -161,14 +162,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           )
         }
 
-        const paymentNo = await generatePaymentNo(tx, hospitalId)
+        // FR-015: a payment belongs to a till's reconciliation — the receiving
+        // user's own till where they have one — and spec §12 names the cashier
+        // on a financial transaction. Finding 38: Bilal's Rs 4,400 was taken
+        // with no till open, belonged to no session, and would never have
+        // appeared in any closing's expected cash. Now that Billing → Till can
+        // open one, a payment with none open is refused. Checked before the
+        // number is drawn, and behind a lock that a closing waits on, so the
+        // till cannot be counted down between this check and the payment.
+        const openSession = await lockOpenSession(tx, hospitalId, user?.id)
+        if (!openSession) {
+          throw new BillingRefusal(409, NO_OPEN_TILL_MESSAGE, NO_OPEN_TILL)
+        }
 
-        // FR-015: a payment taken while a till is open belongs to that till's
-        // reconciliation — the receiving user's own till where they have one —
-        // and spec §12 names the cashier on a financial transaction. Taking
-        // payment with no session open still works: there is no screen yet to
-        // open a till, and requiring one would stop every payment (finding 38).
-        const openSession = await getOpenSession(hospitalId, { db: tx, userId: user?.id })
+        const paymentNo = await generatePaymentNo(tx, hospitalId)
 
         const payment = await tx.payment.create({
           data: {
@@ -184,7 +191,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             chequeNumber,
             chequeDate: chequeOn,
             notes,
-            cashierSessionId: openSession?.id ?? null,
+            cashierSessionId: openSession.id,
             recordedById: user?.id ?? null,
           },
         })

@@ -29,6 +29,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.DISCOUNT_APPROVED]: 'Discount approved',
   [AUDIT_ACTIONS.DISCOUNT_REJECTED]: 'Discount refused',
   [AUDIT_ACTIONS.REFUND_ISSUED]: 'Refund issued',
+  [AUDIT_ACTIONS.TILL_OPENED]: 'Till opened',
+  [AUDIT_ACTIONS.TILL_CLOSED]: 'Till closed',
 
   [AUDIT_ACTIONS.GUARANTOR_CHANGED]: 'Account payer changed',
   [AUDIT_ACTIONS.RECALL_CONTACTED]: 'Recall list worked',
@@ -129,6 +131,8 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.DISCOUNT_APPROVED,
       AUDIT_ACTIONS.DISCOUNT_REJECTED,
       AUDIT_ACTIONS.REFUND_ISSUED,
+      AUDIT_ACTIONS.TILL_OPENED,
+      AUDIT_ACTIONS.TILL_CLOSED,
     ],
   },
   {

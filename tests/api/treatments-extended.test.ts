@@ -656,7 +656,7 @@ describe('treatment plans and the treatments that carry them out', () => {
     expect((await res.json()).error).toContain('cannot be reopened')
   })
 
-  it('completing a treatment completes its plan step and moves the matching recall', async () => {
+  it('completing a treatment completes its plan step and moves the linked recall', async () => {
     const { POST } = await import('@/app/api/treatments/[id]/complete/route')
 
     vi.mocked(prisma.treatment.findUnique).mockResolvedValue({
@@ -681,9 +681,10 @@ describe('treatment plans and the treatments that carry them out', () => {
       completedDate: null,
       items: [{ status: 'COMPLETED' }],
     } as any)
+    // The database answers "this patient's recalls whose type is linked to
+    // the procedure" — here only the hygiene recall is (finding 46).
     vi.mocked(prisma.recare.findMany).mockResolvedValue([
       { id: 'r-hyg', recareType: { name: 'Scale and polish', intervalMonths: 6 } },
-      { id: 'r-perio', recareType: { name: 'Periodontal maintenance', intervalMonths: 3 } },
     ] as any)
     vi.mocked(prisma.recare.findUnique).mockResolvedValue({
       id: 'r-hyg',
@@ -705,8 +706,16 @@ describe('treatment plans and the treatments that carry them out', () => {
     expect(prisma.treatmentPlan.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) })
     )
-    // The hygiene recall moved; the periodontal one did not — a routine scale
-    // and polish is not periodontal care.
+    // The recalls are found by the stored link to the procedure, not by name.
+    expect(prisma.recare.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          hospitalId: 'h1',
+          patientId: 'p1',
+          recareType: { hospitalId: 'h1', procedures: { some: { id: 'sc' } } },
+        }),
+      })
+    )
     expect(data.recallsMoved.map((r: any) => r.id)).toEqual(['r-hyg'])
     expect(prisma.recare.update).toHaveBeenCalledTimes(1)
   })

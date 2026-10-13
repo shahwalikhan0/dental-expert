@@ -21,7 +21,7 @@ import {
 import bcrypt from 'bcryptjs'
 import { reconcileStockAlerts } from '../lib/stock-alerts'
 import { defaultTemplatesFor } from '../lib/default-templates'
-import { defaultRecareTypesFor, nextDueDate } from '../lib/recare'
+import { defaultRecareTypesFor, linkDefaultRecareProcedures, nextDueDate } from '../lib/recare'
 import { instantAt, localDay } from '../lib/appointment-time'
 
 const prisma = new PrismaClient()
@@ -1487,6 +1487,11 @@ async function main() {
 
   if (recareTypeCount === 0) {
     await prisma.recareType.createMany({ data: defaultRecareTypesFor(hospital.id) })
+    // And which catalogue procedures move each one on when a treatment is
+    // completed — the scalings and cleanings for scale and polish, the
+    // examination for the check-up (bug report 12 Oct, finding 46). Without
+    // the links completing Fatima's scaling leaves her recall where it was.
+    await linkDefaultRecareProcedures(prisma, hospital.id)
     console.log('Created default recare types')
   }
 

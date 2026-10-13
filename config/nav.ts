@@ -40,6 +40,7 @@ import {
   ListTree,
   UserCheck,
   FileSpreadsheet,
+  Vault,
   type LucideIcon,
 } from 'lucide-react'
 import { holderCan, permissionForRoute, type Permission, type RoleHolder } from '@/lib/rbac'
@@ -223,6 +224,16 @@ export const navigation: NavSection[] = [
             title: 'Payments',
             href: '/billing/payments',
             icon: CreditCard,
+          },
+          {
+            // Open the drawer, count it down (FR-015). Payments are refused with
+            // no till open (finding 38), so the desk needs this in reach. Shown
+            // to those who can open a till — the same `billing:write` the open
+            // route asks for — rather than to everyone who can read billing.
+            title: 'Till',
+            href: '/billing/till',
+            icon: Vault,
+            permission: 'billing:write',
           },
           {
             title: 'Receivables',
