@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { recallPerformance } from '@/lib/recall'
 import { getDateRangeFromPreset } from '@/lib/billing-utils'
+import { clinicTimezone } from '@/lib/appointment-time'
+import { prisma } from '@/lib/prisma'
 
 /**
  * GET /api/recare/performance — did working the list bring anybody back?
@@ -27,7 +29,8 @@ export async function GET(request: NextRequest) {
     const range =
       from && to
         ? { startDate: new Date(from), endDate: new Date(to) }
-        : getDateRangeFromPreset(preset)
+        : // "This month" on the clinic's calendar, not the server's.
+          getDateRangeFromPreset(preset, await clinicTimezone(prisma, hospitalId))
 
     const data = await recallPerformance(hospitalId, {
       gte: range.startDate,

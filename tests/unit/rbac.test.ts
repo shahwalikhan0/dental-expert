@@ -240,14 +240,18 @@ describe('§4 — Dental Assistant: restricted from billing settings', () => {
 
 describe('§10 — operations needing elevated authorisation', () => {
   it('reserves destructive operations for the administrator', () => {
-    for (const permission of [
-      'patients:delete',
-      'clinical:delete',
-      'billing:void',
-    ] as Permission[]) {
+    for (const permission of ['patients:delete', 'clinical:delete'] as Permission[]) {
       const holders = ALL_ROLES.filter((r) => can(r, permission))
       expect(holders, `${permission} is held by more than the administrator`).toEqual(['ADMIN'])
     }
+  })
+
+  // Invoice review 6.1: managers cancel invoices raised in error. Reception
+  // and the accountant still cannot.
+  it('lets the administrator and the manager cancel an invoice, and nobody else', () => {
+    expect(ALL_ROLES.filter((r) => can(r, 'billing:void')).sort()).toEqual(
+      ['ADMIN', 'CLINIC_MANAGER'].sort()
+    )
   })
 
   it('reserves user administration and audit writes for the administrator', () => {

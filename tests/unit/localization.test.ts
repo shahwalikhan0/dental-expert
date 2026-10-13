@@ -184,10 +184,12 @@ describe('Section 10.1 — Current Locale (Pakistan)', () => {
       expect(result).toContain('Crore')
     })
 
-    it('numberToWords(1500.50) contains "Rupees" and "Paise"', () => {
+    // Paisa, the Pakistani word; "Paise" is the Indian one.
+    it('numberToWords(1500.50) contains "Rupees" and "Paisa"', () => {
       const result = numberToWords(1500.5)
       expect(result).toContain('Rupees')
-      expect(result).toContain('Paise')
+      expect(result).toContain('Paisa')
+      expect(result).not.toContain('Paise')
     })
 
     it('numberToWords(0) returns "Zero"', () => {

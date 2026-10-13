@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { BillingRefusal, billingRefusalResponse, lockInvoice } from '@/lib/invoice-settlement'
 
 /**
  * POST /api/invoices/[id]/discount-approval — the second half of FR-013.
@@ -20,6 +21,9 @@ import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 const decisionSchema = z.object({
   decision: z.enum(['APPROVE', 'REJECT']),
   note: z.string().trim().max(1000).optional().nullable(),
+  // The discount the approver was looking at. If it has changed since, the
+  // decision is about a different discount and is refused (review 4.8).
+  expectedDiscountAmount: z.number().nonnegative().optional().nullable(),
 })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -32,42 +36,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params
     const body = decisionSchema.parse(await req.json())
 
-    const invoice = await prisma.invoice.findFirst({
-      where: { id, hospitalId },
-      select: {
-        id: true,
-        invoiceNo: true,
-        discountAmount: true,
-        discountApprovalStatus: true,
-        discountRequestedById: true,
-      },
-    })
-
-    if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
-    }
-
-    if (invoice.discountApprovalStatus !== 'PENDING') {
-      return NextResponse.json(
-        {
-          error:
-            invoice.discountApprovalStatus === 'NOT_REQUIRED'
-              ? `${invoice.invoiceNo} has no discount needing approval`
-              : `The discount on ${invoice.invoiceNo} was already ${invoice.discountApprovalStatus.toLowerCase()}`,
-        },
-        { status: 409 }
-      )
-    }
-
-    // The person who asked for the discount must not be the one approving it,
-    // even where they hold the capability — that is the whole point of FR-013.
-    if (invoice.discountRequestedById && invoice.discountRequestedById === user.id) {
-      return NextResponse.json(
-        { error: 'A discount cannot be approved by the person who requested it' },
-        { status: 403 }
-      )
-    }
-
     if (body.decision === 'REJECT' && !body.note) {
       return NextResponse.json(
         { error: 'A note is required when rejecting a discount' },
@@ -75,19 +43,67 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       )
     }
 
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: {
-        discountApprovalStatus: body.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-        discountApprovedById: user.id,
-        discountDecidedAt: new Date(),
-        discountDecisionNote: body.note || null,
-      },
-      include: {
-        discountApprovedBy: { select: { id: true, name: true } },
-        discountRequestedBy: { select: { id: true, name: true } },
-      },
+    // Under the invoice's row lock, so the discount cannot be edited between
+    // the check below and the decision being written.
+    const outcome = await prisma.$transaction(async (tx) => {
+      await lockInvoice(tx, id, hospitalId)
+      const invoice = await tx.invoice.findFirst({
+        where: { id, hospitalId },
+        select: {
+          id: true,
+          invoiceNo: true,
+          discountAmount: true,
+          discountApprovalStatus: true,
+          discountRequestedById: true,
+        },
+      })
+
+      if (!invoice) throw new BillingRefusal(404, 'Invoice not found')
+
+      if (invoice.discountApprovalStatus !== 'PENDING') {
+        throw new BillingRefusal(
+          409,
+          invoice.discountApprovalStatus === 'NOT_REQUIRED'
+            ? `${invoice.invoiceNo} has no discount needing approval`
+            : `The discount on ${invoice.invoiceNo} was already ${invoice.discountApprovalStatus.toLowerCase()}`
+        )
+      }
+
+      if (
+        body.expectedDiscountAmount != null &&
+        Math.abs(Number(invoice.discountAmount) - body.expectedDiscountAmount) > 0.005
+      ) {
+        throw new BillingRefusal(
+          409,
+          `The discount on ${invoice.invoiceNo} has changed since you opened it. Reload the invoice and decide again.`
+        )
+      }
+
+      // The person who asked for the discount must not be the one approving it,
+      // even where they hold the capability — that is the whole point of FR-013.
+      if (invoice.discountRequestedById && invoice.discountRequestedById === user.id) {
+        throw new BillingRefusal(
+          403,
+          'A discount cannot be approved by the person who requested it'
+        )
+      }
+
+      const updated = await tx.invoice.update({
+        where: { id },
+        data: {
+          discountApprovalStatus: body.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          discountApprovedById: user.id,
+          discountDecidedAt: new Date(),
+          discountDecisionNote: body.note || null,
+        },
+        include: {
+          discountApprovedBy: { select: { id: true, name: true } },
+          discountRequestedBy: { select: { id: true, name: true } },
+        },
+      })
+      return { invoice, updated }
     })
+    const { invoice, updated } = outcome
 
     // The decision is on the invoice already. It goes here too because the
     // audit screen is where somebody looks for "what was approved this month,
@@ -121,6 +137,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: updated,
     })
   } catch (err) {
+    const refusal = billingRefusalResponse(err)
+    if (refusal) return refusal
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         { error: err.issues[0]?.message || 'Invalid decision' },

@@ -11,6 +11,10 @@ import bcrypt from 'bcryptjs'
 import { RowError, rowErrorMessage } from '@/lib/import/row-error'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { requireFeature } from '@/lib/plan-gate'
+import { generateInvoiceNo, generatePaymentNo } from '@/lib/billing-utils'
+import { lockInvoice, readSettlement, settleInvoice } from '@/lib/invoice-settlement'
+import { IMPORTED_PAYMENT_NOTE, importedInvoiceFigures } from '@/lib/import/invoice-figures'
+import type { PaymentStatus } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
   const { error, session, hospitalId } = await requirePermission('settings:write')
@@ -684,36 +688,96 @@ async function importInvoices(
         throw new RowError(`Row ${row._rowNum}: Patient not found`)
       }
 
-      const invoiceNo =
-        row.invoiceNo || (await generateId(hospitalId, 'invoice', 'INV', 'invoiceNo'))
-      const subtotal = row.subtotal ?? 0
-      const totalAmount = row.totalAmount ?? subtotal
-      const paidAmount = row.paidAmount ?? 0
-      const balanceAmount = row.balanceAmount ?? totalAmount - paidAmount
-      const taxableAmount = row.taxableAmount ?? subtotal
-      // Imported invoices keep whatever tax they were issued with. A row from
-      // an Indian system may carry cgst/sgst columns; sum them into the single
-      // tax line rather than dropping them.
-      const taxAmount = row.taxAmount ?? (row.cgstAmount ?? 0) + (row.sgstAmount ?? 0)
+      // The same check the validate step ran, so a row it showed as an error
+      // is refused here rather than imported with figures that do not add up.
+      const checked = importedInvoiceFigures(row)
+      if (!checked.ok) {
+        if (skipErrors) {
+          errorCount++
+          errors.push({ row: row._rowNum, message: checked.problem.message })
+          continue
+        }
+        throw new RowError(`Row ${row._rowNum}: ${checked.problem.message}`)
+      }
+      const figures = checked.figures
 
-      await prisma.invoice.create({
-        data: {
-          hospitalId,
-          invoiceNo,
-          patientId,
-          subtotal,
-          totalAmount,
-          paidAmount,
-          balanceAmount,
-          taxableAmount,
-          taxAmount,
-          discountAmount: row.discountAmount || 0,
-          status:
-            row.status ||
-            (paidAmount >= totalAmount ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'PENDING'),
-          dueDate: row.dueDate || undefined,
-          notes: row.notes || undefined,
-        },
+      // An old system's invoice was issued on its own date, not today's. A
+      // draft has not been issued and has no due date unless the row gives one;
+      // an issued invoice with none is due on the day it was issued, as in the
+      // app (migration 20261014090000).
+      const invoiceDate: Date = row.invoiceDate || new Date()
+      const issued = figures.status !== 'DRAFT'
+
+      await prisma.$transaction(async (tx) => {
+        // The app's own series, so imported and desk invoices share one run of
+        // numbers rather than two (the importer used to draw INV2026NNNNN).
+        const invoiceNo = row.invoiceNo || (await generateInvoiceNo(tx, hospitalId))
+
+        const invoice = await tx.invoice.create({
+          data: {
+            hospitalId,
+            invoiceNo,
+            patientId,
+            subtotal: figures.subtotal,
+            // Recorded as the fixed amount it was, so editing the invoice later
+            // recalculates with the same discount rather than none.
+            discountType: figures.discountAmount > 0 ? 'FIXED' : undefined,
+            discountValue: figures.discountAmount > 0 ? figures.discountAmount : undefined,
+            discountAmount: figures.discountAmount,
+            taxableAmount: figures.taxableAmount,
+            taxRate: figures.taxRate,
+            taxAmount: figures.taxAmount,
+            totalAmount: figures.totalAmount,
+            // Counted from the payments by settleInvoice below, never taken
+            // from the row.
+            paidAmount: 0,
+            balanceAmount: figures.totalAmount,
+            status: figures.status,
+            issuedAt: issued ? invoiceDate : undefined,
+            dueDate: row.dueDate || (issued ? invoiceDate : undefined),
+            notes: row.notes || undefined,
+            // Lists and older reports order invoices by createdAt; an import
+            // dated today would put years of history at the top.
+            createdAt: invoiceDate,
+            // Every invoice screen reads its lines. The export has one row per
+            // invoice, so it is one line at the subtotal; the discount and tax
+            // sit on the invoice as they do for one raised at the desk.
+            items: {
+              create: [
+                {
+                  description: figures.description,
+                  quantity: 1,
+                  unitPrice: figures.subtotal,
+                  amount: figures.subtotal,
+                  taxable: figures.taxable,
+                },
+              ],
+            },
+          },
+          select: { id: true, status: true, totalAmount: true },
+        })
+
+        // What the row says was paid becomes a payment, so the payment screen
+        // and the ledger count the same money the invoice shows. No till, for
+        // the reason given in importPayments. If a payments file is imported
+        // for this invoice later, that file is the record and this payment is
+        // set aside there.
+        if (figures.paidAmount > 0) {
+          await tx.payment.create({
+            data: {
+              hospitalId,
+              paymentNo: await generatePaymentNo(tx, hospitalId),
+              invoiceId: invoice.id,
+              amount: figures.paidAmount,
+              paymentMethod: row.paymentMethod || 'CASH',
+              paymentDate: invoiceDate,
+              status: 'COMPLETED',
+              notes: IMPORTED_PAYMENT_NOTE,
+            },
+          })
+        }
+
+        await settleInvoice(tx, invoice)
       })
       successCount++
     } catch (err: any) {
@@ -728,6 +792,23 @@ async function importInvoices(
   return { successCount, errorCount }
 }
 
+/**
+ * Payments from the old system, each counted onto its invoice.
+ *
+ * The rule for an invoice whose row in the invoice file also gave a paid
+ * amount: **once a payments file names an invoice, that file is the record of
+ * what was paid on it.** The payment the invoice import made from the row's
+ * paid amount (notes "Imported payment", no till, untouched since) is set
+ * aside — marked CANCELLED, so it stays on record but no longer counts — the
+ * first time a payment row for that invoice is imported. Without this the
+ * same money was counted twice: once from the invoice row, once from here.
+ *
+ * Only a COMPLETED payment brings money in, and it is refused when it is more
+ * than the invoice still owes or when the invoice could not take it at the
+ * desk (a draft, a cancelled or a refunded invoice). A REFUNDED payment is
+ * recorded as received and handed back in full; pending, failed and cancelled
+ * ones are recorded and count for nothing, as in settleInvoice.
+ */
 async function importPayments(
   hospitalId: string,
   rows: Record<string, any>[],
@@ -760,37 +841,94 @@ async function importPayments(
         throw new RowError(`Row ${row._rowNum}: Invoice not found`)
       }
 
-      if (!row.amount || !row.paymentMethod) {
+      if (!row.amount || row.amount < 0 || !row.paymentMethod) {
         if (skipErrors) {
           errorCount++
-          errors.push({ row: row._rowNum, message: 'Amount and paymentMethod are required' })
+          errors.push({
+            row: row._rowNum,
+            message: 'A positive amount and a paymentMethod are required',
+          })
           continue
         }
-        throw new RowError(`Row ${row._rowNum}: Amount and paymentMethod are required`)
+        throw new RowError(`Row ${row._rowNum}: A positive amount and a paymentMethod are required`)
       }
 
-      const paymentNo =
-        row.paymentNo || (await generateId(hospitalId, 'payment', 'PAY', 'paymentNo'))
+      const amount: number = row.amount
+      const status: PaymentStatus = row.status || 'COMPLETED'
+      const paymentDate: Date = row.paymentDate || new Date()
 
       // Not attached to a till and not refused when none is open, unlike a
       // payment taken at the desk (finding 38). An import brings across money
       // received in the old system, on earlier days, into drawers that were
       // counted then; putting it in today's till would make today's closing
       // expect cash that was never in it.
-      await prisma.payment.create({
-        data: {
-          hospitalId,
-          paymentNo,
-          invoiceId,
-          amount: row.amount,
-          paymentMethod: row.paymentMethod,
-          paymentDate: row.paymentDate || new Date(),
-          transactionId: row.transactionId || undefined,
-          bankName: row.bankName || undefined,
-          chequeNumber: row.chequeNumber || undefined,
-          status: row.status || 'COMPLETED',
-          notes: row.notes || undefined,
-        },
+      //
+      // One transaction per row, holding the invoice, from reading its balance
+      // to writing the payment and recounting — as the payments route does. A
+      // refused row rolls back whole, the set-aside payment included.
+      await prisma.$transaction(async (tx) => {
+        await lockInvoice(tx, invoiceId, hospitalId)
+        const invoice = await tx.invoice.findFirst({
+          where: { id: invoiceId, hospitalId },
+          select: { id: true, invoiceNo: true, status: true, totalAmount: true },
+        })
+        if (!invoice) throw new RowError(`Row ${row._rowNum}: Invoice not found`)
+
+        // The rule above: this file now says what was paid on the invoice.
+        // Matching on the note, an empty till and no refunds finds only the
+        // payment the invoice import made and nobody has since touched.
+        await tx.payment.updateMany({
+          where: {
+            hospitalId,
+            invoiceId,
+            notes: IMPORTED_PAYMENT_NOTE,
+            status: 'COMPLETED',
+            cashierSessionId: null,
+            refundAmount: null,
+            refunds: { none: {} },
+          },
+          data: {
+            status: 'CANCELLED',
+            notes: `${IMPORTED_PAYMENT_NOTE} — set aside: the payments import is the record for this invoice`,
+          },
+        })
+
+        if (status === 'COMPLETED') {
+          if (['DRAFT', 'CANCELLED', 'REFUNDED'].includes(invoice.status)) {
+            throw new RowError(
+              `Row ${row._rowNum}: ${invoice.invoiceNo} is ${invoice.status.toLowerCase()} and cannot take a payment`
+            )
+          }
+          const { balanceAmount } = await readSettlement(tx, invoice)
+          if (amount > balanceAmount + 0.005) {
+            throw new RowError(
+              `Row ${row._rowNum}: Payment of ${amount.toFixed(2)} is more than the ${balanceAmount.toFixed(2)} still owed on ${invoice.invoiceNo}`
+            )
+          }
+        }
+
+        await tx.payment.create({
+          data: {
+            hospitalId,
+            paymentNo: row.paymentNo || (await generatePaymentNo(tx, hospitalId)),
+            invoiceId,
+            amount,
+            paymentMethod: row.paymentMethod,
+            paymentDate,
+            transactionId: row.transactionId || undefined,
+            bankName: row.bankName || undefined,
+            chequeNumber: row.chequeNumber || undefined,
+            status,
+            // A refunded payment from the old system has no refund rows here.
+            // netPaid reads the amount handed back from `refundAmount` when
+            // there are none, so without it the money would count as kept.
+            refundAmount: status === 'REFUNDED' ? amount : undefined,
+            refundDate: status === 'REFUNDED' ? paymentDate : undefined,
+            notes: row.notes || undefined,
+          },
+        })
+
+        await settleInvoice(tx, invoice)
       })
       successCount++
     } catch (err: any) {

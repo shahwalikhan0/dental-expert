@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { getDateRangeFromPreset } from '@/lib/billing-utils'
+import { dateRangeFromDays, getDateRangeFromPreset } from '@/lib/billing-utils'
 import { collectionTotals, dayKeyOf } from '@/lib/collections'
 import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
-import { clinicTimezone } from '@/lib/appointment-time'
+import { clinicTimezone, localDay } from '@/lib/appointment-time'
+import {
+  billedAt,
+  billedInvoiceWhere,
+  daysPastDue,
+  money,
+  owedInvoiceWhere,
+} from '@/lib/invoice-figures'
+import { billedTotals, invoicedLines, outstandingTotals } from '@/lib/invoiced'
+import { AGEING_BUCKETS, ageingBucket, type AgeingBucketKey } from '@/lib/ageing'
+
+const DAY = /^\d{4}-\d{2}-\d{2}/
 
 // GET - Generate billing reports
 export async function GET(request: NextRequest) {
@@ -20,16 +31,27 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
 
-    // Determine date range
+    // Every window and every day key on the clinic's calendar. The presets were
+    // the server's midnight, a custom range started at UTC midnight and ended
+    // at the server's 23:59, and the revenue report keyed days by UTC — three
+    // different edges to one day on one screen.
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
     let startDate: Date
     let endDate: Date
 
     if (dateFrom && dateTo) {
-      startDate = new Date(dateFrom)
-      endDate = new Date(dateTo)
-      endDate.setHours(23, 59, 59, 999)
+      if (!DAY.test(dateFrom) || !DAY.test(dateTo)) {
+        return NextResponse.json(
+          { error: 'dateFrom and dateTo must be dates such as 2026-10-14.' },
+          { status: 400 }
+        )
+      }
+      const range = dateRangeFromDays(dateFrom.slice(0, 10), dateTo.slice(0, 10), timezone)
+      startDate = range.startDate
+      endDate = range.endDate
     } else {
-      const range = getDateRangeFromPreset(preset)
+      const range = getDateRangeFromPreset(preset, timezone)
       startDate = range.startDate
       endDate = range.endDate
     }
@@ -38,17 +60,17 @@ export async function GET(request: NextRequest) {
       case 'summary':
         return await getSummaryReport(startDate, endDate, hospitalId)
       case 'revenue':
-        return await getRevenueReport(startDate, endDate, hospitalId)
+        return await getRevenueReport(startDate, endDate, hospitalId, timezone)
       case 'payments':
         return await getPaymentsReport(startDate, endDate, hospitalId)
       case 'outstanding':
-        return await getOutstandingReport(hospitalId)
+        return await getOutstandingReport(hospitalId, timezone)
       case 'procedure_revenue':
         return await getProcedureRevenueReport(startDate, endDate, hospitalId)
       case 'doctor_revenue':
         return await getDoctorRevenueReport(startDate, endDate, hospitalId)
       case 'daily_collection':
-        return await getDailyCollectionReport(startDate, endDate, hospitalId)
+        return await getDailyCollectionReport(startDate, endDate, hospitalId, timezone)
       default:
         return NextResponse.json({ error: 'Invalid report type' }, { status: 400 })
     }
@@ -64,54 +86,52 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Summary Report
+/**
+ * Summary: Billed, Collected and Outstanding, by the definitions in
+ * lib/invoice-figures.ts.
+ *
+ * Total Billed used to be every invoice *created* in the window, drafts and
+ * cancelled ones included — 16,500 for four invoices of which 13,000 had
+ * been billed (review §3.2) — and the collection rate on the overview divided
+ * cash by that.
+ */
 async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: string) {
-  const dateFilter = {
-    gte: startDate,
-    lte: endDate,
-  }
+  const window = { gte: startDate, lte: endDate }
 
-  const [invoiceSummary, collected, outstandingSummary] = await Promise.all([
-    // Invoice summary
-    prisma.invoice.aggregate({
-      where: { hospitalId, createdAt: dateFilter },
-      _sum: { totalAmount: true, discountAmount: true },
-      _count: true,
-    }),
+  const [billed, collected, outstanding, invoiceStatusBreakdown] = await Promise.all([
+    billedTotals(hospitalId, window),
     // What was actually taken, net of anything handed back — see lib/collections.ts.
-    collectionTotals(hospitalId, dateFilter),
-    // Outstanding summary
-    prisma.invoice.aggregate({
+    collectionTotals(hospitalId, window),
+    // Owed now, whenever it was billed.
+    outstandingTotals(hospitalId),
+    // Every invoice of the period by status, drafts included — they are a
+    // status like any other here. Issued invoices are dated as Billed dates
+    // them, so the issued rows add up to Total Billed; a draft has no issue
+    // date and is placed by when it was started.
+    prisma.invoice.groupBy({
+      by: ['status'],
       where: {
         hospitalId,
-        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+        OR: [{ issuedAt: window }, { issuedAt: null, createdAt: window }],
       },
-      _sum: { balanceAmount: true },
+      _sum: { totalAmount: true },
       _count: true,
     }),
   ])
 
-  // Invoice status breakdown
-  const invoiceStatusBreakdown = await prisma.invoice.groupBy({
-    by: ['status'],
-    where: { hospitalId, createdAt: dateFilter },
-    _sum: { totalAmount: true },
-    _count: true,
-  })
-
   return NextResponse.json({
     period: { startDate, endDate },
     summary: {
-      totalBilled: invoiceSummary._sum.totalAmount || 0,
-      totalDiscounts: invoiceSummary._sum.discountAmount || 0,
-      invoiceCount: invoiceSummary._count,
+      totalBilled: billed.billed,
+      totalDiscounts: billed.discounts,
+      invoiceCount: billed.invoiceCount,
       totalCollected: collected.net,
       totalReceived: collected.received,
       totalRefunded: collected.refunded,
       paymentCount: collected.paymentCount,
       refundCount: collected.refundCount,
-      totalOutstanding: outstandingSummary._sum.balanceAmount || 0,
-      outstandingInvoices: outstandingSummary._count,
+      totalOutstanding: outstanding.outstanding,
+      outstandingInvoices: outstanding.invoiceCount,
     },
     breakdowns: {
       byPaymentMethod: collected.byMethod.map((row) => ({
@@ -130,80 +150,92 @@ async function getSummaryReport(startDate: Date, endDate: Date, hospitalId: stri
   })
 }
 
-// Revenue Report
-async function getRevenueReport(startDate: Date, endDate: Date, hospitalId: string) {
-  // Get daily revenue data
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      hospitalId,
-      createdAt: {
-        gte: startDate,
-        lte: endDate,
+/**
+ * Revenue by clinic day: what was billed and what was collected.
+ *
+ * "Collected" here was `invoice.paidAmount` of the invoices *raised* that day
+ * — a cohort figure under the name of the cash figure, so this report and the
+ * summary above it disagreed on both lines. It is the cash collected that day
+ * now, net of refunds, the same as the summary and the daily collection sheet.
+ * Billed excludes drafts as well as cancelled invoices, and is dated by issue.
+ */
+async function getRevenueReport(
+  startDate: Date,
+  endDate: Date,
+  hospitalId: string,
+  timezone: string
+) {
+  const window = { gte: startDate, lte: endDate }
+
+  const [invoices, payments, refunds] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { hospitalId, ...billedInvoiceWhere(window) },
+      select: {
+        createdAt: true,
+        issuedAt: true,
+        totalAmount: true,
+        discountAmount: true,
+        taxAmount: true,
       },
-      status: { not: 'CANCELLED' },
-    },
-    select: {
-      createdAt: true,
-      totalAmount: true,
-      paidAmount: true,
-      discountAmount: true,
-      taxAmount: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  })
+    }),
+    prisma.payment.findMany({
+      where: {
+        hospitalId,
+        paymentDate: window,
+        status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
+      },
+      select: { paymentDate: true, amount: true },
+    }),
+    prisma.refund.findMany({
+      where: { hospitalId, refundedAt: window },
+      select: { refundedAt: true, amount: true },
+    }),
+  ])
 
-  // Group by date
-  const dailyRevenue: Record<
-    string,
-    {
-      date: string
-      billed: number
-      collected: number
-      discount: number
-      tax: number
-      count: number
-    }
-  > = {}
-
-  invoices.forEach((invoice) => {
-    const dateKey = invoice.createdAt.toISOString().split('T')[0]
-    if (!dailyRevenue[dateKey]) {
-      dailyRevenue[dateKey] = {
-        date: dateKey,
-        billed: 0,
-        collected: 0,
-        discount: 0,
-        tax: 0,
-        count: 0,
-      }
-    }
-    dailyRevenue[dateKey].billed += Number(invoice.totalAmount)
-    dailyRevenue[dateKey].collected += Number(invoice.paidAmount)
-    dailyRevenue[dateKey].discount += Number(invoice.discountAmount)
-    dailyRevenue[dateKey].tax += Number(invoice.taxAmount)
-    dailyRevenue[dateKey].count += 1
-  })
-
-  // Calculate totals
-  const totals = {
-    totalBilled: 0,
-    totalCollected: 0,
-    totalDiscount: 0,
-    totalTax: 0,
-    invoiceCount: 0,
+  interface Day {
+    date: string
+    billed: number
+    collected: number
+    discount: number
+    tax: number
+    count: number
+  }
+  const dailyRevenue: Record<string, Day> = {}
+  const dayOf = (at: Date): Day => {
+    const key = dayKeyOf(at, timezone)
+    dailyRevenue[key] ??= { date: key, billed: 0, collected: 0, discount: 0, tax: 0, count: 0 }
+    return dailyRevenue[key]
   }
 
-  Object.values(dailyRevenue).forEach((day) => {
-    totals.totalBilled += day.billed
-    totals.totalCollected += day.collected
-    totals.totalDiscount += day.discount
-    totals.totalTax += day.tax
-    totals.invoiceCount += day.count
-  })
+  for (const invoice of invoices) {
+    const day = dayOf(billedAt(invoice))
+    day.billed = money(day.billed + money(invoice.totalAmount))
+    day.discount = money(day.discount + money(invoice.discountAmount))
+    day.tax = money(day.tax + money(invoice.taxAmount))
+    day.count += 1
+  }
+  for (const payment of payments) {
+    const day = dayOf(payment.paymentDate)
+    day.collected = money(day.collected + money(payment.amount))
+  }
+  for (const refund of refunds) {
+    const day = dayOf(refund.refundedAt)
+    day.collected = money(day.collected - money(refund.amount))
+  }
+
+  const days = Object.values(dailyRevenue).sort((a, b) => a.date.localeCompare(b.date))
+
+  const totals = {
+    totalBilled: money(days.reduce((sum, day) => sum + day.billed, 0)),
+    totalCollected: money(days.reduce((sum, day) => sum + day.collected, 0)),
+    totalDiscount: money(days.reduce((sum, day) => sum + day.discount, 0)),
+    totalTax: money(days.reduce((sum, day) => sum + day.tax, 0)),
+    invoiceCount: invoices.length,
+  }
 
   return NextResponse.json({
     period: { startDate, endDate },
-    dailyData: Object.values(dailyRevenue),
+    dailyData: days,
     totals,
   })
 }
@@ -261,14 +293,18 @@ async function getPaymentsReport(startDate: Date, endDate: Date, hospitalId: str
   })
 }
 
-// Outstanding Report
-async function getOutstandingReport(hospitalId: string) {
+/**
+ * Outstanding, aged.
+ *
+ * Owed invoices by the shared rule — a refunded invoice is not a debt, an
+ * OVERDUE one is — in the buckets every ageing screen uses, counted in days
+ * past the due date on the clinic's calendar. This screen and the overview's
+ * Claims Aging called an invoice raised yesterday with no due date "1–30 days
+ * overdue" while Receivables called it current (bug report item 5).
+ */
+async function getOutstandingReport(hospitalId: string, timezone: string) {
   const outstandingInvoices = await prisma.invoice.findMany({
-    where: {
-      hospitalId,
-      status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-      balanceAmount: { gt: 0 },
-    },
+    where: { hospitalId, ...owedInvoiceWhere() },
     include: {
       patient: {
         select: {
@@ -283,82 +319,43 @@ async function getOutstandingReport(hospitalId: string) {
     orderBy: [{ dueDate: 'asc' }, { balanceAmount: 'desc' }],
   })
 
-  // Calculate aging buckets
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const todayYmd = localDay(new Date(), timezone)
 
-  const aging = {
-    current: { amount: 0, count: 0 }, // Not yet due
-    days1_30: { amount: 0, count: 0 }, // 1-30 days overdue
-    days31_60: { amount: 0, count: 0 }, // 31-60 days overdue
-    days61_90: { amount: 0, count: 0 }, // 61-90 days overdue
-    over90: { amount: 0, count: 0 }, // Over 90 days overdue
-  }
+  const aging = Object.fromEntries(
+    AGEING_BUCKETS.map((bucket) => [bucket.key, { amount: 0, count: 0 }])
+  ) as Record<AgeingBucketKey, { amount: number; count: number }>
 
-  outstandingInvoices.forEach((invoice) => {
-    const balance = Number(invoice.balanceAmount)
-    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : new Date(invoice.createdAt)
-    dueDate.setHours(0, 0, 0, 0)
-
-    const daysDiff = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
-
-    if (daysDiff <= 0) {
-      aging.current.amount += balance
-      aging.current.count += 1
-    } else if (daysDiff <= 30) {
-      aging.days1_30.amount += balance
-      aging.days1_30.count += 1
-    } else if (daysDiff <= 60) {
-      aging.days31_60.amount += balance
-      aging.days31_60.count += 1
-    } else if (daysDiff <= 90) {
-      aging.days61_90.amount += balance
-      aging.days61_90.count += 1
-    } else {
-      aging.over90.amount += balance
-      aging.over90.count += 1
-    }
+  const invoices = outstandingInvoices.map((invoice) => {
+    const daysLate = daysPastDue(invoice, todayYmd, timezone)
+    const bucket = aging[ageingBucket(daysLate)]
+    bucket.amount = money(bucket.amount + money(invoice.balanceAmount))
+    bucket.count += 1
+    return { ...invoice, daysOverdue: Math.max(0, daysLate) }
   })
 
-  const totalOutstanding = outstandingInvoices.reduce(
-    (sum, inv) => sum + Number(inv.balanceAmount),
-    0
-  )
-
   return NextResponse.json({
-    invoices: outstandingInvoices,
+    invoices,
     aging,
     totals: {
-      totalOutstanding,
-      invoiceCount: outstandingInvoices.length,
+      totalOutstanding: money(invoices.reduce((sum, inv) => sum + money(inv.balanceAmount), 0)),
+      invoiceCount: invoices.length,
     },
   })
 }
 
-// Procedure Revenue Report
+/**
+ * Invoiced by procedure: invoice lines, less their share of the discount, on
+ * invoices issued in the window and neither draft nor cancelled.
+ *
+ * This was Σ `Treatment.cost` of treatments started in the window — list
+ * price, billed or not, discount ignored. The JSON keeps its `totalRevenue`
+ * names for the screens that read it; what they hold is the invoiced amount,
+ * before tax. Lines that bill no treatment (a product, a manual charge) have
+ * no procedure and are reported apart as `otherInvoiced`.
+ */
 async function getProcedureRevenueReport(startDate: Date, endDate: Date, hospitalId: string) {
-  const treatments = await prisma.treatment.findMany({
-    where: {
-      hospitalId,
-      createdAt: {
-        gte: startDate,
-        lte: endDate,
-      },
-      status: { in: ['COMPLETED', 'IN_PROGRESS'] },
-    },
-    include: {
-      procedure: {
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          category: true,
-        },
-      },
-    },
-  })
+  const lines = await invoicedLines(hospitalId, { gte: startDate, lte: endDate })
 
-  // Group by procedure
   const byProcedure: Record<
     string,
     {
@@ -371,97 +368,63 @@ async function getProcedureRevenueReport(startDate: Date, endDate: Date, hospita
       avgRevenue: number
     }
   > = {}
+  let otherInvoiced = 0
 
-  treatments.forEach((treatment) => {
-    if (!treatment.procedure) return
-
-    const procId = treatment.procedure.id
-    if (!byProcedure[procId]) {
-      byProcedure[procId] = {
-        procedureId: procId,
-        code: treatment.procedure.code,
-        name: treatment.procedure.name,
-        category: treatment.procedure.category,
-        totalRevenue: 0,
-        count: 0,
-        avgRevenue: 0,
-      }
+  for (const line of lines) {
+    if (!line.procedure) {
+      otherInvoiced = money(otherInvoiced + line.amount)
+      continue
     }
-    byProcedure[procId].totalRevenue += Number(treatment.cost || 0)
-    byProcedure[procId].count += 1
-  })
-
-  // Calculate averages
-  Object.values(byProcedure).forEach((proc) => {
-    proc.avgRevenue = proc.count > 0 ? proc.totalRevenue / proc.count : 0
-  })
-
-  // Group by category
-  const byCategory: Record<
-    string,
-    {
-      category: string
-      totalRevenue: number
-      count: number
-    }
-  > = {}
+    const proc = (byProcedure[line.procedure.id] ??= {
+      procedureId: line.procedure.id,
+      code: line.procedure.code,
+      name: line.procedure.name,
+      category: line.procedure.category,
+      totalRevenue: 0,
+      count: 0,
+      avgRevenue: 0,
+    })
+    proc.totalRevenue = money(proc.totalRevenue + line.amount)
+    proc.count += 1
+  }
 
   Object.values(byProcedure).forEach((proc) => {
-    const cat = proc.category
-    if (!byCategory[cat]) {
-      byCategory[cat] = { category: cat, totalRevenue: 0, count: 0 }
-    }
-    byCategory[cat].totalRevenue += proc.totalRevenue
-    byCategory[cat].count += proc.count
+    proc.avgRevenue = proc.count > 0 ? money(proc.totalRevenue / proc.count) : 0
   })
 
-  // Sort by revenue
+  const byCategory: Record<string, { category: string; totalRevenue: number; count: number }> = {}
+  Object.values(byProcedure).forEach((proc) => {
+    const cat = (byCategory[proc.category] ??= {
+      category: proc.category,
+      totalRevenue: 0,
+      count: 0,
+    })
+    cat.totalRevenue = money(cat.totalRevenue + proc.totalRevenue)
+    cat.count += proc.count
+  })
+
   const proceduresList = Object.values(byProcedure).sort((a, b) => b.totalRevenue - a.totalRevenue)
-
-  const totalRevenue = proceduresList.reduce((sum, p) => sum + p.totalRevenue, 0)
-  const totalTreatments = proceduresList.reduce((sum, p) => sum + p.count, 0)
 
   return NextResponse.json({
     period: { startDate, endDate },
     byProcedure: proceduresList,
     byCategory: Object.values(byCategory).sort((a, b) => b.totalRevenue - a.totalRevenue),
     totals: {
-      totalRevenue,
-      totalTreatments,
+      totalRevenue: money(proceduresList.reduce((sum, p) => sum + p.totalRevenue, 0)),
+      totalTreatments: proceduresList.reduce((sum, p) => sum + p.count, 0),
+      otherInvoiced,
     },
   })
 }
 
-// Doctor Revenue Report
+/**
+ * Invoiced by doctor: the same lines as by procedure, attributed to the
+ * doctor on the treatment each line bills. `treatmentCount` is how many
+ * treatments of theirs were billed in the window.
+ */
 async function getDoctorRevenueReport(startDate: Date, endDate: Date, hospitalId: string) {
-  const treatments = await prisma.treatment.findMany({
-    where: {
-      hospitalId,
-      createdAt: {
-        gte: startDate,
-        lte: endDate,
-      },
-      status: { in: ['COMPLETED', 'IN_PROGRESS'] },
-    },
-    include: {
-      doctor: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          specialization: true,
-        },
-      },
-      procedure: {
-        select: {
-          name: true,
-          category: true,
-        },
-      },
-    },
-  })
+  const lines = await invoicedLines(hospitalId, { gte: startDate, lte: endDate })
 
-  // Group by doctor
   const byDoctor: Record<
     string,
     {
@@ -474,69 +437,60 @@ async function getDoctorRevenueReport(startDate: Date, endDate: Date, hospitalId
       procedures: Record<string, number>
     }
   > = {}
+  let unattributed = 0
 
-  treatments.forEach((treatment) => {
-    if (!treatment.doctor) return
-
-    const docId = treatment.doctor.id
-    const docName = `${treatment.doctor.firstName} ${treatment.doctor.lastName}`
-
-    if (!byDoctor[docId]) {
-      byDoctor[docId] = {
-        doctorId: docId,
-        name: docName,
-        specialization: treatment.doctor.specialization,
-        totalRevenue: 0,
-        treatmentCount: 0,
-        avgPerTreatment: 0,
-        procedures: {},
-      }
+  for (const line of lines) {
+    if (!line.doctor) {
+      unattributed = money(unattributed + line.amount)
+      continue
     }
-
-    byDoctor[docId].totalRevenue += Number(treatment.cost || 0)
-    byDoctor[docId].treatmentCount += 1
-
-    if (treatment.procedure) {
-      const procName = treatment.procedure.name
-      byDoctor[docId].procedures[procName] = (byDoctor[docId].procedures[procName] || 0) + 1
+    const doc = (byDoctor[line.doctor.id] ??= {
+      doctorId: line.doctor.id,
+      name: `${line.doctor.firstName} ${line.doctor.lastName}`,
+      specialization: line.doctor.specialization,
+      totalRevenue: 0,
+      treatmentCount: 0,
+      avgPerTreatment: 0,
+      procedures: {},
+    })
+    doc.totalRevenue = money(doc.totalRevenue + line.amount)
+    doc.treatmentCount += 1
+    if (line.procedure) {
+      doc.procedures[line.procedure.name] = (doc.procedures[line.procedure.name] || 0) + 1
     }
-  })
+  }
 
-  // Calculate averages and format procedures
   const doctorsList = Object.values(byDoctor)
-    .map((doc) => {
-      doc.avgPerTreatment = doc.treatmentCount > 0 ? doc.totalRevenue / doc.treatmentCount : 0
-
-      // Get top 5 procedures
-      const topProcedures = Object.entries(doc.procedures)
+    .map(({ procedures, ...doc }) => ({
+      ...doc,
+      avgPerTreatment: doc.treatmentCount > 0 ? money(doc.totalRevenue / doc.treatmentCount) : 0,
+      // Top 5 procedures
+      topProcedures: Object.entries(procedures)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([name, count]) => ({ name, count }))
-
-      return {
-        ...doc,
-        topProcedures,
-      }
-    })
+        .map(([name, count]) => ({ name, count })),
+    }))
     .sort((a, b) => b.totalRevenue - a.totalRevenue)
-
-  const totalRevenue = doctorsList.reduce((sum, d) => sum + d.totalRevenue, 0)
-  const totalTreatments = doctorsList.reduce((sum, d) => sum + d.treatmentCount, 0)
 
   return NextResponse.json({
     period: { startDate, endDate },
     byDoctor: doctorsList,
     totals: {
-      totalRevenue,
-      totalTreatments,
+      totalRevenue: money(doctorsList.reduce((sum, d) => sum + d.totalRevenue, 0)),
+      totalTreatments: doctorsList.reduce((sum, d) => sum + d.treatmentCount, 0),
       doctorCount: doctorsList.length,
+      unattributed,
     },
   })
 }
 
 // Daily Collection Report
-async function getDailyCollectionReport(startDate: Date, endDate: Date, hospitalId: string) {
-  const timezone = await clinicTimezone(prisma, hospitalId)
+async function getDailyCollectionReport(
+  startDate: Date,
+  endDate: Date,
+  hospitalId: string,
+  timezone: string
+) {
   const window = { gte: startDate, lte: endDate }
 
   const [payments, refunds] = await Promise.all([

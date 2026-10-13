@@ -48,6 +48,7 @@ import {
 } from 'recharts'
 
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 
 // Chart colors
 const CHART_COLORS = [
@@ -116,15 +117,25 @@ interface ClinicalAnalytics {
   }[]
 }
 
+/**
+ * Billed, Collected and Outstanding as every money screen defines them
+ * (lib/invoice-figures.ts). There is no bare "Revenue" any more: this tab
+ * called billed invoices revenue while the dashboard called collected cash
+ * revenue, and the two never agreed (bug report item 6).
+ */
 interface FinancialAnalytics {
-  totalRevenue: number
+  totalBilled: number
+  totalCollected: number
   totalExpenses: number
+  profit: number
   profitMargin: number
   avgBillValue: number
   collectionEfficiency: number
+  invoiceCount: number
   revenueByMonth: {
     month: string
-    revenue: number
+    billed: number
+    collected: number
     expenses: number
     profit: number
   }[]
@@ -150,7 +161,8 @@ interface OperationalAnalytics {
     role: string
     appointmentsHandled: number
     treatmentsCompleted: number
-    revenue: number
+    /** Invoiced for their treatments; absent for a role without the financial reports. */
+    invoiced?: number
   }[]
   inventoryTurnover: number
   lowStockItems: number
@@ -163,6 +175,9 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [activeTab, setActiveTab] = useState('patient')
+  // The financial tab and the invoiced column need `reports:financial`, as the
+  // server does; the operational reports are open to roles that hold no money.
+  const seesMoney = useCan('reports:financial') === true
 
   // Analytics data state
   const [patientAnalytics, setPatientAnalytics] = useState<PatientAnalytics | null>(null)
@@ -345,10 +360,12 @@ export default function ReportsPage() {
             <Stethoscope className="h-4 w-4" />
             Clinical Analytics
           </TabsTrigger>
-          <TabsTrigger value="financial" className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            Financial Analytics
-          </TabsTrigger>
+          {seesMoney && (
+            <TabsTrigger value="financial" className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Financial Analytics
+            </TabsTrigger>
+          )}
           <TabsTrigger value="operational" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Operational Analytics
@@ -753,26 +770,50 @@ export default function ReportsPage() {
 
         {/* Financial Analytics Tab */}
         <TabsContent value="financial" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <CardTitle className="text-sm font-medium">Billed</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {formatCurrency(financialAnalytics?.totalRevenue || 0)}
-                  </div>
+                  <>
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(financialAnalytics?.totalBilled || 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {financialAnalytics?.invoiceCount || 0} invoices issued
+                    </p>
+                  </>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+                <CardTitle className="text-sm font-medium">Collected</CardTitle>
+                <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(financialAnalytics?.totalCollected || 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Net of refunds</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Expenses</CardTitle>
                 <DollarSign className="h-4 w-4 text-red-600 dark:text-red-400" />
               </CardHeader>
               <CardContent>
@@ -799,7 +840,9 @@ export default function ReportsPage() {
                     <div className="text-2xl font-bold">
                       {formatPercentage(financialAnalytics?.profitMargin || 0)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Net margin</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(financialAnalytics?.profit || 0)} collected less expenses
+                    </p>
                   </>
                 )}
               </CardContent>
@@ -823,7 +866,7 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Collection Efficiency</CardTitle>
+                <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
                 <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
@@ -835,7 +878,8 @@ export default function ReportsPage() {
                       {formatPercentage(financialAnalytics?.collectionEfficiency || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Outstanding: {formatCurrency(financialAnalytics?.outstandingAmount || 0)}
+                      Collected ÷ billed. Outstanding now:{' '}
+                      {formatCurrency(financialAnalytics?.outstandingAmount || 0)}
                     </p>
                   </>
                 )}
@@ -847,7 +891,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Payment Method Breakdown</CardTitle>
-              <CardDescription>Revenue by payment method</CardDescription>
+              <CardDescription>Collected by payment method, net of refunds</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -921,8 +965,10 @@ export default function ReportsPage() {
           {/* Revenue Trends */}
           <Card>
             <CardHeader>
-              <CardTitle>Revenue Trends</CardTitle>
-              <CardDescription>Monthly revenue, expenses, and profit</CardDescription>
+              <CardTitle>Monthly Trend</CardTitle>
+              <CardDescription>
+                Billed and collected by month, with expenses and profit (collected less expenses)
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -940,7 +986,8 @@ export default function ReportsPage() {
                       }
                     />
                     <Legend />
-                    <Bar dataKey="revenue" fill="#00C49F" name="Revenue" />
+                    <Bar dataKey="billed" fill="#0088FE" name="Billed" />
+                    <Bar dataKey="collected" fill="#00C49F" name="Collected" />
                     <Bar dataKey="expenses" fill="#FF6B6B" name="Expenses" />
                     <Line
                       type="monotone"
@@ -952,7 +999,9 @@ export default function ReportsPage() {
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-center text-muted-foreground py-8">No revenue data available</p>
+                <p className="text-center text-muted-foreground py-8">
+                  Nothing billed or collected
+                </p>
               )}
             </CardContent>
           </Card>
@@ -1044,7 +1093,10 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Staff Productivity</CardTitle>
-              <CardDescription>Performance metrics by staff member</CardDescription>
+              <CardDescription>
+                Appointments seen and treatments completed in the period
+                {seesMoney ? ', and what was invoiced for their treatments' : ''}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -1070,15 +1122,17 @@ export default function ReportsPage() {
                           <div className="text-xl font-bold">{staff.appointmentsHandled}</div>
                         </div>
                         <div>
-                          <div className="text-sm text-muted-foreground">Treatments</div>
+                          <div className="text-sm text-muted-foreground">Treatments completed</div>
                           <div className="text-xl font-bold">{staff.treatmentsCompleted}</div>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Revenue</div>
-                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                            {formatCurrency(staff.revenue)}
+                        {staff.invoiced !== undefined && (
+                          <div>
+                            <div className="text-sm text-muted-foreground">Invoiced</div>
+                            <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                              {formatCurrency(staff.invoiced)}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   ))}

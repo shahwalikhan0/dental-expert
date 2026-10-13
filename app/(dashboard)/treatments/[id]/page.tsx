@@ -57,6 +57,7 @@ import {
 } from '@/lib/treatment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { groupTeeth } from '@/lib/teeth'
+import { newInvoiceHref } from '@/lib/invoice-links'
 
 interface Treatment {
   id: string
@@ -133,6 +134,12 @@ interface Treatment {
     id: string
     invoice: { id: string; invoiceNo: string; status: string; totalAmount: string | number } | null
   }>
+  /**
+   * The invoice that still bills this treatment — any not cancelled — or
+   * null. While it stands, the cost is fixed and the treatment cannot be
+   * cancelled; the route refuses both.
+   */
+  billedOn: { id: string; invoiceNo: string; status: string } | null
   /** The plan step this treatment carries out, when it was started from one. */
   planItem: {
     id: string
@@ -160,6 +167,8 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const myStaffId = session?.user?.staffId
   // Prescribing is a dentist's act, the same capability as signing.
   const canPrescribe = useCan('clinical:sign') === true
+  // Raising an invoice is the desk's act; the button is for those who may.
+  const canBill = useCan('billing:write') === true
   const [actionLoading, setActionLoading] = useState(false)
 
   // Complete form state
@@ -300,12 +309,18 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'CANCELLED' }),
       })
-      if (!response.ok) throw new Error('Failed to cancel treatment')
+      // The route's own reason: a billed treatment is refused with the
+      // invoice to deal with first, and that is what the desk needs to read.
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Failed to cancel treatment')
       setCancelDialogOpen(false)
       fetchTreatment()
-    } catch (error) {
-      console.error('Error cancelling treatment:', error)
-      toast({ variant: 'destructive', title: 'Could not cancel the treatment' })
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not cancel the treatment',
+        description: error.message,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -347,6 +362,10 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   }
 
   const teeth = treatment.toothNumbers ? parseToothNumbers(treatment.toothNumbers) : []
+  // Work that has been done, or is under way, and that no live invoice
+  // carries yet — the same test as the unbilled list on New Invoice.
+  const billable =
+    (treatment.status === 'COMPLETED' || treatment.status === 'IN_PROGRESS') && !treatment.billedOn
 
   return (
     <div className="space-y-6">
@@ -399,16 +418,37 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                     Edit
                   </Link>
                 </Button>
+                {/* Disabled, not hidden, while an invoice bills it: the
+                    banner below says why and which invoice to deal with. */}
                 <Button
                   variant="outline"
                   className="text-red-600 dark:text-red-400"
                   onClick={() => setCancelDialogOpen(true)}
+                  disabled={Boolean(treatment.billedOn)}
                 >
                   <XCircle className="h-4 w-4 mr-2" />
                   Cancel
                 </Button>
               </>
             )}
+          {/* "Bill this" (review 4.1). New Invoice opens on this patient with
+              this treatment ticked; the rest of their unbilled work is there
+              to add. */}
+          {canBill && billable && (
+            <Button variant="outline" asChild>
+              <Link
+                href={trail.to(
+                  newInvoiceHref({
+                    patientId: treatment.patient.id,
+                    treatmentIds: [treatment.id],
+                  })
+                )}
+              >
+                <Receipt className="h-4 w-4 mr-2" />
+                Bill this treatment
+              </Link>
+            </Button>
+          )}
           {/*
             The other half of the prescription/treatment link. Extraction then
             antibiotics is the commonest pair of acts in a dental day, and it
@@ -450,6 +490,28 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           )}
         </div>
       )}
+
+      {/* Billed: the invoice is what the patient was charged, so it changes
+          first. Shown on an open treatment, where Cancel and Edit are on offer
+          and would otherwise be refused without warning. */}
+      {treatment.billedOn &&
+        treatment.status !== 'COMPLETED' &&
+        treatment.status !== 'CANCELLED' && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+            <Receipt className="h-4 w-4 shrink-0" />
+            <span>
+              Billed on{' '}
+              <Link
+                href={trail.to(`/billing/invoices/${treatment.billedOn.id}`)}
+                className="font-medium underline"
+              >
+                {treatment.billedOn.invoiceNo}
+              </Link>
+              . Its cost is fixed and it cannot be cancelled until that invoice is cancelled or
+              edited.
+            </span>
+          </div>
+        )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}

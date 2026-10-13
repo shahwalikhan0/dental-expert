@@ -50,6 +50,10 @@ vi.mock('@/lib/billing-utils', () => ({
     startDate: new Date('2026-01-01'),
     endDate: new Date('2026-01-31'),
   })),
+  dateRangeFromDays: vi.fn(() => ({
+    startDate: new Date('2026-01-01'),
+    endDate: new Date('2026-01-31'),
+  })),
 }))
 
 function makeRequest(url: string, options: any = {}) {
@@ -585,6 +589,9 @@ describe('GET /api/billing/reports', () => {
       },
     ] as any)
 
+    // Collected per day is cash from payments and refunds (none here).
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([] as any)
+
     const req = makeRequest(
       'http://localhost/api/billing/reports?type=revenue&dateFrom=2026-01-01&dateTo=2026-01-31'
     )
@@ -643,10 +650,25 @@ describe('GET /api/billing/reports', () => {
   it('returns procedure_revenue report', async () => {
     const { GET } = await import('@/app/api/billing/reports/route')
 
-    vi.mocked(prisma.treatment.findMany).mockResolvedValue([
+    // Invoiced, not Treatment.cost: the lines of issued invoices, less their
+    // share of the discount (lib/invoiced.ts).
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([
       {
-        cost: 5000,
-        procedure: { id: 'proc1', code: 'RCT', name: 'Root Canal', category: 'Endodontics' },
+        id: 'inv1',
+        issuedAt: new Date('2026-01-15'),
+        createdAt: new Date('2026-01-15'),
+        discountAmount: 500,
+        items: [
+          {
+            id: 'item1',
+            amount: 5000,
+            treatment: {
+              id: 't1',
+              procedure: { id: 'proc1', code: 'RCT', name: 'Root Canal', category: 'Endodontics' },
+              doctor: null,
+            },
+          },
+        ],
       },
     ] as any)
 
@@ -657,16 +679,35 @@ describe('GET /api/billing/reports', () => {
     expect(res.status).toBe(200)
     expect(data.byProcedure).toBeDefined()
     expect(data.byCategory).toBeDefined()
+    expect(data.byProcedure[0].totalRevenue).toBe(4500)
   })
 
   it('returns doctor_revenue report', async () => {
     const { GET } = await import('@/app/api/billing/reports/route')
 
-    vi.mocked(prisma.treatment.findMany).mockResolvedValue([
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([
       {
-        cost: 8000,
-        doctor: { id: 'd1', firstName: 'John', lastName: 'Smith', specialization: 'Ortho' },
-        procedure: { name: 'Braces', category: 'Ortho' },
+        id: 'inv1',
+        issuedAt: new Date('2026-01-15'),
+        createdAt: new Date('2026-01-15'),
+        discountAmount: 0,
+        items: [
+          {
+            id: 'item1',
+            amount: 8000,
+            treatment: {
+              id: 't1',
+              procedure: { id: 'proc1', code: 'BRC', name: 'Braces', category: 'Ortho' },
+              doctor: {
+                id: 'd1',
+                firstName: 'John',
+                lastName: 'Smith',
+                specialization: 'Ortho',
+                user: { role: 'DOCTOR' },
+              },
+            },
+          },
+        ],
       },
     ] as any)
 

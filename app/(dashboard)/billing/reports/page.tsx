@@ -40,6 +40,7 @@ import {
   Banknote,
 } from 'lucide-react'
 import { dateRangePresets, formatCurrency, formatDate } from '@/lib/billing-utils'
+import { AGEING_BUCKETS, type AgeingBucketKey } from '@/lib/ageing'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { displayDate } from '@/lib/dates'
 
@@ -60,19 +61,23 @@ interface OutstandingInvoice {
   }
 }
 
-interface AgingData {
-  current: { amount: number; count: number }
-  days1_30: { amount: number; count: number }
-  days31_60: { amount: number; count: number }
-  days61_90: { amount: number; count: number }
-  over90: { amount: number; count: number }
-}
+type AgingData = Record<AgeingBucketKey, { amount: number; count: number }>
+
+/** Title colour per ageing bucket, in AGEING_BUCKETS order. */
+const AGEING_TONES = [
+  'text-green-600 dark:text-green-400',
+  'text-yellow-600 dark:text-yellow-400',
+  'text-orange-600 dark:text-orange-400',
+  'text-red-500 dark:text-red-400',
+  'text-red-700 dark:text-red-300',
+]
 
 interface ProcedureRevenue {
   procedureId: string
   code: string
   name: string
   category: string
+  /** Invoiced: line amounts less their share of the discount, before tax. */
   totalRevenue: number
   count: number
   avgRevenue: number
@@ -201,18 +206,18 @@ export default function FinancialReportsPage() {
           Code: row.code,
           Procedure: row.name,
           Category: row.category,
-          Treatments: row.count,
-          Revenue: row.totalRevenue,
-          'Average per treatment': row.avgRevenue,
+          'Treatments billed': row.count,
+          Invoiced: row.totalRevenue,
+          'Average invoiced': row.avgRevenue,
         }))
 
       case 'doctor_revenue':
         return (doctorData?.byDoctor ?? []).map((row) => ({
           Doctor: row.name,
           Specialisation: row.specialization ?? '',
-          Treatments: row.treatmentCount,
-          Revenue: row.totalRevenue,
-          'Average per treatment': row.avgPerTreatment,
+          'Treatments billed': row.treatmentCount,
+          Invoiced: row.totalRevenue,
+          'Average invoiced': row.avgPerTreatment,
         }))
 
       case 'daily_collection':
@@ -304,98 +309,38 @@ export default function FinancialReportsPage() {
         <TabsContent value="outstanding" className="space-y-6">
           {/* Aging Summary */}
           <div className="grid gap-4 md:grid-cols-5">
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <Card key={i}>
-                  <CardContent className="pt-6">
-                    <Skeleton className="h-8 w-24" />
-                  </CardContent>
-                </Card>
-              ))
-            ) : outstandingData ? (
-              <>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-green-600 dark:text-green-400">
-                      Current
-                    </CardTitle>
-                    <CardDescription>Not yet due</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(outstandingData.aging.current.amount)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {outstandingData.aging.current.count} invoices
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                      1-30 Days
-                    </CardTitle>
-                    <CardDescription>Overdue</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(outstandingData.aging.days1_30.amount)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {outstandingData.aging.days1_30.count} invoices
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400">
-                      31-60 Days
-                    </CardTitle>
-                    <CardDescription>Overdue</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(outstandingData.aging.days31_60.amount)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {outstandingData.aging.days31_60.count} invoices
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-red-500 dark:text-red-400">
-                      61-90 Days
-                    </CardTitle>
-                    <CardDescription>Overdue</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(outstandingData.aging.days61_90.amount)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {outstandingData.aging.days61_90.count} invoices
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300">
-                      90+ Days
-                    </CardTitle>
-                    <CardDescription>Critical</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(outstandingData.aging.over90.amount)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {outstandingData.aging.over90.count} invoices
-                    </p>
-                  </CardContent>
-                </Card>
-              </>
-            ) : null}
+            {loading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-6">
+                      <Skeleton className="h-8 w-24" />
+                    </CardContent>
+                  </Card>
+                ))
+              : outstandingData
+                ? // The buckets every ageing screen uses (lib/ageing.ts), counted in
+                  // days past each invoice's due date.
+                  AGEING_BUCKETS.map((bucket, index) => (
+                    <Card key={bucket.key}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className={`text-sm font-medium ${AGEING_TONES[index]}`}>
+                          {bucket.label}
+                        </CardTitle>
+                        <CardDescription>
+                          {bucket.key === 'notDue' ? 'Within its terms' : 'Days overdue'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">
+                          {formatCurrency(outstandingData.aging[bucket.key].amount)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {outstandingData.aging[bucket.key].count} invoices
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))
+                : null}
           </div>
 
           {/* Outstanding Invoices Table */}
@@ -482,7 +427,7 @@ export default function FinancialReportsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Invoiced</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -496,7 +441,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Treatments</CardTitle>
+                <CardTitle className="text-sm font-medium">Treatments Billed</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -512,7 +457,11 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Revenue by Procedure</CardTitle>
+              <CardTitle>Invoiced by Procedure</CardTitle>
+              <CardDescription>
+                Invoice lines less their share of any discount, before tax, on invoices issued in
+                the period. Not cash collected — see Daily Collection.
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table className="min-w-[700px]">
@@ -520,9 +469,9 @@ export default function FinancialReportsPage() {
                   <TableRow>
                     <TableHead>Procedure</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead className="text-center">Count</TableHead>
-                    <TableHead className="text-right">Avg. Revenue</TableHead>
-                    <TableHead className="text-right">Total Revenue</TableHead>
+                    <TableHead className="text-center">Billed</TableHead>
+                    <TableHead className="text-right">Avg. Invoiced</TableHead>
+                    <TableHead className="text-right">Invoiced</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -581,7 +530,7 @@ export default function FinancialReportsPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Invoiced</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -595,7 +544,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Treatments</CardTitle>
+                <CardTitle className="text-sm font-medium">Treatments Billed</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -623,16 +572,19 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Revenue by Doctor</CardTitle>
+              <CardTitle>Invoiced by Doctor</CardTitle>
+              <CardDescription>
+                The same invoice lines, by the doctor on the treatment each one bills.
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Doctor</TableHead>
-                    <TableHead className="text-center">Treatments</TableHead>
-                    <TableHead className="text-right">Avg. per Treatment</TableHead>
-                    <TableHead className="text-right">Total Revenue</TableHead>
+                    <TableHead className="text-center">Treatments billed</TableHead>
+                    <TableHead className="text-right">Avg. Invoiced</TableHead>
+                    <TableHead className="text-right">Invoiced</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

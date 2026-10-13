@@ -12,13 +12,10 @@ vi.mock('@/lib/billing-utils', async (importOriginal) => ({
   // that always said yes would let these tests pass a 150% discount.
   discountProblem: (await importOriginal()).discountProblem,
   generateInvoiceNo: vi.fn().mockResolvedValue('INV202501290001'),
-  calculateInvoiceTotals: vi.fn().mockReturnValue({
-    subtotal: 10000,
-    discountAmount: 500,
-    taxableAmount: 9500,
-    taxAmount: 0,
-    totalAmount: 9500,
-  }),
+  // The real arithmetic, watched: the route stores the per-line amounts it
+  // returns, and checks the discount against the subtotal it computes, so a
+  // canned answer would describe an invoice the request never sent.
+  calculateInvoiceTotals: vi.fn((await importOriginal<any>()).calculateInvoiceTotals),
   // The route resolves the rate from the clinic record rather than a constant.
   resolveTaxRate: vi.fn().mockReturnValue(0),
   taxConfig: { rate: 0, label: 'Sales Tax', defaultTaxable: true },
@@ -382,7 +379,7 @@ describe('Invoices API - Comprehensive Tests', () => {
 
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data.error).toContain('Invalid item data')
+      expect(data.error).toContain('Line 1')
     })
 
     it('should stamp the resolved tax rate onto the invoice', async () => {
@@ -410,12 +407,6 @@ describe('Invoices API - Comprehensive Tests', () => {
     })
 
     it('should handle percentage discount', async () => {
-      mockCalculateTotals.mockReturnValueOnce({
-        subtotal: 10000,
-        discountAmount: 1000, // 10%
-        taxableAmount: 9000,
-        totalAmount: 10620,
-      })
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
 
       const request = new NextRequest('http://localhost/api/invoices', {
@@ -469,7 +460,7 @@ describe('Invoices API - Comprehensive Tests', () => {
         body: JSON.stringify({
           patientId: mockPatientId,
           items: [{ description: 'Service', quantity: 1, unitPrice: 100 }],
-          dueDate: '2025-02-28',
+          dueDate: '2099-02-28',
         }),
       })
       await POST(request)
@@ -483,11 +474,82 @@ describe('Invoices API - Comprehensive Tests', () => {
       )
     })
 
+    // Invoice review 6.6: an invoice cannot fall due before it is raised.
+    it('should refuse a due date in the past', async () => {
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Service', quantity: 1, unitPrice: 100 }],
+            dueDate: '2020-02-28',
+          }),
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    // Invoice review 1.3: the stored line amount is the rounded one the
+    // totals were built from.
+    it('should store each line at its rounded amount', async () => {
+      mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
+
+      await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Floss', quantity: 3, unitPrice: 33.335 }],
+          }),
+        })
+      )
+
+      const created = mockPrisma.invoice.create.mock.calls[0][0].data
+      expect(created.items.create[0]).toMatchObject({ unitPrice: 33.34, amount: 100.02 })
+      expect(created.subtotal).toBe(100.02)
+    })
+
+    // Invoice review 4.1: a treatment billed below its price counts towards
+    // the approval threshold, as a discount would.
+    it('should ask for a reason when a treatment is priced far below its price', async () => {
+      mockPrisma.treatment.findMany.mockResolvedValue([
+        {
+          id: 'crown-1',
+          patientId: mockPatientId,
+          treatmentNo: 'TRT-7',
+          status: 'COMPLETED',
+          cost: 20000,
+        },
+      ])
+      mockPrisma.invoiceItem.findFirst.mockResolvedValue(null)
+
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Crown', quantity: 1, unitPrice: 5000, treatmentId: 'crown-1' }],
+          }),
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('below their price')
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
     it('should create invoice items with treatment links', async () => {
       const mockTreatmentId = 'treatment-123'
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
       mockPrisma.treatment.findMany.mockResolvedValue([
-        { id: mockTreatmentId, patientId: mockPatientId, treatmentNo: 'TRT-1' },
+        {
+          id: mockTreatmentId,
+          patientId: mockPatientId,
+          treatmentNo: 'TRT-1',
+          status: 'COMPLETED',
+        },
       ])
       mockPrisma.invoiceItem.findFirst.mockResolvedValue(null)
 
@@ -525,7 +587,7 @@ describe('Invoices API - Comprehensive Tests', () => {
     // Finding 13: Fatima's scaling went on Hina's invoice.
     it("should refuse another patient's treatment", async () => {
       mockPrisma.treatment.findMany.mockResolvedValue([
-        { id: 'treatment-9', patientId: 'someone-else', treatmentNo: 'TRT-9' },
+        { id: 'treatment-9', patientId: 'someone-else', treatmentNo: 'TRT-9', status: 'COMPLETED' },
       ])
 
       const response = await POST(
@@ -549,7 +611,7 @@ describe('Invoices API - Comprehensive Tests', () => {
     // Finding 13: Ahmed's filling went on two invoices.
     it('should refuse a treatment already on a live invoice', async () => {
       mockPrisma.treatment.findMany.mockResolvedValue([
-        { id: 'treatment-1', patientId: mockPatientId, treatmentNo: 'TRT-1' },
+        { id: 'treatment-1', patientId: mockPatientId, treatmentNo: 'TRT-1', status: 'COMPLETED' },
       ])
       mockPrisma.invoiceItem.findFirst.mockResolvedValueOnce({
         treatment: { treatmentNo: 'TRT-1' },
@@ -740,8 +802,8 @@ describe('Invoices API - Comprehensive Tests', () => {
       expect(mockPrisma.invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            totalAmount: 9500,
-            balanceAmount: 9500,
+            totalAmount: 100,
+            balanceAmount: 100,
           }),
         })
       )
@@ -943,12 +1005,6 @@ describe('Invoices API - Comprehensive Tests', () => {
     })
 
     it('should handle zero GST for exempt items', async () => {
-      mockCalculateTotals.mockReturnValueOnce({
-        subtotal: 1000,
-        discountAmount: 0,
-        taxableAmount: 0, // No taxable amount
-        totalAmount: 1000,
-      })
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
 
       const request = new NextRequest('http://localhost/api/invoices', {
@@ -970,12 +1026,6 @@ describe('Invoices API - Comprehensive Tests', () => {
 
   describe('Edge Cases', () => {
     it('should handle very large invoice amounts', async () => {
-      mockCalculateTotals.mockReturnValueOnce({
-        subtotal: 10000000,
-        discountAmount: 0,
-        taxableAmount: 10000000,
-        totalAmount: 11800000,
-      })
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
 
       const request = new NextRequest('http://localhost/api/invoices', {

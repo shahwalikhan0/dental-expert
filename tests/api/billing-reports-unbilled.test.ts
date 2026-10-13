@@ -37,6 +37,11 @@ const mockAuth = vi.hoisted(() => {
 
 const mockBillingUtils = vi.hoisted(() => ({
   getDateRangeFromPreset: vi.fn(),
+  // A custom range is whole clinic days now (lib/billing-utils.ts).
+  dateRangeFromDays: vi.fn(() => ({
+    startDate: new Date('2026-01-01T00:00:00Z'),
+    endDate: new Date('2026-01-31T23:59:59Z'),
+  })),
 }))
 
 vi.mock('@/lib/api-helpers', () => mockAuth)
@@ -134,6 +139,9 @@ describe('Billing Reports & Unbilled Treatments API', () => {
         },
       ])
 
+      // Collected per day is cash now, from payments and refunds — none here.
+      ;(prisma.payment.findMany as any).mockResolvedValue([])
+
       const res = await reportsModule.GET(makeReportsRequest({ type: 'revenue' }))
       expect(res.status).toBe(200)
       const body = await res.json()
@@ -222,6 +230,11 @@ describe('Billing Reports & Unbilled Treatments API', () => {
       expect(res.status).toBe(200)
       // Should NOT call getDateRangeFromPreset when custom dates given
       expect(mockBillingUtils.getDateRangeFromPreset).not.toHaveBeenCalled()
+      expect(mockBillingUtils.dateRangeFromDays).toHaveBeenCalledWith(
+        '2026-01-01',
+        '2026-01-31',
+        'Asia/Karachi'
+      )
     })
   })
 
@@ -253,7 +266,8 @@ describe('Billing Reports & Unbilled Treatments API', () => {
         {
           id: 't2',
           treatmentNo: 'TRT002',
-          cost: null,
+          // `cost` is required; the treatment's price, not today's base price.
+          cost: 4500,
           toothNumbers: null,
           endTime: null,
           procedure: {
@@ -275,9 +289,9 @@ describe('Billing Reports & Unbilled Treatments API', () => {
       expect(body.treatments).toHaveLength(2)
       expect(body.treatments[0].unitPrice).toBe(3000)
       expect(body.treatments[0].doctor).toBe('Dr. Jane Smith')
-      expect(body.treatments[1].unitPrice).toBe(5000) // falls back to basePrice
+      expect(body.treatments[1].unitPrice).toBe(4500) // the treatment's price, not basePrice
       expect(body.summary.totalTreatments).toBe(2)
-      expect(body.summary.totalUnbilled).toBe(8000)
+      expect(body.summary.totalUnbilled).toBe(7500)
 
       // Findings 13 and 17: billed means on an invoice that is not cancelled,
       // the same rule the invoice routes refuse a second billing by.

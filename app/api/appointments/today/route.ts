@@ -66,6 +66,12 @@ export async function GET(request: NextRequest) {
             specialization: true,
           },
         },
+        // Whether a bill for the visit still stands (review 4.3), so the
+        // queue can offer "Create invoice" on a finished visit that has none
+        // and not on one already billed. A cancelled invoice does not count.
+        _count: {
+          select: { invoices: { where: { status: { not: 'CANCELLED' } } } },
+        },
       },
       orderBy: { startsAt: 'asc' },
     })
@@ -81,9 +87,10 @@ export async function GET(request: NextRequest) {
      * and one who had sat there all morning showed nothing.
      */
     const now = new Date()
-    const appointments = rows.map((a) => ({
+    const appointments = rows.map(({ _count, ...a }) => ({
       ...withWallClock(a, timezone),
       waitMinutes: a.status === 'CHECKED_IN' ? waitingFor(a.checkedInAt, now) : a.waitTime,
+      invoiced: _count.invoices > 0,
     }))
 
     // Group appointments by status for queue view

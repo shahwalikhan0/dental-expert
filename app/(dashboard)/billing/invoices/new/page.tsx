@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,29 +18,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   ArrowLeft,
   User,
   Phone,
   Search,
-  Plus,
-  Trash2,
-  IndianRupee,
   Calculator,
+  CalendarDays,
   FileText,
   Loader2,
 } from 'lucide-react'
-import { formatCurrency, calculateInvoiceTotals, paymentTermsOptions } from '@/lib/billing-utils'
+import {
+  formatCurrency,
+  formatDate,
+  calculateInvoiceTotals,
+  paymentTermsOptions,
+} from '@/lib/billing-utils'
+import { InvoiceLinesEditor } from '@/components/billing/invoice-lines-editor'
+import {
+  UnbilledTreatmentList,
+  treatmentLine,
+  type UnbilledTreatment,
+} from '@/components/billing/unbilled-treatment-list'
+import {
+  lineProblem,
+  linesForRequest,
+  linesForTotals,
+  priceShortfall,
+  type FormLine,
+} from '@/lib/invoice-form'
+import { round2 } from '@/lib/till'
 
 interface Patient {
   id: string
@@ -52,40 +58,42 @@ interface Patient {
   email: string | null
 }
 
-interface UnbilledTreatment {
-  treatmentId: string
-  treatmentNo: string
-  description: string
-  procedure: {
-    code: string
-    name: string
-  } | null
-  doctor: string | null
-  toothNumbers: string | null
-  quantity: number
-  unitPrice: number
-  taxable: boolean
-}
-
-interface InvoiceItem {
+/** The visit an invoice is being raised for, as unbilled-treatments describes it. */
+interface Visit {
   id: string
-  treatmentId: string | null
-  description: string
-  quantity: number
-  unitPrice: number
-  taxable: boolean
+  appointmentNo: string
+  scheduledDate: string
+  scheduledTime: string
+  doctor: string | null
 }
 
+/**
+ * New invoice.
+ *
+ * Opened bare from Billing, or from elsewhere in the clinic with what is
+ * already known (lib/invoice-links.ts builds the address):
+ *
+ *   /billing/invoices/new?patientId=X&appointmentId=Y&treatmentIds=a,b
+ *
+ * `appointmentId` picks that visit's patient and links the invoice to it;
+ * `treatmentIds` puts those unbilled treatments on the invoice. Each is
+ * optional.
+ */
 export default function NewInvoicePage() {
   const router = useRouter()
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preSelectedPatientId = searchParams.get('patientId')
+  const preSelectedAppointmentId = searchParams.get('appointmentId')
+  const preTickedTreatmentIds = useMemo(
+    () => (searchParams.get('treatmentIds') || '').split(',').filter(Boolean),
+    [searchParams]
+  )
   const { toast } = useToast()
 
-  const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
 
   // Patient selection
   const [patients, setPatients] = useState<Patient[]>([])
@@ -97,46 +105,47 @@ export default function NewInvoicePage() {
   // "not answered yet". Without it the two look identical: nothing on screen.
   const [searchingPatients, setSearchingPatients] = useState(false)
 
+  // The visit this invoice is for, when it was opened from one.
+  const [visit, setVisit] = useState<Visit | null>(null)
+
   // Unbilled treatments
   const [unbilledTreatments, setUnbilledTreatments] = useState<UnbilledTreatment[]>([])
   const [loadingTreatments, setLoadingTreatments] = useState(false)
+  // The ?treatmentIds= are put on the invoice once, when the list first loads.
+  const preTicked = useRef(false)
 
   // Invoice items
-  const [items, setItems] = useState<InvoiceItem[]>([])
+  const [items, setItems] = useState<FormLine[]>([])
 
   // Invoice settings
   const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
-  const [discountValue, setDiscountValue] = useState(0)
+  const [discountValue, setDiscountValue] = useState('')
+  const [discountReason, setDiscountReason] = useState('')
   const [paymentTermDays, setPaymentTermDays] = useState(0)
   const [notes, setNotes] = useState('')
   const [termsAndConditions, setTermsAndConditions] = useState(
     '1. Payment is due within the specified payment terms.\n2. Please bring this invoice for reference during your next visit.'
   )
 
-  // Calculated totals
-  const [totals, setTotals] = useState({
-    subtotal: 0,
-    discountAmount: 0,
-    taxableAmount: 0,
-    nonTaxableAmount: 0,
-    taxAmount: 0,
-    totalAmount: 0,
+  // The clinic's tax rate, so this preview matches what the server will
+  // charge, and the discount-approval threshold, so the reason is asked for
+  // here rather than discovered from a refusal (invoice review 1.1).
+  const [billing, setBilling] = useState({
+    enabled: false,
+    rate: 0,
+    label: 'Sales Tax',
+    discountApprovalThreshold: null as number | null,
   })
-
-  // The clinic's tax rate, so this preview matches what the server will charge.
-  // Defaults to no tax, which is the configured position for this clinic.
-  const [tax, setTax] = useState({ enabled: false, rate: 0, label: 'Sales Tax' })
 
   useEffect(() => {
     fetch('/api/billing/tax-settings')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => data && setTax(data))
+      .then((data) => data && setBilling((current) => ({ ...current, ...data })))
       .catch(() => {
         /* preview only; the server still applies the correct rate */
       })
   }, [])
 
-  // Fetch patients for search
   /**
    * Finding the patient this invoice is for.
    *
@@ -179,68 +188,119 @@ export default function NewInvoicePage() {
     }
   }, [debouncedPatientSearch])
 
-  // Fetch pre-selected patient if provided
+  // Opened from a visit: the visit names the patient. Asked of the billing
+  // route rather than the appointment one, which the accountant cannot read.
   useEffect(() => {
-    if (preSelectedPatientId) {
-      const fetchPatient = async () => {
-        try {
-          setLoading(true)
-          // By id, not through search: search matches a name, a phone or the
-          // PAT number, never the database id, so this found nobody.
-          const response = await fetch(`/api/patients/${encodeURIComponent(preSelectedPatientId)}`)
-          if (!response.ok) throw new Error('Failed to fetch patient')
-          const data = await response.json()
-          if (data.patient) {
-            const { id, patientId, firstName, lastName, phone, email } = data.patient
-            setSelectedPatient({ id, patientId, firstName, lastName, phone, email: email ?? null })
-          }
-        } catch (error) {
-          console.error('Error fetching patient:', error)
-        } finally {
-          setLoading(false)
+    if (!preSelectedAppointmentId) return
+    let current = true
+    ;(async () => {
+      try {
+        const response = await fetch(
+          `/api/billing/unbilled-treatments?appointmentId=${encodeURIComponent(preSelectedAppointmentId)}`
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || 'That visit could not be loaded')
+        if (!current) return
+        if (data.appointment) setVisit(data.appointment)
+        if (data.patient) {
+          const { id, patientId, firstName, lastName, phone, email } = data.patient
+          setSelectedPatient({ id, patientId, firstName, lastName, phone, email: email ?? null })
         }
+      } catch (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not open the visit',
+          description: error instanceof Error ? error.message : 'Failed to load the visit',
+        })
       }
-      fetchPatient()
+    })()
+    return () => {
+      current = false
     }
-  }, [preSelectedPatientId])
+  }, [preSelectedAppointmentId, toast])
+
+  // Fetch pre-selected patient if provided (and no visit names one)
+  useEffect(() => {
+    if (!preSelectedPatientId || preSelectedAppointmentId) return
+    const fetchPatient = async () => {
+      try {
+        // By id, not through search: search matches a name, a phone or the
+        // PAT number, never the database id, so this found nobody.
+        const response = await fetch(`/api/patients/${encodeURIComponent(preSelectedPatientId)}`)
+        if (!response.ok) throw new Error('Failed to fetch patient')
+        const data = await response.json()
+        if (data.patient) {
+          const { id, patientId, firstName, lastName, phone, email } = data.patient
+          setSelectedPatient({ id, patientId, firstName, lastName, phone, email: email ?? null })
+        }
+      } catch (error) {
+        console.error('Error fetching patient:', error)
+      }
+    }
+    fetchPatient()
+  }, [preSelectedPatientId, preSelectedAppointmentId])
 
   // Fetch unbilled treatments when patient is selected
   useEffect(() => {
-    if (selectedPatient) {
-      fetchUnbilledTreatments(selectedPatient.id)
-    } else {
+    if (!selectedPatient) {
       setUnbilledTreatments([])
+      return
     }
-  }, [selectedPatient])
+    let current = true
+    ;(async () => {
+      try {
+        setLoadingTreatments(true)
+        const response = await fetch(
+          `/api/billing/unbilled-treatments?patientId=${encodeURIComponent(selectedPatient.id)}`
+        )
+        if (!response.ok) throw new Error('Failed to fetch unbilled treatments')
+        const data = await response.json()
+        if (!current) return
+        const treatments: UnbilledTreatment[] = data.treatments ?? []
+        setUnbilledTreatments(treatments)
 
-  const fetchUnbilledTreatments = async (patientId: string) => {
-    try {
-      setLoadingTreatments(true)
-      const response = await fetch(`/api/billing/unbilled-treatments?patientId=${patientId}`)
-      if (!response.ok) throw new Error('Failed to fetch unbilled treatments')
-      const data = await response.json()
-      setUnbilledTreatments(data.treatments)
-    } catch (error) {
-      console.error('Error fetching unbilled treatments:', error)
-    } finally {
-      setLoadingTreatments(false)
+        // The treatments the caller asked for, once — and only those still
+        // unbilled, which is all this list holds.
+        if (!preTicked.current && preTickedTreatmentIds.length > 0) {
+          preTicked.current = true
+          const wanted = treatments.filter((t) => preTickedTreatmentIds.includes(t.treatmentId))
+          setItems((existing) => [
+            ...existing,
+            ...wanted
+              .filter((t) => !existing.some((i) => i.treatmentId === t.treatmentId))
+              .map(treatmentLine),
+          ])
+        }
+      } catch (error) {
+        console.error('Error fetching unbilled treatments:', error)
+      } finally {
+        if (current) setLoadingTreatments(false)
+      }
+    })()
+    return () => {
+      current = false
     }
-  }
+  }, [selectedPatient, preTickedTreatmentIds])
 
-  // Calculate totals when items or discount changes
-  useEffect(() => {
-    const calculated = calculateInvoiceTotals(
-      items.map((item) => ({
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        taxable: item.taxable,
-      })),
-      discountType,
-      discountValue,
-      tax.rate
-    )
-    setTotals(calculated)
-  }, [items, discountType, discountValue, tax.rate])
+  // The same arithmetic the server stores (lib/billing-utils.ts).
+  const totals = useMemo(
+    () =>
+      calculateInvoiceTotals(
+        linesForTotals(items),
+        discountType,
+        Number(discountValue) || 0,
+        billing.rate
+      ),
+    [items, discountType, discountValue, billing.rate]
+  )
+
+  // Everything the patient is let off: the discount, and any treatment
+  // charged below its own price. Over the threshold it needs a reason and,
+  // unless the person raising it may approve discounts, a manager's approval.
+  const shortfall = priceShortfall(items)
+  const concession = round2(totals.discountAmount + shortfall)
+  const needsReason =
+    billing.discountApprovalThreshold != null && concession > billing.discountApprovalThreshold
 
   const selectPatient = (patient: Patient) => {
     setSelectedPatient(patient)
@@ -250,35 +310,7 @@ export default function NewInvoicePage() {
   }
 
   const addTreatmentToInvoice = (treatment: UnbilledTreatment) => {
-    const newItem: InvoiceItem = {
-      id: `item-${Date.now()}`,
-      treatmentId: treatment.treatmentId,
-      description: treatment.description,
-      quantity: treatment.quantity,
-      unitPrice: treatment.unitPrice,
-      taxable: treatment.taxable,
-    }
-    setItems([...items, newItem])
-  }
-
-  const addCustomItem = () => {
-    const newItem: InvoiceItem = {
-      id: `item-${Date.now()}`,
-      treatmentId: null,
-      description: '',
-      quantity: 1,
-      unitPrice: 0,
-      taxable: true,
-    }
-    setItems([...items, newItem])
-  }
-
-  const updateItem = (id: string, field: keyof InvoiceItem, value: any) => {
-    setItems(items.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
-  }
-
-  const removeItem = (id: string) => {
-    setItems(items.filter((item) => item.id !== id))
+    setItems((existing) => [...existing, treatmentLine(treatment)])
   }
 
   const handleSubmit = async (status: 'DRAFT' | 'PENDING') => {
@@ -295,20 +327,17 @@ export default function NewInvoicePage() {
       return
     }
 
-    // Validate items
-    for (const item of items) {
-      if (!item.description.trim()) {
-        invalid('All items must have a description')
-        return
-      }
-      if (item.quantity <= 0) {
-        invalid('Quantity must be greater than 0')
-        return
-      }
-      if (item.unitPrice < 0) {
-        invalid('Unit price cannot be negative')
-        return
-      }
+    setShowErrors(true)
+    const firstProblem = items.map(lineProblem).find(Boolean)
+    if (firstProblem) {
+      invalid(`Check the lines: ${firstProblem.toLowerCase()}.`)
+      return
+    }
+    if (needsReason && discountReason.trim().length < 3) {
+      invalid(
+        `A concession of ${formatCurrency(concession)} is above the ${formatCurrency(billing.discountApprovalThreshold)} approval threshold. Give a reason for it.`
+      )
+      return
     }
 
     try {
@@ -319,15 +348,11 @@ export default function NewInvoicePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patientId: selectedPatient.id,
-          items: items.map((item) => ({
-            treatmentId: item.treatmentId,
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            taxable: item.taxable,
-          })),
+          appointmentId: visit?.id ?? null,
+          items: linesForRequest(items),
           discountType,
-          discountValue,
+          discountValue: Number(discountValue) || 0,
+          discountReason: discountReason.trim() || null,
           paymentTermDays,
           notes,
           termsAndConditions,
@@ -343,8 +368,8 @@ export default function NewInvoicePage() {
 
       // Every invoice is created as a draft; the server does not take a status
       // from the form. Issuing is a second step, and the one where a discount
-      // awaiting approval is caught — in which case the draft is kept and the
-      // toast says why it was not issued.
+      // awaiting approval, or a product short on the shelf, is caught — in
+      // which case the draft is kept and the toast says why it was not issued.
       if (status === 'PENDING') {
         const issued = await fetch(`/api/invoices/${invoice.id}`, {
           method: 'PUT',
@@ -397,7 +422,7 @@ export default function NewInvoicePage() {
               <CardTitle>Patient Details</CardTitle>
               <CardDescription>Search and select a patient</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               {selectedPatient ? (
                 <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-950/30 dark:border-green-800/60">
                   <div className="flex items-center gap-3">
@@ -421,6 +446,8 @@ export default function NewInvoicePage() {
                     size="sm"
                     onClick={() => {
                       setSelectedPatient(null)
+                      // The visit was this patient's; it does not follow a change.
+                      setVisit(null)
                       setItems([])
                     }}
                   >
@@ -474,6 +501,13 @@ export default function NewInvoicePage() {
                   )}
                 </div>
               )}
+              {visit && selectedPatient && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CalendarDays className="h-4 w-4" />
+                  For the visit on {formatDate(visit.scheduledDate)} at {visit.scheduledTime}
+                  {visit.doctor ? ` with ${visit.doctor}` : ''} ({visit.appointmentNo})
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -485,52 +519,13 @@ export default function NewInvoicePage() {
                 <CardDescription>Select treatments to add to the invoice</CardDescription>
               </CardHeader>
               <CardContent>
-                {loadingTreatments ? (
-                  <div className="text-center py-4 text-muted-foreground">
-                    Loading treatments...
-                  </div>
-                ) : unbilledTreatments.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">
-                    No unbilled treatments found
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {unbilledTreatments.map((treatment) => (
-                      <div
-                        key={treatment.treatmentId}
-                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                      >
-                        <div>
-                          <div className="font-medium">{treatment.description}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {treatment.treatmentNo}
-                            {treatment.doctor && ` • ${treatment.doctor}`}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="font-medium">{formatCurrency(treatment.unitPrice)}</div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addTreatmentToInvoice(treatment)}
-                            disabled={items.some((i) => i.treatmentId === treatment.treatmentId)}
-                          >
-                            {items.some((i) => i.treatmentId === treatment.treatmentId) ? (
-                              'Added'
-                            ) : (
-                              <>
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <UnbilledTreatmentList
+                  loading={loadingTreatments}
+                  treatments={unbilledTreatments}
+                  visitId={visit?.id ?? null}
+                  isAdded={(id) => items.some((i) => i.treatmentId === id)}
+                  onAdd={addTreatmentToInvoice}
+                />
               </CardContent>
             </Card>
           )}
@@ -538,95 +533,20 @@ export default function NewInvoicePage() {
           {/* Invoice Items */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Invoice Items</CardTitle>
-                  <CardDescription>Items to be included in the invoice</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={addCustomItem}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Custom Item
-                </Button>
-              </div>
+              <CardTitle>Invoice Items</CardTitle>
+              <CardDescription>
+                Treatments from above, products from the inventory, or a custom item
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {items.length === 0 ? (
+              {items.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-8 w-8 mx-auto mb-2" />
                   <p>No items added yet</p>
-                  <p className="text-sm">Add treatments from above or add a custom item</p>
+                  <p className="text-sm">Add treatments from above, a product, or a custom item</p>
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[40%]">Description</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead className="text-right">Unit Price</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="text-center">Taxable</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <Input
-                            value={item.description}
-                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                            placeholder="Item description"
-                          />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateItem(item.id, 'quantity', parseInt(e.target.value) || 1)
-                            }
-                            className="w-20 text-center"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(e) =>
-                              updateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)
-                            }
-                            className="w-28 text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.quantity * item.unitPrice)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Checkbox
-                            checked={item.taxable}
-                            onCheckedChange={(checked) => updateItem(item.id, 'taxable', checked)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <IconTooltip label="Remove this line">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Remove this line"
-                              onClick={() => removeItem(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
-                            </Button>
-                          </IconTooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
               )}
+              <InvoiceLinesEditor lines={items} onChange={setItems} showErrors={showErrors} />
             </CardContent>
           </Card>
 
@@ -669,13 +589,13 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-4">
               {/* Discount */}
               <div className="space-y-2">
-                <Label>Discount</Label>
+                <Label htmlFor="discountValue">Discount</Label>
                 <div className="flex gap-2">
                   <Select
                     value={discountType}
                     onValueChange={(value: 'PERCENTAGE' | 'FIXED') => setDiscountType(value)}
                   >
-                    <SelectTrigger className="w-[100px]">
+                    <SelectTrigger className="w-[100px]" aria-label="Discount type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -684,14 +604,40 @@ export default function NewInvoicePage() {
                     </SelectContent>
                   </Select>
                   <Input
+                    id="discountValue"
                     type="number"
                     min="0"
+                    step="0.01"
                     max={discountType === 'PERCENTAGE' ? 100 : undefined}
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    onChange={(e) => setDiscountValue(e.target.value)}
                   />
                 </div>
               </div>
+
+              {/* FR-013: the reason, asked for when it will be needed. */}
+              {needsReason && (
+                <div className="space-y-2">
+                  <Label htmlFor="discountReason">Reason for the discount (required)</Label>
+                  <Textarea
+                    id="discountReason"
+                    rows={2}
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    aria-invalid={showErrors && discountReason.trim().length < 3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(concession)} off
+                    {shortfall > 0
+                      ? ` (including ${formatCurrency(shortfall)} of treatments charged below their price)`
+                      : ''}{' '}
+                    is above the {formatCurrency(billing.discountApprovalThreshold)} threshold. A
+                    manager approves it before the invoice can be issued, unless you may approve
+                    discounts yourself.
+                  </p>
+                </div>
+              )}
 
               {/* Payment Terms */}
               <div className="space-y-2">
@@ -711,6 +657,11 @@ export default function NewInvoicePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {paymentTermDays === 0
+                    ? 'Due on the day it is issued.'
+                    : `Due ${paymentTermDays} days from today.`}
+                </p>
               </div>
 
               {/* Totals */}
@@ -721,20 +672,29 @@ export default function NewInvoicePage() {
                 </div>
                 {totals.discountAmount > 0 && (
                   <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
-                    <span>Discount</span>
+                    <span>
+                      Discount
+                      {discountType === 'PERCENTAGE' ? ` (${Number(discountValue) || 0}%)` : ''}
+                    </span>
                     <span>-{formatCurrency(totals.discountAmount)}</span>
                   </div>
                 )}
                 {/* No tax line at all when the clinic is exempt — printing
                     "Sales Tax: Rs 0.00" on every invoice invites the question
                     of why it is there. */}
-                {tax.rate > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span>
-                      {tax.label} ({tax.rate}%)
-                    </span>
-                    <span>{formatCurrency(totals.taxAmount)}</span>
-                  </div>
+                {billing.rate > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Taxable value</span>
+                      <span>{formatCurrency(totals.taxableAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>
+                        {billing.label} ({billing.rate}%)
+                      </span>
+                      <span>{formatCurrency(totals.taxAmount)}</span>
+                    </div>
+                  </>
                 )}
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <span>Total</span>

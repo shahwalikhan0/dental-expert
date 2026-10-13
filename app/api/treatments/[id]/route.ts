@@ -6,7 +6,13 @@ import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { readTeeth } from '@/lib/teeth'
 import { releasePlanItemFor } from '@/lib/treatment-plan-status'
-import { BILLED_ON_LIVE_INVOICE } from '@/lib/invoice-settlement'
+import {
+  BILLED_ON_LIVE_INVOICE,
+  BillingRefusal,
+  billingRefusalResponse,
+  lockTreatments,
+} from '@/lib/invoice-settlement'
+import { billedTreatmentRefusal, liveInvoiceFor } from '@/lib/treatment-billing'
 import { afterTreatmentCompleted } from '@/lib/treatment-completion'
 import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 import { can, holderCan } from '@/lib/rbac'
@@ -110,11 +116,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const timezone = await clinicTimezone(prisma, hospitalId)
 
+    // The invoice that still bills it, if any. `invoiceItems` lists cancelled
+    // invoices too, for the history; this is the one that counts, so the page
+    // can lock the cost and the Cancel button rather than offer what the PUT
+    // below refuses, and offer "Bill this treatment" only when it is not.
+    const billedOn = await liveInvoiceFor(prisma, id)
+
     return NextResponse.json({
       ...treatment,
       appointment: treatment.appointment
         ? withWallClock(treatment.appointment, timezone)
         : treatment.appointment,
+      billedOn,
     })
   } catch (error) {
     console.error('Error fetching treatment:', error)
@@ -276,10 +289,36 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // save that resends the current status does nothing to the plan.
     const statusChanged = body.status !== undefined && body.status !== existingTreatment.status
 
+    // Cancelling or re-pricing a treatment that is on a live invoice (review
+    // 4.1). Only a real change counts: the edit form sends the cost back on
+    // every save, and an unchanged figure is not a re-pricing.
+    const cancelling = statusChanged && body.status === 'CANCELLED'
+    const repricing =
+      updateData.cost !== undefined && !existingTreatment.cost.equals(updateData.cost)
+
     // The correction and the update go together: a note changed without the
     // record of what it used to say is the failure this whole requirement is
     // about, so neither lands without the other. The plan step goes with them.
     const treatment = await prisma.$transaction(async (tx) => {
+      if (cancelling || repricing) {
+        // Under the same row lock the invoice routes take before billing a
+        // treatment, so an invoice being raised at this moment is either
+        // committed and seen here, or waits until this change has landed.
+        await lockTreatments(tx, [id])
+        const invoice = await liveInvoiceFor(tx, id)
+        if (invoice) {
+          throw new BillingRefusal(
+            409,
+            billedTreatmentRefusal(
+              existingTreatment.treatmentNo,
+              invoice,
+              cancelling ? 'cancel' : 'cost'
+            ),
+            'TREATMENT_BILLED'
+          )
+        }
+      }
+
       const updated = await tx.treatment.update({
         where: { id, hospitalId },
         data: updateData,
@@ -318,6 +357,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(treatment)
   } catch (error) {
+    const refusal = billingRefusalResponse(error)
+    if (refusal) return refusal
     const known = knownErrorResponse(error)
     if (known) return known
     console.error('Error updating treatment:', error)

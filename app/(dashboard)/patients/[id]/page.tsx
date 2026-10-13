@@ -31,6 +31,7 @@ import { PortalAccessCard } from '@/components/patients/portal-access-card'
 import { FamilyCard } from '@/components/patients/family-card'
 import { ClinicalNotesCard } from '@/components/patients/clinical-notes-card'
 import { PatientLedger } from '@/components/billing/patient-ledger'
+import { CreateInvoiceBar } from '@/components/billing/create-invoice-bar'
 import { useSession } from 'next-auth/react'
 import { holderCan } from '@/lib/rbac'
 import { useCan } from '@/hooks/use-can'
@@ -190,6 +191,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   // open a form that would be refused.
   const canPrescribe = useCan('clinical:sign') === true
   const canReadBilling = holderCan(holder, 'billing:read')
+  const canWriteBilling = holderCan(holder, 'billing:write')
   const canReadLab = holderCan(holder, 'lab:read')
   const canBook = holderCan(holder, 'appointments:write')
   // Merging and deactivating are both behind `patients:delete` on the server
@@ -1136,6 +1138,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               What the desk is asked is "what do I owe you?", and the old table
               left that sum to whoever was standing there. See lib/ledger.ts.
             */}
+            {/* The way in to billing from the record (review 4.1). Not for an
+                inactive patient, who the invoice route will not bill. */}
+            {canWriteBilling && patient.isActive && (
+              <CreateInvoiceBar patientId={patient.id} to={trail.to} />
+            )}
             <PatientLedger patientId={patient.id} />
           </TabsContent>
         )}

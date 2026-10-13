@@ -21,6 +21,19 @@ interface PaymentRow {
   method: string
 }
 
+interface RefundRow {
+  id: string
+  refundNo: string
+  paymentNo: string
+  amount: number
+  date: string
+}
+
+const CLOSED_LABEL: Record<string, string> = {
+  CANCELLED: 'Cancelled',
+  REFUNDED: 'Refunded',
+}
+
 interface Invoice {
   id: string
   invoiceNo: string
@@ -30,11 +43,14 @@ interface Invoice {
   total: number
   paid: number
   balance: number
+  /** Decided by the clinic's rule; a cancelled or refunded bill is never owed. */
+  owed: boolean
   status: string
   dueDate: string | null
   date: string
   items: Line[]
   payments: PaymentRow[]
+  refunds: RefundRow[]
 }
 
 interface Bills {
@@ -76,8 +92,8 @@ export default function PortalBillsPage() {
                   <CardHeader className="pb-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <CardTitle className="text-base">{formatDate(inv.date)}</CardTitle>
-                      <Badge variant={inv.balance > 0 ? 'outline' : 'secondary'}>
-                        {inv.balance > 0 ? 'Due' : 'Paid'}
+                      <Badge variant={inv.owed ? 'outline' : 'secondary'}>
+                        {inv.owed ? 'Due' : (CLOSED_LABEL[inv.status] ?? 'Paid')}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">{inv.invoiceNo}</p>
@@ -118,7 +134,7 @@ export default function PortalBillsPage() {
                         <span>Paid</span>
                         <span className="tabular-nums">{formatCurrency(inv.paid)}</span>
                       </div>
-                      {inv.balance > 0 && (
+                      {inv.owed && (
                         <div className="flex justify-between font-medium">
                           <span>Still to pay</span>
                           <span className="tabular-nums">{formatCurrency(inv.balance)}</span>
@@ -137,6 +153,18 @@ export default function PortalBillsPage() {
                               {formatDate(p.date)} &middot; {p.paymentNo}
                             </span>
                             <span className="tabular-nums">{formatCurrency(p.amount)}</span>
+                          </div>
+                        ))}
+                        {inv.refunds.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex justify-between gap-4 text-xs text-muted-foreground"
+                          >
+                            <span>
+                              {formatDate(r.date)} &middot; {r.refundNo} &middot; refund of{' '}
+                              {r.paymentNo}
+                            </span>
+                            <span className="tabular-nums">−{formatCurrency(r.amount)}</span>
                           </div>
                         ))}
                       </div>

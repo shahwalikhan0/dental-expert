@@ -9,10 +9,16 @@
  * discount, who approved it and what they wrote in the decision note is the
  * clinic's internal business; the patient's business is the amount, which is
  * in `discountAmount` and already reflected in the total.
+ *
+ * What is owed is decided by the rule every clinic screen uses
+ * (lib/invoice-figures.ts), so the patient's "Outstanding" is the figure the
+ * desk would chase, and a cancelled or refunded bill is never shown as due.
  */
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePortalPatient } from '@/lib/portal/auth'
+import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
+import { isInvoiceOwed, money, outstandingOf } from '@/lib/invoice-figures'
 
 export async function GET() {
   const { error, caller } = await requirePortalPatient()
@@ -35,16 +41,29 @@ export async function GET() {
       balanceAmount: true,
       status: true,
       dueDate: true,
+      issuedAt: true,
       createdAt: true,
       items: {
         select: { id: true, description: true, quantity: true, unitPrice: true, amount: true },
       },
       payments: {
-        // A refunded or failed payment is not money the patient has paid, and
-        // listing it as one invites a telephone call about a receipt that does
-        // not exist.
-        where: { status: 'COMPLETED' },
-        select: { id: true, paymentNo: true, amount: true, paymentDate: true, paymentMethod: true },
+        // Every payment the patient actually made, refunded or not, with what
+        // went back listed under it. Filtering to COMPLETED dropped a payment
+        // the moment any of it was refunded, while "Paid" above still counted
+        // what was kept of it — the patient saw Paid 3,000 and no payment at
+        // all. A failed or pending payment is still left out: no money moved.
+        where: { status: { in: [...SETTLED_PAYMENT_STATUSES] as never } },
+        select: {
+          id: true,
+          paymentNo: true,
+          amount: true,
+          paymentDate: true,
+          paymentMethod: true,
+          refunds: {
+            select: { id: true, refundNo: true, amount: true, refundedAt: true },
+            orderBy: { refundedAt: 'asc' },
+          },
+        },
         orderBy: { paymentDate: 'desc' },
       },
     },
@@ -60,9 +79,13 @@ export async function GET() {
     total: Number(inv.totalAmount),
     paid: Number(inv.paidAmount),
     balance: Number(inv.balanceAmount),
+    // Whether the patient owes anything on it. The balance column alone says
+    // yes for a cancelled bill and for one whose charge was refunded in full.
+    owed: isInvoiceOwed(inv),
     status: inv.status,
     dueDate: inv.dueDate,
-    date: inv.createdAt,
+    // The day it was issued, which is the day it became the patient's bill.
+    date: inv.issuedAt ?? inv.createdAt,
     items: inv.items.map((item) => ({
       id: item.id,
       description: item.description,
@@ -77,6 +100,17 @@ export async function GET() {
       date: p.paymentDate,
       method: p.paymentMethod,
     })),
+    refunds: inv.payments
+      .flatMap((p) =>
+        p.refunds.map((r) => ({
+          id: r.id,
+          refundNo: r.refundNo,
+          paymentNo: p.paymentNo,
+          amount: money(r.amount),
+          date: r.refundedAt,
+        }))
+      )
+      .sort((a, b) => a.date.getTime() - b.date.getTime()),
   }))
 
   return NextResponse.json({
@@ -85,9 +119,7 @@ export async function GET() {
       invoices: data,
       // Computed here rather than in the browser so the figure the patient
       // reads and the figure the clinic chases come from the same arithmetic.
-      outstanding: data
-        .filter((inv) => inv.status !== 'CANCELLED' && inv.status !== 'REFUNDED')
-        .reduce((sum, inv) => sum + inv.balance, 0),
+      outstanding: outstandingOf(invoices),
     },
   })
 }

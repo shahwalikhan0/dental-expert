@@ -575,6 +575,7 @@ const setupSections: SetupSection[] = [
           'The system supports: Patients, Staff, Appointments, Treatments, Invoices, Payments, and Inventory',
           'Phone numbers should be Pakistani mobile numbers — 03xx-xxxxxxx, or 3xxxxxxxxx without the leading zero',
           'Date formats accepted: DD/MM/YYYY (preferred) and MM/DD/YYYY',
+          'Import invoices before payments. A paid amount in the invoice file becomes one payment; a payments file, if you import one, replaces it for each invoice it names',
           'If importing staff, temporary passwords will be created — share them with each staff member',
         ],
         link: { label: 'Go to Data Import', href: '/settings/import' },

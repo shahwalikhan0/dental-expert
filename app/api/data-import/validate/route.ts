@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import type { FieldDefinition } from '@/lib/import/schema-definitions'
+import { importedInvoiceFigures } from '@/lib/import/invoice-figures'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { requireFeature } from '@/lib/plan-gate'
 
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       // Apply edits if any
       const edits = editedRows?.[i]
       const transformedRow: Record<string, any> = { _rowNum: i + 1 }
+      const rawRow: Record<string, string> = {}
 
       for (const field of schema.fields) {
         const sourceCol = reverseMap[field.name]
@@ -74,6 +76,7 @@ export async function POST(req: NextRequest) {
 
         const { value, error: coerceError } = coerceValue(rawValue, field)
         transformedRow[field.name] = value
+        rawRow[field.name] = rawValue
 
         if (coerceError) {
           errors.push({
@@ -82,6 +85,30 @@ export async function POST(req: NextRequest) {
             value: rawValue,
             message: coerceError,
             severity: field.required && !value ? 'error' : 'warning',
+          })
+        }
+      }
+
+      // An invoice's money has to add up before it is imported. The commit
+      // step refuses the same rows with the same check, so they show here as
+      // row errors rather than surfacing halfway through the import. A missing
+      // subtotal or total is already reported above as a required field.
+      if (
+        job.entityType === 'invoices' &&
+        transformedRow.subtotal !== null &&
+        transformedRow.totalAmount !== null
+      ) {
+        const result = importedInvoiceFigures(transformedRow)
+        const findings = result.ok
+          ? result.warnings.map((w) => ({ ...w, severity: 'warning' as const }))
+          : [{ ...result.problem, severity: 'error' as const }]
+        for (const finding of findings) {
+          errors.push({
+            row: i + 1,
+            field: finding.field,
+            value: rawRow[finding.field] ?? '',
+            message: finding.message,
+            severity: finding.severity,
           })
         }
       }

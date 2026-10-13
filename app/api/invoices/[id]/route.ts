@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import {
-  SETTLED_PAYMENT_STATUSES,
-  discountNeedsApproval,
-  getDiscountApprovalThreshold,
-} from '@/lib/cashier'
-import { calculateInvoiceTotals, discountProblem } from '@/lib/billing-utils'
+import { discountNeedsApproval, getDiscountApprovalThreshold } from '@/lib/cashier'
+import { calculateInvoiceTotals, discountProblem, resolveTaxRate } from '@/lib/billing-utils'
 import { DiscountType, InvoiceStatus } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import { holderCan } from '@/lib/rbac'
@@ -21,6 +17,104 @@ import {
   treatmentBillingProblem,
   type PaymentForSettlement,
 } from '@/lib/invoice-settlement'
+import {
+  concessionOf,
+  parseInvoiceLines,
+  productLineProblem,
+  treatmentIdsOf,
+  treatmentPriceShortfall,
+  type InvoiceLine,
+} from '@/lib/invoice-lines'
+import { dueDateOn, dueDateRefusal, dueDayFrom } from '@/lib/invoice-dates'
+import { issueInvoice } from '@/lib/invoice-issue'
+import { returnInvoiceStock } from '@/lib/invoice-stock'
+import { DEFAULT_TIMEZONE, localDay } from '@/lib/appointment-time'
+
+/**
+ * Everything the invoice screen shows, read the same way by the GET and by
+ * the answer to an edit.
+ */
+const INVOICE_DETAIL = {
+  patient: {
+    select: {
+      id: true,
+      patientId: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      email: true,
+      address: true,
+      city: true,
+      state: true,
+      postalCode: true,
+      // A child's bill is paid by the parent (invoice review 4.7).
+      guarantor: {
+        select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
+      },
+    },
+  },
+  // The visit this bill is for, when it was raised from one (review 4.3).
+  appointment: {
+    select: {
+      id: true,
+      appointmentNo: true,
+      startsAt: true,
+      doctor: { select: { id: true, firstName: true, lastName: true } },
+    },
+  },
+  items: {
+    orderBy: { createdAt: 'asc' },
+    include: {
+      treatment: {
+        select: {
+          id: true,
+          treatmentNo: true,
+          toothNumbers: true,
+          // The treatment's own price, so a line charged below it can be shown.
+          cost: true,
+          procedure: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              category: true,
+            },
+          },
+          doctor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      },
+      inventoryItem: { select: { id: true, name: true, sku: true, unit: true } },
+    },
+  },
+  payments: {
+    orderBy: {
+      paymentDate: 'desc',
+    },
+    include: {
+      // Shown as negative rows under their payment, so the history adds up to
+      // "Paid" — which is net of them (review 3.3).
+      refunds: {
+        select: {
+          id: true,
+          refundNo: true,
+          amount: true,
+          refundMethod: true,
+          refundedAt: true,
+          reason: true,
+        },
+        orderBy: { refundedAt: 'asc' },
+      },
+    },
+  },
+  discountRequestedBy: { select: { id: true, name: true } },
+  discountApprovedBy: { select: { id: true, name: true } },
+} satisfies Prisma.InvoiceInclude
 
 // GET - Get single invoice with full details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -34,60 +128,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const invoice = await prisma.invoice.findUnique({
       where: { id, hospitalId },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            email: true,
-            address: true,
-            city: true,
-            state: true,
-            postalCode: true,
-          },
-        },
-        items: {
-          include: {
-            treatment: {
-              select: {
-                id: true,
-                treatmentNo: true,
-                toothNumbers: true,
-                procedure: {
-                  select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                    category: true,
-                  },
-                },
-                doctor: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        payments: {
-          orderBy: {
-            paymentDate: 'desc',
-          },
-        },
-      },
+      include: INVOICE_DETAIL,
     })
 
     if (!invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    return NextResponse.json(invoice)
+    // The clinic's letterhead for the printed invoice, carried here as the
+    // payment GET carries it for the receipt: /api/settings/clinic needs
+    // `settings:read`, which the desk printing the invoice does not hold. The
+    // registration numbers are printed when the invoice charges tax.
+    const clinic = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
+      select: {
+        name: true,
+        address: true,
+        city: true,
+        phone: true,
+        email: true,
+        taxRegistrationNo: true,
+        nationalTaxNo: true,
+        taxLabel: true,
+        // For the overdue label: "today" is the clinic's day, not the server's.
+        timezone: true,
+      },
+    })
+
+    return NextResponse.json({ ...invoice, clinic })
   } catch (error) {
     const known = knownErrorResponse(error)
     if (known) return known
@@ -103,15 +171,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  * invoice's money, and are set by recording a payment or a refund — never by
  * an edit (bug report 12 Oct, finding 15). An invoice marked PAID by hand with
  * nothing paid was "Paid" on its own screen and owed in receivables.
+ *
+ * DRAFT → PENDING is issuing, which is more than a status: see
+ * lib/invoice-issue.ts.
  */
 const MANUAL_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   DRAFT: ['PENDING', 'CANCELLED'],
   PENDING: ['OVERDUE', 'CANCELLED'],
   PARTIALLY_PAID: ['OVERDUE', 'CANCELLED'],
-  PAID: [],
+  // Only once nothing is held: an invoice for nothing (PAID at zero), or one
+  // whose payments have all gone back (REFUNDED). `cancellationRefusal`
+  // refuses either while money is still held — the same rule as DELETE.
+  PAID: ['CANCELLED'],
   OVERDUE: ['CANCELLED'],
   CANCELLED: [],
-  REFUNDED: [],
+  REFUNDED: ['CANCELLED'],
 }
 
 const MONEY_STATUSES: InvoiceStatus[] = ['PAID', 'PARTIALLY_PAID', 'REFUNDED']
@@ -169,7 +243,24 @@ function cancellationRefusal(invoice: {
   return null
 }
 
-// PUT - Update invoice
+/**
+ * PUT - Update an invoice, issue it, or cancel it.
+ *
+ * What may change depends on whether the invoice has been issued:
+ *
+ *  - A DRAFT is still being prepared: lines, discount, reason, due date, notes
+ *    and terms may all change, and its figures are priced at the clinic's
+ *    current tax rate.
+ *  - An issued invoice is a document the patient has. Its lines and discount
+ *    are fixed (invoice review 6.2) — the API used to let them be rewritten on
+ *    a PENDING invoice while the edit screen said it could not be done. Only
+ *    the notes, the terms and the due date (not before the issue day) change.
+ *    To change what is owed: a payment, a refund, or cancel and raise again.
+ *
+ * Cancelling needs `billing:void`, as DELETE does (review 6.1). With only
+ * `billing:write`, reception could cancel through this route what the screen's
+ * Cancel would have refused them.
+ */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, hospitalId, user } = await requirePermission('billing:write')
   if (error || !hospitalId) {
@@ -180,8 +271,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const body = await request.json()
 
-    // `taxRate` is not read: the rate stamped on the invoice when it was raised
-    // came from the clinic's settings, and an edit keeps it (finding 14).
+    // `taxRate` is not read (finding 14): it is the clinic's, and is resolved
+    // here for a draft and again when the invoice is issued.
     const {
       items,
       discountType,
@@ -201,37 +292,46 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         return enumRefusal('discountType', discountType, DiscountType)
       }
     }
-    if (items !== undefined && (!Array.isArray(items) || items.length === 0)) {
-      return NextResponse.json({ error: 'At least one item is required' }, { status: 400 })
+
+    if (status === 'CANCELLED' && !holderCan(user, 'billing:void')) {
+      return NextResponse.json(
+        { error: 'Cancelling an invoice needs the billing:void permission' },
+        { status: 403 }
+      )
     }
-    for (const item of items ?? []) {
-      const quantity = Number(item?.quantity)
-      const unitPrice = Number(item?.unitPrice)
-      if (
-        !item?.description ||
-        !Number.isInteger(quantity) ||
-        quantity <= 0 ||
-        !Number.isFinite(unitPrice) ||
-        unitPrice < 0
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              'Invalid item data. Description, quantity (>0), and unit price (>=0) are required',
-          },
-          { status: 400 }
-        )
+
+    let parsedLines: InvoiceLine[] | undefined
+    if (items !== undefined) {
+      const parsed = parseInvoiceLines(items)
+      if (parsed.error !== undefined) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 })
       }
+      parsedLines = parsed.lines
     }
-    if (dueDate && Number.isNaN(new Date(dueDate).getTime())) {
+
+    const clinic = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
+      select: { taxEnabled: true, taxRate: true, timezone: true },
+    })
+    const timezone = clinic?.timezone || DEFAULT_TIMEZONE
+    const today = localDay(new Date(), timezone)
+
+    const requestedDueDay = dueDayFrom(dueDate, timezone)
+    if (requestedDueDay === null) {
       return NextResponse.json({ error: 'The due date is not a valid date' }, { status: 400 })
     }
+
+    // The fields that make up what is owed — and the reason for a discount,
+    // which belongs with it. Changeable on a draft only.
+    const changesMoney =
+      items !== undefined || discountType !== undefined || discountValue !== undefined
+    const draftOnly = changesMoney || discountReason !== undefined
 
     const threshold = await getDiscountApprovalThreshold(hospitalId)
 
     const result = await prisma.$transaction(async (tx) => {
       // Held until the edit is written, so a payment cannot land between the
-      // "no money taken yet" check below and the lines being replaced.
+      // checks below and the lines being replaced.
       await lockInvoice(tx, id, hospitalId)
 
       const existingInvoice = await tx.invoice.findUnique({
@@ -251,41 +351,64 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       if (!existingInvoice) throw new BillingRefusal(404, 'Invoice not found')
 
-      // A paid, refunded or cancelled invoice is a closed document.
-      if (['PAID', 'REFUNDED', 'CANCELLED'].includes(existingInvoice.status)) {
+      // A paid, refunded or cancelled invoice is a closed document. The one
+      // thing left to do with a paid-at-zero or fully refunded one is cancel it.
+      if (
+        ['PAID', 'REFUNDED', 'CANCELLED'].includes(existingInvoice.status) &&
+        !(status === 'CANCELLED' && existingInvoice.status !== 'CANCELLED')
+      ) {
         throw new BillingRefusal(400, 'Cannot edit a paid, refunded or cancelled invoice')
       }
 
-      // Don't allow editing what is owed once money has been taken against the
-      // invoice. `COMPLETED` alone was not the right test: refunding part of a
-      // payment moves it to PARTIALLY_REFUNDED, which would have unlocked the
-      // line items of an invoice that had been paid and partly refunded — the
-      // one case where the figures most need to stay put.
-      const settledPayments = (existingInvoice.payments ?? []).filter((p) =>
-        (SETTLED_PAYMENT_STATUSES as readonly string[]).includes(p.status)
-      )
-      const changesMoney =
-        items !== undefined || discountType !== undefined || discountValue !== undefined
-      if (settledPayments.length > 0 && changesMoney) {
+      // Lines and discount are a draft's (review 6.2). This also covers "no
+      // edits once money is taken": a draft cannot take a payment.
+      if (draftOnly && existingInvoice.status !== 'DRAFT') {
         throw new BillingRefusal(
-          400,
-          'Cannot edit invoice items or the discount after payments have been made'
+          409,
+          `${existingInvoice.invoiceNo} has been issued, so its lines and discount can no longer be changed — only its notes, terms and due date. To change what is owed, cancel it and raise a new one.`
         )
       }
 
       let updateData: Prisma.InvoiceUncheckedUpdateInput = {}
       if (notes !== undefined) updateData.notes = notes
       if (termsAndConditions !== undefined) updateData.termsAndConditions = termsAndConditions
-      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null
-      if (discountReason !== undefined) updateData.discountReason = discountReason || null
+      if (discountReason !== undefined) {
+        updateData.discountReason = discountReason ? String(discountReason).trim() || null : null
+      }
+
+      // Due date. An issued invoice keeps one, on or after the day it was
+      // issued. A draft's is checked against today only when it changes — an
+      // old draft re-saved with its old date is caught when it is issued.
+      if (dueDate !== undefined) {
+        const currentDay = existingInvoice.dueDate
+          ? localDay(existingInvoice.dueDate, timezone)
+          : undefined
+        if (existingInvoice.status === 'DRAFT') {
+          if (requestedDueDay && requestedDueDay !== currentDay) {
+            const refusal = dueDateRefusal(requestedDueDay, today)
+            if (refusal) throw new BillingRefusal(400, refusal)
+          }
+          updateData.dueDate = requestedDueDay ? dueDateOn(requestedDueDay) : null
+        } else {
+          if (!requestedDueDay) {
+            throw new BillingRefusal(400, 'An issued invoice keeps a due date; choose one')
+          }
+          const issueDay = localDay(existingInvoice.issuedAt ?? existingInvoice.createdAt, timezone)
+          const refusal = dueDateRefusal(requestedDueDay, issueDay)
+          if (refusal) throw new BillingRefusal(400, refusal)
+          if (requestedDueDay !== currentDay) updateData.dueDate = dueDateOn(requestedDueDay)
+        }
+      }
 
       let approvalStatus = existingInvoice.discountApprovalStatus
+      let lineAmounts: number[] = []
 
       if (changesMoney) {
-        const lines: any[] =
-          items ??
+        const lines: Array<Omit<InvoiceLine, 'description'> & { description: string }> =
+          parsedLines ??
           existingInvoice.items.map((item) => ({
             treatmentId: item.treatmentId,
+            inventoryItemId: item.inventoryItemId,
             description: item.description,
             quantity: item.quantity,
             unitPrice: Number(item.unitPrice),
@@ -297,35 +420,57 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             ? Number(discountValue)
             : Number(existingInvoice.discountValue ?? 0)
 
-        const subtotal = lines.reduce(
-          (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
-          0
-        )
-        const discountRefusal = discountProblem(subtotal, nextType, nextValue)
+        // A draft is priced at the clinic's rate today, the rate it will be
+        // issued at, so the draft on screen is the bill that goes out.
+        const taxRate = resolveTaxRate(clinic)
+        const totals = calculateInvoiceTotals(lines, nextType, nextValue, taxRate)
+        const discountRefusal = discountProblem(totals.subtotal, nextType, nextValue)
         if (discountRefusal) throw new BillingRefusal(400, discountRefusal)
+        lineAmounts = totals.lines.map((line) => line.amount)
 
-        const totals = calculateInvoiceTotals(
-          lines.map((item) => ({
-            quantity: Number(item.quantity),
-            unitPrice: Number(item.unitPrice),
-            taxable: item.taxable !== false,
-          })),
-          nextType,
-          nextValue,
-          Number(existingInvoice.taxRate ?? 0)
+        if (parsedLines) {
+          const treatmentIds = treatmentIdsOf(parsedLines)
+          await lockTreatments(tx, treatmentIds)
+          const treatmentRefusal = await treatmentBillingProblem(tx, {
+            hospitalId,
+            patientId: existingInvoice.patientId,
+            treatmentIds,
+            invoiceId: id,
+          })
+          if (treatmentRefusal) throw new BillingRefusal(409, treatmentRefusal)
+          const productRefusal = await productLineProblem(tx, hospitalId, parsedLines)
+          if (productRefusal) throw new BillingRefusal(400, productRefusal)
+        }
+
+        // FR-013 again. The approval belonged to the concession it was given
+        // for — the discount plus any treatment priced below its price — and a
+        // different one needs its own decision. Without this a draft approved
+        // at 10% could be edited to 60% and issued (finding 18). Compared as a
+        // share of the bill too, not just as an amount: Rs 2,000 approved off
+        // Rs 20,000 stayed approved when the lines were cut to Rs 2,100
+        // (review 6.2).
+        const [before, after] = await Promise.all([
+          treatmentPriceShortfall(tx, hospitalId, existingInvoice.items),
+          treatmentPriceShortfall(tx, hospitalId, lines),
+        ])
+        const was = concessionOf(
+          Number(existingInvoice.discountAmount ?? 0),
+          before.total,
+          Number(existingInvoice.subtotal ?? 0)
         )
+        const now = concessionOf(totals.discountAmount, after.total, totals.subtotal)
+        const redecide = now.amount !== was.amount || now.percent > was.percent + 0.005
 
-        // FR-013 again. The approval belonged to the discount it was given
-        // for; a different discount needs its own decision. Without this a
-        // draft approved at 10% could be edited to 60% and issued (finding 18).
-        if (totals.discountAmount !== Number(existingInvoice.discountAmount ?? 0)) {
-          if (discountNeedsApproval(totals.discountAmount, threshold)) {
+        if (redecide) {
+          if (discountNeedsApproval(now.amount, threshold)) {
             const reason =
               discountReason !== undefined ? discountReason : existingInvoice.discountReason
             if (!reason || String(reason).trim().length < 3) {
               throw new BillingRefusal(
                 400,
-                `A discount of ${totals.discountAmount} is above the ${threshold} approval threshold and needs a reason`
+                after.total > 0
+                  ? `A concession of ${now.amount} (discount ${totals.discountAmount}, treatments below their price ${after.total}) is above the ${threshold} approval threshold and needs a reason`
+                  : `A discount of ${now.amount} is above the ${threshold} approval threshold and needs a reason`
               )
             }
             if (holderCan(user, 'billing:discount')) {
@@ -339,12 +484,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                 discountDecisionNote: null,
               }
             } else {
-              if (existingInvoice.status !== 'DRAFT') {
-                throw new BillingRefusal(
-                  409,
-                  'A discount that needs approval can only be set while the invoice is a draft'
-                )
-              }
               approvalStatus = 'PENDING'
               updateData = {
                 ...updateData,
@@ -375,40 +514,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           discountValue: nextValue,
           discountAmount: totals.discountAmount,
           taxableAmount: totals.taxableAmount,
+          taxRate,
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
-          // No settled payment, so nothing has been paid.
+          // A draft, so nothing has been paid.
           paidAmount: 0,
           balanceAmount: totals.totalAmount,
         }
-
-        if (items !== undefined) {
-          const treatmentIds: string[] = items
-            .map((item: any) => item.treatmentId)
-            .filter((treatmentId: unknown): treatmentId is string => !!treatmentId)
-          await lockTreatments(tx, treatmentIds)
-          const treatmentRefusal = await treatmentBillingProblem(tx, {
-            hospitalId,
-            patientId: existingInvoice.patientId,
-            treatmentIds,
-            invoiceId: id,
-          })
-          if (treatmentRefusal) throw new BillingRefusal(409, treatmentRefusal)
-
-          await tx.invoiceItem.deleteMany({ where: { invoiceId: id } })
-          await tx.invoiceItem.createMany({
-            data: items.map((item: any) => ({
-              invoiceId: id,
-              treatmentId: item.treatmentId || null,
-              description: item.description,
-              quantity: Number(item.quantity),
-              unitPrice: Number(item.unitPrice),
-              amount: Number(item.quantity) * Number(item.unitPrice),
-              taxable: item.taxable !== false,
-            })),
-          })
-        }
       }
+
+      let issuing = false
+      let cancelling = false
 
       if (status && status !== existingInvoice.status) {
         if (MONEY_STATUSES.includes(status)) {
@@ -445,47 +561,60 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (status === 'CANCELLED') {
           const refusal = cancellationRefusal(existingInvoice)
           if (refusal) throw refusal
+          cancelling = true
+          updateData.status = status
+        } else if (existingInvoice.status === 'DRAFT' && status === 'PENDING') {
+          issuing = true
+        } else {
+          updateData.status = status
         }
+      }
 
-        updateData.status = status
+      if (parsedLines) {
+        await tx.invoiceItem.deleteMany({ where: { invoiceId: id } })
+        await tx.invoiceItem.createMany({
+          data: parsedLines.map((line, index) => ({
+            invoiceId: id,
+            treatmentId: line.treatmentId,
+            inventoryItemId: line.inventoryItemId,
+            description: line.description,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            amount: lineAmounts[index],
+            taxable: line.taxable,
+          })),
+        })
+      }
+
+      // Products it sold go back on the shelf. A draft never took any.
+      if (cancelling && existingInvoice.status !== 'DRAFT') {
+        await returnInvoiceStock(tx, {
+          hospitalId,
+          invoiceId: id,
+          invoiceNo: existingInvoice.invoiceNo,
+          userId: user?.id ?? null,
+        })
+      }
+
+      if (issuing) {
+        // The edit first, then the issue reads the invoice back — so what is
+        // issued, priced and taken from stock is exactly what was just saved.
+        if (Object.keys(updateData).length > 0) {
+          await tx.invoice.update({ where: { id, hospitalId }, data: updateData })
+        }
+        await issueInvoice(tx, { invoiceId: id, hospitalId, userId: user?.id ?? null })
+        const invoice = await tx.invoice.findUnique({
+          where: { id, hospitalId },
+          include: INVOICE_DETAIL,
+        })
+        if (!invoice) throw new BillingRefusal(404, 'Invoice not found')
+        return { before: existingInvoice, invoice }
       }
 
       const invoice = await tx.invoice.update({
         where: { id, hospitalId },
         data: updateData,
-        include: {
-          patient: {
-            select: {
-              id: true,
-              patientId: true,
-              firstName: true,
-              lastName: true,
-              phone: true,
-              email: true,
-            },
-          },
-          items: {
-            include: {
-              treatment: {
-                select: {
-                  id: true,
-                  treatmentNo: true,
-                  procedure: {
-                    select: {
-                      name: true,
-                      code: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          payments: {
-            orderBy: {
-              paymentDate: 'desc',
-            },
-          },
-        },
+        include: INVOICE_DETAIL,
       })
 
       return { before: existingInvoice, invoice }
@@ -530,7 +659,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
  * record of why. It is now CANCELLED and kept, lines and all: the number stays
  * accounted for, and its treatments become billable again because the billed
  * rule ignores cancelled invoices. One with money still on it is refused until
- * that money is refunded (finding 17).
+ * that money is refunded (finding 17); one whose payments have all been
+ * refunded (REFUNDED, nothing held) can be cancelled. Products it sold go back
+ * into stock.
  */
 export async function DELETE(
   request: NextRequest,
@@ -567,6 +698,16 @@ export async function DELETE(
 
       const refusal = cancellationRefusal(existingInvoice)
       if (refusal) throw refusal
+
+      // Products it sold go back on the shelf. A draft never took any.
+      if (existingInvoice.status !== 'DRAFT') {
+        await returnInvoiceStock(tx, {
+          hospitalId,
+          invoiceId: id,
+          invoiceNo: existingInvoice.invoiceNo,
+          userId: user?.id ?? null,
+        })
+      }
 
       const invoice = await tx.invoice.update({
         where: { id, hospitalId },

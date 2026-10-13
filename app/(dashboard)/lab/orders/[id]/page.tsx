@@ -68,6 +68,11 @@ interface LabOrder {
     toothNumbers: string | null
     status: string
     createdAt: string
+    /**
+     * The invoice that still bills the treatment — and with it this work —
+     * or null if none does. Absent for somebody who may not read billing.
+     */
+    invoice?: { id: string; invoiceNo: string; status: string } | null
   } | null
   history: HistoryEntry[]
 }
@@ -362,6 +367,27 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                     </p>
                   )}
                   <p className="text-muted-foreground">{formatDate(order.treatment.createdAt)}</p>
+                  {/* Read-only (review 4.4). A lab case has no charge of its
+                      own; the patient pays for it through the treatment, so
+                      whether that is billed is whether this work is. */}
+                  {order.treatment.invoice !== undefined && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-muted-foreground">Billing:</span>
+                      {order.treatment.invoice ? (
+                        <>
+                          <Link
+                            href={trail.to(`/billing/invoices/${order.treatment.invoice.id}`)}
+                            className="font-medium hover:underline"
+                          >
+                            {order.treatment.invoice.invoiceNo}
+                          </Link>
+                          <Badge variant="outline">{label(order.treatment.invoice.status)}</Badge>
+                        </>
+                      ) : (
+                        <span>Treatment not yet billed</span>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-muted-foreground">Not linked to a treatment.</p>

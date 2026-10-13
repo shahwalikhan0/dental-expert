@@ -394,7 +394,7 @@ export default function DashboardPage() {
         {showsMoney &&
           stat(
             '/billing/reports',
-            'This Month Revenue',
+            'Collected This Month',
             TrendingUp,
             formatCurrency(stats.overview.thisMonthRevenue ?? 0),
             <>
@@ -409,10 +409,10 @@ export default function DashboardPage() {
         {showsMoney &&
           stat(
             '/billing/invoices',
-            'Pending Payments',
+            'Outstanding',
             Receipt,
             formatCurrency(stats.overview.pendingPayments ?? 0),
-            <span>Outstanding receivables</span>
+            <span>Still owed on issued invoices</span>
           )}
       </div>
 
@@ -464,8 +464,8 @@ export default function DashboardPage() {
         {showsMoney && (
           <Card className="lg:col-span-4">
             <CardHeader>
-              <CardTitle>Revenue Overview</CardTitle>
-              <CardDescription>Last 7 days revenue trend</CardDescription>
+              <CardTitle>Collections</CardTitle>
+              <CardDescription>Collected per day, net of refunds, last 7 days</CardDescription>
             </CardHeader>
             <CardContent className="pl-2">
               {stats.charts.last7DaysRevenue && stats.charts.last7DaysRevenue.length > 0 ? (
@@ -493,12 +493,12 @@ export default function DashboardPage() {
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       activeDot={{ r: 8 }}
-                      name="Revenue"
+                      name="Collected"
                     />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
+                <p className="py-8 text-center text-muted-foreground">Nothing collected yet</p>
               )}
             </CardContent>
           </Card>
@@ -559,8 +559,8 @@ export default function DashboardPage() {
         {showsMoney && (
           <Card>
             <CardHeader>
-              <CardTitle>Monthly Revenue Trend</CardTitle>
-              <CardDescription>Last 6 months revenue comparison</CardDescription>
+              <CardTitle>Monthly Collections</CardTitle>
+              <CardDescription>Collected per month, net of refunds, last 6 months</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.charts.last6MonthsRevenue && stats.charts.last6MonthsRevenue.length > 0 ? (
@@ -584,13 +584,13 @@ export default function DashboardPage() {
                     <Bar
                       dataKey="revenue"
                       fill="hsl(var(--primary))"
-                      name="Revenue"
+                      name="Collected"
                       radius={[6, 6, 0, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
+                <p className="py-8 text-center text-muted-foreground">Nothing collected yet</p>
               )}
             </CardContent>
           </Card>
@@ -623,7 +623,7 @@ export default function DashboardPage() {
                   formatter={(value, _name, item) => {
                     if (typeof value !== 'number') return ''
                     // Match on dataKey, not name: the <Bar> sets a display
-                    // name ("Revenue (Rs)"), and that is what recharts passes
+                    // name ("Invoiced (Rs)"), and that is what recharts passes
                     // as `name`, so comparing it to 'revenue' never matched.
                     if (item?.dataKey === 'revenue') return formatCurrency(value)
                     return value
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                     yAxisId="right"
                     dataKey="revenue"
                     fill="hsl(var(--chart-2))"
-                    name="Revenue (Rs)"
+                    name="Invoiced (Rs)"
                     radius={[6, 6, 0, 0]}
                   />
                 )}

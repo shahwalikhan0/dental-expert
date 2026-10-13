@@ -114,9 +114,11 @@ describe('GET /api/reports/export', () => {
       ok: true,
       json: () =>
         Promise.resolve({
-          totalRevenue: 500000,
+          totalBilled: 500000,
+          totalCollected: 425000,
           totalExpenses: 200000,
-          profitMargin: 60.0,
+          profit: 225000,
+          profitMargin: 52.9,
           avgBillValue: 5000,
           collectionEfficiency: 85.0,
           outstandingAmount: 75000,
@@ -130,7 +132,10 @@ describe('GET /api/reports/export', () => {
     expect(res.status).toBe(200)
     const body = await res.text()
     expect(body).toContain('Financial')
-    expect(body).toContain('Total Revenue')
+    // Billed and collected are separate lines, never one "revenue".
+    expect(body).toContain('Billed (invoices issued)')
+    expect(body).toContain('Collected (net of refunds)')
+    expect(body).not.toContain('Total Revenue')
   })
 
   it('exports operational report', async () => {

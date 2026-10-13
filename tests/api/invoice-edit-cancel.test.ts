@@ -136,7 +136,9 @@ describe('PUT /api/invoices/[id]', () => {
 
     expect(res.status).toBe(200)
     const data = vi.mocked(prisma.invoice.update).mock.calls[0][0].data as any
-    expect(data.taxRate).toBeUndefined()
+    // A draft is priced at the clinic's own rate — none, for this clinic —
+    // whatever the form sent.
+    expect(data.taxRate).toBe(0)
     expect(data.totalAmount).toBe(1500)
   })
 
@@ -199,18 +201,123 @@ describe('PUT /api/invoices/[id]', () => {
   })
 
   it('issues a draft and audits the change', async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({
-      ...INVOICE,
-      status: 'DRAFT',
-    } as never)
+    const draft = { ...INVOICE, status: 'DRAFT' }
+    // Read under the lock, read again by the issue step, read back at the end.
+    vi.mocked(prisma.invoice.findUnique)
+      .mockResolvedValueOnce(draft as never)
+      .mockResolvedValueOnce(draft as never)
+      .mockResolvedValueOnce({
+        ...INVOICE,
+        status: 'PENDING',
+        dueDate: new Date('2026-10-14T12:00:00Z'),
+      } as never)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([] as never)
 
     const res = await PUT(request('PUT', { status: 'PENDING' }), params)
 
     expect(res.status).toBe(200)
     const entry = vi.mocked(prisma.auditLog.create).mock.calls[0][0].data as any
     expect(entry.action).toBe('invoice.updated')
-    expect(JSON.parse(entry.oldValues)).toEqual({ status: 'DRAFT' })
+    expect(JSON.parse(entry.oldValues)).toMatchObject({ status: 'DRAFT' })
     expect(JSON.parse(entry.newValues)).toMatchObject({ status: 'PENDING' })
+  })
+
+  // Invoice review 2.1 / 2.4: issuing stamps the day, and "Due on receipt"
+  // becomes due on that day rather than never.
+  it('stamps the issue and defaults the due date to the issue day', async () => {
+    const draft = { ...INVOICE, status: 'DRAFT' }
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(draft as never)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([] as never)
+
+    await PUT(request('PUT', { status: 'PENDING' }), params)
+
+    const issued = vi.mocked(prisma.invoice.update).mock.calls[0][0].data as any
+    expect(issued.status).toBe('PENDING')
+    expect(issued.issuedAt).toBeInstanceOf(Date)
+    expect(issued.dueDate).toBeInstanceOf(Date)
+  })
+
+  // Invoice review 2.2: a 100% discount is issued straight to PAID.
+  it('settles an invoice for nothing as paid when it is issued', async () => {
+    const draft = {
+      ...INVOICE,
+      status: 'DRAFT',
+      discountType: 'PERCENTAGE',
+      discountValue: 100,
+      discountAmount: 1500,
+      totalAmount: 0,
+    }
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(draft as never)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([] as never)
+
+    await PUT(request('PUT', { status: 'PENDING' }), params)
+
+    const settled = vi.mocked(prisma.invoice.update).mock.calls[1][0].data as any
+    expect(settled).toMatchObject({ status: 'PAID', balanceAmount: 0 })
+  })
+
+  it('refuses a due date before the day it is issued', async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({
+      ...INVOICE,
+      status: 'DRAFT',
+      dueDate: new Date('2020-01-01T12:00:00Z'),
+    } as never)
+
+    const res = await PUT(request('PUT', { status: 'PENDING' }), params)
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('before the invoice date')
+  })
+
+  // Invoice review 6.2: the API rewrote the lines of an issued invoice.
+  it('refuses to change the lines or discount once issued', async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(INVOICE as never)
+
+    const lines = await PUT(
+      request('PUT', { items: [{ description: 'Consultation', quantity: 1, unitPrice: 100 }] }),
+      params
+    )
+    expect(lines.status).toBe(409)
+    const discount = await PUT(request('PUT', { discountValue: 500 }), params)
+    expect(discount.status).toBe(409)
+    expect(prisma.invoice.update).not.toHaveBeenCalled()
+  })
+
+  it('still takes notes on an issued invoice', async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(INVOICE as never)
+
+    const res = await PUT(request('PUT', { notes: 'Patient will pay Friday' }), params)
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.invoice.update).mock.calls[0][0].data).toEqual({
+      notes: 'Patient will pay Friday',
+    })
+  })
+
+  // Invoice review 6.1: cancelling through PUT needed only billing:write.
+  it.each(['RECEPTIONIST', 'ACCOUNTANT'])(
+    'refuses a cancel through PUT to %s, who do not hold billing:void',
+    async (role) => {
+      signedInAs(role)
+      vi.mocked(prisma.invoice.findUnique).mockResolvedValue(INVOICE as never)
+
+      const res = await PUT(request('PUT', { status: 'CANCELLED' }), params)
+
+      expect(res.status).toBe(403)
+      expect(prisma.invoice.update).not.toHaveBeenCalled()
+    }
+  )
+
+  it('lets a clinic manager cancel through PUT', async () => {
+    signedInAs('CLINIC_MANAGER')
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(INVOICE as never)
+
+    const res = await PUT(request('PUT', { status: 'CANCELLED' }), params)
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.invoice.update).mock.calls[0][0].data).toMatchObject({
+      status: 'CANCELLED',
+    })
   })
 })
 

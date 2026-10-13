@@ -143,6 +143,7 @@ describe('CommunicationTriggersService', () => {
           hospitalId: 'h1',
           patientId: 'pat-1',
           invoiceNo: 'INV-001',
+          status: 'PARTIALLY_PAID',
           totalAmount: 5000,
           balanceAmount: 3000,
           dueDate: new Date('2026-02-15'),
@@ -171,8 +172,13 @@ describe('CommunicationTriggersService', () => {
           hospitalId: 'h1',
           patientId: 'pat-1',
           invoiceNo: 'INV-001',
+          status: 'PENDING',
           totalAmount: 5000,
           balanceAmount: 3000,
+          // No due date: it falls due on the day it was issued.
+          dueDate: null,
+          issuedAt: new Date('2026-02-01T06:00:00.000Z'),
+          createdAt: new Date('2026-02-01T06:00:00.000Z'),
           patient: { firstName: 'John', lastName: 'Doe', phone: '9876543210' },
         },
       ])
@@ -191,6 +197,30 @@ describe('CommunicationTriggersService', () => {
       )
     })
 
+    // Overdue by the shared rule (lib/invoice-figures.ts): owed, and due before
+    // today on the clinic's calendar. The query is only a coarse cut; these
+    // are the rows it can return that must not be chased.
+    it('does not remind about a refunded invoice', async () => {
+      ;(prisma.invoice.findMany as any).mockResolvedValue([
+        {
+          id: 'inv-refunded',
+          hospitalId: 'h1',
+          patientId: 'pat-1',
+          invoiceNo: 'INV-002',
+          status: 'REFUNDED',
+          totalAmount: 3000,
+          balanceAmount: 3000,
+          dueDate: new Date('2026-01-01'),
+          patient: { firstName: 'John', lastName: 'Doe', phone: '9876543210' },
+        },
+      ])
+      ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic', phone: '1' })
+      mockTemplateService.getDefaultTemplate.mockResolvedValue({ id: 't', content: 'Due' })
+
+      await communicationTriggersService.sendPaymentReminders()
+      expect(mockSmsService.sendSMS).not.toHaveBeenCalled()
+    })
+
     it('does not chase the same invoice again within the week', async () => {
       // An invoice stays overdue until it is paid. On an hourly schedule the
       // old behaviour would have sent the patient twenty-four texts a day
@@ -201,6 +231,7 @@ describe('CommunicationTriggersService', () => {
           hospitalId: 'h1',
           patientId: 'pat-1',
           invoiceNo: 'INV-001',
+          status: 'PENDING',
           totalAmount: 5000,
           balanceAmount: 2000,
           dueDate: new Date('2026-01-01'),

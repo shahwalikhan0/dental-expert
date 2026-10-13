@@ -74,6 +74,22 @@ describe('deriveInvoiceStatus', () => {
     expect(at('CANCELLED', 0)).toBe('CANCELLED')
     expect(at('OVERDUE', 0)).toBe('OVERDUE')
   })
+
+  // Invoice review 2.2: a 100% discount stayed PENDING for ever, offering a
+  // payment the payment route refused.
+  it('reads an issued invoice for nothing as PAID', () => {
+    const zero = (status: any) =>
+      deriveInvoiceStatus({ status, totalAmount: 0, paidAmount: 0, refunded: false })
+    expect(zero('PENDING')).toBe('PAID')
+    expect(zero('OVERDUE')).toBe('PAID')
+  })
+
+  it('leaves a draft or cancelled invoice for nothing as it is', () => {
+    const zero = (status: any) =>
+      deriveInvoiceStatus({ status, totalAmount: 0, paidAmount: 0, refunded: false })
+    expect(zero('DRAFT')).toBe('DRAFT')
+    expect(zero('CANCELLED')).toBe('CANCELLED')
+  })
 })
 
 describe('settleInvoice', () => {
@@ -106,7 +122,7 @@ describe('treatmentBillingProblem', () => {
 
   it('accepts the patient’s own unbilled treatment', async () => {
     vi.mocked(prisma.treatment.findMany).mockResolvedValue([
-      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1' },
+      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1', status: 'COMPLETED' },
     ] as never)
     vi.mocked(prisma.invoiceItem.findFirst).mockResolvedValue(null as never)
 
@@ -115,10 +131,30 @@ describe('treatmentBillingProblem', () => {
 
   it('refuses another patient’s treatment', async () => {
     vi.mocked(prisma.treatment.findMany).mockResolvedValue([
-      { id: 't1', patientId: 'fatima', treatmentNo: 'TRT-3' },
+      { id: 't1', patientId: 'fatima', treatmentNo: 'TRT-3', status: 'COMPLETED' },
     ] as never)
 
     await expect(treatmentBillingProblem(prisma, args)).resolves.toContain('another patient')
+  })
+
+  // Invoice review 4.1: the API billed PLANNED and CANCELLED treatments,
+  // which the unbilled list never offers.
+  it.each(['PLANNED', 'CANCELLED'])('refuses a %s treatment', async (status) => {
+    vi.mocked(prisma.treatment.findMany).mockResolvedValue([
+      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1', status },
+    ] as never)
+    vi.mocked(prisma.invoiceItem.findFirst).mockResolvedValue(null as never)
+
+    await expect(treatmentBillingProblem(prisma, args)).resolves.toContain('cannot be billed')
+  })
+
+  it('accepts one still in progress', async () => {
+    vi.mocked(prisma.treatment.findMany).mockResolvedValue([
+      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1', status: 'IN_PROGRESS' },
+    ] as never)
+    vi.mocked(prisma.invoiceItem.findFirst).mockResolvedValue(null as never)
+
+    await expect(treatmentBillingProblem(prisma, args)).resolves.toBeNull()
   })
 
   it('refuses a treatment from another clinic, which it cannot see', async () => {
@@ -128,7 +164,7 @@ describe('treatmentBillingProblem', () => {
 
   it('refuses one already on a live invoice, ignoring the invoice being edited', async () => {
     vi.mocked(prisma.treatment.findMany).mockResolvedValue([
-      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1' },
+      { id: 't1', patientId: 'ahmed', treatmentNo: 'TRT-1', status: 'COMPLETED' },
     ] as never)
     vi.mocked(prisma.invoiceItem.findFirst).mockResolvedValue({
       treatment: { treatmentNo: 'TRT-1' },

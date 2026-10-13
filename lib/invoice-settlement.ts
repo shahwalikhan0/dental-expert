@@ -132,6 +132,13 @@ function anyRefunded(payments: PaymentForSettlement[] | null | undefined): boole
  * has been paid: all of it is PAID, some of it PARTIALLY_PAID, none of it
  * after a refund REFUNDED, and none of it otherwise whatever unpaid state the
  * invoice was in (PENDING, or OVERDUE if it had been marked so).
+ *
+ * An issued invoice for nothing — a 100% discount, or every line at no charge
+ * — owes nothing, so it is PAID. It used to sit PENDING for ever with a zero
+ * balance: offered "Record Payment", which the payment route then refused as
+ * already paid, listed as overdue once its date passed, and counted among the
+ * outstanding invoices (invoice review 2.2). Taking a payment checks the
+ * balance, not this status, so nothing there changes.
  */
 export function deriveInvoiceStatus(input: {
   status: InvoiceStatus
@@ -143,6 +150,7 @@ export function deriveInvoiceStatus(input: {
   if (status === 'CANCELLED') return 'CANCELLED'
   if (status === 'DRAFT' && paidAmount <= 0) return 'DRAFT'
 
+  if (totalAmount <= 0) return 'PAID'
   if (paidAmount > 0 && paidAmount >= totalAmount) return 'PAID'
   if (paidAmount > 0) return 'PARTIALLY_PAID'
   if (refunded) return 'REFUNDED'
@@ -224,11 +232,20 @@ export const BILLED_ON_LIVE_INVOICE = {
 } satisfies Prisma.InvoiceItemWhereInput
 
 /**
+ * The treatment statuses that can be billed: work done, or under way for a
+ * course billed as it goes. A PLANNED treatment has not happened and a
+ * CANCELLED one will not. Shared with "unbilled treatments", so a treatment
+ * the list offers is one the invoice routes accept (invoice review 4.1).
+ */
+export const BILLABLE_TREATMENT_STATUSES = ['COMPLETED', 'IN_PROGRESS'] as const
+
+/**
  * Why these treatments cannot be billed on this patient's invoice, or null.
  *
- * Each must belong to this clinic and this patient, appear once, and not
- * already be on another invoice that is still live. `invoiceId` is the invoice
- * being edited, whose own lines do not count against it.
+ * Each must belong to this clinic and this patient, be in progress or
+ * completed, appear once, and not already be on another invoice that is still
+ * live. `invoiceId` is the invoice being edited, whose own lines do not count
+ * against it.
  */
 export async function treatmentBillingProblem(
   db: Db,
@@ -244,7 +261,7 @@ export async function treatmentBillingProblem(
 
   const treatments = await db.treatment.findMany({
     where: { id: { in: ids }, hospitalId },
-    select: { id: true, patientId: true, treatmentNo: true },
+    select: { id: true, patientId: true, treatmentNo: true, status: true },
   })
   const found = new Map((treatments ?? []).map((t) => [t.id, t]))
 
@@ -253,6 +270,14 @@ export async function treatmentBillingProblem(
     if (!treatment) return 'A treatment on this invoice was not found'
     if (treatment.patientId !== patientId) {
       return `${treatment.treatmentNo} belongs to another patient and cannot go on this invoice`
+    }
+    // The API accepted a PLANNED or CANCELLED treatment, which the unbilled
+    // list never offers; billing work that has not been done is a charge
+    // without a service behind it.
+    if (!(BILLABLE_TREATMENT_STATUSES as readonly string[]).includes(String(treatment.status))) {
+      return `${treatment.treatmentNo} is ${String(treatment.status ?? 'not started')
+        .toLowerCase()
+        .replace('_', ' ')} and cannot be billed until it is in progress or completed`
     }
   }
 

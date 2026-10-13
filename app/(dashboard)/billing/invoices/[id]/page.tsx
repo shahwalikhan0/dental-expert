@@ -53,6 +53,10 @@ import {
   Building2,
   Pencil,
   Send,
+  Package,
+  ShieldCheck,
+  ShieldAlert,
+  XCircle,
 } from 'lucide-react'
 import {
   invoiceStatusConfig,
@@ -61,10 +65,14 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
-  getDueDays,
   numberToWords,
 } from '@/lib/billing-utils'
+import { invoiceDueState } from '@/lib/invoice-figures'
+import { localDay } from '@/lib/appointment-time'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { useSession } from 'next-auth/react'
+import { useCan } from '@/hooks/use-can'
+import { billTo } from '@/lib/invoice-links'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { isoDay } from '@/lib/dates'
 import { useToast } from '@/hooks/use-toast'
@@ -79,6 +87,8 @@ interface Invoice {
   // The Invoice model has no `invoiceDate`. Three screens read one anyway, so
   // every invoice in the system rendered undated — including the printed copy.
   createdAt: string
+  /** When it left DRAFT; null for a draft. The invoice date once issued. */
+  issuedAt: string | null
   dueDate: string | null
   subtotal: string | number
   discountType: string
@@ -93,6 +103,29 @@ interface Invoice {
   status: string
   notes: string | null
   termsAndConditions: string | null
+  discountReason: string | null
+  discountApprovalStatus: 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED'
+  discountDecidedAt: string | null
+  discountDecisionNote: string | null
+  discountRequestedBy: { id: string; name: string } | null
+  discountApprovedBy: { id: string; name: string } | null
+  appointment: {
+    id: string
+    appointmentNo: string
+    startsAt: string
+    doctor: { firstName: string; lastName: string } | null
+  } | null
+  clinic: {
+    name: string
+    address: string | null
+    city: string | null
+    phone: string | null
+    email: string | null
+    taxRegistrationNo: string | null
+    nationalTaxNo: string | null
+    taxLabel: string | null
+    timezone: string | null
+  } | null
   patient: {
     id: string
     patientId: string
@@ -104,6 +137,14 @@ interface Invoice {
     city: string | null
     state: string | null
     postalCode: string | null
+    /** Who pays, for a dependant (a child's bill goes to the parent). */
+    guarantor: {
+      id: string
+      patientId: string
+      firstName: string
+      lastName: string
+      phone: string | null
+    } | null
   }
   items: Array<{
     id: string
@@ -112,10 +153,12 @@ interface Invoice {
     unitPrice: string | number
     amount: string | number
     taxable: boolean
+    inventoryItem: { id: string; name: string; sku: string; unit: string } | null
     treatment: {
       id: string
       treatmentNo: string
       toothNumbers: string | null
+      cost: string | number
       procedure: {
         id: string
         name: string
@@ -140,6 +183,14 @@ interface Invoice {
     notes: string | null
     refundAmount: string | number | null
     refundDate: string | null
+    refunds: Array<{
+      id: string
+      refundNo: string
+      amount: string | number
+      refundMethod: string
+      refundedAt: string
+      reason: string
+    }>
   }>
 }
 
@@ -172,6 +223,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const [issuing, setIssuing] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+
+  // FR-013: who may decide a discount, and who is looking. The requester may
+  // not approve their own, so the buttons are not offered to them.
+  const canApproveDiscounts = useCan('billing:discount') === true
+  const { data: session } = useSession()
+  const [decisionNote, setDecisionNote] = useState('')
+  const [deciding, setDeciding] = useState<'APPROVE' | 'REJECT' | null>(null)
 
   const fetchInvoice = async () => {
     try {
@@ -313,6 +371,53 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  /**
+   * Approve or reject the discount (FR-013). There was no screen for this:
+   * a discount over the threshold left the invoice stuck in draft, and no
+   * manager could approve it from the app (invoice review 1.1).
+   */
+  const handleDecision = async (decision: 'APPROVE' | 'REJECT') => {
+    if (!invoice) return
+    if (decision === 'REJECT' && !decisionNote.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Say why it is rejected',
+        description:
+          'A note is required when rejecting a discount, so the desk knows what to change.',
+      })
+      return
+    }
+    try {
+      setDeciding(decision)
+      const response = await fetch(`/api/invoices/${id}/discount-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          note: decisionNote.trim() || null,
+          // Refused if the discount changed since this page loaded.
+          expectedDiscountAmount: Number(invoice.discountAmount),
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Failed to record the decision')
+      toast({
+        title: decision === 'APPROVE' ? 'Discount approved' : 'Discount rejected',
+        description: data.message,
+      })
+      setDecisionNote('')
+      await fetchInvoice()
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not record the decision',
+        description: error.message,
+      })
+    } finally {
+      setDeciding(null)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     const config = invoiceStatusConfig[status as keyof typeof invoiceStatusConfig] || {
       label: status,
@@ -373,13 +478,82 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  const dueDays = getDueDays(invoice.dueDate)
+  // The shared overdue rule (lib/invoice-figures.ts): only an invoice still
+  // owed can be late, so a paid, cancelled, refunded or draft one never says
+  // "overdue". Counted on the clinic's calendar; the browser's zone is only a
+  // fallback for a clinic with none set.
+  const clinicZone = invoice.clinic?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+  const dueDays = invoiceDueState(invoice, localDay(new Date(), clinicZone), clinicZone)
+
+  const payer = billTo(invoice.patient)
+  const taxRate = Number(invoice.taxRate)
+  const taxLabel = invoice.clinic?.taxLabel || 'Tax'
+  const discountPercent =
+    invoice.discountType === 'PERCENTAGE' ? Number(invoice.discountValue) : null
+  const approval = invoice.discountApprovalStatus
+  // Why "Issue" will be refused, said before it is pressed.
+  const issueBlocked =
+    approval === 'PENDING'
+      ? 'The discount is awaiting a manager’s approval, so this invoice cannot be issued yet.'
+      : approval === 'REJECTED'
+        ? 'The discount was rejected. Change it on the Edit page, then issue the invoice.'
+        : null
+  const ownRequest =
+    !!invoice.discountRequestedBy && invoice.discountRequestedBy.id === session?.user?.id
+  // The date the invoice bears: the day it was issued, or the draft's date.
+  const invoiceDate = invoice.issuedAt ?? invoice.createdAt
+  // Every payment, then its refunds as negative rows, so the history adds up
+  // to "Paid", which is net of them (invoice review 3.3).
+  const historyNet = invoice.payments.reduce(
+    (sum, p) =>
+      ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(p.status)
+        ? sum + Number(p.amount) - (p.refunds ?? []).reduce((r, x) => r + Number(x.amount), 0)
+        : sum,
+    0
+  )
 
   return (
     <div className="space-y-6">
       {ConfirmDialogComponent}
+
+      {/* Letterhead, printed only. The screen version is the app around it;
+          on paper the invoice has to say who issued it (invoice review 6.3).
+          The registration numbers are printed when tax is charged. */}
+      <div className="hidden print:block border-b pb-4">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h1 className="text-xl font-bold">{invoice.clinic?.name ?? 'Invoice'}</h1>
+            {invoice.clinic && (
+              <p className="text-sm">
+                {[invoice.clinic.address, invoice.clinic.city].filter(Boolean).join(', ')}
+                {invoice.clinic.phone ? ` · ${invoice.clinic.phone}` : ''}
+                {invoice.clinic.email ? ` · ${invoice.clinic.email}` : ''}
+              </p>
+            )}
+            {taxRate > 0 && invoice.clinic?.taxRegistrationNo && (
+              <p className="text-sm">STRN: {invoice.clinic.taxRegistrationNo}</p>
+            )}
+            {taxRate > 0 && invoice.clinic?.nationalTaxNo && (
+              <p className="text-sm">NTN: {invoice.clinic.nationalTaxNo}</p>
+            )}
+          </div>
+          <div className="text-right text-sm">
+            <p className="text-lg font-semibold uppercase tracking-wide">
+              {taxRate > 0 ? 'Tax invoice' : 'Invoice'}
+            </p>
+            <p>
+              <span className="font-medium">{invoice.invoiceNo}</span>
+              {invoice.status === 'DRAFT' ? ' (draft)' : ''}
+              {invoice.status === 'CANCELLED' ? ' (cancelled)' : ''}
+            </p>
+            <p>Date: {formatDate(invoiceDate)}</p>
+            {invoice.dueDate && <p>Due: {formatDate(invoice.dueDate)}</p>}
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
         <div className="flex min-w-0 items-center gap-4">
           <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
           <div>
@@ -387,7 +561,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <h1 className="page-title">{invoice.invoiceNo}</h1>
               {getStatusBadge(invoice.status)}
             </div>
-            <p className="text-muted-foreground">Created on {formatDate(invoice.createdAt)}</p>
+            <p className="text-muted-foreground">
+              {invoice.issuedAt
+                ? `Issued on ${formatDate(invoice.issuedAt)}`
+                : `Draft started on ${formatDate(invoice.createdAt)}`}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -403,11 +581,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   Edit
                 </Link>
               </Button>
-              <Button onClick={handleIssue} disabled={issuing}>
+              <Button
+                onClick={handleIssue}
+                disabled={issuing || !!issueBlocked}
+                title={issueBlocked ?? undefined}
+              >
                 <Send className="h-4 w-4 mr-2" />
                 {issuing ? 'Issuing…' : 'Issue invoice'}
               </Button>
             </>
+          )}
+          {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Notes &amp; due date
+              </Link>
+            </Button>
           )}
           {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
             <Button onClick={() => setPaymentDialogOpen(true)}>
@@ -418,9 +608,16 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {invoice.status === 'DRAFT' && issueBlocked && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{issueBlocked}</span>
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3 print:block">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 print:space-y-4">
           {/* Patient Info */}
           <Card>
             <CardHeader>
@@ -432,24 +629,49 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   <User className="h-6 w-6 text-primary" />
                 </div>
                 <div className="flex-1">
+                  {/* A dependant's bill is addressed to whoever pays for them
+                      (invoice review 4.7); the patient is named as whom it is
+                      for. */}
                   <div className="font-semibold text-lg">
-                    {invoice.patient.firstName} {invoice.patient.lastName}
+                    {payer.payer.firstName} {payer.payer.lastName}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Patient ID: {invoice.patient.patientId}
-                  </div>
-                  <div className="mt-2 space-y-1 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      {invoice.patient.phone}
+                  {payer.forPatient ? (
+                    <div className="text-sm text-muted-foreground">
+                      for{' '}
+                      <Link
+                        href={trail.to(`/patients/${invoice.patient.id}`)}
+                        className="hover:underline print:no-underline"
+                      >
+                        {invoice.patient.firstName} {invoice.patient.lastName}
+                      </Link>{' '}
+                      ({invoice.patient.patientId})
                     </div>
-                    {invoice.patient.email && (
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Patient ID: {invoice.patient.patientId}
+                    </div>
+                  )}
+                  <div className="mt-2 space-y-1 text-sm">
+                    {invoice.patient.guarantor ? (
+                      invoice.patient.guarantor.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          {invoice.patient.guarantor.phone}
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-muted-foreground" />
+                        {invoice.patient.phone}
+                      </div>
+                    )}
+                    {!invoice.patient.guarantor && invoice.patient.email && (
                       <div className="flex items-center gap-2">
                         <Mail className="h-4 w-4 text-muted-foreground" />
                         {invoice.patient.email}
                       </div>
                     )}
-                    {invoice.patient.address && (
+                    {!invoice.patient.guarantor && invoice.patient.address && (
                       <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
                         {invoice.patient.address}
@@ -463,6 +685,25 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </CardContent>
           </Card>
+
+          {/* The visit this bill is for (invoice review 4.3). */}
+          {invoice.appointment && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              For the visit on {formatDateTime(invoice.appointment.startsAt)}
+              {invoice.appointment.doctor
+                ? ` with Dr. ${invoice.appointment.doctor.firstName} ${invoice.appointment.doctor.lastName}`
+                : ''}{' '}
+              (
+              <Link
+                href={trail.to(`/appointments/${invoice.appointment.id}`)}
+                className="hover:underline print:no-underline"
+              >
+                {invoice.appointment.appointmentNo}
+              </Link>
+              )
+            </p>
+          )}
 
           {/* Invoice Items */}
           <Card>
@@ -483,7 +724,35 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   {invoice.items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        <div className="font-medium">{item.description}</div>
+                        <div className="font-medium">
+                          {item.description}
+                          {/* Which lines tax was charged on (review 6.4). */}
+                          {taxRate > 0 && item.taxable && (
+                            <span
+                              className="ml-2 text-xs font-normal text-muted-foreground"
+                              title={`${taxLabel} is charged on this line`}
+                            >
+                              (taxable)
+                            </span>
+                          )}
+                        </div>
+                        {item.inventoryItem && (
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Package className="h-3 w-3" />
+                            <Link
+                              href={trail.to(`/inventory/${item.inventoryItem.id}`)}
+                              className="hover:underline print:no-underline"
+                            >
+                              {item.inventoryItem.sku}
+                            </Link>
+                          </div>
+                        )}
+                        {item.treatment && Number(item.amount) < Number(item.treatment.cost) && (
+                          <div className="text-xs text-muted-foreground print:hidden">
+                            Charged below the treatment&rsquo;s price of{' '}
+                            {formatCurrency(item.treatment.cost)}
+                          </div>
+                        )}
                         {item.treatment && (
                           <div className="text-sm text-muted-foreground">
                             {/* The clinical record behind the charge. Disputing
@@ -525,18 +794,31 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                     {Number(invoice.discountAmount) > 0 && (
                       <div className="flex justify-between text-green-600 dark:text-green-400">
-                        <span>Discount</span>
+                        <span>
+                          Discount{discountPercent !== null ? ` (${discountPercent}%)` : ''}
+                        </span>
                         <span>-{formatCurrency(invoice.discountAmount)}</span>
                       </div>
                     )}
                     {/* Reads the rate stamped on this invoice, not the clinic's
                         current one, so a reprint shows what was actually
                         charged. No line at all when there was no tax. */}
-                    {Number(invoice.taxRate) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Tax ({invoice.taxRate}%)</span>
-                        <span>{formatCurrency(invoice.taxAmount)}</span>
-                      </div>
+                    {taxRate > 0 && (
+                      <>
+                        {/* What the tax was charged on, so the tax line can
+                            be checked: the taxable lines less their share of
+                            the discount (review 1.4). */}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Taxable value</span>
+                          <span>{formatCurrency(invoice.taxableAmount)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {taxLabel} ({taxRate}%)
+                          </span>
+                          <span>{formatCurrency(invoice.taxAmount)}</span>
+                        </div>
+                      </>
                     )}
                     <Separator />
                     <div className="flex justify-between font-bold text-lg">
@@ -591,7 +873,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invoice.payments.map((payment) => (
+                    {invoice.payments.flatMap((payment) => [
                       <TableRow key={payment.id}>
                         <TableCell>
                           {/* The payment number opens its receipt — what the
@@ -622,8 +904,37 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                           {formatCurrency(payment.amount)}
                         </TableCell>
                         <TableCell>{getPaymentStatusBadge(payment.status)}</TableCell>
-                      </TableRow>
-                    ))}
+                      </TableRow>,
+                      ...(payment.refunds ?? []).map((refund) => (
+                        <TableRow key={refund.id} className="text-purple-700 dark:text-purple-300">
+                          <TableCell className="pl-8">
+                            <div className="font-medium">{refund.refundNo}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Refund of {payment.paymentNo}: {refund.reason}
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(refund.refundedAt)}</TableCell>
+                          <TableCell>
+                            {paymentMethodConfig[
+                              refund.refundMethod as keyof typeof paymentMethodConfig
+                            ]?.label || refund.refundMethod}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            -{formatCurrency(refund.amount)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      )),
+                    ])}
+                    <TableRow>
+                      <TableCell colSpan={3} className="font-medium">
+                        Paid, net of refunds
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCurrency(historyNet)}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
                   </TableBody>
                 </Table>
               </CardContent>
@@ -654,7 +965,117 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-6 print:hidden">
+          {/* Discount and its approval (FR-013, invoice review 1.1, 6.4) */}
+          {Number(invoice.discountAmount) > 0 || approval !== 'NOT_REQUIRED' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  {approval === 'APPROVED' ? (
+                    <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  ) : approval === 'REJECTED' ? (
+                    <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <ShieldAlert className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  Discount
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount</span>
+                  <span>
+                    {formatCurrency(invoice.discountAmount)}
+                    {discountPercent !== null
+                      ? ` (${discountPercent}%)`
+                      : Number(invoice.subtotal) > 0
+                        ? ` (${Math.round((Number(invoice.discountAmount) / Number(invoice.subtotal)) * 1000) / 10}% of the bill)`
+                        : ''}
+                  </span>
+                </div>
+                {invoice.discountReason && (
+                  <div>
+                    <div className="text-muted-foreground">Reason</div>
+                    <p>{invoice.discountReason}</p>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Approval</span>
+                  <span>
+                    {approval === 'NOT_REQUIRED'
+                      ? 'Not needed'
+                      : approval === 'PENDING'
+                        ? 'Awaiting a manager'
+                        : approval === 'APPROVED'
+                          ? 'Approved'
+                          : 'Rejected'}
+                  </span>
+                </div>
+                {invoice.discountRequestedBy && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Requested by</span>
+                    <span>{invoice.discountRequestedBy.name}</span>
+                  </div>
+                )}
+                {invoice.discountApprovedBy && approval !== 'PENDING' && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {approval === 'REJECTED' ? 'Rejected by' : 'Approved by'}
+                    </span>
+                    <span>
+                      {invoice.discountApprovedBy.name}
+                      {invoice.discountDecidedAt
+                        ? `, ${formatDate(invoice.discountDecidedAt)}`
+                        : ''}
+                    </span>
+                  </div>
+                )}
+                {invoice.discountDecisionNote && (
+                  <div>
+                    <div className="text-muted-foreground">Note</div>
+                    <p>{invoice.discountDecisionNote}</p>
+                  </div>
+                )}
+
+                {approval === 'PENDING' &&
+                  (canApproveDiscounts && !ownRequest ? (
+                    <div className="space-y-2 border-t pt-3">
+                      <Label htmlFor="decisionNote">Note (required to reject)</Label>
+                      <Textarea
+                        id="decisionNote"
+                        rows={2}
+                        value={decisionNote}
+                        onChange={(e) => setDecisionNote(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleDecision('APPROVE')}
+                          disabled={deciding !== null}
+                        >
+                          {deciding === 'APPROVE' ? 'Approving…' : 'Approve'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDecision('REJECT')}
+                          disabled={deciding !== null}
+                        >
+                          {deciding === 'REJECT' ? 'Rejecting…' : 'Reject'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="border-t pt-3 text-muted-foreground">
+                      {ownRequest && canApproveDiscounts
+                        ? 'You asked for this discount, so another manager has to approve it.'
+                        : 'A manager or the administrator approves this before the invoice can be issued.'}
+                    </p>
+                  ))}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {/* Status Card */}
           <Card>
             <CardHeader>
@@ -667,17 +1088,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Invoice Date</span>
-                <span>{formatDate(invoice.createdAt)}</span>
+                <span>{formatDate(invoiceDate)}</span>
               </div>
               {invoice.dueDate && (
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Due Date</span>
                   <div className="text-right">
                     <div>{formatDate(invoice.dueDate)}</div>
-                    {dueDays.isOverdue && invoice.status !== 'PAID' && (
+                    {dueDays?.overdue && (
                       <div className="text-xs text-red-600 flex items-center justify-end gap-1 dark:text-red-400">
                         <Clock className="h-3 w-3" />
-                        {dueDays.label}
+                        {dueDays?.label}
                       </div>
                     )}
                   </div>

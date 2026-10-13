@@ -62,6 +62,10 @@ export default function EditTreatmentPage() {
   const [treatmentNo, setTreatmentNo] = useState<string | null>(null)
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null)
   const [signedAt, setSignedAt] = useState<string | null>(null)
+  // The invoice still billing this treatment, if any. Its cost is what that
+  // invoice charged, so it is shown and not editable; the route refuses a
+  // change either way.
+  const [billedOn, setBilledOn] = useState<{ id: string; invoiceNo: string } | null>(null)
   const [amendmentReason, setAmendmentReason] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -78,6 +82,7 @@ export default function EditTreatmentPage() {
 
         setTreatmentNo(t.treatmentNo ?? null)
         setSignedAt(t.signedAt ?? null)
+        setBilledOn(t.billedOn ?? null)
         setPatient(
           t.patient
             ? { id: t.patient.id, name: `${t.patient.firstName} ${t.patient.lastName}` }
@@ -142,7 +147,9 @@ export default function EditTreatmentPage() {
         body: JSON.stringify({
           ...form,
           followUpDate: form.followUpDate || null,
-          cost: form.cost === '' ? undefined : Number(form.cost),
+          // Not sent at all while billed: there is nothing to change, and an
+          // unchanged figure is all the field can hold.
+          cost: form.cost === '' || billedOn ? undefined : Number(form.cost),
           ...(needsReason ? { amendmentReason: amendmentReason.trim() } : {}),
         }),
       })
@@ -301,7 +308,21 @@ export default function EditTreatmentPage() {
               step="0.01"
               value={form.cost}
               onChange={(e) => set('cost', e.target.value)}
+              disabled={Boolean(billedOn)}
+              aria-describedby={billedOn ? 'cost-billed' : undefined}
             />
+            {billedOn && (
+              <p id="cost-billed" className="text-xs text-muted-foreground">
+                Billed on{' '}
+                <Link
+                  href={trail.to(`/billing/invoices/${billedOn.id}`)}
+                  className="font-medium hover:underline"
+                >
+                  {billedOn.invoiceNo}
+                </Link>
+                . Cancel or edit that invoice first to change the cost.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

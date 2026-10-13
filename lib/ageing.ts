@@ -9,94 +9,147 @@
  * So the arithmetic and the labels live here, where nothing is imported but
  * dates and numbers, and the ledger builds on top.
  */
+import {
+  daysPastDue,
+  dueAnchor,
+  isInvoiceOwed,
+  money,
+  type DatedInvoice,
+  type OwableInvoice,
+} from '@/lib/invoice-figures'
+
+export { money }
 
 /**
- * Money owed, by how long it has been owed.
+ * Money owed, by how far past its due date it is.
  *
- * The four buckets every practice management system uses, because they are the
- * ones a collections conversation is held in: this month, last month, the
- * month before, and the one that needs a telephone call.
+ * One bucketing for every screen that ages a debt — receivables, the patient
+ * ledger and statement, Claims Aging on the billing overview and Reports →
+ * Outstanding. They used to be three: receivables aged from the invoice date
+ * and called 0–30 days "Current", the reports aged from the due date and
+ * called the same bill "1–30 days overdue", and the ledger called anything
+ * older than today overdue (bug report item 5). An invoice raised yesterday
+ * with no due date was current, overdue and overdue, depending on the screen.
+ *
+ * Days are counted from the due date, on the clinic's calendar. "Not yet due"
+ * includes the due day itself.
  */
+export type AgeingBucketKey = 'notDue' | 'days1_30' | 'days31_60' | 'days61_90' | 'over90'
+
 export interface Ageing {
-  current: number
-  days30: number
-  days60: number
-  days90: number
+  notDue: number
+  days1_30: number
+  days31_60: number
+  days61_90: number
+  over90: number
   total: number
 }
 
 export const EMPTY_AGEING: Ageing = {
-  current: 0,
-  days30: 0,
-  days60: 0,
-  days90: 0,
+  notDue: 0,
+  days1_30: 0,
+  days31_60: 0,
+  days61_90: 0,
+  over90: 0,
   total: 0,
 }
 
-/** Rounded the way money is, at every boundary rather than at the end. */
-export function money(value: unknown): number {
-  return Math.round(Number(value ?? 0) * 100) / 100
+export const AGEING_BUCKETS: ReadonlyArray<{
+  key: AgeingBucketKey
+  label: string
+  hint: string
+}> = [
+  { key: 'notDue', label: 'Not yet due', hint: 'Within its terms' },
+  { key: 'days1_30', label: '1–30', hint: '1–30 days overdue' },
+  { key: 'days31_60', label: '31–60', hint: '31–60 days overdue' },
+  { key: 'days61_90', label: '61–90', hint: '61–90 days overdue' },
+  { key: 'over90', label: '90+', hint: 'Over 90 days overdue — needs a telephone call' },
+]
+
+/** Which bucket a debt this many days past due belongs in. */
+export function ageingBucket(daysLate: number): AgeingBucketKey {
+  if (daysLate <= 0) return 'notDue'
+  if (daysLate <= 30) return 'days1_30'
+  if (daysLate <= 60) return 'days31_60'
+  if (daysLate <= 90) return 'days61_90'
+  return 'over90'
 }
 
 /**
- * Whole days from `from` to `to`, by calendar day.
- *
- * An invoice raised at 23:50 yesterday is one day old this morning, not
- * fourteen hours old, because that is what somebody reading the list means.
+ * The date an invoice ages from: its due date, or failing that when it was
+ * issued, or raised. See `dueAnchor` in lib/invoice-figures.ts.
  */
-export function daysBetween(from: Date, to: Date): number {
-  const a = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())
-  const b = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate())
-  return Math.round((b - a) / 86400000)
+export function agesFrom(invoice: DatedInvoice): Date {
+  return dueAnchor(invoice) ?? new Date(0)
 }
+
+export type AgeableInvoice = OwableInvoice & DatedInvoice
 
 /**
- * The date an invoice starts ageing from.
+ * Put each owed invoice's balance in its bucket.
  *
- * Its due date when it has one — that is the promise that was made — and
- * otherwise the day it was raised. Falling back to `createdAt` matters: most
- * invoices in this application have no due date, and an ageing report that
- * silently drops them is worse than none.
+ * Invoices that are not owed — drafts, cancelled, refunded, settled — are
+ * skipped here rather than trusted to have been filtered out by the caller,
+ * so no screen can age a debt the others do not count.
  */
-export function agesFrom(invoice: { dueDate: Date | null; createdAt: Date }): Date {
-  return invoice.dueDate ?? invoice.createdAt
+export function ageInvoices(
+  invoices: AgeableInvoice[],
+  todayYmd: string,
+  timezone: string
+): Ageing {
+  return ageInvoicesWithCounts(invoices, todayYmd, timezone).ageing
 }
 
-export interface AgeableInvoice {
-  dueDate: Date | null
-  createdAt: Date
-  balanceAmount: unknown
-}
-
-/** Put each invoice's outstanding balance in its bucket. */
-export function ageInvoices(invoices: AgeableInvoice[], today: Date = new Date()): Ageing {
+/** The same, with how many invoices are in each bucket. */
+export function ageInvoicesWithCounts(
+  invoices: AgeableInvoice[],
+  todayYmd: string,
+  timezone: string
+): { ageing: Ageing; counts: Record<AgeingBucketKey, number> } {
   const buckets = { ...EMPTY_AGEING }
+  const counts: Record<AgeingBucketKey, number> = {
+    notDue: 0,
+    days1_30: 0,
+    days31_60: 0,
+    days61_90: 0,
+    over90: 0,
+  }
 
   for (const invoice of invoices) {
+    if (!isInvoiceOwed(invoice)) continue
     const balance = money(invoice.balanceAmount)
-    if (balance <= 0) continue
-
-    const age = daysBetween(agesFrom(invoice), today)
-    if (age <= 30) buckets.current += balance
-    else if (age <= 60) buckets.days30 += balance
-    else if (age <= 90) buckets.days60 += balance
-    else buckets.days90 += balance
-
+    const key = ageingBucket(daysPastDue(invoice, todayYmd, timezone))
+    buckets[key] += balance
+    counts[key] += 1
     buckets.total += balance
   }
 
   return {
-    current: money(buckets.current),
-    days30: money(buckets.days30),
-    days60: money(buckets.days60),
-    days90: money(buckets.days90),
-    total: money(buckets.total),
+    ageing: {
+      notDue: money(buckets.notDue),
+      days1_30: money(buckets.days1_30),
+      days31_60: money(buckets.days31_60),
+      days61_90: money(buckets.days61_90),
+      over90: money(buckets.over90),
+      total: money(buckets.total),
+    },
+    counts,
   }
 }
 
-export const AGEING_BUCKETS = [
-  { key: 'current', label: 'Current', hint: 'Up to 30 days' },
-  { key: 'days30', label: '31–60 days', hint: 'One month late' },
-  { key: 'days60', label: '61–90 days', hint: 'Two months late' },
-  { key: 'days90', label: '90+ days', hint: 'Needs a telephone call' },
-] as const
+/** Of an ageing, how much is past its due date. */
+export function overdueOf(ageing: Ageing): number {
+  return money(ageing.total - ageing.notDue)
+}
+
+/** Add one ageing into another, for totals across rows. */
+export function addAgeing(into: Ageing, more: Ageing): Ageing {
+  return {
+    notDue: money(into.notDue + more.notDue),
+    days1_30: money(into.days1_30 + more.days1_30),
+    days31_60: money(into.days31_60 + more.days31_60),
+    days61_90: money(into.days61_90 + more.days61_90),
+    over90: money(into.over90 + more.over90),
+    total: money(into.total + more.total),
+  }
+}

@@ -205,7 +205,11 @@ export default function PatientStatementPage() {
                   <td className="py-2">{entry.reference}</td>
                   <td className="py-2">{entry.description}</td>
                   <td className="py-2 text-right tabular-nums">
-                    {entry.debit > 0 ? formatCurrency(entry.debit) : ''}
+                    {entry.debit > 0
+                      ? formatCurrency(entry.debit)
+                      : entry.debit < 0
+                        ? `−${formatCurrency(-entry.debit)}`
+                        : ''}
                   </td>
                   <td className="py-2 text-right tabular-nums">
                     {entry.credit > 0 ? formatCurrency(entry.credit) : ''}
@@ -221,7 +225,7 @@ export default function PatientStatementPage() {
           {ageing.total > 0 && (
             <div className="text-sm">
               <p className="mb-2 text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                How old the balance is
+                Days past due
               </p>
               <table className="border-collapse">
                 <tbody>
@@ -242,6 +246,9 @@ export default function PatientStatementPage() {
             <Row label="Total charged" value={summary.charged} />
             <Row label="Total paid" value={summary.paid} />
             {summary.refunded > 0 && <Row label="Refunded" value={summary.refunded} />}
+            {/* A bill refunded in full is a charge reversed, not a debt. Shown
+                so the lines above still add up to the balance below. */}
+            {summary.reversed > 0 && <Row label="Charges reversed" value={-summary.reversed} />}
             <div className="flex justify-between border-t pt-2 text-base font-semibold">
               <dt>Balance due</dt>
               <dd className="tabular-nums">{formatCurrency(summary.balance)}</dd>

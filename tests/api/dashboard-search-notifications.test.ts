@@ -104,10 +104,12 @@ describe('GET /api/dashboard/stats', () => {
     expect(res.status).toBe(401)
   })
 
+  // Money on the dashboard is cash collected (payments less refunds, through
+  // lib/collections.ts) and outstanding is the balance on owed invoices
+  // (lib/invoiced.ts) — the same figures as Billing and Reports.
   it('returns dashboard statistics', async () => {
     mockAuth()
 
-    // Mock all the parallel queries (16 items)
     vi.mocked(prisma.patient.count)
       .mockResolvedValueOnce(250) // total patients
       .mockResolvedValueOnce(12) // new this month
@@ -118,19 +120,49 @@ describe('GET /api/dashboard/stats', () => {
       .mockResolvedValueOnce(15) // pending
       .mockResolvedValueOnce(5) // completed today
       .mockResolvedValueOnce(100) // prev month appointments
-    vi.mocked(prisma.payment.aggregate)
-      .mockResolvedValueOnce({ _sum: { amount: 45000 } } as any) // this month rev
-      .mockResolvedValueOnce({ _sum: { amount: 8500 } } as any) // today rev
-      .mockResolvedValueOnce({ _sum: { amount: 950000 } } as any) // total rev
-      .mockResolvedValueOnce({ _sum: { amount: 40000 } } as any) // prev month rev
+    // collectionTotals, in the order the route asks: this month, today,
+    // last month, all time.
+    vi.mocked(prisma.payment.groupBy)
+      .mockResolvedValueOnce([{ paymentMethod: 'CASH', _sum: { amount: 45000 }, _count: 9 }] as any)
+      .mockResolvedValueOnce([{ paymentMethod: 'CASH', _sum: { amount: 8500 }, _count: 2 }] as any)
+      .mockResolvedValueOnce([{ paymentMethod: 'CASH', _sum: { amount: 40000 }, _count: 8 }] as any)
+      .mockResolvedValueOnce([
+        { paymentMethod: 'CASH', _sum: { amount: 950000 }, _count: 200 },
+      ] as any)
+    vi.mocked(prisma.refund.groupBy).mockResolvedValue([])
     vi.mocked(prisma.invoice.aggregate).mockResolvedValueOnce({
-      _sum: { totalAmount: 12000 },
-    } as any) // pending
+      _sum: { balanceAmount: 12000 },
+      _count: 3,
+    } as any) // outstanding
     vi.mocked(prisma.$queryRaw)
-      .mockResolvedValueOnce([{ date: '2026-02-14', revenue: 1200 }]) // last 7 days
-      .mockResolvedValueOnce([{ month: '2026-01', revenue: 40000 }]) // last 6 months
-      .mockResolvedValueOnce([{ name: 'Root Canal', count: 15, revenue: 75000 }]) // top procs
+      .mockResolvedValueOnce([{ key: '2026-02-14', revenue: 1200 }]) // last 7 days
+      .mockResolvedValueOnce([{ key: '2026-01', revenue: 40000 }]) // last 6 months
       .mockResolvedValueOnce([]) // low stock
+    vi.mocked(prisma.treatment.groupBy).mockResolvedValue([
+      { procedureId: 'p1', _count: { _all: 15 } },
+    ] as any)
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([
+      {
+        id: 'inv1',
+        issuedAt: new Date(),
+        createdAt: new Date(),
+        discountAmount: 0,
+        items: [
+          {
+            id: 'it1',
+            amount: 7500,
+            treatment: {
+              id: 't1',
+              procedure: { id: 'p1', code: 'RCT', name: 'Root Canal', category: 'Endo' },
+              doctor: null,
+            },
+          },
+        ],
+      },
+    ] as any)
+    vi.mocked(prisma.procedure.findMany).mockResolvedValue([
+      { id: 'p1', name: 'Root Canal' },
+    ] as any)
     vi.mocked(prisma.appointment.groupBy).mockResolvedValue([
       { status: 'COMPLETED', _count: { status: 80 } },
       { status: 'CANCELLED', _count: { status: 10 } },
@@ -153,8 +185,17 @@ describe('GET /api/dashboard/stats', () => {
     expect(body.success).toBe(true)
     expect(body.data.overview).toBeDefined()
     expect(body.data.overview.totalPatients).toBe(250)
+    expect(body.data.overview.thisMonthRevenue).toBe(45000)
+    expect(body.data.overview.pendingPayments).toBe(12000)
+    expect(body.data.overview.totalRevenue).toBe(950000)
+    expect(body.data.overview.revenueGrowth).toBe(12.5)
     expect(body.data.charts).toBeDefined()
     expect(body.data.charts.appointmentsByStatus).toHaveLength(2)
+    expect(body.data.charts.last7DaysRevenue).toHaveLength(7)
+    expect(body.data.charts.last6MonthsRevenue).toHaveLength(6)
+    expect(body.data.charts.topProcedures).toEqual([
+      { name: 'Root Canal', count: 15, revenue: 7500 },
+    ])
     expect(body.data.recentActivity).toBeDefined()
     expect(body.data.recentActivity.upcomingAppointments).toHaveLength(1)
     expect(body.data.recentActivity.upcomingAppointments[0].patientName).toBe('John Doe')
@@ -167,8 +208,14 @@ describe('GET /api/dashboard/stats', () => {
       .mockResolvedValueOnce(5)
       .mockResolvedValueOnce(0) // prev month = 0
     vi.mocked(prisma.appointment.count).mockResolvedValue(0)
-    vi.mocked(prisma.payment.aggregate).mockResolvedValue({ _sum: { amount: null } } as any)
-    vi.mocked(prisma.invoice.aggregate).mockResolvedValue({ _sum: { totalAmount: null } } as any)
+    vi.mocked(prisma.payment.groupBy).mockResolvedValue([])
+    vi.mocked(prisma.refund.groupBy).mockResolvedValue([])
+    vi.mocked(prisma.invoice.aggregate).mockResolvedValue({
+      _sum: { balanceAmount: null },
+      _count: 0,
+    } as any)
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([])
+    vi.mocked(prisma.treatment.groupBy).mockResolvedValue([] as any)
     vi.mocked(prisma.$queryRaw).mockResolvedValue([])
     vi.mocked(prisma.appointment.groupBy).mockResolvedValue([] as any)
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
@@ -186,9 +233,11 @@ describe('GET /api/dashboard/stats', () => {
     mockAuth({ user: { id: 'u5', role: 'DENTAL_ASSISTANT' } })
     vi.mocked(prisma.patient.count).mockResolvedValue(10)
     vi.mocked(prisma.appointment.count).mockResolvedValue(3)
-    vi.mocked(prisma.payment.aggregate).mockResolvedValue({ _sum: { amount: 13950 } } as any)
-    vi.mocked(prisma.invoice.aggregate).mockResolvedValue({ _sum: { totalAmount: 30150 } } as any)
-    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ name: 'Filling', count: 2, revenue: 5000 }])
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([])
+    vi.mocked(prisma.treatment.groupBy).mockResolvedValue([
+      { procedureId: 'p1', _count: { _all: 2 } },
+    ] as any)
+    vi.mocked(prisma.procedure.findMany).mockResolvedValue([{ id: 'p1', name: 'Filling' }] as any)
     vi.mocked(prisma.appointment.groupBy).mockResolvedValue([] as any)
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
 
@@ -203,7 +252,11 @@ describe('GET /api/dashboard/stats', () => {
     expect(body.data.overview).not.toHaveProperty('totalRevenue')
     expect(body.data.charts.last7DaysRevenue).toEqual([])
     expect(body.data.charts.last6MonthsRevenue).toEqual([])
-    expect(body.data.charts.topProcedures[0]).not.toHaveProperty('revenue')
+    expect(body.data.charts.topProcedures[0]).toEqual({ name: 'Filling', count: 2 })
+    // Not merely hidden: the money was never read.
+    expect(prisma.payment.groupBy).not.toHaveBeenCalled()
+    expect(prisma.invoice.aggregate).not.toHaveBeenCalled()
+    expect(prisma.invoice.findMany).not.toHaveBeenCalled()
   })
 })
 

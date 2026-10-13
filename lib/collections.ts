@@ -47,9 +47,15 @@ export interface Collection {
   byMethod: MethodCollection[]
 }
 
+/**
+ * A span of time as a Prisma filter. Either end may be open, and the upper end
+ * may be inclusive (`lte`, the report presets) or exclusive (`lt`, the
+ * clinic-day ranges from `dayRangeIn`) — both are the same window to Prisma.
+ */
 export interface Window {
-  gte: Date
-  lte: Date
+  gte?: Date
+  lte?: Date
+  lt?: Date
 }
 
 /**

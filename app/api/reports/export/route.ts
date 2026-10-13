@@ -134,16 +134,24 @@ async function generateExcelReport(
       worksheet.addRow(['Metric', 'Value (Rs)']).eachCell((cell) => {
         cell.style = headerStyle
       })
-      worksheet.addRow(['Total Revenue', data.totalRevenue.toFixed(2)])
-      worksheet.addRow(['Total Expenses', data.totalExpenses.toFixed(2)])
-      worksheet.addRow(['Profit Margin', `${data.profitMargin.toFixed(2)}%`])
-      worksheet.addRow(['Avg. Bill Value', data.avgBillValue.toFixed(2)])
-      worksheet.addRow(['Collection Efficiency', `${data.collectionEfficiency.toFixed(2)}%`])
-      worksheet.addRow(['Outstanding Amount', data.outstandingAmount.toFixed(2)])
+      // "Revenue" is not used on its own: billed and collected are different
+      // figures, and one name for both is how the dashboard and this report
+      // came to disagree (bug report item 6).
+      worksheet.addRow(['Billed (invoices issued)', data.totalBilled.toFixed(2)])
+      worksheet.addRow(['Collected (net of refunds)', data.totalCollected.toFixed(2)])
+      worksheet.addRow(['Expenses (stock purchases)', data.totalExpenses.toFixed(2)])
+      worksheet.addRow(['Profit (collected − expenses)', data.profit.toFixed(2)])
+      worksheet.addRow(['Profit Margin (of collected)', `${data.profitMargin.toFixed(2)}%`])
+      worksheet.addRow(['Avg. Bill Value (billed ÷ invoices)', data.avgBillValue.toFixed(2)])
+      worksheet.addRow([
+        'Collection Rate (collected ÷ billed)',
+        `${data.collectionEfficiency.toFixed(2)}%`,
+      ])
+      worksheet.addRow(['Outstanding (owed now)', data.outstandingAmount.toFixed(2)])
 
       if (data.paymentMethodBreakdown.length > 0) {
         worksheet.addRow([]) // Empty row
-        worksheet.addRow(['Payment Method', 'Amount (Rs)', 'Percentage']).eachCell((cell) => {
+        worksheet.addRow(['Payment Method', 'Collected (Rs)', 'Percentage']).eachCell((cell) => {
           cell.style = headerStyle
         })
         data.paymentMethodBreakdown.forEach((method: any) => {
@@ -157,13 +165,16 @@ async function generateExcelReport(
 
       if (data.revenueByMonth.length > 0) {
         worksheet.addRow([]) // Empty row
-        worksheet.addRow(['Month', 'Revenue', 'Expenses', 'Profit']).eachCell((cell) => {
-          cell.style = headerStyle
-        })
+        worksheet
+          .addRow(['Month', 'Billed', 'Collected', 'Expenses', 'Profit'])
+          .eachCell((cell) => {
+            cell.style = headerStyle
+          })
         data.revenueByMonth.forEach((month: any) => {
           worksheet.addRow([
             month.month,
-            month.revenue.toFixed(2),
+            month.billed.toFixed(2),
+            month.collected.toFixed(2),
             month.expenses.toFixed(2),
             month.profit.toFixed(2),
           ])
@@ -188,7 +199,7 @@ async function generateExcelReport(
       if (data.staffProductivity.length > 0) {
         worksheet.addRow([]) // Empty row
         worksheet
-          .addRow(['Staff Member', 'Role', 'Appointments', 'Treatments', 'Revenue (Rs)'])
+          .addRow(['Staff Member', 'Role', 'Appointments', 'Treatments', 'Invoiced (Rs)'])
           .eachCell((cell) => {
             cell.style = headerStyle
           })
@@ -198,7 +209,7 @@ async function generateExcelReport(
             staff.role,
             staff.appointmentsHandled,
             staff.treatmentsCompleted,
-            staff.revenue.toFixed(2),
+            staff.invoiced === undefined ? '' : staff.invoiced.toFixed(2),
           ])
         })
       }
@@ -322,12 +333,14 @@ async function generatePrintView(type: string, data: any, dateRange: string, hos
       ? `
     <h2>Financial Overview</h2>
     <table>
-      <tr><td class="metric">Total Revenue</td><td class="value">Rs ${data.totalRevenue.toFixed(2)}</td></tr>
-      <tr><td class="metric">Total Expenses</td><td class="value">Rs ${data.totalExpenses.toFixed(2)}</td></tr>
-      <tr><td class="metric">Profit Margin</td><td class="value">${data.profitMargin.toFixed(2)}%</td></tr>
+      <tr><td class="metric">Billed (invoices issued)</td><td class="value">Rs ${data.totalBilled.toFixed(2)}</td></tr>
+      <tr><td class="metric">Collected (net of refunds)</td><td class="value">Rs ${data.totalCollected.toFixed(2)}</td></tr>
+      <tr><td class="metric">Expenses (stock purchases)</td><td class="value">Rs ${data.totalExpenses.toFixed(2)}</td></tr>
+      <tr><td class="metric">Profit (collected − expenses)</td><td class="value">Rs ${data.profit.toFixed(2)}</td></tr>
+      <tr><td class="metric">Profit Margin (of collected)</td><td class="value">${data.profitMargin.toFixed(2)}%</td></tr>
       <tr><td class="metric">Avg. Bill Value</td><td class="value">Rs ${data.avgBillValue.toFixed(2)}</td></tr>
-      <tr><td class="metric">Collection Efficiency</td><td class="value">${data.collectionEfficiency.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Outstanding Amount</td><td class="value">Rs ${data.outstandingAmount.toFixed(2)}</td></tr>
+      <tr><td class="metric">Collection Rate (collected ÷ billed)</td><td class="value">${data.collectionEfficiency.toFixed(2)}%</td></tr>
+      <tr><td class="metric">Outstanding (owed now)</td><td class="value">Rs ${data.outstandingAmount.toFixed(2)}</td></tr>
     </table>
 
     ${
@@ -335,7 +348,7 @@ async function generatePrintView(type: string, data: any, dateRange: string, hos
         ? `
       <h2>Payment Methods</h2>
       <table>
-        <tr><th>Method</th><th>Amount (Rs)</th><th>Percentage</th></tr>
+        <tr><th>Method</th><th>Collected (Rs)</th><th>Percentage</th></tr>
         ${data.paymentMethodBreakdown
           .map(
             (m: any) => `
@@ -372,11 +385,11 @@ async function generatePrintView(type: string, data: any, dateRange: string, hos
         ? `
       <h2>Staff Productivity</h2>
       <table>
-        <tr><th>Staff</th><th>Role</th><th>Appointments</th><th>Treatments</th><th>Revenue (Rs)</th></tr>
+        <tr><th>Staff</th><th>Role</th><th>Appointments</th><th>Treatments</th><th>Invoiced (Rs)</th></tr>
         ${data.staffProductivity
           .map(
             (s: any) => `
-          <tr><td>${html(s.name)}</td><td>${html(s.role)}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>Rs ${s.revenue.toFixed(2)}</td></tr>
+          <tr><td>${html(s.name)}</td><td>${html(s.role)}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>${s.invoiced === undefined ? '' : `Rs ${s.invoiced.toFixed(2)}`}</td></tr>
         `
           )
           .join('')}
@@ -476,6 +489,16 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // A refusal is passed on as one. Financial analytics need
+    // `reports:financial`, and a 403 reported as "Failed to export" reads as
+    // a fault rather than as a permission the role does not hold.
+    if (analyticsResponse.status === 400 || analyticsResponse.status === 403) {
+      const refusal = await analyticsResponse.json().catch(() => ({}))
+      return NextResponse.json(
+        { error: refusal.error || 'The report could not be exported' },
+        { status: analyticsResponse.status }
+      )
+    }
     if (!analyticsResponse.ok) {
       throw new Error('Failed to fetch analytics data')
     }

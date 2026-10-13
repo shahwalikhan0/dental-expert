@@ -14,13 +14,15 @@ import { LabOrderPriority, LabOrderStatus, Prisma, QualityCheckStatus } from '@p
 import { AUDIT_ACTIONS } from '@/lib/audit'
 import { requireFeature } from '@/lib/plan-gate'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { holderCan } from '@/lib/rbac'
+import { liveInvoiceFor } from '@/lib/treatment-billing'
 
 // Only orders that have not been sent anywhere yet may be removed.
 const DELETABLE_STATUSES: LabOrderStatus[] = [LabOrderStatus.CREATED, LabOrderStatus.CANCELLED]
 
 // GET - Fetch single lab order by ID
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('lab:read')
+  const { error, hospitalId, user } = await requirePermission('lab:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -91,6 +93,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       include: { user: { select: { name: true } } },
     })
 
+    /**
+     * Whether the treatment this work is for has been billed (review 4.4).
+     *
+     * A lab case carries no charge of its own: the patient pays for the crown
+     * through the treatment's price. So "was the lab work billed?" is "is its
+     * treatment on an invoice that still stands?", and this answers it on the
+     * case. Only for those who may read billing — a lab technician holds
+     * `lab:read` and no billing access. Left out (undefined) for them; null
+     * means "not billed".
+     */
+    const treatmentInvoice =
+      order.treatment && holderCan(user, 'billing:read')
+        ? await liveInvoiceFor(prisma, order.treatment.id)
+        : undefined
+
     const { labVendor, patient, treatment, ...rest } = order
 
     return NextResponse.json({
@@ -117,6 +134,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               toothNumbers: treatment.toothNumbers,
               status: treatment.status,
               createdAt: treatment.createdAt,
+              invoice: treatmentInvoice,
             }
           : null,
         createdByName: createdByUser?.name ?? null,

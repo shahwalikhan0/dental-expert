@@ -92,7 +92,8 @@ export default function ReceivablesPage() {
           <CardHeader>
             <CardTitle className="text-base">How old the debt is</CardTitle>
             <CardDescription>
-              Anything past ninety days needs a telephone call rather than another statement.
+              Days past each invoice&apos;s due date. Anything past ninety needs a telephone call
+              rather than another statement.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -124,7 +125,7 @@ export default function ReceivablesPage() {
                 <TableHead>Billed to</TableHead>
                 <TableHead>Oldest</TableHead>
                 {AGEING_BUCKETS.map((bucket) => (
-                  <TableHead key={bucket.key} className="text-right">
+                  <TableHead key={bucket.key} className="text-right" title={bucket.hint}>
                     {bucket.label}
                   </TableHead>
                 ))}
@@ -133,7 +134,7 @@ export default function ReceivablesPage() {
               </TableRow>
             </TableHeader>
             <GridBody
-              columns={9}
+              columns={10}
               loading={loading}
               failed={failed}
               onRetry={load}
@@ -193,10 +194,10 @@ export default function ReceivablesPage() {
                         // Only the two oldest buckets are coloured. Tinting
                         // every column makes the row a rainbow and the one
                         // number that matters no easier to find.
-                        index === 2 &&
+                        index === 3 &&
                           row.ageing[bucket.key] > 0 &&
                           'text-orange-700 dark:text-orange-300',
-                        index === 3 &&
+                        index === 4 &&
                           row.ageing[bucket.key] > 0 &&
                           'text-red-700 dark:text-red-300'
                       )}

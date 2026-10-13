@@ -27,6 +27,9 @@ import {
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
+import { useCan } from '@/hooks/use-can'
+import { newInvoiceHref } from '@/lib/invoice-links'
 import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
 import {
   Calendar,
@@ -142,6 +145,8 @@ export default function AppointmentsPage() {
   const trail = useTrail('Appointments')
   const router = useRouter()
   const { toast } = useToast()
+  // Raising the bill after check-out is the desk's act (review 4.3).
+  const canBill = useCan('billing:write') === true
   const searchParams = useSearchParams()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
@@ -363,7 +368,7 @@ export default function AppointmentsPage() {
    * when it refuses. These used to log the failure to the console, so a
    * refused action looked like a menu item that did nothing.
    */
-  const act = async (request: Promise<Response>, failure: string) => {
+  const act = async (request: Promise<Response>, failure: string, done?: () => void) => {
     try {
       const response = await request
       if (!response.ok) {
@@ -371,6 +376,7 @@ export default function AppointmentsPage() {
         toast({ variant: 'destructive', title: failure, description: data.error })
         return
       }
+      done?.()
       fetchAppointments()
     } catch {
       toast({ variant: 'destructive', title: failure })
@@ -380,8 +386,31 @@ export default function AppointmentsPage() {
   const handleCheckIn = (id: string) =>
     act(fetch(`/api/appointments/${id}/check-in`, { method: 'POST' }), 'Could not check in')
 
-  const handleCheckOut = (id: string) =>
-    act(fetch(`/api/appointments/${id}/check-out`, { method: 'POST' }), 'Could not check out')
+  /**
+   * Check out, then offer the bill (review 4.3). Check-out only closes the
+   * visit; the invoice is a separate act, and the moment the patient is
+   * leaving is when the desk should be asked. A walk-in has no record to bill.
+   */
+  const handleCheckOut = (appointment: Appointment) =>
+    act(
+      fetch(`/api/appointments/${appointment.id}/check-out`, { method: 'POST' }),
+      'Could not check out',
+      () => {
+        if (!appointment.patient || !canBill) return
+        const href = trail.to(
+          newInvoiceHref({ patientId: appointment.patient.id, appointmentId: appointment.id })
+        )
+        toast({
+          title: 'Checked out',
+          description: `${subjectName(appointment)} can be billed for this visit now.`,
+          action: (
+            <ToastAction altText="Create invoice" onClick={() => router.push(href)}>
+              Create invoice
+            </ToastAction>
+          ),
+        })
+      }
+    )
 
   const handleStatusChange = (id: string, status: string) =>
     act(
@@ -830,7 +859,7 @@ export default function AppointmentsPage() {
                               </DropdownMenuItem>
                             )}
                             {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
-                              <DropdownMenuItem onClick={() => handleCheckOut(appointment.id)}>
+                              <DropdownMenuItem onClick={() => handleCheckOut(appointment)}>
                                 <LogOut className="h-4 w-4 mr-2" />
                                 Check Out
                               </DropdownMenuItem>

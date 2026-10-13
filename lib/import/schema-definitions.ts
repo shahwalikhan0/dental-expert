@@ -453,20 +453,55 @@ const INVOICE_FIELDS: FieldDefinition[] = [
     description: 'Patient identifier (patient ID, name, or phone)',
     foreignKey: { model: 'Patient', lookupFields: ['patientId', 'phone', 'firstName'] },
   },
+  // An invoice row is imported as one line, at the subtotal: the export has
+  // one row per invoice, not per item. The total must equal subtotal less
+  // discount plus tax, and the tax rate is worked out from them
+  // (lib/import/invoice-figures.ts).
+  {
+    name: 'invoiceDate',
+    type: 'date',
+    required: false,
+    description: 'Invoice date (defaults to the import date)',
+  },
+  {
+    name: 'description',
+    type: 'string',
+    required: false,
+    description: 'Line description (defaults to "Imported balance")',
+  },
   { name: 'subtotal', type: 'decimal', required: true, description: 'Subtotal before tax' },
   {
     name: 'totalAmount',
     type: 'decimal',
     required: true,
-    description: 'Total amount including tax',
+    description: 'Total amount: subtotal − discount + tax',
   },
-  { name: 'paidAmount', type: 'decimal', required: false, description: 'Amount already paid' },
-  { name: 'balanceAmount', type: 'decimal', required: false, description: 'Balance remaining' },
+  {
+    name: 'paidAmount',
+    type: 'decimal',
+    required: false,
+    description:
+      'Amount already paid — imported as one payment on the invoice date, unless a payments file is imported for this invoice',
+  },
+  {
+    name: 'paymentMethod',
+    type: 'enum',
+    required: false,
+    description: 'How the paid amount was paid (defaults to Cash)',
+    enumValues: ['CASH', 'CARD', 'BANK_TRANSFER', 'CHEQUE', 'WALLET', 'ONLINE'],
+    enumAliases: PAYMENT_METHOD_ALIASES,
+  },
+  {
+    name: 'balanceAmount',
+    type: 'decimal',
+    required: false,
+    description: 'Balance remaining — not used; worked out from the total and payments',
+  },
   {
     name: 'taxableAmount',
     type: 'decimal',
     required: false,
-    description: 'Taxable amount (defaults to subtotal)',
+    description: 'Taxable amount — not used; worked out from subtotal, discount and tax',
   },
   {
     name: 'taxAmount',
@@ -494,11 +529,17 @@ const INVOICE_FIELDS: FieldDefinition[] = [
     name: 'status',
     type: 'enum',
     required: false,
-    description: 'Status',
+    description:
+      'Status — Draft and Cancelled are kept; otherwise the paid amount decides it. Paid with no paid amount means paid in full',
     enumValues: ['DRAFT', 'PENDING', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED'],
     enumAliases: INVOICE_STATUS_ALIASES,
   },
-  { name: 'dueDate', type: 'date', required: false, description: 'Payment due date' },
+  {
+    name: 'dueDate',
+    type: 'date',
+    required: false,
+    description: 'Payment due date (defaults to the invoice date)',
+  },
   { name: 'notes', type: 'string', required: false, description: 'Invoice notes' },
 ]
 
@@ -513,10 +554,16 @@ const PAYMENT_FIELDS: FieldDefinition[] = [
     name: 'invoiceRef',
     type: 'string',
     required: true,
-    description: 'Invoice number',
+    description:
+      'Invoice number — once a payments file names an invoice, its paid amount from the invoice file is set aside',
     foreignKey: { model: 'Invoice', lookupFields: ['invoiceNo'] },
   },
-  { name: 'amount', type: 'decimal', required: true, description: 'Payment amount' },
+  {
+    name: 'amount',
+    type: 'decimal',
+    required: true,
+    description: "Payment amount (refused if more than the invoice's balance)",
+  },
   {
     name: 'paymentMethod',
     type: 'enum',
@@ -538,7 +585,8 @@ const PAYMENT_FIELDS: FieldDefinition[] = [
     name: 'status',
     type: 'enum',
     required: false,
-    description: 'Status',
+    description:
+      'Status (defaults to Completed). Only completed payments count as paid; a refunded one is recorded as paid and handed back',
     enumValues: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'],
     enumAliases: PAYMENT_STATUS_ALIASES,
   },

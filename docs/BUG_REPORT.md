@@ -916,12 +916,16 @@ Neither of the two outstanding invoices has a due date, and one was raised yeste
 
 An invoice with no due date cannot be overdue. At least one of these screens is ageing by invoice date and calling that "overdue".
 
+**Resolved 14 Oct:** every issued invoice now has a due date ("Due on receipt" is the issue day; old ones were backfilled), and one overdue rule and one set of age bands (`lib/invoice-figures.ts`, `lib/ageing.ts`) serve receivables, Claims Aging, Reports → Outstanding, the ledger, the invoice list and payment reminders, on the clinic's calendar.
+
 ### 6. "Revenue" for this month is Rs 500 on the dashboard and Rs 2,500 in Reports
 
 - Dashboard → _This Month Revenue_: **Rs 500**, which is what was collected.
 - Reports → Financial Analytics → _Total Revenue_: **Rs 2,500**, which is what was billed. Its _Profit Margin_ (-876%) is computed from that figure.
 
 The two figures carry the same name on two screens.
+
+**Resolved 14 Oct:** the two are now named apart everywhere. _Billed_ is invoices not draft or cancelled, by issue date; _Collected_ is settled payments less refunds, by payment date. The dashboard, billing overview, Reports and Financial Analytics read them from the same helpers, and profit is collected less stock purchases.
 
 ### 7. Badges and table cells wrap mid-word at 1280 px
 

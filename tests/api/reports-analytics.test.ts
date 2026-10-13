@@ -230,49 +230,60 @@ describe('GET /api/reports/analytics?type=clinical', () => {
 describe('GET /api/reports/analytics?type=financial', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  // Billed is what was invoiced (issued, not draft or cancelled); collected is
+  // the cash that came in, less refunds (lib/collections.ts). They used to be
+  // one number called revenue, summed from invoices, so a refunded or
+  // cancelled bill counted as money earned (bug report item 6).
+  function mockInvoiceAggregates(billed: number, invoiceCount: number, outstanding: number) {
+    vi.mocked(prisma.invoice.aggregate).mockImplementation(async (args: any) =>
+      args.where.balanceAmount
+        ? { _sum: { balanceAmount: outstanding }, _count: outstanding > 0 ? 1 : 0 }
+        : {
+            _sum: { totalAmount: billed, discountAmount: 0, taxAmount: 0 },
+            _count: invoiceCount,
+          }
+    )
+  }
+
   it('returns financial analytics data', async () => {
     mockAuth()
+    mockInvoiceAggregates(15000, 2, 2000)
+    vi.mocked(prisma.payment.groupBy).mockResolvedValue([
+      { paymentMethod: 'CASH', _sum: { amount: 8000 }, _count: 1 },
+      { paymentMethod: 'UPI', _sum: { amount: 5000 }, _count: 1 },
+    ] as any)
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([
-      {
-        id: 'inv1',
-        totalAmount: 10000,
-        paidAmount: 8000,
-        balanceAmount: 2000,
-        createdAt: new Date(),
-        payments: [],
-      },
-      {
-        id: 'inv2',
-        totalAmount: 5000,
-        paidAmount: 5000,
-        balanceAmount: 0,
-        createdAt: new Date(),
-        payments: [],
-      },
+      { issuedAt: new Date(), createdAt: new Date(), totalAmount: 10000 },
+      { issuedAt: new Date(), createdAt: new Date(), totalAmount: 5000 },
+    ] as any)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([
+      { paymentDate: new Date(), amount: 8000 },
+      { paymentDate: new Date(), amount: 5000 },
     ] as any)
     vi.mocked(prisma.stockTransaction.findMany).mockResolvedValue([
       { type: 'PURCHASE', totalPrice: 3000, createdAt: new Date() },
-    ] as any)
-    vi.mocked(prisma.payment.findMany).mockResolvedValue([
-      { paymentMethod: 'CASH', amount: 8000, paymentDate: new Date(), status: 'COMPLETED' },
-      { paymentMethod: 'UPI', amount: 5000, paymentDate: new Date(), status: 'COMPLETED' },
     ] as any)
 
     const res = await analyticsGET(makeReq('/api/reports/analytics?type=financial'))
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.totalRevenue).toBe(15000)
+    expect(body.totalBilled).toBe(15000)
+    expect(body.totalCollected).toBe(13000)
     expect(body.totalExpenses).toBe(3000)
-    expect(body.profitMargin).toBeCloseTo(80, 0)
+    // Profit is on what came in, not on what was billed.
+    expect(body.profit).toBe(10000)
+    expect(body.profitMargin).toBeCloseTo((10000 / 13000) * 100, 1)
     expect(body.avgBillValue).toBe(7500)
+    expect(body.collectionEfficiency).toBeCloseTo((13000 / 15000) * 100, 1)
     expect(body.outstandingAmount).toBe(2000)
-    expect(body.paymentMethodBreakdown).toBeDefined()
     expect(body.paymentMethodBreakdown).toHaveLength(2)
   })
 
   it('handles zero revenue', async () => {
     mockAuth()
+    mockInvoiceAggregates(0, 0, 0)
+    vi.mocked(prisma.payment.groupBy).mockResolvedValue([])
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([])
     vi.mocked(prisma.stockTransaction.findMany).mockResolvedValue([])
     vi.mocked(prisma.payment.findMany).mockResolvedValue([])
@@ -280,10 +291,20 @@ describe('GET /api/reports/analytics?type=financial', () => {
     const res = await analyticsGET(makeReq('/api/reports/analytics?type=financial'))
     const body = await res.json()
 
-    expect(body.totalRevenue).toBe(0)
+    expect(body.totalBilled).toBe(0)
+    expect(body.totalCollected).toBe(0)
     expect(body.profitMargin).toBe(0)
     expect(body.avgBillValue).toBe(0)
     expect(body.collectionEfficiency).toBe(0)
+  })
+
+  it("refuses a role that may not see the clinic's finances", async () => {
+    mockAuth({ user: { id: 'u2', name: 'Asst', role: 'DENTAL_ASSISTANT' } })
+
+    const res = await analyticsGET(makeReq('/api/reports/analytics?type=financial'))
+
+    expect(res.status).toBe(403)
+    expect(prisma.invoice.aggregate).not.toHaveBeenCalled()
   })
 })
 
@@ -379,9 +400,11 @@ describe('GET /api/reports/analytics — date presets', () => {
     expect(prisma.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          // Midnight to midnight in the clinic's timezone (Asia/Karachi in
+          // the mock), with the whole of the "to" day included.
           createdAt: {
-            gte: new Date('2026-01-01'),
-            lte: new Date('2026-01-31'),
+            gte: new Date('2025-12-31T19:00:00.000Z'),
+            lte: new Date('2026-01-31T18:59:59.999Z'),
           },
         }),
       })
@@ -399,6 +422,9 @@ describe('GET /api/reports/analytics — date presets', () => {
     const dateFilter = call.where.createdAt
     expect(dateFilter.gte).toBeDefined()
     expect(dateFilter.lte).toBeDefined()
-    expect(dateFilter.gte.getMonth()).toBe(new Date().getMonth())
+    // This month on the clinic's calendar, through today.
+    expect(dateFilter.gte.getTime()).toBeLessThanOrEqual(Date.now())
+    expect(dateFilter.lte.getTime()).toBeGreaterThanOrEqual(Date.now())
+    expect(Date.now() - dateFilter.gte.getTime()).toBeLessThan(32 * 24 * 60 * 60 * 1000)
   })
 })

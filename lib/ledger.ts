@@ -1,16 +1,19 @@
 import { prisma } from '@/lib/prisma'
 import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
 import type { InvoiceStatus, Prisma } from '@prisma/client'
+import { clinicTimezone, localDay } from '@/lib/appointment-time'
 import {
   AGEING_BUCKETS,
   EMPTY_AGEING,
+  addAgeing,
   ageInvoices,
   agesFrom,
-  daysBetween,
   money,
+  overdueOf,
   type AgeableInvoice,
   type Ageing,
 } from '@/lib/ageing'
+import { billedAt, isInvoiceOwed, owedInvoiceWhere } from '@/lib/invoice-figures'
 
 // Re-exported so a server-side caller can take the whole vocabulary of an
 // account from one module. Client components import from '@/lib/ageing'
@@ -42,9 +45,18 @@ export type { AgeableInvoice, Ageing }
  *    the clinic has not decided to charge them;
  *  - a **CANCELLED** invoice is not a charge either, and it is the nearest
  *    thing this schema has to a write-off.
+ *
+ * A **REFUNDED** invoice is on the account, and nets to nothing. Refunded in
+ * full means the charge was reversed — the crown was not fitted, the money
+ * went back — so the patient owes nothing on it, as every other screen says
+ * (lib/invoice-figures.ts). Leaving it off would hide a payment and a refund
+ * the patient can see on their bank statement; showing it as a debt is what
+ * receivables did, chasing people for money the clinic had chosen to return.
+ * So the charge, the payment and the refund are all listed, followed by a
+ * line that reverses the charge.
  */
 
-/** Invoice states that represent money the clinic has actually asked for. */
+/** Invoice states that appear on a patient's account. */
 export const CHARGEABLE_INVOICE_STATUSES: InvoiceStatus[] = [
   'PENDING',
   'PARTIALLY_PAID',
@@ -53,10 +65,15 @@ export const CHARGEABLE_INVOICE_STATUSES: InvoiceStatus[] = [
   'REFUNDED',
 ]
 
-export type LedgerEntryKind = 'INVOICE' | 'PAYMENT' | 'REFUND'
+export type LedgerEntryKind = 'INVOICE' | 'PAYMENT' | 'REFUND' | 'REVERSAL'
 
 /** At the same moment, the charge first, then what settles it. */
-const KIND_ORDER: Record<LedgerEntryKind, number> = { INVOICE: 0, PAYMENT: 1, REFUND: 2 }
+const KIND_ORDER: Record<LedgerEntryKind, number> = {
+  INVOICE: 0,
+  PAYMENT: 1,
+  REFUND: 2,
+  REVERSAL: 3,
+}
 
 export interface LedgerEntry {
   id: string
@@ -65,7 +82,10 @@ export interface LedgerEntry {
   /** The document number — `INV-202609-0001`, `PAY-…`, `REF-…`. */
   reference: string
   description: string
-  /** What the patient was charged, or what was handed back to them. */
+  /**
+   * What the patient was charged, or what was handed back to them. Negative
+   * for a REVERSAL: a charge taken back off the account.
+   */
   debit: number
   /** What the patient paid. */
   credit: number
@@ -79,7 +99,12 @@ export interface LedgerSummary {
   charged: number
   paid: number
   refunded: number
-  /** charged − paid + refunded. Positive means the patient owes the clinic. */
+  /** Charges reversed because the invoice was refunded in full. */
+  reversed: number
+  /**
+   * charged − paid + refunded − reversed. Positive means the patient owes the
+   * clinic, and equals the outstanding balance of their owed invoices.
+   */
   balance: number
   /** Of the balance, how much is past its due date. */
   overdue: number
@@ -109,6 +134,9 @@ export async function buildLedger(
     return { entries: [], summary: emptySummary(), ageing: EMPTY_AGEING }
   }
 
+  const timezone = await clinicTimezone(prisma, hospitalId)
+  const todayYmd = localDay(today, timezone)
+
   const invoices = await prisma.invoice.findMany({
     where: {
       hospitalId,
@@ -119,6 +147,7 @@ export async function buildLedger(
       id: true,
       invoiceNo: true,
       createdAt: true,
+      issuedAt: true,
       dueDate: true,
       totalAmount: true,
       balanceAmount: true,
@@ -165,16 +194,21 @@ export async function buildLedger(
   let charged = 0
   let paid = 0
   let refunded = 0
+  let reversed = 0
 
   for (const invoice of invoices) {
     const who = family ? `${invoice.patient.firstName} ${invoice.patient.lastName} — ` : ''
     const total = money(invoice.totalAmount)
     charged += total
+    // What this invoice alone leaves on the account, for the reversal below.
+    let owedHere = total
 
+    // Dated when it was issued — the day the patient was charged — not when
+    // the draft was started. The same date the billed figures use.
     const invoiceAt = push(
       {
         id: invoice.id,
-        date: invoice.createdAt,
+        date: billedAt(invoice),
         kind: 'INVOICE',
         reference: invoice.invoiceNo,
         description: `${who}Invoice`,
@@ -186,9 +220,13 @@ export async function buildLedger(
       0
     )
 
+    // The latest entry so far for this invoice; a reversal goes after it.
+    let lastAt = invoiceAt
+
     for (const payment of invoice.payments) {
       const amount = money(payment.amount)
       paid += amount
+      owedHere -= amount
 
       const paymentAt = push(
         {
@@ -205,15 +243,18 @@ export async function buildLedger(
         invoiceAt
       )
 
+      lastAt = Math.max(lastAt, paymentAt)
+
       for (const refund of payment.refunds) {
         const back = money(refund.amount)
         refunded += back
+        owedHere += back
 
         // A refund is a debit. Money went back to the patient, so what they
         // owe goes up — the mirror image of the payment above it, and the
         // reason it cannot simply be netted off that payment: the two happened
         // on different days and the account has to show both.
-        push(
+        const refundAt = push(
           {
             id: refund.id,
             date: refund.refundedAt,
@@ -227,7 +268,30 @@ export async function buildLedger(
           },
           paymentAt
         )
+        lastAt = Math.max(lastAt, refundAt)
       }
+    }
+
+    // Refunded in full: the charge is reversed, after the refund that
+    // reversed it. Taken from this invoice's own lines rather than its
+    // balance column, so the invoice nets to exactly nothing on the account.
+    const reversal = money(owedHere)
+    if (invoice.status === 'REFUNDED' && reversal > 0) {
+      reversed += reversal
+      push(
+        {
+          id: `${invoice.id}-reversal`,
+          date: new Date(lastAt),
+          kind: 'REVERSAL',
+          reference: invoice.invoiceNo,
+          description: `${who}Charge reversed — refunded in full`,
+          debit: -reversal,
+          credit: 0,
+          balance: 0,
+          href: `/billing/invoices/${invoice.id}`,
+        },
+        lastAt
+      )
     }
   }
 
@@ -239,12 +303,10 @@ export async function buildLedger(
     entry.balance = running
   }
 
-  const unpaid = invoices.filter((invoice) => money(invoice.balanceAmount) > 0)
-  const ageing = ageInvoices(unpaid, today)
-
-  const overdue = unpaid
-    .filter((invoice) => daysBetween(agesFrom(invoice), today) > 0)
-    .reduce((sum, invoice) => sum + money(invoice.balanceAmount), 0)
+  // Owed by the shared rule, so "of which X is overdue" here is the same X the
+  // receivables list and the reports show for this patient.
+  const unpaid = invoices.filter(isInvoiceOwed)
+  const ageing = ageInvoices(unpaid, todayYmd, timezone)
 
   const oldest = unpaid
     .map((invoice) => agesFrom(invoice))
@@ -257,15 +319,24 @@ export async function buildLedger(
       charged: money(charged),
       paid: money(paid),
       refunded: money(refunded),
+      reversed: money(reversed),
       balance: money(running),
-      overdue: money(overdue),
+      overdue: overdueOf(ageing),
       oldestUnpaidAt: oldest ?? null,
     },
   }
 }
 
 function emptySummary(): LedgerSummary {
-  return { charged: 0, paid: 0, refunded: 0, balance: 0, overdue: 0, oldestUnpaidAt: null }
+  return {
+    charged: 0,
+    paid: 0,
+    refunded: 0,
+    reversed: 0,
+    balance: 0,
+    overdue: 0,
+    oldestUnpaidAt: null,
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -310,6 +381,8 @@ export async function receivables(
 ): Promise<Receivables> {
   const today = options.today ?? new Date()
   const minBalance = options.minBalance ?? 0.01
+  const timezone = await clinicTimezone(prisma, hospitalId)
+  const todayYmd = localDay(today, timezone)
 
   const search = options.search?.trim()
   const patientWhere: Prisma.PatientWhereInput | undefined = search
@@ -326,13 +399,16 @@ export async function receivables(
   const invoices = await prisma.invoice.findMany({
     where: {
       hospitalId,
-      status: { in: CHARGEABLE_INVOICE_STATUSES },
-      balanceAmount: { gt: minBalance },
+      // Owed, by the rule every other screen uses: a refunded invoice is not
+      // a debt, and the dashboard, billing overview and portal agree.
+      ...owedInvoiceWhere(minBalance),
       ...(patientWhere ? { patient: patientWhere } : {}),
     },
     select: {
       id: true,
+      status: true,
       createdAt: true,
+      issuedAt: true,
       dueDate: true,
       balanceAmount: true,
       patient: {
@@ -382,17 +458,12 @@ export async function receivables(
   }
 
   const rows: ReceivableRow[] = []
-  const totals = { ...EMPTY_AGEING }
+  let totals: Ageing = { ...EMPTY_AGEING }
 
   for (const { row, invoices: theirs } of byPatient.values()) {
-    row.ageing = ageInvoices(theirs, today)
+    row.ageing = ageInvoices(theirs, todayYmd, timezone)
     rows.push(row)
-
-    totals.current += row.ageing.current
-    totals.days30 += row.ageing.days30
-    totals.days60 += row.ageing.days60
-    totals.days90 += row.ageing.days90
-    totals.total += row.ageing.total
+    totals = addAgeing(totals, row.ageing)
   }
 
   // Oldest debt first. A receivables list sorted by amount puts a large recent
@@ -400,15 +471,5 @@ export async function receivables(
   // March one that needs the call.
   rows.sort((a, b) => a.oldestAt.getTime() - b.oldestAt.getTime())
 
-  return {
-    rows,
-    patientsOwing: rows.length,
-    totals: {
-      current: money(totals.current),
-      days30: money(totals.days30),
-      days60: money(totals.days60),
-      days90: money(totals.days90),
-      total: money(totals.total),
-    },
-  }
+  return { rows, patientsOwing: rows.length, totals }
 }

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  calculateTax,
   resolveTaxRate,
   calculateDiscount,
   calculateInvoiceTotals,
@@ -8,51 +7,11 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
-  calculateBalance,
-  isInvoiceOverdue,
-  getDueDays,
-  calculateDueDate,
   numberToWords,
   getDateRangeFromPreset,
   getPatientName,
   taxConfig,
 } from '@/lib/billing-utils'
-
-describe('Billing Utils - calculateTax', () => {
-  // Dental services are exempt for this clinic, so the default is no tax.
-  it('adds no tax by default', () => {
-    const result = calculateTax(1000)
-    expect(result.subtotal).toBe(1000)
-    expect(result.taxAmount).toBe(0)
-    expect(result.grandTotal).toBe(1000)
-  })
-
-  it('applies an explicit rate', () => {
-    const result = calculateTax(1000, 16)
-    expect(result.taxAmount).toBe(160)
-    expect(result.grandTotal).toBe(1160)
-  })
-
-  it('handles a zero subtotal', () => {
-    const result = calculateTax(0, 16)
-    expect(result.taxAmount).toBe(0)
-    expect(result.grandTotal).toBe(0)
-  })
-
-  it('rounds to 2 decimal places', () => {
-    const result = calculateTax(99.99, 16)
-    expect(result.taxAmount).toBe(16)
-  })
-
-  it('handles large amounts', () => {
-    const result = calculateTax(1000000, 16)
-    expect(result.taxAmount).toBe(160000)
-  })
-
-  it('taxConfig defaults to exempt', () => {
-    expect(taxConfig.rate).toBe(0)
-  })
-})
 
 describe('Billing Utils - resolveTaxRate', () => {
   it('returns 0 when the clinic has tax switched off', () => {
@@ -126,6 +85,85 @@ describe('Billing Utils - calculateInvoiceTotals', () => {
     const result = calculateInvoiceTotals([])
     expect(result.subtotal).toBe(0)
     expect(result.totalAmount).toBe(0)
+    expect(result.lines).toEqual([])
+  })
+})
+
+// Invoice review 1.3: each figure was rounded on its own from unrounded
+// intermediates, so the printed parts did not add up to the printed total.
+describe('Billing Utils - calculateInvoiceTotals rounding', () => {
+  /** What the printout shows: subtotal − discount + tax. */
+  const printed = (t: ReturnType<typeof calculateInvoiceTotals>) =>
+    Math.round((t.subtotal - t.discountAmount + t.taxAmount) * 100) / 100
+
+  it('adds up with tax off: Rs 3,333 at 2.5% off', () => {
+    const t = calculateInvoiceTotals(
+      [{ quantity: 1, unitPrice: 3333, taxable: true }],
+      'PERCENTAGE',
+      2.5
+    )
+    expect(t.discountAmount).toBe(83.33)
+    expect(t.totalAmount).toBe(3249.67)
+    expect(printed(t)).toBe(t.totalAmount)
+  })
+
+  it('adds up with tax on and a mix of taxable and exempt lines', () => {
+    const t = calculateInvoiceTotals(
+      [
+        { quantity: 1, unitPrice: 1250, taxable: true },
+        { quantity: 1, unitPrice: 999, taxable: false },
+      ],
+      'PERCENTAGE',
+      12.5,
+      16
+    )
+    expect(t.subtotal).toBe(2249)
+    expect(t.discountAmount).toBe(281.13)
+    // The taxable share of the discount is rounded, the exempt share takes the
+    // remainder, so the two values add back to subtotal − discount.
+    expect(t.taxableAmount).toBe(1093.75)
+    expect(t.nonTaxableAmount).toBe(874.12)
+    expect(Math.round((t.taxableAmount + t.nonTaxableAmount) * 100) / 100).toBe(
+      Math.round((t.subtotal - t.discountAmount) * 100) / 100
+    )
+    expect(t.taxAmount).toBe(175)
+    expect(t.totalAmount).toBe(2142.87)
+    expect(printed(t)).toBe(t.totalAmount)
+  })
+
+  it('rounds the unit price to the paisa and builds the line from it', () => {
+    const t = calculateInvoiceTotals([{ quantity: 3, unitPrice: 33.335, taxable: true }])
+    expect(t.lines[0].unitPrice).toBe(33.34)
+    // 3 × 33.34, the figures printed on the line — not 3 × 33.335.
+    expect(t.lines[0].amount).toBe(100.02)
+    expect(t.subtotal).toBe(100.02)
+  })
+
+  it('makes the subtotal the sum of the stored line amounts', () => {
+    const t = calculateInvoiceTotals([
+      { quantity: 3, unitPrice: 0.1, taxable: true },
+      { quantity: 7, unitPrice: 0.7, taxable: false },
+    ])
+    expect(t.lines.map((l) => l.amount)).toEqual([0.3, 4.9])
+    expect(t.subtotal).toBe(5.2)
+  })
+
+  it('clamps a discount to the subtotal, never below zero', () => {
+    const items = [{ quantity: 1, unitPrice: 1500, taxable: true }]
+    expect(calculateInvoiceTotals(items, 'FIXED', 5000).totalAmount).toBe(0)
+    expect(calculateInvoiceTotals(items, 'FIXED', -100).discountAmount).toBe(0)
+  })
+
+  it('totals zero for a full discount', () => {
+    const t = calculateInvoiceTotals(
+      [{ quantity: 2, unitPrice: 750, taxable: true }],
+      'PERCENTAGE',
+      100,
+      16
+    )
+    expect(t.discountAmount).toBe(1500)
+    expect(t.taxAmount).toBe(0)
+    expect(t.totalAmount).toBe(0)
   })
 })
 
@@ -188,120 +226,6 @@ describe('Billing Utils - formatDateTime', () => {
   })
 })
 
-describe('Billing Utils - calculateBalance', () => {
-  it('should calculate balance correctly', () => {
-    expect(calculateBalance(1000, 300)).toBe(700)
-    expect(calculateBalance(1000, 1000)).toBe(0)
-    expect(calculateBalance(1000, 0)).toBe(1000)
-  })
-
-  it('should handle overpayment', () => {
-    expect(calculateBalance(1000, 1200)).toBe(-200)
-  })
-
-  it('should round to 2 decimal places', () => {
-    expect(calculateBalance(100.555, 50.222)).toBeCloseTo(50.33, 2)
-  })
-})
-
-describe('Billing Utils - isInvoiceOverdue', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2024-06-15'))
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('should return true for past due dates', () => {
-    expect(isInvoiceOverdue('2024-06-10', 'PENDING')).toBe(true)
-    expect(isInvoiceOverdue(new Date('2024-06-14'), 'PENDING')).toBe(true)
-  })
-
-  it('should return false for future due dates', () => {
-    expect(isInvoiceOverdue('2024-06-20', 'PENDING')).toBe(false)
-  })
-
-  it('should return false for paid invoices', () => {
-    expect(isInvoiceOverdue('2024-06-10', 'PAID')).toBe(false)
-  })
-
-  it('should return false for cancelled invoices', () => {
-    expect(isInvoiceOverdue('2024-06-10', 'CANCELLED')).toBe(false)
-  })
-
-  it('should return false for refunded invoices', () => {
-    expect(isInvoiceOverdue('2024-06-10', 'REFUNDED')).toBe(false)
-  })
-
-  it('should return false for null due date', () => {
-    expect(isInvoiceOverdue(null, 'PENDING')).toBe(false)
-  })
-})
-
-describe('Billing Utils - getDueDays', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2024-06-15'))
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('should return overdue days for past dates', () => {
-    const result = getDueDays('2024-06-10')
-    expect(result.isOverdue).toBe(true)
-    expect(result.days).toBe(5)
-    expect(result.label).toBe('5 days overdue')
-  })
-
-  it('should return days until due for future dates', () => {
-    const result = getDueDays('2024-06-20')
-    expect(result.isOverdue).toBe(false)
-    expect(result.days).toBe(5)
-    expect(result.label).toBe('Due in 5 days')
-  })
-
-  it('should handle due today', () => {
-    const result = getDueDays('2024-06-15')
-    expect(result.isOverdue).toBe(false)
-    expect(result.days).toBe(0)
-    expect(result.label).toBe('Due today')
-  })
-
-  it('should handle null due date', () => {
-    const result = getDueDays(null)
-    expect(result.label).toBe('No due date')
-  })
-})
-
-describe('Billing Utils - calculateDueDate', () => {
-  it('should calculate due date correctly', () => {
-    const invoiceDate = new Date('2024-06-15')
-    const dueDate = calculateDueDate(invoiceDate, 30)
-    expect(dueDate.getFullYear()).toBe(2024)
-    expect(dueDate.getMonth()).toBe(6) // July (0-indexed)
-    expect(dueDate.getDate()).toBe(15)
-  })
-
-  it('should handle zero days', () => {
-    const invoiceDate = new Date('2024-06-15')
-    const dueDate = calculateDueDate(invoiceDate, 0)
-    expect(dueDate.getDate()).toBe(15)
-    expect(dueDate.getMonth()).toBe(5) // June
-  })
-
-  it('should handle month overflow', () => {
-    const invoiceDate = new Date('2024-12-25')
-    const dueDate = calculateDueDate(invoiceDate, 15)
-    expect(dueDate.getFullYear()).toBe(2025)
-    expect(dueDate.getMonth()).toBe(0) // January
-    expect(dueDate.getDate()).toBe(9)
-  })
-})
-
 describe('Billing Utils - numberToWords', () => {
   it('should convert zero', () => {
     expect(numberToWords(0)).toBe('Zero')
@@ -333,14 +257,19 @@ describe('Billing Utils - numberToWords', () => {
     expect(numberToWords(10000000)).toBe('One Crore Rupees Only')
   })
 
-  it('should handle decimal amounts (paise)', () => {
+  it('should handle decimal amounts (paisa)', () => {
     const result = numberToWords(100.5)
     expect(result).toContain('One Hundred Rupees')
-    expect(result).toContain('Fifty Paise')
+    expect(result).toContain('Fifty Paisa')
   })
 })
 
 describe('Billing Utils - getDateRangeFromPreset', () => {
+  // The ranges are built on the clinic's calendar now. These cases read them
+  // back with local getters, so the clinic is put in the zone the tests run
+  // in; tests/unit/invoice-figures.test.ts checks a named zone.
+  const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2024-06-15T10:00:00'))
@@ -351,7 +280,7 @@ describe('Billing Utils - getDateRangeFromPreset', () => {
   })
 
   it('should return today range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('today')
+    const { startDate, endDate } = getDateRangeFromPreset('today', ZONE)
     expect(startDate.getDate()).toBe(15)
     expect(startDate.getHours()).toBe(0)
     expect(endDate.getDate()).toBe(15)
@@ -359,26 +288,26 @@ describe('Billing Utils - getDateRangeFromPreset', () => {
   })
 
   it('should return yesterday range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('yesterday')
+    const { startDate, endDate } = getDateRangeFromPreset('yesterday', ZONE)
     expect(startDate.getDate()).toBe(14)
     expect(endDate.getDate()).toBe(14)
   })
 
   it('should return this_week range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('this_week')
+    const { startDate, endDate } = getDateRangeFromPreset('this_week', ZONE)
     expect(startDate.getDay()).toBe(0) // Sunday
     expect(endDate.getDate()).toBe(15)
   })
 
   it('should return this_month range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('this_month')
+    const { startDate, endDate } = getDateRangeFromPreset('this_month', ZONE)
     expect(startDate.getDate()).toBe(1)
     expect(startDate.getMonth()).toBe(5) // June
     expect(endDate.getMonth()).toBe(5)
   })
 
   it('should return last_month range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('last_month')
+    const { startDate, endDate } = getDateRangeFromPreset('last_month', ZONE)
     expect(startDate.getMonth()).toBe(4) // May
     expect(startDate.getDate()).toBe(1)
     expect(endDate.getMonth()).toBe(4)
@@ -386,7 +315,7 @@ describe('Billing Utils - getDateRangeFromPreset', () => {
   })
 
   it('should return this_year range', () => {
-    const { startDate, endDate } = getDateRangeFromPreset('this_year')
+    const { startDate, endDate } = getDateRangeFromPreset('this_year', ZONE)
     expect(startDate.getMonth()).toBe(0) // January
     expect(startDate.getDate()).toBe(1)
     expect(startDate.getFullYear()).toBe(2024)

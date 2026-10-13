@@ -14,40 +14,40 @@ datasource db {
 // ==================== MULTI-TENANCY ====================
 
 model Hospital {
-  id                  String    @id @default(cuid())
-  name                String
-  slug                String    @unique
-  email               String    @unique
-  phone               String?
-  alternatePhone      String?
-  address             String?   @db.Text
-  city                String?
-  state               String?
+  id                String  @id @default(cuid())
+  name              String
+  slug              String  @unique
+  email             String  @unique
+  phone             String?
+  alternatePhone    String?
+  address           String? @db.Text
+  city              String?
+  state             String?
   // "PIN code" is India's term; Pakistan Post calls it a postal code.
-  postalCode          String?
-  logo                String?
-  registrationNo      String?
+  postalCode        String?
+  logo              String?
+  registrationNo    String?
   // Tax identifiers. Renamed from the Indian gstNumber/panNumber: Pakistan
   // issues an STRN for sales-tax registration and an NTN for income tax.
-  taxRegistrationNo   String?
-  nationalTaxNo       String?
+  taxRegistrationNo String?
+  nationalTaxNo     String?
   // Sales tax on services, off by default because dental services are exempt
   // for this clinic. Turning it on is a settings change, not a migration:
   // set taxEnabled, a rate and the label to print on invoices.
-  taxEnabled          Boolean   @default(false)
-  taxRate             Decimal   @default(0) @db.Decimal(5, 2)
-  taxLabel            String    @default("Sales Tax")
-  website             String?
-  tagline             String?
+  taxEnabled        Boolean @default(false)
+  taxRate           Decimal @default(0) @db.Decimal(5, 2)
+  taxLabel          String  @default("Sales Tax")
+  website           String?
+  tagline           String?
 
   // Localization. `country` will select the tax provider — see
   // docs/LOCALIZATION.md. All four defaults are Pakistan: leaving three of them
   // on Indian values while `locale` said en-PK meant a clinic created without
   // an explicit setting billed in rupees on Kolkata time.
-  locale              String    @default("en-PK")
-  country             String    @default("PK")
-  currency            String    @default("PKR")
-  timezone            String    @default("Asia/Karachi")
+  locale   String @default("en-PK")
+  country  String @default("PK")
+  currency String @default("PKR")
+  timezone String @default("Asia/Karachi")
 
   // What this tenant is paying for lives on Subscription, not here. It used to
   // be five columns on this row — a plan name and three copied-down limits —
@@ -57,74 +57,74 @@ model Hospital {
   // Suspension by the platform, as opposed to by billing: fraud, abuse, or a
   // tenant who asked to be switched off. A lapsed subscription is a separate
   // state and is read from Subscription.status.
-  isActive            Boolean   @default(true)
-  onboardingCompleted Boolean   @default(false)
+  isActive            Boolean @default(true)
+  onboardingCompleted Boolean @default(false)
 
   emailVerificationToken  String?
   emailVerificationExpiry DateTime?
 
-  workingHours        String?   @db.Text
-  bankName            String?
-  bankAccountNo       String?
-  bankAccountName     String?
+  workingHours    String? @db.Text
+  bankName        String?
+  bankAccountNo   String?
+  bankAccountName String?
   // IBAN, not an IFSC code: IFSC is India's bank routing identifier. Pakistani
   // accounts are identified by a 24-character IBAN (PK + 2 check digits + 4
   // bank code + 16 account number).
-  bankIban            String?
+  bankIban        String?
   /// A mobile-money number to print on an invoice — JazzCash or Easypaisa.
   /// Was `upiId`, which is India's rail and has no Pakistani equivalent that
   /// the bank fields above do not already cover.
-  mobileWalletId      String?
+  mobileWalletId  String?
 
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users               User[]
-  staff               Staff[]
-  patients            Patient[]
-  appointments        Appointment[]
-  visitors            Visitor[]
-  recareTypes         RecareType[]
-  recares             Recare[]
-  perioExams          PerioExam[]
-  refunds             Refund[]
-  cashierSessions     CashierSession[]
-  treatmentAmendments TreatmentAmendment[]
-  treatments          Treatment[]
-  treatmentPlans      TreatmentPlan[]
-  dentalChartEntries  DentalChartEntry[]
-  prescriptions       Prescription[]
-  prescriptionTemplates PrescriptionTemplate[]
-  procedures          Procedure[]
-  medications         Medication[]
-  invoices            Invoice[]
-  payments            Payment[]
-  inventoryItems      InventoryItem[]
-  inventoryBatches    InventoryBatch[]
-  stockTransactions   StockTransaction[]
-  stockAlerts         StockAlert[]
-  vendors             Vendor[]
-  purchaseOrders      PurchaseOrder[]
-  labOrders           LabOrder[]
-  documents           Document[]
-  auditLogs           AuditLog[]
-  settings            Setting[]
-  documentCounters    DocumentCounter[]
+  users                  User[]
+  staff                  Staff[]
+  patients               Patient[]
+  appointments           Appointment[]
+  visitors               Visitor[]
+  recareTypes            RecareType[]
+  recares                Recare[]
+  perioExams             PerioExam[]
+  refunds                Refund[]
+  cashierSessions        CashierSession[]
+  treatmentAmendments    TreatmentAmendment[]
+  treatments             Treatment[]
+  treatmentPlans         TreatmentPlan[]
+  dentalChartEntries     DentalChartEntry[]
+  prescriptions          Prescription[]
+  prescriptionTemplates  PrescriptionTemplate[]
+  procedures             Procedure[]
+  medications            Medication[]
+  invoices               Invoice[]
+  payments               Payment[]
+  inventoryItems         InventoryItem[]
+  inventoryBatches       InventoryBatch[]
+  stockTransactions      StockTransaction[]
+  stockAlerts            StockAlert[]
+  vendors                Vendor[]
+  purchaseOrders         PurchaseOrder[]
+  labOrders              LabOrder[]
+  documents              Document[]
+  auditLogs              AuditLog[]
+  settings               Setting[]
+  documentCounters       DocumentCounter[]
   communicationTemplates CommunicationTemplate[]
-  messageLogs         MessageLog[]
-  availability        Availability[]
-  patientPortalEnabled Boolean   @default(false)
+  messageLogs            MessageLog[]
+  availability           Availability[]
+  patientPortalEnabled   Boolean                 @default(false)
   portalAccounts         PatientPortalAccount[]
 
   clinicalNotes          ClinicalNote[]
   clinicalNoteAmendments ClinicalNoteAmendment[]
   attendance             Attendance[]
 
-  formTemplates       FormTemplate[]
-  formSubmissions     FormSubmission[]
-  waitlistEntries     Waitlist[]
-  dataImportJobs      DataImportJob[]
-  subscription        Subscription?
+  formTemplates   FormTemplate[]
+  formSubmissions FormSubmission[]
+  waitlistEntries Waitlist[]
+  dataImportJobs  DataImportJob[]
+  subscription    Subscription?
 
   @@index([slug])
   @@index([isActive])
@@ -150,22 +150,22 @@ enum Plan {
 /// to flip: a subscription that has simply run out stops being ACTIVE on its
 /// own, which is the failure mode you want when nobody is watching.
 model Subscription {
-  id                 String             @id @default(cuid())
-  hospitalId         String             @unique
-  plan               Plan               @default(FREE)
-  status             SubscriptionStatus @default(TRIALING)
+  id         String             @id @default(cuid())
+  hospitalId String             @unique
+  plan       Plan               @default(FREE)
+  status     SubscriptionStatus @default(TRIALING)
 
   /// The window the tenant has paid for. `currentPeriodEnd` is NULL for plans
   /// that do not expire — Free, and the perpetual Self-Hosted licence.
-  currentPeriodStart DateTime           @default(now())
+  currentPeriodStart DateTime  @default(now())
   currentPeriodEnd   DateTime?
   trialEndsAt        DateTime?
 
   /// Set when a tenant asks to stop. The subscription still runs to the end of
   /// the period they paid for; cancelling is not the same as expiring, and a
   /// clinic that has paid until March should not lose its records in January.
-  cancelRequestedAt  DateTime?
-  cancelledAt        DateTime?
+  cancelRequestedAt DateTime?
+  cancelledAt       DateTime?
 
   /// Negotiated exceptions to the plan's allowances. NULL — the normal case —
   /// means "whatever the plan says", so raising a plan's limits raises them for
@@ -175,12 +175,12 @@ model Subscription {
   storageLimitMbOverride Int?
 
   /// Free-text note from the platform side: who agreed what, and when.
-  note               String?            @db.Text
+  note String? @db.Text
 
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital           Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([currentPeriodEnd])
@@ -203,25 +203,25 @@ enum SubscriptionStatus {
 // ==================== AUTHENTICATION & USERS ====================
 
 model User {
-  id              String    @id @default(cuid())
-  hospitalId      String
+  id                 String    @id @default(cuid())
+  hospitalId         String
   /// Unique **within a clinic**, not across the platform — see the compound
   /// index at the bottom of this model. A globally unique address meant a
   /// dentist who works Tuesdays at one practice and Thursdays at another could
   /// not have an account at both, and that the second clinic to try got told
   /// "an account with this email already exists" about a clinic they cannot
   /// see and have nothing to do with.
-  email           String
+  email              String
   /// Null while this row is an invitation rather than an account. An invited
   /// person exists here from the moment they are invited — same clinic, same
   /// email uniqueness, same row they will go on using — but holds no password,
   /// no Staff record and `isActive: false`, so nothing can sign in as them and
   /// they appear nowhere a member of staff appears. Accepting the invitation
   /// sets the password and clears the token below; there is no second table.
-  password        String?
-  name            String
-  phone           String?
-  role            Role      @default(RECEPTIONIST)
+  password           String?
+  name               String
+  phone              String?
+  role               Role      @default(RECEPTIONIST)
   // Optional second role, for the person who holds two jobs — most often the
   // owner who also treats patients. Permissions become the union of the two.
   //
@@ -230,19 +230,19 @@ model User {
   // to attest as the treating provider), so an owner-dentist with a single
   // ADMIN account could not sign their own work. Only clinical roles are
   // assignable here — see SECONDARY_ROLES in lib/rbac.ts.
-  clinicalRole    Role?
-  isActive        Boolean   @default(true)
-  isHospitalAdmin Boolean   @default(false)
+  clinicalRole       Role?
+  isActive           Boolean   @default(true)
+  isHospitalAdmin    Boolean   @default(false)
   /// Staff of the platform itself, not of any clinic — the people who onboard
   /// tenants, change plans and suspend accounts. Deliberately a flag on an
   /// ordinary user rather than a Role: platform administration is orthogonal to
   /// what someone may do *inside* a clinic, and modelling it as a ninth role
   /// would have meant every clinic-side permission table growing a column for a
   /// role that never appears in a clinic.
-  isPlatformAdmin Boolean   @default(false)
-  emailVerified   DateTime?
-  image           String?
-  mustChangePassword Boolean @default(false)
+  isPlatformAdmin    Boolean   @default(false)
+  emailVerified      DateTime?
+  image              String?
+  mustChangePassword Boolean   @default(false)
   /// When the password was last set, for the expiry in Settings → Security.
   ///
   /// Backfilled to the moment the column was added rather than to `createdAt`.
@@ -250,14 +250,14 @@ model User {
   /// every existing password as being as old as its account would have expired
   /// a whole clinic at once, on deploy, for a policy that was off until that
   /// same release. The clock starts when the policy became real.
-  passwordChangedAt DateTime?
+  passwordChangedAt  DateTime?
 
   // Personal locale override, BCP 47. NULL means "inherit from the clinic" and
   // is deliberately NOT defaulted: a default would be indistinguishable from an
   // explicit choice of en-IN, so a clinic changing its own locale would
   // silently fail to propagate to every staff member who never expressed a
   // preference. See docs/LOCALIZATION.md.
-  locale          String?
+  locale String?
 
   /// The outstanding invitation, when this row is one. Cleared on acceptance,
   /// so a non-null token is what makes the row an invitation and a lookup by
@@ -276,32 +276,32 @@ model User {
   /// An account may hold a reset and an invitation at once — a person invited
   /// to a second clinic who forgets their password at the first — so these are
   /// deliberately separate columns rather than one reused pair.
-  resetToken      String?   @unique
-  resetExpiresAt  DateTime?
+  resetToken     String?   @unique
+  resetExpiresAt DateTime?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  staff           Staff?
-  invitedBy       User?     @relation("StaffInvitations", fields: [invitedById], references: [id], onDelete: SetNull)
-  invitationsSent User[]    @relation("StaffInvitations")
-  auditLogs       AuditLog[]
-  dataImportJobs  DataImportJob[]
-  acknowledgedStockAlerts StockAlert[]
-  discountsRequested      Invoice[]        @relation("DiscountsRequested")
-  discountsApproved       Invoice[]        @relation("DiscountsApproved")
-  refundsAuthorised       Refund[]         @relation("RefundsAuthorised")
-  paymentsRecorded        Payment[]        @relation("PaymentsRecorded")
-  cashierSessionsOpened   CashierSession[] @relation("CashierSessionsOpened")
-  cashierSessionsClosed   CashierSession[] @relation("CashierSessionsClosed")
-  treatmentsSigned        Treatment[]          @relation("TreatmentsSigned")
-  chartEntriesRecorded    DentalChartEntry[]   @relation("ChartEntriesRecorded")
-  prescriptionTemplatesCreated PrescriptionTemplate[] @relation("PrescriptionTemplatesCreated")
-  perioExamsRecorded      PerioExam[]          @relation("PerioExamsRecorded")
-  visitorsConverted       Visitor[]            @relation("VisitorsConverted")
-  visitorsDiscarded       Visitor[]            @relation("VisitorsDiscarded")
-  treatmentAmendments     TreatmentAmendment[] @relation("TreatmentAmendments")
+  hospital                     Hospital                @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  staff                        Staff?
+  invitedBy                    User?                   @relation("StaffInvitations", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitationsSent              User[]                  @relation("StaffInvitations")
+  auditLogs                    AuditLog[]
+  dataImportJobs               DataImportJob[]
+  acknowledgedStockAlerts      StockAlert[]
+  discountsRequested           Invoice[]               @relation("DiscountsRequested")
+  discountsApproved            Invoice[]               @relation("DiscountsApproved")
+  refundsAuthorised            Refund[]                @relation("RefundsAuthorised")
+  paymentsRecorded             Payment[]               @relation("PaymentsRecorded")
+  cashierSessionsOpened        CashierSession[]        @relation("CashierSessionsOpened")
+  cashierSessionsClosed        CashierSession[]        @relation("CashierSessionsClosed")
+  treatmentsSigned             Treatment[]             @relation("TreatmentsSigned")
+  chartEntriesRecorded         DentalChartEntry[]      @relation("ChartEntriesRecorded")
+  prescriptionTemplatesCreated PrescriptionTemplate[]  @relation("PrescriptionTemplatesCreated")
+  perioExamsRecorded           PerioExam[]             @relation("PerioExamsRecorded")
+  visitorsConverted            Visitor[]               @relation("VisitorsConverted")
+  visitorsDiscarded            Visitor[]               @relation("VisitorsDiscarded")
+  treatmentAmendments          TreatmentAmendment[]    @relation("TreatmentAmendments")
   clinicalNotesAuthored        ClinicalNote[]          @relation("ClinicalNotesAuthored")
   clinicalNotesSigned          ClinicalNote[]          @relation("ClinicalNotesSigned")
   clinicalNoteAmendments       ClinicalNoteAmendment[] @relation("ClinicalNoteAmendments")
@@ -344,30 +344,30 @@ enum Role {
 // ==================== STAFF MANAGEMENT ====================
 
 model Staff {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  userId          String    @unique
-  employeeId      String
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
-  gender          Gender?
-  phone           String
-  alternatePhone  String?
-  email           String
-  address         String?   @db.Text
-  city            String?
-  state           String?
-  postalCode      String?
+  id               String    @id @default(cuid())
+  hospitalId       String
+  userId           String    @unique
+  employeeId       String
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime?
+  gender           Gender?
+  phone            String
+  alternatePhone   String?
+  email            String
+  address          String?   @db.Text
+  city             String?
+  state            String?
+  postalCode       String?
   // Pakistan's national identity number. Aadhaar is India's, 12 digits;
   // a CNIC is 13, issued by NADRA. Stored as digits only and formatted
   // 00000-0000000-0 for display — see lib/cnic.ts.
-  cnic            String?
-  nationalTaxNo   String?
-  qualification   String?
-  specialization  String?
-  licenseNumber   String?
-  joiningDate     DateTime  @default(now())
+  cnic             String?
+  nationalTaxNo    String?
+  qualification    String?
+  specialization   String?
+  licenseNumber    String?
+  joiningDate      DateTime  @default(now())
   /// Payroll is out of scope — spec §3 excludes "full payroll, attendance, or
   /// enterprise HR management beyond basic user/staff profiles". `salary`,
   /// `bankAccountNo` and `bankIban` lived here, and the staff form collected
@@ -377,17 +377,17 @@ model Staff {
   /// who was in on which day, nothing more — and lives in `Attendance`, keyed
   /// on the User. Payroll remains out of scope.
   emergencyContact String?
-  emergencyPhone  String?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  emergencyPhone   String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  appointments    Appointment[] @relation("DoctorAppointments")
-  treatments      Treatment[]
-  prescriptions   Prescription[]
-  availability    Availability[]
+  hospital      Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments  Appointment[]  @relation("DoctorAppointments")
+  treatments    Treatment[]
+  prescriptions Prescription[]
+  availability  Availability[]
 
   @@unique([hospitalId, employeeId])
   // One person, one CNIC. PostgreSQL treats NULLs as distinct in a unique
@@ -397,41 +397,41 @@ model Staff {
 }
 
 model Availability {
-  id          String    @id @default(cuid())
-  hospitalId  String
+  id         String @id @default(cuid())
+  hospitalId String
 
   /// Null means the clinic as a whole; set means this one person. A clinic
   /// closing for Eid and a dentist taking the Tuesday off are the same fact at
   /// different scopes, and the slot picker has to consult both.
-  staffId     String?
+  staffId String?
 
   /// Exactly one of these is set, enforced by a CHECK constraint the migration
   /// adds: `dayOfWeek` (0 = Sunday) for something that repeats every week, or
   /// `date` for one particular day.
-  dayOfWeek   Int?
-  date        DateTime? @db.Date
+  dayOfWeek Int?
+  date      DateTime? @db.Date
 
   /// `HH:MM` on the clinic's own wall clock. Null on both means the whole day,
   /// which is what a clinic holiday is — and what a day of leave is, something
   /// neither of the two tables this replaces could express.
-  startTime   String?
-  endTime     String?
+  startTime String?
+  endTime   String?
 
   /// Whether this opens the time or closes it. A weekly shift opens it; a
   /// holiday or a day of leave closes it.
-  isAvailable Boolean   @default(true)
+  isAvailable Boolean @default(true)
 
   /// What to call it on a screen: "Eid al-Fitr", "Annual leave".
-  name        String?
+  name String?
 
   /// A dated entry that comes round every year. The holiday table had this
   /// column and nothing read it, so a recurring holiday was observed once.
-  isRecurring Boolean   @default(false)
+  isRecurring Boolean @default(false)
 
-  createdAt   DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  hospital    Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  staff       Staff?    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  staff    Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@index([hospitalId, staffId, dayOfWeek])
   @@index([hospitalId, date])
@@ -441,33 +441,33 @@ model Availability {
 // ==================== PATIENT MANAGEMENT ====================
 
 model Patient {
-  id              String     @id @default(cuid())
-  hospitalId      String
-  patientId       String
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
+  id             String      @id @default(cuid())
+  hospitalId     String
+  patientId      String
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime?
   /// `age Int?` was here, written once at registration and never again — so it
   /// was wrong for most of the year, and the analytics report already ignored
   /// it and computed age from `dateOfBirth`. See lib/age.ts.
-  gender          Gender?
-  bloodGroup      BloodGroup?
-  phone           String
-  alternatePhone  String?
-  email           String?
-  address         String?    @db.Text
-  city            String?
+  gender         Gender?
+  bloodGroup     BloodGroup?
+  phone          String
+  alternatePhone String?
+  email          String?
+  address        String?     @db.Text
+  city           String?
   // No default: the upstream schema defaulted this to "Tamil Nadu", which
   // silently stamped an Indian state onto every Pakistani patient. There is no
   // right default — the clinic's own province is a guess for anyone who
   // travelled in — so it is left blank.
-  state           String?
-  postalCode      String?
+  state          String?
+  postalCode     String?
   // See the note on Staff.cnic. Children are issued a B-Form rather than a
   // CNIC, so this is nullable and stays that way.
-  cnic            String?
-  occupation      String?
-  referredBy      String?
+  cnic           String?
+  occupation     String?
+  referredBy     String?
 
   /// Who settles this patient's bills.
   ///
@@ -490,7 +490,7 @@ model Patient {
 
   // Locale override for the patient portal. NULL means "inherit from the
   // clinic" — same reasoning as User.locale above.
-  locale          String?
+  locale String?
 
   /// How this patient wants to be contacted, and about what.
   ///
@@ -501,10 +501,10 @@ model Patient {
   /// patient who has never expressed one, which is almost all of them.
   communicationPrefs Json?
 
-  aiSummary       Json?
-  aiSummaryAt     DateTime?
+  aiSummary   Json?
+  aiSummaryAt DateTime?
 
-  isActive        Boolean    @default(true)
+  isActive Boolean @default(true)
 
   /// Set when this record was merged into another as a duplicate.
   ///
@@ -513,32 +513,32 @@ model Patient {
   /// docket — and a clinic that looks it up afterwards should be told where the
   /// record went, not shown nothing. Everything clinical has already moved to
   /// the surviving record by the time this is set.
-  mergedIntoId    String?
-  mergedAt        DateTime?
+  mergedIntoId String?
+  mergedAt     DateTime?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  mergedInto      Patient?   @relation("PatientMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  mergedFrom      Patient[]  @relation("PatientMerge")
+  hospital       Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  mergedInto     Patient?              @relation("PatientMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom     Patient[]             @relation("PatientMerge")
   /// SetNull rather than Cascade: deleting the payer must not delete the
   /// people they were paying for.
   guarantor      Patient?              @relation("PatientGuarantor", fields: [guarantorId], references: [id], onDelete: SetNull)
   dependants     Patient[]             @relation("PatientGuarantor")
   clinicalNotes  ClinicalNote[]
-  medicalHistory  MedicalHistory?
-  appointments    Appointment[]
-  treatments      Treatment[]
-  treatmentPlans  TreatmentPlan[]
-  dentalChart     DentalChartEntry[]
-  recares         Recare[]
-  perioExams      PerioExam[]
-  convertedFrom   Visitor[]          @relation("VisitorConvertedTo")
-  prescriptions   Prescription[]
-  invoices        Invoice[]
-  documents       Document[]
-  labOrders       LabOrder[]
+  medicalHistory MedicalHistory?
+  appointments   Appointment[]
+  treatments     Treatment[]
+  treatmentPlans TreatmentPlan[]
+  dentalChart    DentalChartEntry[]
+  recares        Recare[]
+  perioExams     PerioExam[]
+  convertedFrom  Visitor[]             @relation("VisitorConvertedTo")
+  prescriptions  Prescription[]
+  invoices       Invoice[]
+  documents      Document[]
+  labOrders      LabOrder[]
   portalAccount  PatientPortalAccount?
 
   @@unique([hospitalId, patientId])
@@ -626,8 +626,8 @@ model PatientPortalAccount {
 }
 
 model MedicalHistory {
-  id                 String    @id @default(cuid())
-  patientId          String    @unique
+  id        String @id @default(cuid())
+  patientId String @unique
 
   /// Drugs, foods, materials — latex and local anaesthetic belong here as much
   /// as penicillin does, and separating them into three columns meant a
@@ -639,25 +639,25 @@ model MedicalHistory {
 
   /// Its own field rather than a condition: it is temporary, it has a number
   /// attached, and it changes what may be prescribed and radiographed today.
-  isPregnant         Boolean   @default(false)
-  pregnancyWeeks     Int?
+  isPregnant     Boolean @default(false)
+  pregnancyWeeks Int?
 
   smokingStatus      SmokingStatus      @default(NEVER)
   alcoholConsumption AlcoholConsumption @default(NEVER)
   tobaccoChewing     Boolean            @default(false)
 
-  previousDentalWork  String?  @db.Text
+  previousDentalWork  String?   @db.Text
   lastDentalVisit     DateTime?
   /// 0-10. Drives how much time to allow and whether to offer sedation.
-  dentalAnxietyLevel  Int?     @default(0)
-  familyDentalHistory String?  @db.Text
+  dentalAnxietyLevel  Int?      @default(0)
+  familyDentalHistory String?   @db.Text
 
-  additionalNotes    String?   @db.Text
+  additionalNotes String? @db.Text
 
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patient            Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 }
 
 enum Gender {
@@ -694,45 +694,45 @@ enum AlcoholConsumption {
 // ==================== APPOINTMENT SCHEDULING ====================
 
 model Appointment {
-  id              String            @id @default(cuid())
-  hospitalId      String
-  appointmentNo   String
+  id            String @id @default(cuid())
+  hospitalId    String
+  appointmentNo String
 
   /// Exactly one of these is set — see the CHECK constraint in the migration.
   /// A walk-in is a `Visitor` until somebody decides to register them, which is
   /// the whole point: the desk should not have to invent a patient record for
   /// someone who may never come back.
-  patientId       String?
-  visitorId       String?
-  doctorId        String
+  patientId String?
+  visitorId String?
+  doctorId  String
 
   /// The instant the appointment starts, in UTC. A clinic books a wall-clock
   /// time ("Thursday at 15:00"), which the API converts against the clinic's
   /// own timezone on the way in and renders back on the way out — but what is
   /// stored is a point in time, so "an hour before" is arithmetic rather than a
   /// reassembly of a date column and a free-text string.
-  startsAt        DateTime          @db.Timestamptz(3)
-  duration        Int               @default(30)
+  startsAt DateTime @db.Timestamptz(3)
+  duration Int      @default(30)
 
   /// The queue number for the day, as DDMMYY then a three-digit sequence —
   /// 200926001 is the first arrival on 20 September 2026. Issued on check-in
   /// and not before: a number handed out at booking says nothing about who is
   /// waiting, and the queue a clinic actually runs is arrival order.
-  tokenNumber     String?
-  tokenIssuedAt   DateTime?
+  tokenNumber   String?
+  tokenIssuedAt DateTime?
 
   appointmentType AppointmentType   @default(CONSULTATION)
   status          AppointmentStatus @default(SCHEDULED)
   priority        Priority          @default(NORMAL)
 
-  checkedInAt     DateTime?
-  checkedOutAt    DateTime?
-  waitTime        Int?
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+  waitTime     Int?
 
-  chiefComplaint  String?           @db.Text
-  notes           String?           @db.Text
+  chiefComplaint String? @db.Text
+  notes          String? @db.Text
 
-  cancelledAt     DateTime?
+  cancelledAt        DateTime?
   cancellationReason String?
 
   /// Booked by the patient on the public page, rather than by the desk.
@@ -742,20 +742,21 @@ model Appointment {
   /// too, so the two were indistinguishable. Meanwhile the confirmation page
   /// tells the patient "the clinic will telephone you to confirm", which is a
   /// promise the software gave nobody the means to keep.
-  bookedOnline    Boolean           @default(false)
+  bookedOnline Boolean @default(false)
 
   /// When somebody at the desk first dealt with it. Null on an online booking
   /// nobody has looked at, which is what the review queue is built from.
-  reviewedAt      DateTime?
+  reviewedAt DateTime?
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient?          @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  visitor         Visitor?          @relation(fields: [visitorId], references: [id], onDelete: Restrict)
-  doctor          Staff             @relation("DoctorAppointments", fields: [doctorId], references: [id])
-  treatments      Treatment[]
+  hospital      Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient       Patient?       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  visitor       Visitor?       @relation(fields: [visitorId], references: [id], onDelete: Restrict)
+  doctor        Staff          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  treatments    Treatment[]
+  invoices      Invoice[]
   clinicalNotes ClinicalNote[]
 
   @@unique([hospitalId, appointmentNo])
@@ -798,38 +799,38 @@ enum Priority {
 // ==================== DENTAL CHART ====================
 
 model DentalChartEntry {
-  id              String         @id @default(cuid())
-  hospitalId      String
-  patientId       String
-  toothNumber     Int
-  toothNotation   String
+  id            String @id @default(cuid())
+  hospitalId    String
+  patientId     String
+  toothNumber   Int
+  toothNotation String
 
-  mesial          Boolean        @default(false)
-  distal          Boolean        @default(false)
-  occlusal        Boolean        @default(false)
-  buccal          Boolean        @default(false)
-  lingual         Boolean        @default(false)
+  mesial   Boolean @default(false)
+  distal   Boolean @default(false)
+  occlusal Boolean @default(false)
+  buccal   Boolean @default(false)
+  lingual  Boolean @default(false)
 
-  condition       ToothCondition
-  severity        Severity       @default(MILD)
+  condition ToothCondition
+  severity  Severity       @default(MILD)
 
-  notes           String?
-  diagnosedDate   DateTime       @default(now())
-  resolvedDate    DateTime?
+  notes         String?
+  diagnosedDate DateTime  @default(now())
+  resolvedDate  DateTime?
 
   // Who charted this. A finding on a tooth is a clinical record, and UAT-04
   // asks for the encounter to be saved "with author/date": the date was here
   // from the start, the author was not recorded anywhere at all. Nullable
   // because entries charted before this column existed have no author to name,
   // and guessing one would be worse than admitting the gap.
-  recordedById    String?
+  recordedById String?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient        @relation(fields: [patientId], references: [id])
-  recordedBy      User?          @relation("ChartEntriesRecorded", fields: [recordedById], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient    Patient  @relation(fields: [patientId], references: [id])
+  recordedBy User?    @relation("ChartEntriesRecorded", fields: [recordedById], references: [id])
 
   @@index([hospitalId, patientId, toothNumber])
   @@index([recordedById])
@@ -870,10 +871,10 @@ model Procedure {
   defaultDuration Int               @default(30)
   basePrice       Decimal           @db.Decimal(10, 2)
 
-  materials       String?           @db.Text
+  materials String? @db.Text
 
-  preInstructions String?           @db.Text
-  postInstructions String?          @db.Text
+  preInstructions  String? @db.Text
+  postInstructions String? @db.Text
 
   // Boilerplate for the clinical note, prefilled when this procedure is chosen
   // on a new treatment and editable there.
@@ -892,9 +893,9 @@ model Procedure {
   // rewrite notes that were signed last year, and the signature would attest to
   // text nobody ever read. Same rule as PrescriptionTemplate, for a stronger
   // reason. See app/(dashboard)/treatments/new/page.tsx.
-  defaultDiagnosis String?
-  defaultFindings String?           @db.Text
-  defaultProcedureNotes String?     @db.Text
+  defaultDiagnosis      String?
+  defaultFindings       String? @db.Text
+  defaultProcedureNotes String? @db.Text
 
   // Days from the treatment date, not a date: a catalogue entry cannot know
   // when it will be used. Zero is a legitimate answer meaning "same day", so
@@ -902,15 +903,15 @@ model Procedure {
   // default" from "follow up immediately".
   defaultFollowUpDays Int?
 
-  isActive        Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  treatments      Treatment[]
+  hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatments         Treatment[]
   treatmentPlanItems TreatmentPlanItem[]
   /// The recall types this procedure is the visit for. See RecareType.procedures.
-  recareTypes     RecareType[]
+  recareTypes        RecareType[]
 
   @@unique([hospitalId, code])
   @@index([hospitalId, isActive, category])
@@ -930,24 +931,24 @@ enum ProcedureCategory {
 }
 
 model TreatmentPlan {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  planNumber      String
-  patientId       String
+  id         String @id @default(cuid())
+  hospitalId String
+  planNumber String
+  patientId  String
 
-  title           String
-  description     String?             @db.Text
-  status          TreatmentPlanStatus @default(DRAFT)
+  title       String
+  description String?             @db.Text
+  status      TreatmentPlanStatus @default(DRAFT)
 
-  estimatedCost   Decimal             @db.Decimal(10, 2)
+  estimatedCost     Decimal @db.Decimal(10, 2)
   estimatedDuration Int?
 
   startDate       DateTime?
   expectedEndDate DateTime?
   completedDate   DateTime?
 
-  consentGiven    Boolean             @default(false)
-  consentDate     DateTime?
+  consentGiven Boolean   @default(false)
+  consentDate  DateTime?
 
   /// What each phase is called, as `["Urgent", "Restorative", "Elective"]`.
   ///
@@ -961,14 +962,14 @@ model TreatmentPlan {
   /// runs past the end of this array falls back to "Phase N".
   phaseNames Json?
 
-  notes           String?             @db.Text
+  notes String? @db.Text
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient             @relation(fields: [patientId], references: [id])
-  items           TreatmentPlanItem[]
+  hospital Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient  Patient             @relation(fields: [patientId], references: [id])
+  items    TreatmentPlanItem[]
 
   @@unique([hospitalId, planNumber])
   @@index([hospitalId, status, createdAt(sort: Desc)])
@@ -976,11 +977,11 @@ model TreatmentPlan {
 }
 
 model TreatmentPlanItem {
-  id              String                  @id @default(cuid())
+  id              String @id @default(cuid())
   treatmentPlanId String
   procedureId     String
 
-  toothNumbers    String?
+  toothNumbers String?
 
   /// Which phase of the plan this belongs to, from 1.
   ///
@@ -990,24 +991,24 @@ model TreatmentPlanItem {
   /// course of treatment" were the same number, and a plan could not say
   /// "these four things, then those three, and here is what each stage costs".
   phase         Int                     @default(1)
-  priority        Int                     @default(1)
-  estimatedCost   Decimal                 @db.Decimal(10, 2)
-  status          TreatmentPlanItemStatus @default(PENDING)
+  priority      Int                     @default(1)
+  estimatedCost Decimal                 @db.Decimal(10, 2)
+  status        TreatmentPlanItemStatus @default(PENDING)
 
-  notes           String?
+  notes String?
 
   /// The treatment that carries this item out, once one is started from it.
   /// Without it nothing could move an item off PENDING: a root canal could be
   /// done, completed and signed and the plan still said it was to do. One
   /// treatment per item — a second attempt is a new item, not a second link.
-  treatmentId     String?                 @unique
+  treatmentId String? @unique
 
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  treatmentPlan   TreatmentPlan           @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
-  procedure       Procedure               @relation(fields: [procedureId], references: [id])
-  treatment       Treatment?              @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  treatmentPlan TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  procedure     Procedure     @relation(fields: [procedureId], references: [id])
+  treatment     Treatment?    @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
 
   @@index([treatmentPlanId])
   @@index([treatmentPlanId, phase, priority])
@@ -1031,33 +1032,33 @@ enum TreatmentPlanItemStatus {
 }
 
 model Treatment {
-  id              String          @id @default(cuid())
-  hospitalId      String
-  treatmentNo     String
-  patientId       String
-  appointmentId   String?
-  procedureId     String
-  doctorId        String
+  id            String  @id @default(cuid())
+  hospitalId    String
+  treatmentNo   String
+  patientId     String
+  appointmentId String?
+  procedureId   String
+  doctorId      String
 
-  toothNumbers    String?
-  chiefComplaint  String?         @db.Text
-  diagnosis       String?         @db.Text
-  findings        String?         @db.Text
-  procedureNotes  String?         @db.Text
+  toothNumbers   String?
+  chiefComplaint String? @db.Text
+  diagnosis      String? @db.Text
+  findings       String? @db.Text
+  procedureNotes String? @db.Text
 
-  materialsUsed   String?         @db.Text
+  materialsUsed String? @db.Text
 
-  status          TreatmentStatus @default(IN_PROGRESS)
-  startTime       DateTime?
-  endTime         DateTime?
+  status    TreatmentStatus @default(IN_PROGRESS)
+  startTime DateTime?
+  endTime   DateTime?
 
-  complications   String?         @db.Text
+  complications String? @db.Text
 
-  followUpRequired Boolean        @default(false)
-  followUpDate    DateTime?
-  followUpNotes   String?
+  followUpRequired Boolean   @default(false)
+  followUpDate     DateTime?
+  followUpNotes    String?
 
-  cost            Decimal         @db.Decimal(10, 2)
+  cost Decimal @db.Decimal(10, 2)
 
   // FR-007: "Completed/signed notes must be locked or version-controlled with
   // audit history for later amendments."
@@ -1066,27 +1067,27 @@ model Treatment {
   // one more thing that can disagree with the first. `COMPLETED` is a workflow
   // status, not an attestation — a note is only signed when a clinician puts
   // their name to it.
-  signedById      String?
-  signedAt        DateTime?
+  signedById String?
+  signedAt   DateTime?
   // Set the first time a signed note is amended, so a reader can see at a
   // glance that what they are looking at is not what was originally signed.
-  amendedAt       DateTime?
+  amendedAt  DateTime?
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient         @relation(fields: [patientId], references: [id])
-  appointment     Appointment?    @relation(fields: [appointmentId], references: [id])
-  procedure       Procedure       @relation(fields: [procedureId], references: [id])
-  doctor          Staff           @relation(fields: [doctorId], references: [id])
-  signedBy        User?           @relation("TreatmentsSigned", fields: [signedById], references: [id])
-  amendments      TreatmentAmendment[]
-  prescriptions   Prescription[]
-  invoiceItems    InvoiceItem[]
-  documents       Document[]
-  planItem        TreatmentPlanItem?
-  labOrders       LabOrder[]
+  hospital      Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient       Patient              @relation(fields: [patientId], references: [id])
+  appointment   Appointment?         @relation(fields: [appointmentId], references: [id])
+  procedure     Procedure            @relation(fields: [procedureId], references: [id])
+  doctor        Staff                @relation(fields: [doctorId], references: [id])
+  signedBy      User?                @relation("TreatmentsSigned", fields: [signedById], references: [id])
+  amendments    TreatmentAmendment[]
+  prescriptions Prescription[]
+  invoiceItems  InvoiceItem[]
+  documents     Document[]
+  planItem      TreatmentPlanItem?
+  labOrders     LabOrder[]
 
   @@unique([hospitalId, treatmentNo])
   @@index([hospitalId, status, createdAt(sort: Desc)])
@@ -1117,25 +1118,25 @@ model Treatment {
 /// Append-only either way: once written, an amendment cannot be edited or
 /// removed. That is the whole point of it.
 model TreatmentAmendment {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  treatmentId     String
+  id          String @id @default(cuid())
+  hospitalId  String
+  treatmentId String
 
-  kind            AmendmentKind
+  kind AmendmentKind
 
   /// What the clinician wrote. For an addendum this is the addition itself;
   /// for a correction it is the reason the correction was needed.
-  body            String        @db.Text
+  body String @db.Text
 
   /// Corrections only: `{ field: { from, to } }` for each field changed.
-  changes         Json?
+  changes Json?
 
-  authorId        String
-  createdAt       DateTime      @default(now())
+  authorId  String
+  createdAt DateTime @default(now())
 
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  treatment       Treatment     @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  author          User          @relation("TreatmentAmendments", fields: [authorId], references: [id])
+  hospital  Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  author    User      @relation("TreatmentAmendments", fields: [authorId], references: [id])
 
   @@index([hospitalId])
   @@index([treatmentId])
@@ -1155,11 +1156,11 @@ enum TreatmentStatus {
 }
 
 model Prescription {
-  id              String       @id @default(cuid())
-  hospitalId      String
-  prescriptionNo  String
-  patientId       String
-  doctorId        String
+  id             String @id @default(cuid())
+  hospitalId     String
+  prescriptionNo String
+  patientId      String
+  doctorId       String
 
   // Which template this was started from, if any.
   //
@@ -1171,7 +1172,7 @@ model Prescription {
   //
   // Nullable, and stays nullable: most prescriptions are typed from scratch,
   // and a template that is later deactivated must not orphan them.
-  templateId      String?
+  templateId String?
 
   // The treatment this was written during, if it was written during one.
   //
@@ -1182,7 +1183,7 @@ model Prescription {
   // antibiotic prophylaxis (which is prescribed *before* the appointment it
   // covers) are all ordinary prescriptions with no treatment behind them.
   // Requiring one would block the clinic's real workflow.
-  treatmentId     String?
+  treatmentId String?
 
   // The teeth this prescription is about, FDI, comma-separated.
   //
@@ -1194,22 +1195,22 @@ model Prescription {
   // The shape matches `Treatment.toothNumbers`, `TreatmentPlanItem` and
   // `LabOrder`. A fourth way of writing down a set of teeth would be worse
   // than a consistent imperfect one.
-  toothNumbers    String?
+  toothNumbers String?
 
-  diagnosis       String?
-  notes           String?      @db.Text
+  diagnosis String?
+  notes     String? @db.Text
 
-  validUntil      DateTime?
+  validUntil DateTime?
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient      @relation(fields: [patientId], references: [id])
-  doctor          Staff        @relation(fields: [doctorId], references: [id])
-  template        PrescriptionTemplate? @relation(fields: [templateId], references: [id])
-  treatment       Treatment?   @relation(fields: [treatmentId], references: [id])
-  medications     PrescriptionMedication[]
+  hospital    Hospital                 @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient     Patient                  @relation(fields: [patientId], references: [id])
+  doctor      Staff                    @relation(fields: [doctorId], references: [id])
+  template    PrescriptionTemplate?    @relation(fields: [templateId], references: [id])
+  treatment   Treatment?               @relation(fields: [treatmentId], references: [id])
+  medications PrescriptionMedication[]
 
   @@unique([hospitalId, prescriptionNo])
   @@index([hospitalId, createdAt(sort: Desc)])
@@ -1220,23 +1221,23 @@ model Prescription {
 }
 
 model PrescriptionMedication {
-  id              String        @id @default(cuid())
-  prescriptionId  String
-  medicationId    String?
+  id             String  @id @default(cuid())
+  prescriptionId String
+  medicationId   String?
 
-  medicationName  String
-  dosage          String
-  frequency       String
-  duration        String
-  route           String        @default("Oral")
-  timing          String?
-  quantity        Int?
-  instructions    String?
+  medicationName String
+  dosage         String
+  frequency      String
+  duration       String
+  route          String  @default("Oral")
+  timing         String?
+  quantity       Int?
+  instructions   String?
 
-  createdAt       DateTime      @default(now())
+  createdAt DateTime @default(now())
 
-  prescription    Prescription  @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
-  medication      Medication?   @relation(fields: [medicationId], references: [id])
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medication   Medication?  @relation(fields: [medicationId], references: [id])
 }
 
 // A prescription somebody writes once and reaches for every week.
@@ -1253,26 +1254,26 @@ model PrescriptionMedication {
 // pointing at it for provenance, and a clinic auditing what it prescribed last
 // March needs that pointer to still resolve.
 model PrescriptionTemplate {
-  id              String       @id @default(cuid())
-  hospitalId      String
-  name            String
-  description     String?
-  category        String?
+  id          String  @id @default(cuid())
+  hospitalId  String
+  name        String
+  description String?
+  category    String?
 
   // Prefilled onto the issued prescription, and editable there.
-  diagnosis       String?
-  notes           String?      @db.Text
+  diagnosis String?
+  notes     String? @db.Text
 
-  isActive        Boolean      @default(true)
+  isActive Boolean @default(true)
 
-  createdById     String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  createdBy       User?        @relation("PrescriptionTemplatesCreated", fields: [createdById], references: [id])
-  items           PrescriptionTemplateItem[]
-  prescriptions   Prescription[]
+  hospital      Hospital                   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdBy     User?                      @relation("PrescriptionTemplatesCreated", fields: [createdById], references: [id])
+  items         PrescriptionTemplateItem[]
+  prescriptions Prescription[]
 
   // Two templates called "Post-extraction" in one clinic is a mistake, not a
   // choice — whichever one you picked would be a coin toss.
@@ -1291,56 +1292,56 @@ model PrescriptionTemplate {
 // No teeth here. A template says "post-extraction analgesia"; it cannot know
 // it is tooth 46. Teeth belong to the issued prescription.
 model PrescriptionTemplateItem {
-  id              String       @id @default(cuid())
-  templateId      String
-  medicationId    String?
+  id           String  @id @default(cuid())
+  templateId   String
+  medicationId String?
 
-  medicationName  String
-  dosage          String
-  frequency       String
-  duration        String
-  route           String       @default("Oral")
-  timing          String?
-  quantity        Int?
-  instructions    String?
+  medicationName String
+  dosage         String
+  frequency      String
+  duration       String
+  route          String  @default("Oral")
+  timing         String?
+  quantity       Int?
+  instructions   String?
 
   // The order the dentist wrote them in, which is usually clinical.
-  sortOrder       Int          @default(0)
+  sortOrder Int @default(0)
 
-  createdAt       DateTime     @default(now())
+  createdAt DateTime @default(now())
 
-  template        PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  medication      Medication?  @relation(fields: [medicationId], references: [id])
+  template   PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medication Medication?          @relation(fields: [medicationId], references: [id])
 
   @@index([templateId, sortOrder])
   @@index([medicationId])
 }
 
 model Medication {
-  id              String       @id @default(cuid())
-  hospitalId      String
-  name            String
-  genericName     String?
-  category        String?
-  form            String?
-  strength        String?
-  manufacturer    String?
-  defaultDosage   String?
-  defaultFrequency String?
-  defaultDuration String?
-  contraindications String?    @db.Text
-  sideEffects     String?      @db.Text
-  isActive        Boolean      @default(true)
+  id                String  @id @default(cuid())
+  hospitalId        String
+  name              String
+  genericName       String?
+  category          String?
+  form              String?
+  strength          String?
+  manufacturer      String?
+  defaultDosage     String?
+  defaultFrequency  String?
+  defaultDuration   String?
+  contraindications String? @db.Text
+  sideEffects       String? @db.Text
+  isActive          Boolean @default(true)
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital                Hospital                   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   prescriptionMedications PrescriptionMedication[]
-  templateItems   PrescriptionTemplateItem[]
+  templateItems           PrescriptionTemplateItem[]
   /// Stock held for this drug. Several rows when it is stocked in more than
   /// one pack size. See InventoryItem.medicationId.
-  inventoryItems  InventoryItem[]
+  inventoryItems          InventoryItem[]
 
   @@index([hospitalId, isActive, name])
 }
@@ -1348,15 +1349,15 @@ model Medication {
 // ==================== BILLING & FINANCIAL ====================
 
 model Invoice {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  invoiceNo       String
-  patientId       String
+  id         String @id @default(cuid())
+  hospitalId String
+  invoiceNo  String
+  patientId  String
 
-  subtotal        Decimal       @db.Decimal(10, 2)
-  discountType    DiscountType?
-  discountValue   Decimal?      @db.Decimal(10, 2)
-  discountAmount  Decimal       @default(0) @db.Decimal(10, 2)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  discountType   DiscountType?
+  discountValue  Decimal?      @db.Decimal(10, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(10, 2)
 
   // FR-013: a discount over the clinic's threshold needs a reason and an
   // approver who is not the person raising the invoice. Reception holds
@@ -1368,7 +1369,7 @@ model Invoice {
   discountApprovedById   String?
   discountDecidedAt      DateTime?
   discountDecisionNote   String?                @db.Text
-  taxableAmount   Decimal       @db.Decimal(10, 2)
+  taxableAmount          Decimal                @db.Decimal(10, 2)
   // One tax line, stamped onto the invoice at the moment it is raised.
   //
   // Upstream carried India's two-component split (CGST + SGST at 9% each).
@@ -1377,31 +1378,39 @@ model Invoice {
   // on the invoice rather than being read from settings at display time so
   // that reprinting an old invoice shows the tax that was actually charged,
   // not today's rate.
-  taxRate         Decimal       @default(0) @db.Decimal(5, 2)
-  taxAmount       Decimal       @default(0) @db.Decimal(10, 2)
-  totalAmount     Decimal       @db.Decimal(10, 2)
-  paidAmount      Decimal       @default(0) @db.Decimal(10, 2)
-  balanceAmount   Decimal       @db.Decimal(10, 2)
+  taxRate                Decimal                @default(0) @db.Decimal(5, 2)
+  taxAmount              Decimal                @default(0) @db.Decimal(10, 2)
+  totalAmount            Decimal                @db.Decimal(10, 2)
+  paidAmount             Decimal                @default(0) @db.Decimal(10, 2)
+  balanceAmount          Decimal                @db.Decimal(10, 2)
 
-  status          InvoiceStatus @default(DRAFT)
-  dueDate         DateTime?
+  status   InvoiceStatus @default(DRAFT)
+  dueDate  DateTime?
+  // When the invoice left DRAFT. Billed figures are dated by this, not by
+  // createdAt, which is only when the draft was started.
+  issuedAt DateTime?
 
-  notes           String?       @db.Text
-  termsAndConditions String?    @db.Text
+  // The visit this bill is for, when it was raised from an appointment.
+  appointmentId String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  notes              String? @db.Text
+  termsAndConditions String? @db.Text
 
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient       @relation(fields: [patientId], references: [id])
-  items           InvoiceItem[]
-  payments        Payment[]
-  discountRequestedBy User?     @relation("DiscountsRequested", fields: [discountRequestedById], references: [id])
-  discountApprovedBy  User?     @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hospital            Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient             Patient       @relation(fields: [patientId], references: [id])
+  appointment         Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  items               InvoiceItem[]
+  payments            Payment[]
+  discountRequestedBy User?         @relation("DiscountsRequested", fields: [discountRequestedById], references: [id])
+  discountApprovedBy  User?         @relation("DiscountsApproved", fields: [discountApprovedById], references: [id])
 
   @@unique([hospitalId, invoiceNo])
   @@index([hospitalId, status, createdAt(sort: Desc)])
   @@index([hospitalId, patientId, createdAt(sort: Desc)])
+  @@index([appointmentId])
 }
 
 /// FR-014 — "Record refund amount, method, reason, authorizer, and link to
@@ -1413,29 +1422,29 @@ model Invoice {
 /// method than it came in, and refused any second refund — so a partial refund
 /// could never be followed by another.
 model Refund {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  refundNo        String
-  paymentId       String
+  id         String @id @default(cuid())
+  hospitalId String
+  refundNo   String
+  paymentId  String
 
-  amount          Decimal       @db.Decimal(10, 2)
+  amount           Decimal       @db.Decimal(10, 2)
   /// May differ from the original payment: card takings are often refunded in
   /// cash, and the till reconciliation has to see the outflow under the method
   /// the money actually left by.
-  refundMethod    PaymentMethod
-  reason          String        @db.Text
-  authorisedById  String
+  refundMethod     PaymentMethod
+  reason           String        @db.Text
+  authorisedById   String
   cashierSessionId String?
 
-  transactionId   String?
-  refundedAt      DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  transactionId String?
+  refundedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  hospital        Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  payment         Payment         @relation(fields: [paymentId], references: [id])
-  authorisedBy    User            @relation("RefundsAuthorised", fields: [authorisedById], references: [id])
-  cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
+  hospital       Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  payment        Payment         @relation(fields: [paymentId], references: [id])
+  authorisedBy   User            @relation("RefundsAuthorised", fields: [authorisedById], references: [id])
+  cashierSession CashierSession? @relation(fields: [cashierSessionId], references: [id])
 
   @@unique([hospitalId, refundNo])
   @@index([hospitalId, refundedAt(sort: Desc)])
@@ -1449,29 +1458,29 @@ model Refund {
 /// A till: opened with a float, collecting the payments and refunds taken while
 /// it is open, closed against a physical count per payment method.
 model CashierSession {
-  id              String               @id @default(cuid())
-  hospitalId      String
-  sessionNo       String
-  status          CashierSessionStatus @default(OPEN)
+  id         String               @id @default(cuid())
+  hospitalId String
+  sessionNo  String
+  status     CashierSessionStatus @default(OPEN)
 
-  openingFloat    Decimal              @default(0) @db.Decimal(10, 2)
-  openedById      String
-  openedAt        DateTime             @default(now())
-  openingNotes    String?              @db.Text
+  openingFloat Decimal  @default(0) @db.Decimal(10, 2)
+  openedById   String
+  openedAt     DateTime @default(now())
+  openingNotes String?  @db.Text
 
-  closedById      String?
-  closedAt        DateTime?
-  closingNotes    String?              @db.Text
+  closedById   String?
+  closedAt     DateTime?
+  closingNotes String?   @db.Text
 
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  openedBy        User                  @relation("CashierSessionsOpened", fields: [openedById], references: [id])
-  closedBy        User?                 @relation("CashierSessionsClosed", fields: [closedById], references: [id])
-  payments        Payment[]
-  refunds         Refund[]
-  counts          CashierSessionCount[]
+  hospital Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  openedBy User                  @relation("CashierSessionsOpened", fields: [openedById], references: [id])
+  closedBy User?                 @relation("CashierSessionsClosed", fields: [closedById], references: [id])
+  payments Payment[]
+  refunds  Refund[]
+  counts   CashierSessionCount[]
 
   @@unique([hospitalId, sessionNo])
   @@index([hospitalId, status, openedAt(sort: Desc)])
@@ -1484,18 +1493,18 @@ model CashierSession {
 /// records what was found at the time, and must not drift if a payment is
 /// corrected afterwards.
 model CashierSessionCount {
-  id              String         @id @default(cuid())
-  sessionId       String
-  paymentMethod   PaymentMethod
+  id            String        @id @default(cuid())
+  sessionId     String
+  paymentMethod PaymentMethod
 
-  expectedAmount  Decimal        @db.Decimal(10, 2)
-  countedAmount   Decimal        @db.Decimal(10, 2)
-  varianceAmount  Decimal        @db.Decimal(10, 2)
-  notes           String?        @db.Text
+  expectedAmount Decimal @db.Decimal(10, 2)
+  countedAmount  Decimal @db.Decimal(10, 2)
+  varianceAmount Decimal @db.Decimal(10, 2)
+  notes          String? @db.Text
 
-  createdAt       DateTime       @default(now())
+  createdAt DateTime @default(now())
 
-  session         CashierSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session CashierSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, paymentMethod])
   @@index([sessionId])
@@ -1514,60 +1523,66 @@ enum DiscountApprovalStatus {
 }
 
 model InvoiceItem {
-  id              String     @id @default(cuid())
+  id              String  @id @default(cuid())
   invoiceId       String
   treatmentId     String?
+  // A product sold over the counter. Stock leaves when the invoice is issued
+  // and comes back if it is cancelled.
+  inventoryItemId String?
 
-  description     String
-  quantity        Int        @default(1)
-  unitPrice       Decimal    @db.Decimal(10, 2)
-  amount          Decimal    @db.Decimal(10, 2)
-  taxable         Boolean    @default(true)
+  description String
+  quantity    Int     @default(1)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  amount      Decimal @db.Decimal(10, 2)
+  taxable     Boolean @default(true)
 
-  createdAt       DateTime   @default(now())
+  createdAt DateTime @default(now())
 
-  invoice         Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  treatment       Treatment? @relation(fields: [treatmentId], references: [id])
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  treatment     Treatment?     @relation(fields: [treatmentId], references: [id])
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([inventoryItemId])
 }
 
 model Payment {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  paymentNo       String
-  invoiceId       String
+  id         String @id @default(cuid())
+  hospitalId String
+  paymentNo  String
+  invoiceId  String
 
-  amount          Decimal       @db.Decimal(10, 2)
-  paymentMethod   PaymentMethod
-  paymentDate     DateTime      @default(now())
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  paymentDate   DateTime      @default(now())
 
   /// The reference the payer or the bank gave: a wallet transaction id, an
   /// IBFT reference, a card authorisation code. Was duplicated by a separate
   /// `upiId` column that recorded the same kind of thing for one rail only.
-  transactionId   String?
-  bankName        String?
-  chequeNumber    String?
-  chequeDate      DateTime?
+  transactionId String?
+  bankName      String?
+  chequeNumber  String?
+  chequeDate    DateTime?
 
-  notes           String?
-  status          PaymentStatus @default(COMPLETED)
+  notes  String?
+  status PaymentStatus @default(COMPLETED)
 
-  refundAmount    Decimal?      @db.Decimal(10, 2)
-  refundDate      DateTime?
-  refundReason    String?
+  refundAmount Decimal?  @db.Decimal(10, 2)
+  refundDate   DateTime?
+  refundReason String?
 
   // FR-015, and spec §12 which names the cashier on a financial transaction.
   // A payment taken while a till is open belongs to that till's reconciliation.
   cashierSessionId String?
-  recordedById    String?
+  recordedById     String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
-  cashierSession  CashierSession? @relation(fields: [cashierSessionId], references: [id])
-  recordedBy      User?         @relation("PaymentsRecorded", fields: [recordedById], references: [id])
-  refunds         Refund[]
+  hospital       Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id])
+  cashierSession CashierSession? @relation(fields: [cashierSessionId], references: [id])
+  recordedBy     User?           @relation("PaymentsRecorded", fields: [recordedById], references: [id])
+  refunds        Refund[]
 
   @@unique([hospitalId, paymentNo])
   @@index([hospitalId, paymentDate(sort: Desc)])
@@ -1629,42 +1644,42 @@ enum PaymentStatus {
 // ==================== INVENTORY MANAGEMENT ====================
 
 model InventoryItem {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  sku             String
-  name            String
+  id                  String            @id @default(cuid())
+  hospitalId          String
+  sku                 String
+  name                String
   /// A label, not a table. `InventoryCategory` was eleven columns and a
   /// self-referencing hierarchy in support of a free-text field on a form: the
   /// UI offered no way to create, rename or nest one, so every clinic's
   /// categories arrived from the seed and stayed there.
-  category        String?
-  description     String?   @db.Text
-  itemType        InventoryItemType @default(DENTAL_MATERIAL)
+  category            String?
+  description         String?           @db.Text
+  itemType            InventoryItemType @default(DENTAL_MATERIAL)
   // The supplier this item is normally bought from. `SupplierItem` used to sit
   // beside it recording every supplier that stocks an item with their own SKU,
   // price and lead time — a table nothing ever wrote to, which is why the
   // inventory list's "supplier" column was always empty.
   preferredSupplierId String?
 
-  unit            String
-  currentStock    Int       @default(0)
-  minimumStock    Int       @default(10)
-  reorderLevel    Int       @default(20)
-  maximumStock    Int?
+  unit         String
+  currentStock Int    @default(0)
+  minimumStock Int    @default(10)
+  reorderLevel Int    @default(20)
+  maximumStock Int?
 
-  purchasePrice   Decimal   @db.Decimal(10, 2)
-  sellingPrice    Decimal?  @db.Decimal(10, 2)
+  purchasePrice Decimal  @db.Decimal(10, 2)
+  sellingPrice  Decimal? @db.Decimal(10, 2)
   /// Customs/tax classification for the item, where the clinic records one.
   /// Was `hsnCode` — India's GST term for it.
-  taxCode         String?
-  taxPercentage   Decimal?  @db.Decimal(5, 2)
+  taxCode       String?
+  taxPercentage Decimal? @db.Decimal(5, 2)
 
-  imageUrl        String?
-  notes           String?   @db.Text
+  imageUrl String?
+  notes    String? @db.Text
 
-  manufacturer    String?
-  batchTracking   Boolean   @default(false)
-  expiryTracking  Boolean   @default(false)
+  manufacturer   String?
+  batchTracking  Boolean @default(false)
+  expiryTracking Boolean @default(false)
 
   /// The drug catalogue entry this stock is of, for items of type MEDICINE.
   ///
@@ -1678,23 +1693,24 @@ model InventoryItem {
   /// medication can be stocked in several pack sizes, each its own SKU with
   /// its own batches. `ON DELETE SET NULL` -- retiring a catalogue entry must
   /// not delete the stock record or its purchase history.
-  medicationId    String?
+  medicationId String?
 
-  storageLocation String?
+  storageLocation   String?
   storageConditions String?
 
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  preferredSupplier Vendor?   @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
-  medication        Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
-  stockTransactions StockTransaction[]
-  batches         InventoryBatch[]
+  hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  preferredSupplier  Vendor?             @relation("PreferredSupplierItems", fields: [preferredSupplierId], references: [id])
+  medication         Medication?         @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+  stockTransactions  StockTransaction[]
+  batches            InventoryBatch[]
   purchaseOrderItems PurchaseOrderItem[]
-  alerts          StockAlert[]
+  invoiceItems       InvoiceItem[]
+  alerts             StockAlert[]
 
   @@unique([hospitalId, sku])
   @@index([preferredSupplierId])
@@ -1714,25 +1730,25 @@ enum InventoryItemType {
 }
 
 model InventoryBatch {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  itemId          String
-  batchNumber     String
-  quantity        Int
-  remainingQty    Int
-  purchasePrice   Decimal   @db.Decimal(10, 2)
+  id                String    @id @default(cuid())
+  hospitalId        String
+  itemId            String
+  batchNumber       String
+  quantity          Int
+  remainingQty      Int
+  purchasePrice     Decimal   @db.Decimal(10, 2)
   manufacturingDate DateTime?
-  expiryDate      DateTime?
-  supplierId      String?
-  receivedDate    DateTime  @default(now())
+  expiryDate        DateTime?
+  supplierId        String?
+  receivedDate      DateTime  @default(now())
 
-  createdAt       DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  item            InventoryItem @relation(fields: [itemId], references: [id])
-  supplier        Vendor?   @relation(fields: [supplierId], references: [id])
+  hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  item              InventoryItem      @relation(fields: [itemId], references: [id])
+  supplier          Vendor?            @relation(fields: [supplierId], references: [id])
   stockTransactions StockTransaction[]
-  alerts          StockAlert[]
+  alerts            StockAlert[]
 
   @@unique([hospitalId, itemId, batchNumber])
   @@index([hospitalId, itemId])
@@ -1740,40 +1756,40 @@ model InventoryBatch {
 }
 
 model StockTransaction {
-  id              String               @id @default(cuid())
-  hospitalId      String
-  itemId          String
-  type            StockTransactionType
-  quantity        Int
-  previousStock   Int
-  newStock        Int
-  batchNumber     String?
+  id            String               @id @default(cuid())
+  hospitalId    String
+  itemId        String
+  type          StockTransactionType
+  quantity      Int
+  previousStock Int
+  newStock      Int
+  batchNumber   String?
 
-  batchId         String?
-  supplierId      String?
+  batchId    String?
+  supplierId String?
 
-  referenceType   String?
-  referenceId     String?
+  referenceType String?
+  referenceId   String?
 
   // Where stock moved between, for transfer transactions.
-  fromLocation    String?
-  toLocation      String?
+  fromLocation String?
+  toLocation   String?
 
-  unitPrice       Decimal?             @db.Decimal(10, 2)
-  totalPrice      Decimal?             @db.Decimal(10, 2)
+  unitPrice  Decimal? @db.Decimal(10, 2)
+  totalPrice Decimal? @db.Decimal(10, 2)
 
-  notes           String?
-  performedBy     String?
+  notes       String?
+  performedBy String?
 
   // When the movement happened, which is not always when the row was written
   // (back-dated stock takes, delayed goods-receipt entry).
-  transactionDate DateTime             @default(now())
-  createdAt       DateTime             @default(now())
+  transactionDate DateTime @default(now())
+  createdAt       DateTime @default(now())
 
-  hospital        Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  item            InventoryItem        @relation(fields: [itemId], references: [id])
-  batch           InventoryBatch?      @relation(fields: [batchId], references: [id])
-  supplier        Vendor?              @relation(fields: [supplierId], references: [id])
+  hospital Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  item     InventoryItem   @relation(fields: [itemId], references: [id])
+  batch    InventoryBatch? @relation(fields: [batchId], references: [id])
+  supplier Vendor?         @relation(fields: [supplierId], references: [id])
 
   @@index([batchId])
   @@index([supplierId])
@@ -1809,49 +1825,49 @@ enum StockTransactionType {
 /// A dental laboratory *is* a supplier — of crowns rather than composite. What
 /// differs is what the clinic sends them, and that is on `LabOrder`, not here.
 model Vendor {
-  id                String       @id @default(cuid())
-  hospitalId        String
-  kind              VendorKind
+  id         String     @id @default(cuid())
+  hospitalId String
+  kind       VendorKind
 
   /// The clinic's own reference. Optional because laboratories were never
   /// required to have one; unique per clinic *and kind*, so a supplier and a
   /// laboratory may both be "V001" without one migration renaming the other.
-  code              String?
-  name              String
-  contactPerson     String?
-  email             String?
-  phone             String
-  alternatePhone    String?
-  address           String?      @db.Text
-  city              String?
-  state             String?
-  postalCode        String?
+  code           String?
+  name           String
+  contactPerson  String?
+  email          String?
+  phone          String
+  alternatePhone String?
+  address        String? @db.Text
+  city           String?
+  state          String?
+  postalCode     String?
 
   taxRegistrationNo String?
   nationalTaxNo     String?
   bankAccountNo     String?
   bankIban          String?
 
-  paymentTerms      String?
-  creditLimit       Decimal?     @db.Decimal(12, 2)
+  paymentTerms String?
+  creditLimit  Decimal? @db.Decimal(12, 2)
   /// 0-5, the clinic's own judgement of them.
-  rating            Int?         @default(0)
-  notes             String?      @db.Text
+  rating       Int?     @default(0)
+  notes        String?  @db.Text
 
   /// One lifecycle field, not two. Both tables carried an `isActive` boolean
   /// *and* this enum, and the schema comment on `isActive` admitted it merely
   /// mirrored `status != BLOCKED/INACTIVE` — two columns that could disagree,
   /// with nothing deciding which one won.
-  status            VendorStatus @default(ACTIVE)
+  status VendorStatus @default(ACTIVE)
 
   /// Laboratories only: the work they take on, and their usual turnaround in
   /// days. Null on a supplier, and nothing asks a supplier for them.
-  specializations   String?      @db.Text
-  avgTurnaround     Int?
+  specializations String? @db.Text
+  avgTurnaround   Int?
 
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  deletedAt         DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   purchaseOrders    PurchaseOrder[]
@@ -1877,29 +1893,29 @@ enum VendorStatus {
 }
 
 model PurchaseOrder {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  orderNumber     String
-  supplierId      String
+  id          String @id @default(cuid())
+  hospitalId  String
+  orderNumber String
+  supplierId  String
 
-  orderDate       DateTime            @default(now())
-  expectedDate    DateTime?
-  receivedDate    DateTime?
+  orderDate    DateTime  @default(now())
+  expectedDate DateTime?
+  receivedDate DateTime?
 
-  subtotal        Decimal             @db.Decimal(10, 2)
-  taxAmount       Decimal             @default(0) @db.Decimal(10, 2)
-  totalAmount     Decimal             @db.Decimal(10, 2)
+  subtotal    Decimal @db.Decimal(10, 2)
+  taxAmount   Decimal @default(0) @db.Decimal(10, 2)
+  totalAmount Decimal @db.Decimal(10, 2)
 
-  status          PurchaseOrderStatus @default(DRAFT)
-  notes           String?             @db.Text
+  status PurchaseOrderStatus @default(DRAFT)
+  notes  String?             @db.Text
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  deletedAt       DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  supplier        Vendor              @relation(fields: [supplierId], references: [id])
-  items           PurchaseOrderItem[]
+  hospital Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  supplier Vendor              @relation(fields: [supplierId], references: [id])
+  items    PurchaseOrderItem[]
 
   @@unique([hospitalId, orderNumber])
   @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
@@ -1907,21 +1923,21 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
-  id              String        @id @default(cuid())
+  id              String @id @default(cuid())
   purchaseOrderId String
   itemId          String
 
-  quantity        Int
-  receivedQty     Int           @default(0)
-  unitPrice       Decimal       @db.Decimal(10, 2)
-  amount          Decimal       @db.Decimal(10, 2)
+  quantity    Int
+  receivedQty Int     @default(0)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  amount      Decimal @db.Decimal(10, 2)
 
-  createdAt       DateTime      @default(now())
+  createdAt DateTime @default(now())
 
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   /// `itemId` was a bare string with no foreign key, so a line could name an
   /// item that does not exist and nothing would say so.
-  item            InventoryItem @relation(fields: [itemId], references: [id])
+  item          InventoryItem @relation(fields: [itemId], references: [id])
 
   @@index([purchaseOrderId])
   @@index([itemId])
@@ -1956,29 +1972,29 @@ enum PurchaseOrderStatus {
 /// `alertDate` is gone: it defaulted to now() beside `createdAt`, which also
 /// defaults to now(), and nothing ever set either of them to anything else.
 model StockAlert {
-  id              String         @id @default(cuid())
-  hospitalId      String
-  itemId          String
+  id         String  @id @default(cuid())
+  hospitalId String
+  itemId     String
   /// Which delivery, for an expiry alert. A shortage is about the item as a
   /// whole and carries none; an expiry is always about one batch, because two
   /// batches of the same composite expire on different days and acknowledging
   /// one must not silence the other.
-  batchId         String?
+  batchId    String?
 
-  alertType       StockAlertType
+  alertType StockAlertType
 
-  isAcknowledged  Boolean        @default(false)
-  acknowledgedBy  String?
-  acknowledgedAt  DateTime?
+  isAcknowledged Boolean   @default(false)
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
 
-  notes           String?        @db.Text
+  notes String? @db.Text
 
-  createdAt       DateTime       @default(now())
+  createdAt DateTime @default(now())
 
-  hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  batch           InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  acknowledgedByUser User?       @relation(fields: [acknowledgedBy], references: [id])
+  hospital           Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  item               InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  batch              InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  acknowledgedByUser User?           @relation(fields: [acknowledgedBy], references: [id])
 
   @@index([hospitalId, isAcknowledged, createdAt(sort: Desc)])
   @@index([itemId, alertType, isAcknowledged])
@@ -1995,47 +2011,47 @@ enum StockAlertType {
 // ==================== LAB WORK MANAGEMENT ====================
 
 model LabOrder {
-  id              String         @id @default(cuid())
-  hospitalId      String
-  orderNumber     String
-  patientId       String
-  labVendorId     String
+  id          String @id @default(cuid())
+  hospitalId  String
+  orderNumber String
+  patientId   String
+  labVendorId String
 
-  workType        LabWorkType
-  description     String?        @db.Text
-  toothNumbers    String?
-  shadeGuide      String?
+  workType     LabWorkType
+  description  String?     @db.Text
+  toothNumbers String?
+  shadeGuide   String?
 
-  orderDate       DateTime       @default(now())
-  expectedDate    DateTime?
-  sentDate        DateTime?
-  receivedDate    DateTime?
-  deliveredDate   DateTime?
+  orderDate     DateTime  @default(now())
+  expectedDate  DateTime?
+  sentDate      DateTime?
+  receivedDate  DateTime?
+  deliveredDate DateTime?
 
-  estimatedCost   Decimal        @db.Decimal(10, 2)
-  actualCost      Decimal?       @db.Decimal(10, 2)
+  estimatedCost Decimal  @db.Decimal(10, 2)
+  actualCost    Decimal? @db.Decimal(10, 2)
 
-  status          LabOrderStatus @default(CREATED)
-  priority        LabOrderPriority @default(NORMAL)
-  qualityCheck    QualityCheckStatus?
-  qualityNotes    String?
+  status       LabOrderStatus      @default(CREATED)
+  priority     LabOrderPriority    @default(NORMAL)
+  qualityCheck QualityCheckStatus?
+  qualityNotes String?
 
-  notes           String?        @db.Text
-  specialInstructions String?    @db.Text
-  createdBy       String?
+  notes               String? @db.Text
+  specialInstructions String? @db.Text
+  createdBy           String?
 
   /// The treatment the work is for — the crown preparation the crown fits.
   /// Optional: a night guard or a model may be ordered with no treatment.
-  treatmentId     String?
+  treatmentId String?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  deletedAt       DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient        @relation(fields: [patientId], references: [id])
-  labVendor       Vendor         @relation(fields: [labVendorId], references: [id])
-  treatment       Treatment?     @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  labVendor Vendor     @relation(fields: [labVendorId], references: [id])
+  treatment Treatment? @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
 
   @@unique([hospitalId, orderNumber])
   @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
@@ -2091,34 +2107,34 @@ enum QualityCheckStatus {
 // ==================== DOCUMENTS ====================
 
 model Document {
-  id              String       @id @default(cuid())
-  hospitalId      String
-  patientId       String
-  treatmentId     String?
+  id          String  @id @default(cuid())
+  hospitalId  String
+  patientId   String
+  treatmentId String?
 
-  fileName        String
-  originalName    String
-  fileType        String
-  fileSize        Int
-  filePath        String
+  fileName     String
+  originalName String
+  fileType     String
+  fileSize     Int
+  filePath     String
 
-  documentType    DocumentType
-  description     String?
+  documentType DocumentType
+  description  String?
 
-  isArchived      Boolean      @default(false)
-  uploadedBy      String?
+  isArchived Boolean @default(false)
+  uploadedBy String?
 
   // Annotation data (Phase 6)
-  annotations     Json?        // Array of annotation objects [{type, points, color, text, ...}]
-  annotatedBy     String?      // userId who annotated
-  annotatedAt     DateTime?
+  annotations Json? // Array of annotation objects [{type, points, color, text, ...}]
+  annotatedBy String? // userId who annotated
+  annotatedAt DateTime?
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient      @relation(fields: [patientId], references: [id])
-  treatment       Treatment?   @relation(fields: [treatmentId], references: [id])
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  treatment Treatment? @relation(fields: [treatmentId], references: [id])
 
   @@index([hospitalId, patientId, createdAt(sort: Desc)])
   @@index([hospitalId, documentType])
@@ -2140,24 +2156,24 @@ enum DocumentType {
 // ==================== AUDIT LOGS ====================
 
 model AuditLog {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  userId          String?
+  id         String  @id @default(cuid())
+  hospitalId String
+  userId     String?
 
-  action          String
-  entityType      String
-  entityId        String
+  action     String
+  entityType String
+  entityId   String
 
-  oldValues       String?   @db.Text
-  newValues       String?   @db.Text
+  oldValues String? @db.Text
+  newValues String? @db.Text
 
-  ipAddress       String?
-  userAgent       String?
+  ipAddress String?
+  userAgent String?
 
-  createdAt       DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user            User?     @relation(fields: [userId], references: [id])
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
 
   @@index([entityType, entityId])
   @@index([hospitalId, createdAt(sort: Desc)])
@@ -2187,24 +2203,24 @@ model DocumentCounter {
   next       Int      @default(1)
   updatedAt  DateTime @updatedAt
 
-  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
   @@id([hospitalId, series])
 }
 
 model Setting {
-  id              String    @id @default(cuid())
-  hospitalId      String
-  key             String
-  value           String    @db.Text
-  type            String    @default("string")
-  category        String    @default("general")
-  description     String?
+  id          String  @id @default(cuid())
+  hospitalId  String
+  key         String
+  value       String  @db.Text
+  type        String  @default("string")
+  category    String  @default("general")
+  description String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
   @@unique([hospitalId, key])
   @@index([hospitalId])
@@ -2214,25 +2230,25 @@ model Setting {
 // ==================== COMMUNICATION SYSTEM ====================
 
 model CommunicationTemplate {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  name            String
-  category        TemplateCategory
-  channel         CommunicationChannel
+  id         String               @id @default(cuid())
+  hospitalId String
+  name       String
+  category   TemplateCategory
+  channel    CommunicationChannel
 
-  subject         String?
-  content         String              @db.Text
-  variables       String?             @db.Text
+  subject   String?
+  content   String  @db.Text
+  variables String? @db.Text
 
-  language        String              @default("en")
-  isActive        Boolean             @default(true)
-  isDefault       Boolean             @default(false)
+  language  String  @default("en")
+  isActive  Boolean @default(true)
+  isDefault Boolean @default(false)
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  messages        MessageLog[]
+  hospital Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  messages MessageLog[]
 
   @@index([hospitalId])
   @@index([category])
@@ -2253,52 +2269,52 @@ model CommunicationTemplate {
 /// but not what it said or whether it arrived, so a patient insisting they were
 /// never reminded could be shown a row saying SENT and nothing else.
 model MessageLog {
-  id              String        @id @default(cuid())
-  hospitalId      String
-  channel         CommunicationChannel
-  patientId       String?
+  id         String               @id @default(cuid())
+  hospitalId String
+  channel    CommunicationChannel
+  patientId  String?
 
   /// Where it went: a phone number for SMS and WhatsApp, an address for email.
-  recipient       String
+  recipient String
   /// Email only.
-  subject         String?
-  body            String        @db.Text
+  subject   String?
+  body      String  @db.Text
 
-  templateId      String?
+  templateId String?
 
   /// What the message was about, so a reminder can be traced back to the
   /// appointment it was about and a receipt to its invoice.
-  relatedType     String?
-  relatedId       String?
+  relatedType String?
+  relatedId   String?
 
-  status          MessageStatus @default(PENDING)
+  status      MessageStatus @default(PENDING)
   /// Which provider carried it — Twilio, an SMTP host, a WhatsApp gateway.
-  provider        String?
+  provider    String?
   /// The provider's own id for the message, for chasing a delivery failure.
-  providerRef     String?
+  providerRef String?
 
-  scheduledFor    DateTime?
-  sentAt          DateTime?
-  deliveredAt     DateTime?
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
   /// Email only, set by the tracking pixel.
-  openedAt        DateTime?
-  failedAt        DateTime?
+  openedAt     DateTime?
+  failedAt     DateTime?
 
-  errorMessage    String?
+  errorMessage String?
   /// SMS only, and per message rather than per batch.
-  cost            Decimal?      @db.Decimal(10, 4)
+  cost         Decimal? @db.Decimal(10, 4)
 
   /// The token in the tracking pixel's URL. Unique because it is looked up by
   /// an unauthenticated request.
-  trackingId      String?       @unique
+  trackingId String? @unique
 
-  metadata        Json?
+  metadata Json?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  template        CommunicationTemplate? @relation(fields: [templateId], references: [id])
+  hospital Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  template CommunicationTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([relatedType, relatedId])
   @@index([hospitalId, channel, createdAt(sort: Desc)])
@@ -2339,18 +2355,18 @@ enum MessageStatus {
 // ==================== INTAKE FORMS & CONSENT ====================
 
 model FormTemplate {
-  id          String         @id @default(cuid())
+  id          String   @id @default(cuid())
   hospitalId  String
   name        String
-  description String?        @db.Text
+  description String?  @db.Text
   type        FormType
-  fields      Json           // Array of field definitions
-  isActive    Boolean        @default(true)
-  isDefault   Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  fields      Json // Array of field definitions
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  hospital    Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital    Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   submissions FormSubmission[]
 
   @@index([hospitalId])
@@ -2358,26 +2374,26 @@ model FormTemplate {
 }
 
 model FormSubmission {
-  id            String               @id @default(cuid())
+  id            String  @id @default(cuid())
   hospitalId    String
   templateId    String
   patientId     String?
   appointmentId String?
 
-  data          Json                 // Submitted form data
-  signature     String?              @db.Text
-  signedAt      DateTime?
-  ipAddress     String?
+  data      Json // Submitted form data
+  signature String?   @db.Text
+  signedAt  DateTime?
+  ipAddress String?
 
-  status        FormSubmissionStatus @default(SUBMITTED)
-  reviewedBy    String?
-  reviewedAt    DateTime?
-  reviewNotes   String?              @db.Text
+  status      FormSubmissionStatus @default(SUBMITTED)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?              @db.Text
 
-  createdAt     DateTime             @default(now())
+  createdAt DateTime @default(now())
 
-  hospital      Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  template      FormTemplate         @relation(fields: [templateId], references: [id])
+  hospital Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  template FormTemplate @relation(fields: [templateId], references: [id])
 
   @@index([hospitalId, status, createdAt(sort: Desc)])
   @@index([hospitalId, patientId])
@@ -2406,20 +2422,20 @@ enum FormSubmissionStatus {
 // ==================== CALENDAR SYNC & SMART SCHEDULING (Phase 7) ====================
 
 model Waitlist {
-  id             String         @id @default(cuid())
-  hospitalId     String
-  patientId      String
-  doctorId       String?
-  preferredDays  Json?          // ["MONDAY", "WEDNESDAY"]
-  preferredTime  String?        // "MORNING" | "AFTERNOON" | "EVENING"
-  procedureId    String?
-  notes          String?
-  status         WaitlistStatus @default(ACTIVE)
-  notifiedAt     DateTime?
-  bookedAt       DateTime?
-  createdAt      DateTime       @default(now())
+  id            String         @id @default(cuid())
+  hospitalId    String
+  patientId     String
+  doctorId      String?
+  preferredDays Json? // ["MONDAY", "WEDNESDAY"]
+  preferredTime String? // "MORNING" | "AFTERNOON" | "EVENING"
+  procedureId   String?
+  notes         String?
+  status        WaitlistStatus @default(ACTIVE)
+  notifiedAt    DateTime?
+  bookedAt      DateTime?
+  createdAt     DateTime       @default(now())
 
-  hospital       Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
   @@index([hospitalId, status, createdAt])
 }
@@ -2447,35 +2463,35 @@ enum WaitlistStatus {
 // ==================== DATA IMPORT / ERP MIGRATION ====================
 
 model DataImportJob {
-  id              String           @id @default(cuid())
-  hospitalId      String
-  userId          String
+  id         String @id @default(cuid())
+  hospitalId String
+  userId     String
 
-  fileName        String
-  fileType        String           // "csv" | "xlsx" | "xls" | "pdf"
-  filePath        String
-  entityType      String           // "patients" | "appointments" | "treatments" | "invoices" | "payments" | "inventory" | "staff"
+  fileName   String
+  fileType   String // "csv" | "xlsx" | "xls" | "pdf"
+  filePath   String
+  entityType String // "patients" | "appointments" | "treatments" | "invoices" | "payments" | "inventory" | "staff"
 
-  status          DataImportStatus @default(UPLOADED)
+  status DataImportStatus @default(UPLOADED)
 
-  sourceColumns   Json?            // string[]
-  columnMapping   Json?            // Record<string, string | null>
-  previewData     Json?            // first N rows of parsed data
-  validationErrors Json?           // array of { row, field, message }
+  sourceColumns    Json? // string[]
+  columnMapping    Json? // Record<string, string | null>
+  previewData      Json? // first N rows of parsed data
+  validationErrors Json? // array of { row, field, message }
 
-  totalRows       Int              @default(0)
-  successCount    Int              @default(0)
-  errorCount      Int              @default(0)
+  totalRows    Int @default(0)
+  successCount Int @default(0)
+  errorCount   Int @default(0)
 
-  signedOffAt     DateTime?
-  completedAt     DateTime?
-  errorLog        String?          @db.Text
+  signedOffAt DateTime?
+  completedAt DateTime?
+  errorLog    String?   @db.Text
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user            User             @relation(fields: [userId], references: [id])
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
 
   @@index([hospitalId])
   @@index([status])
@@ -2502,30 +2518,30 @@ enum DataImportStatus {
 /// Discarding is soft. The visit happened, and a clinic that saw someone should
 /// still be able to answer for the appointment afterwards.
 model Visitor {
-  id                String    @id @default(cuid())
-  hospitalId        String
+  id         String @id @default(cuid())
+  hospitalId String
 
-  name              String
-  phone             String?
-  notes             String?    @db.Text
+  name  String
+  phone String?
+  notes String? @db.Text
 
   /// Set when the visitor becomes a patient. The row is kept so the conversion
   /// itself is a fact on the record rather than a rename.
   convertedPatientId String?
-  convertedAt       DateTime?
-  convertedById     String?
+  convertedAt        DateTime?
+  convertedById      String?
 
-  discardedAt       DateTime?
-  discardedById     String?
+  discardedAt   DateTime?
+  discardedById String?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital          Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  convertedPatient  Patient?  @relation("VisitorConvertedTo", fields: [convertedPatientId], references: [id])
-  convertedBy       User?     @relation("VisitorsConverted", fields: [convertedById], references: [id])
-  discardedBy       User?     @relation("VisitorsDiscarded", fields: [discardedById], references: [id])
-  appointments      Appointment[]
+  hospital         Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  convertedPatient Patient?      @relation("VisitorConvertedTo", fields: [convertedPatientId], references: [id])
+  convertedBy      User?         @relation("VisitorsConverted", fields: [convertedById], references: [id])
+  discardedBy      User?         @relation("VisitorsDiscarded", fields: [discardedById], references: [id])
+  appointments     Appointment[]
 
   @@index([hospitalId, createdAt(sort: Desc)])
   @@index([hospitalId, phone])
@@ -2538,31 +2554,31 @@ model Visitor {
 /// "perio every three" — the interval is clinical policy, so it is configuration
 /// rather than a constant.
 model RecareType {
-  id              String    @id @default(cuid())
-  hospitalId      String
+  id         String @id @default(cuid())
+  hospitalId String
 
-  name            String
+  name           String
   /// Months between visits of this kind.
-  intervalMonths  Int       @default(6)
-  description     String?
-  isActive        Boolean   @default(true)
-  sortOrder       Int       @default(0)
+  intervalMonths Int     @default(6)
+  description    String?
+  isActive       Boolean @default(true)
+  sortOrder      Int     @default(0)
 
   /// Assigned to a newly registered patient unless the desk picks another.
-  isDefault       Boolean   @default(false)
+  isDefault Boolean @default(false)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  recares         Recare[]
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  recares  Recare[]
 
   /// The procedures that count as the visit for this recall: completing a
   /// treatment with one of them moves the patient's recall of this type on, as
   /// Mark as done would. Chosen by the clinic on the recall types screen; both
   /// sides are always the same clinic's (the API checks it). Bug report 12 Oct,
   /// finding 46 — before this the link was guessed from names.
-  procedures      Procedure[]
+  procedures Procedure[]
 
   @@unique([hospitalId, name])
   @@index([hospitalId, isActive, sortOrder])
@@ -2575,20 +2591,20 @@ model RecareType {
 /// the date on by the type's interval rather than deleting the row, so the
 /// history of when somebody was last seen survives.
 model Recare {
-  id              String       @id @default(cuid())
-  hospitalId      String
-  patientId       String
-  recareTypeId    String
+  id           String @id @default(cuid())
+  hospitalId   String
+  patientId    String
+  recareTypeId String
 
-  dueDate         DateTime     @db.Date
-  lastDoneAt      DateTime?
+  dueDate      DateTime  @db.Date
+  lastDoneAt   DateTime?
   /// Set when the desk defers somebody — "ring me after Ramadan". Hidden from
   /// the due list until this date, and never silently dropped.
-  snoozedUntil    DateTime?    @db.Date
-  snoozeReason    String?
+  snoozedUntil DateTime? @db.Date
+  snoozeReason String?
 
-  status          RecareStatus @default(ACTIVE)
-  notes           String?      @db.Text
+  status RecareStatus @default(ACTIVE)
+  notes  String?      @db.Text
 
   /// When the clinic last reached out about this, and how many times it has.
   ///
@@ -2606,12 +2622,12 @@ model Recare {
   lastContactedAt DateTime?
   contactAttempts Int       @default(0)
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  recareType      RecareType   @relation(fields: [recareTypeId], references: [id])
+  hospital   Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recareType RecareType @relation(fields: [recareTypeId], references: [id])
 
   /// One standing recare of each kind per patient.
   @@unique([patientId, recareTypeId])
@@ -2633,22 +2649,22 @@ enum RecareStatus {
 /// records what a tooth *is*; this records what the gum around it is doing, and
 /// the two are read together.
 model PerioExam {
-  id              String              @id @default(cuid())
-  hospitalId      String
-  patientId       String
+  id         String @id @default(cuid())
+  hospitalId String
+  patientId  String
 
-  examDate        DateTime            @default(now())
-  recordedById    String?
-  notes           String?             @db.Text
+  examDate     DateTime @default(now())
+  recordedById String?
+  notes        String?  @db.Text
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital        Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient         Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  recordedBy      User?               @relation("PerioExamsRecorded", fields: [recordedById], references: [id])
-  measurements    PerioMeasurement[]
-  toothFindings   PerioToothFinding[] @relation("PerioToothFindings")
+  hospital      Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient       Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedBy    User?               @relation("PerioExamsRecorded", fields: [recordedById], references: [id])
+  measurements  PerioMeasurement[]
+  toothFindings PerioToothFinding[] @relation("PerioToothFindings")
 
   @@index([hospitalId, patientId, examDate(sort: Desc)])
 }
@@ -2660,23 +2676,23 @@ model PerioExam {
 /// a chart is read site by site — "which sites are 5mm or deeper" is the
 /// question, and it should be a WHERE rather than six ORs.
 model PerioMeasurement {
-  id              String    @id @default(cuid())
-  examId          String
+  id     String @id @default(cuid())
+  examId String
 
-  toothNumber     Int
+  toothNumber Int
   /// MB, B, DB, ML, L, DL.
-  site            PerioSite
+  site        PerioSite
 
   /// Millimetres. Null means the site was not probed, which is not the same as
   /// zero — an unprobed site must not read as healthy.
-  pocketDepth     Int?
+  pocketDepth Int?
   /// Negative where the margin sits coronal to the CEJ.
-  recession       Int?
-  bleeding        Boolean   @default(false)
-  suppuration     Boolean   @default(false)
-  plaque          Boolean   @default(false)
+  recession   Int?
+  bleeding    Boolean @default(false)
+  suppuration Boolean @default(false)
+  plaque      Boolean @default(false)
 
-  exam            PerioExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam PerioExam @relation(fields: [examId], references: [id], onDelete: Cascade)
 
   @@unique([examId, toothNumber, site])
   @@index([examId, toothNumber])
@@ -2693,18 +2709,18 @@ enum PerioSite {
 
 /// Whole-tooth findings that are not per-site.
 model PerioToothFinding {
-  id              String    @id @default(cuid())
-  examId          String
-  toothNumber     Int
+  id          String @id @default(cuid())
+  examId      String
+  toothNumber Int
 
   /// Miller 0-3.
-  mobility        Int?
+  mobility  Int?
   /// Furcation involvement, Glickman I-III.
-  furcation       Int?
-  isMissing       Boolean   @default(false)
-  isImplant       Boolean   @default(false)
+  furcation Int?
+  isMissing Boolean @default(false)
+  isImplant Boolean @default(false)
 
-  exam            PerioExam @relation("PerioToothFindings", fields: [examId], references: [id], onDelete: Cascade)
+  exam PerioExam @relation("PerioToothFindings", fields: [examId], references: [id], onDelete: Cascade)
 
   @@unique([examId, toothNumber])
 }
@@ -2855,28 +2871,28 @@ enum AttendanceStatus {
 /// closed for a holiday has no row either, and reads as Off. Somebody who came
 /// in on a holiday gets a PRESENT row for it.
 model Attendance {
-  id         String           @id @default(cuid())
+  id         String @id @default(cuid())
   hospitalId String
   userId     String
 
   /// The calendar day on the clinic's own clock, not an instant. A register
   /// kept in UTC would put a Karachi clinic's Monday morning on Sunday night.
-  date       DateTime         @db.Date
-  status     AttendanceStatus
+  date   DateTime         @db.Date
+  status AttendanceStatus
 
   /// Why — "Arrived at 10:30", "On leave". Optional; most days need no explanation.
-  note       String?
+  note String?
 
   /// Who last set this day. Kept on the row rather than only in the audit log
   /// because "who marked me absent?" is asked of this screen, not of the log.
   markedById String?
 
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  hospital   Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  user       User             @relation("AttendanceOf", fields: [userId], references: [id], onDelete: Cascade)
-  markedBy   User?            @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user     User     @relation("AttendanceOf", fields: [userId], references: [id], onDelete: Cascade)
+  markedBy User?    @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
 
   @@unique([userId, date])
   @@index([hospitalId, date])

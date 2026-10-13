@@ -222,6 +222,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'billing:discount',
     'billing:refund',
     'billing:closing',
+    // Cancelling an invoice (invoice review 6.1). The list offered managers
+    // "Cancel invoice" and the route refused them; an invoice raised in error
+    // is the manager's to dispose of, not only the administrator's.
+    'billing:void',
     'inventory:read',
     'lab:read',
     'reports:operational',

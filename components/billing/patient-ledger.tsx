@@ -141,10 +141,19 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
         </CardHeader>
 
         <CardContent className="space-y-6">
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <dl
+            className={cn(
+              'grid grid-cols-2 gap-4',
+              summary.reversed > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
+            )}
+          >
             <Figure label="Charged" value={summary.charged} />
             <Figure label="Paid" value={summary.paid} />
             <Figure label="Refunded" value={summary.refunded} />
+            {/* Only when there is one, so the figures on screen still add up
+                to the balance: a refunded-in-full invoice is charged, paid,
+                refunded and then reversed, and owes nothing. */}
+            {summary.reversed > 0 && <Figure label="Reversed" value={-summary.reversed} />}
             <Figure
               label="Balance"
               value={summary.balance}
@@ -202,11 +211,20 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
                             Refund
                           </Badge>
                         )}
+                        {entry.kind === 'REVERSAL' && (
+                          <Badge variant="outline" className="shrink-0">
+                            Reversed
+                          </Badge>
+                        )}
                         {entry.description}
                       </span>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {entry.debit > 0 ? formatCurrency(entry.debit) : '—'}
+                      {entry.debit > 0
+                        ? formatCurrency(entry.debit)
+                        : entry.debit < 0
+                          ? `−${formatCurrency(-entry.debit)}`
+                          : '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {entry.credit > 0 ? formatCurrency(entry.credit) : '—'}
@@ -257,14 +275,20 @@ function Figure({
 }
 
 /**
- * The four buckets, as a bar the width of the debt.
+ * The five buckets, as a bar the width of the debt.
  *
- * A table of four numbers makes you read all four to see where the trouble is.
+ * A table of five numbers makes you read all five to see where the trouble is.
  * A proportional bar makes a large 90+ segment the thing you see first, which
  * is the point of ageing a debt at all.
  */
 export function AgeingStrip({ ageing }: { ageing: Ageing }) {
-  const tones = ['bg-primary/60', 'bg-amber-500/70', 'bg-orange-500/70', 'bg-red-500/75']
+  const tones = [
+    'bg-primary/60',
+    'bg-amber-500/70',
+    'bg-orange-500/70',
+    'bg-red-500/75',
+    'bg-red-700/80',
+  ]
 
   return (
     <div className="space-y-3">
@@ -283,12 +307,14 @@ export function AgeingStrip({ ageing }: { ageing: Ageing }) {
         })}
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {AGEING_BUCKETS.map((bucket, index) => (
           <div key={bucket.key} className="flex items-baseline gap-2">
             <span className={cn('h-2 w-2 shrink-0 rounded-full', tones[index])} aria-hidden />
             <div>
-              <dt className="text-xs text-muted-foreground">{bucket.label}</dt>
+              <dt className="text-xs text-muted-foreground" title={bucket.hint}>
+                {bucket.label}
+              </dt>
               <dd className="text-sm font-medium tabular-nums">
                 {formatCurrency(ageing[bucket.key])}
               </dd>

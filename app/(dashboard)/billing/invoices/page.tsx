@@ -49,7 +49,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { invoiceStatusConfig, formatCurrency, formatDate, getDueDays } from '@/lib/billing-utils'
+import { invoiceStatusConfig, formatCurrency, formatDate } from '@/lib/billing-utils'
+import { DEFAULT_TIMEZONE, localDay } from '@/lib/appointment-time'
+import { invoiceDueState } from '@/lib/invoice-figures'
+import { useCan } from '@/hooks/use-can'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
 
@@ -57,6 +60,7 @@ interface Invoice {
   id: string
   invoiceNo: string
   createdAt: string
+  issuedAt: string | null
   dueDate: string | null
   subtotal: string | number
   discountAmount: string | number
@@ -92,6 +96,12 @@ export default function InvoicesPage() {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  // The clinic's day and zone, from the server that filtered the list, so the
+  // "x days overdue" line and the "Overdue only" filter agree.
+  const [calendar, setCalendar] = useState<{ today: string; timezone: string } | null>(null)
+  // Cancelling is `billing:void` on the server (DELETE); offering it to a role
+  // without it was a menu item that could only come back 403.
+  const canVoid = useCan('billing:void') === true
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
@@ -140,6 +150,7 @@ export default function InvoicesPage() {
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setInvoices(data.invoices)
+      if (data.today && data.timezone) setCalendar({ today: data.today, timezone: data.timezone })
       setPagination(data.pagination)
     } catch (error) {
       console.error('Error fetching invoices:', error)
@@ -346,7 +357,14 @@ export default function InvoicesPage() {
               emptyActionHref="/billing/invoices/new"
             >
               {invoices.map((invoice) => {
-                const dueDays = getDueDays(invoice.dueDate)
+                // The shared rule: only an invoice still owed can be late, so a
+                // paid, cancelled, refunded or draft one never reads "overdue".
+                const timezone = calendar?.timezone ?? DEFAULT_TIMEZONE
+                const dueState = invoiceDueState(
+                  invoice,
+                  calendar?.today ?? localDay(new Date(), timezone),
+                  timezone
+                )
                 return (
                   <ClickableRow
                     key={invoice.id}
@@ -396,10 +414,10 @@ export default function InvoicesPage() {
                       {invoice.dueDate ? (
                         <div className="flex flex-col">
                           <span className="text-sm">{formatDate(invoice.dueDate)}</span>
-                          {dueDays.isOverdue && invoice.status !== 'PAID' && (
+                          {dueState?.overdue && (
                             <span className="text-xs text-red-600 flex items-center gap-1 dark:text-red-400">
                               <Clock className="h-3 w-3" />
-                              {dueDays.label}
+                              {dueState.label}
                             </span>
                           )}
                         </div>
@@ -453,16 +471,20 @@ export default function InvoicesPage() {
                             <Printer className="h-4 w-4 mr-2" />
                             Print Invoice
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {invoice.status !== 'CANCELLED' && Number(invoice.paidAmount) <= 0 && (
-                            <DropdownMenuItem
-                              onClick={() => handleCancel(invoice)}
-                              className="text-red-600 dark:text-red-400"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Cancel Invoice
-                            </DropdownMenuItem>
-                          )}
+                          {canVoid &&
+                            invoice.status !== 'CANCELLED' &&
+                            Number(invoice.paidAmount) <= 0 && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleCancel(invoice)}
+                                  className="text-red-600 dark:text-red-400"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Cancel Invoice
+                                </DropdownMenuItem>
+                              </>
+                            )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </GridActionsCell>

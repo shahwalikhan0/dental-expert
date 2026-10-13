@@ -893,6 +893,10 @@ export default function DataImportPage() {
                         This will create new {schema?.label.toLowerCase()} records in your database.
                         {schema?.entityType === 'staff' &&
                           ' Imported staff will receive temporary passwords and must change them on first login.'}
+                        {schema?.entityType === 'invoices' &&
+                          ' Each invoice is imported as one line at its subtotal, and its total must equal subtotal − discount + tax. A paid amount becomes one payment on the invoice date; if you will also import a payments file, that file replaces it for every invoice it names.'}
+                        {schema?.entityType === 'payments' &&
+                          " Import invoices first. For each invoice named here, this file becomes the record of what was paid: a paid amount from the invoice file is set aside. A completed payment larger than the invoice's balance is refused."}
                       </p>
                     </div>
                   </div>

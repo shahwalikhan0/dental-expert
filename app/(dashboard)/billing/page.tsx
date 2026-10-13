@@ -27,7 +27,8 @@ import {
   XCircle,
   BarChart3,
 } from 'lucide-react'
-import { formatCurrency, dateRangePresets, getDateRangeFromPreset } from '@/lib/billing-utils'
+import { formatCurrency, dateRangePresets } from '@/lib/billing-utils'
+import { AGEING_BUCKETS, type AgeingBucketKey } from '@/lib/ageing'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { useCan } from '@/hooks/use-can'
 import { useToast } from '@/hooks/use-toast'
@@ -57,15 +58,18 @@ interface SummaryData {
 }
 
 interface AgingData {
-  aging: {
-    current: { amount: number; count: number }
-    days1_30: { amount: number; count: number }
-    days31_60: { amount: number; count: number }
-    days61_90: { amount: number; count: number }
-    over90: { amount: number; count: number }
-  }
+  aging: Record<AgeingBucketKey, { amount: number; count: number }>
   totals: { totalOutstanding: number; invoiceCount: number }
 }
+
+/** One colour per ageing bucket, in AGEING_BUCKETS order. */
+const AGEING_COLOURS = [
+  'bg-green-500',
+  'bg-yellow-500',
+  'bg-orange-500',
+  'bg-red-400',
+  'bg-red-600',
+]
 
 export default function BillingPage() {
   const [loading, setLoading] = useState(true)
@@ -132,6 +136,7 @@ export default function BillingPage() {
     BANK_TRANSFER: 'Bank Transfer',
     CHEQUE: 'Cheque',
     WALLET: 'Mobile Wallet',
+    ONLINE: 'Online',
   }
 
   const invoiceStatusLabels: Record<string, { label: string; color: string }> = {
@@ -327,7 +332,7 @@ export default function BillingPage() {
                   {formatCurrency(data?.summary.totalOutstanding || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {data?.summary.outstandingInvoices || 0} pending invoices
+                  {data?.summary.outstandingInvoices || 0} invoices still owed
                 </p>
               </>
             )}
@@ -476,7 +481,10 @@ export default function BillingPage() {
         <Card>
           <CardHeader>
             <CardTitle>Collection Rate</CardTitle>
-            <CardDescription>Percentage of billed amount collected</CardDescription>
+            {/* Cash collected in the period ÷ invoices issued in the period. Both
+                sides now leave drafts and cancelled bills out; it can pass 100%
+                in a month that collects older debts. */}
+            <CardDescription>Collected in the period as a share of what was billed</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4">
@@ -537,7 +545,7 @@ export default function BillingPage() {
         <Card>
           <CardHeader>
             <CardTitle>Claims Aging</CardTitle>
-            <CardDescription>Outstanding invoices by overdue period</CardDescription>
+            <CardDescription>Outstanding balances by days past due</CardDescription>
           </CardHeader>
           <CardContent>
             {!agingData ? (
@@ -548,19 +556,18 @@ export default function BillingPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {[
-                  { label: 'Current', data: agingData.aging.current, color: 'bg-green-500' },
-                  { label: '1–30 days', data: agingData.aging.days1_30, color: 'bg-yellow-500' },
-                  { label: '31–60 days', data: agingData.aging.days31_60, color: 'bg-orange-500' },
-                  { label: '61–90 days', data: agingData.aging.days61_90, color: 'bg-red-400' },
-                  { label: '90+ days', data: agingData.aging.over90, color: 'bg-red-600' },
-                ].map((bucket) => {
+                {AGEING_BUCKETS.map((bucket, index) => ({
+                  label: bucket.label,
+                  hint: bucket.hint,
+                  data: agingData.aging[bucket.key],
+                  color: AGEING_COLOURS[index],
+                })).map((bucket) => {
                   const total = agingData.totals.totalOutstanding || 1
                   const pct = Math.round((bucket.data.amount / total) * 100)
                   return (
                     <div key={bucket.label} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
-                        <span>{bucket.label}</span>
+                        <span title={bucket.hint}>{bucket.label}</span>
                         <div className="text-right">
                           <span className="font-medium">{formatCurrency(bucket.data.amount)}</span>
                           <span className="text-muted-foreground ml-2">({bucket.data.count})</span>

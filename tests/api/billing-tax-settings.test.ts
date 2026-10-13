@@ -63,6 +63,8 @@ describe('GET /api/billing/tax-settings', () => {
       enabled: false,
       rate: 0,
       label: 'Sales Tax',
+      // No setting stored, so the default threshold.
+      discountApprovalThreshold: 1000,
     })
   })
 
@@ -78,6 +80,7 @@ describe('GET /api/billing/tax-settings', () => {
       enabled: true,
       rate: 16,
       label: 'PRA Sales Tax',
+      discountApprovalThreshold: 1000,
     })
   })
 

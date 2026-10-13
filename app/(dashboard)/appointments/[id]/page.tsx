@@ -29,6 +29,7 @@ import {
   FileText,
   History,
   Video,
+  Receipt,
 } from 'lucide-react'
 import {
   Dialog,
@@ -54,6 +55,9 @@ import { formatToken } from '@/lib/tokens'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
+import { useCan } from '@/hooks/use-can'
+import { newInvoiceHref } from '@/lib/invoice-links'
+import { formatCurrency } from '@/lib/billing-utils'
 
 interface Appointment {
   id: string
@@ -115,6 +119,17 @@ interface Appointment {
       code: string
     }
   }>
+  /**
+   * The bills raised for this visit, cancelled ones included. Absent for
+   * somebody who may not read billing.
+   */
+  invoices?: Array<{
+    id: string
+    invoiceNo: string
+    status: string
+    totalAmount: string | number
+    balanceAmount: string | number
+  }>
   reminders: Array<{
     id: string
     reminderType: string
@@ -134,6 +149,8 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   const [actionLoading, setActionLoading] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const { toast } = useToast()
+  // Raising the bill is the desk's act (review 4.3); offered to those who may.
+  const canBill = useCan('billing:write') === true
 
   /**
    * The API's own reason, as a toast. These handlers used to log a failure to
@@ -195,6 +212,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         await refused(response, 'Could not check out')
         return
       }
+      // Reloaded as COMPLETED, the header offers Create invoice for the visit.
       fetchAppointment()
     } catch {
       toast({ variant: 'destructive', title: 'Could not check out' })
@@ -326,6 +344,18 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
     )
   }
 
+  // Billing a visit (review 4.3): after it is over, for a registered patient
+  // only — a walk-in has no record to raise an invoice against — and while no
+  // invoice for it still stands. A cancelled one does not count, so the visit
+  // can be billed again.
+  const liveInvoices = (appointment.invoices ?? []).filter((i) => i.status !== 'CANCELLED')
+  const canBillVisit =
+    canBill &&
+    Boolean(appointment.patient) &&
+    appointment.status === 'COMPLETED' &&
+    appointment.invoices !== undefined &&
+    liveInvoices.length === 0
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -364,6 +394,21 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             <Button onClick={handleCheckOut} disabled={actionLoading}>
               <LogOut className="h-4 w-4 mr-2" />
               Check Out
+            </Button>
+          )}
+          {canBillVisit && appointment.patient && (
+            <Button asChild>
+              <Link
+                href={trail.to(
+                  newInvoiceHref({
+                    patientId: appointment.patient.id,
+                    appointmentId: appointment.id,
+                  })
+                )}
+              >
+                <Receipt className="h-4 w-4 mr-2" />
+                Create invoice
+              </Link>
             </Button>
           )}
           {appointment.status === 'SCHEDULED' && (
@@ -707,6 +752,45 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             )}
           </CardContent>
         </Card>
+
+        {/* Billing: the invoices raised for this visit. Only for those who
+            may read billing — the route leaves them out otherwise. */}
+        {appointment.invoices !== undefined && appointment.patient && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-5 w-5" />
+                Billing
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {appointment.invoices.length === 0 ? (
+                <p className="text-muted-foreground">No invoice raised for this visit.</p>
+              ) : (
+                <div className="space-y-3">
+                  {appointment.invoices.map((invoice) => (
+                    <Link
+                      key={invoice.id}
+                      href={trail.to(`/billing/invoices/${invoice.id}`)}
+                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
+                    >
+                      <div>
+                        <p className="font-medium">{invoice.invoiceNo}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatCurrency(Number(invoice.totalAmount))}
+                          {invoice.status !== 'CANCELLED' && Number(invoice.balanceAmount) > 0
+                            ? ` · ${formatCurrency(Number(invoice.balanceAmount))} due`
+                            : ''}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{invoice.status}</Badge>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Cancel Dialog */}

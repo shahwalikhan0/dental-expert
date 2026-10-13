@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +15,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
+import { useCan } from '@/hooks/use-can'
+import { newInvoiceHref } from '@/lib/invoice-links'
 import { useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
 import {
@@ -22,6 +26,7 @@ import {
   Clock,
   Loader2,
   LogIn,
+  Receipt,
   RefreshCw,
   Search,
   UserPlus,
@@ -68,6 +73,8 @@ interface Appointment {
   } | null
   visitor: { id: string; name: string; phone: string | null } | null
   doctor: { id: string; firstName: string; lastName: string } | null
+  /** A bill for this visit still stands (any invoice not cancelled). */
+  invoiced?: boolean
 }
 
 interface Queue {
@@ -160,7 +167,13 @@ function Column({
   description: string
   rows: Appointment[]
   tone: string
-  action?: { label: string; icon: React.ReactNode; run: (a: Appointment) => void }
+  action?: {
+    label: string
+    icon: React.ReactNode
+    run: (a: Appointment) => void
+    /** Rows the action applies to; all of them when absent. */
+    when?: (a: Appointment) => boolean
+  }
   busyId: string | null
   searching: boolean
   to: (href: string) => string
@@ -201,7 +214,7 @@ function Column({
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
-                {action && (
+                {action && (!action.when || action.when(a)) && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -238,7 +251,10 @@ function Column({
 
 export default function QueuePage() {
   const { toast } = useToast()
+  const router = useRouter()
   const trail = useTrail('Queue')
+  // Raising the bill for a finished visit is the desk's act (review 4.3).
+  const canBill = useCan('billing:write') === true
 
   const [queue, setQueue] = useState<Queue>(EMPTY)
   const [stats, setStats] = useState(EMPTY_STATS)
@@ -288,6 +304,9 @@ export default function QueuePage() {
     return () => clearInterval(timer)
   }, [load])
 
+  const billHref = (a: Appointment) =>
+    trail.to(newInvoiceHref({ patientId: a.patient?.id, appointmentId: a.id }))
+
   const act = async (
     appointment: Appointment,
     action: 'check-in' | 'start' | 'complete' | 'no-show'
@@ -316,6 +335,22 @@ export default function QueuePage() {
         toast({
           title: `Token ${formatToken(data.tokenNumber)}`,
           description: `${subjectOf(appointment)} is in the queue.`,
+        })
+      }
+
+      // Finished, and on their way to the desk: the bill is next. Check-out
+      // only closes the visit, so the desk is asked here rather than left to
+      // remember. A walk-in has no record to bill.
+      if (action === 'complete' && appointment.patient && canBill) {
+        const href = billHref(appointment)
+        toast({
+          title: 'Checked out',
+          description: `${subjectOf(appointment)} can be billed for this visit now.`,
+          action: (
+            <ToastAction altText="Create invoice" onClick={() => router.push(href)}>
+              Create invoice
+            </ToastAction>
+          ),
         })
       }
 
@@ -483,6 +518,18 @@ export default function QueuePage() {
             searching={Boolean(search.trim())}
             to={trail.to}
             tone="bg-green-500/15 text-green-700 dark:text-green-300"
+            // A finished visit with no bill yet is the one the desk has
+            // forgotten; it keeps its button until an invoice is raised.
+            action={
+              canBill
+                ? {
+                    label: 'Create invoice',
+                    icon: <Receipt className="h-3.5 w-3.5" />,
+                    run: (a) => router.push(billHref(a)),
+                    when: (a) => Boolean(a.patient) && a.invoiced === false,
+                  }
+                : undefined
+            }
           />
           <Column
             title="Did not attend"

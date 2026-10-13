@@ -51,6 +51,7 @@ const SYNONYMS: Record<string, string[]> = {
   scheduledTime: ['time', 'appointmenttime', 'visittime'],
   notes: ['note', 'remarks', 'comments', 'comment'],
   totalAmount: ['total', 'grandtotal', 'nettotal'],
+  invoiceDate: ['date', 'billdate'],
   amount: ['amountpaid', 'paid'],
   paymentMethod: ['method', 'mode', 'paymentmode'],
   currentStock: ['stock', 'quantity', 'qty', 'onhand', 'instock'],

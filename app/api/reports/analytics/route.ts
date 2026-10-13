@@ -3,58 +3,20 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { averageWait } from '@/lib/appointment-wait'
-import {
-  startOfDay,
-  endOfDay,
-  subDays,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  startOfQuarter,
-  endOfQuarter,
-  startOfYear,
-  endOfYear,
-  subMonths,
-  subQuarters,
-  subYears,
-  differenceInDays,
-} from 'date-fns'
+import { differenceInDays } from 'date-fns'
+import { clinicTimezone } from '@/lib/appointment-time'
+import { dateRangeFromDays, getDateRangeFromPreset } from '@/lib/billing-utils'
+import { collectionTotals, dayKeyOf } from '@/lib/collections'
+import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
+import { billedAt, billedInvoiceWhere, money } from '@/lib/invoice-figures'
+import { billedTotals, invoicedLines, outstandingTotals } from '@/lib/invoiced'
+import { holderCan } from '@/lib/rbac'
 
-// Helper function to get date range from preset
-function getDateRange(preset: string): { from: Date; to: Date } {
-  const now = new Date()
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-  switch (preset) {
-    case 'today':
-      return { from: startOfDay(now), to: endOfDay(now) }
-    case 'yesterday':
-      return { from: startOfDay(subDays(now, 1)), to: endOfDay(subDays(now, 1)) }
-    case 'this_week':
-      return {
-        from: startOfWeek(now, { weekStartsOn: 1 }),
-        to: endOfWeek(now, { weekStartsOn: 1 }),
-      }
-    case 'last_week':
-      return {
-        from: startOfWeek(subDays(now, 7), { weekStartsOn: 1 }),
-        to: endOfWeek(subDays(now, 7), { weekStartsOn: 1 }),
-      }
-    case 'this_month':
-      return { from: startOfMonth(now), to: endOfMonth(now) }
-    case 'last_month':
-      return { from: startOfMonth(subMonths(now, 1)), to: endOfMonth(subMonths(now, 1)) }
-    case 'this_quarter':
-      return { from: startOfQuarter(now), to: endOfQuarter(now) }
-    case 'last_quarter':
-      return { from: startOfQuarter(subQuarters(now, 1)), to: endOfQuarter(subQuarters(now, 1)) }
-    case 'this_year':
-      return { from: startOfYear(now), to: endOfYear(now) }
-    case 'last_year':
-      return { from: startOfYear(subYears(now, 1)), to: endOfYear(subYears(now, 1)) }
-    default:
-      return { from: startOfMonth(now), to: endOfMonth(now) }
-  }
+/** `2026-10` as `Oct 26`, the label the trend chart has always shown. */
+function monthLabel(key: string): string {
+  return `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(2, 4)}`
 }
 
 // Patient Analytics
@@ -264,114 +226,131 @@ async function getClinicalAnalytics(dateFrom: Date, dateTo: Date, hospitalId: st
   }
 }
 
-// Financial Analytics
-async function getFinancialAnalytics(dateFrom: Date, dateTo: Date, hospitalId: string) {
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      hospitalId,
-      createdAt: {
-        gte: dateFrom,
-        lte: dateTo,
-      },
-    },
-    include: {
-      payments: true,
-    },
-  })
+/**
+ * Financial Analytics, on the same three figures as every other money screen.
+ *
+ * "Total Revenue" here was Σ totalAmount of every invoice *created* in the
+ * period — drafts and cancelled bills included — while the dashboard's
+ * "Revenue" was cash collected. Same word, Rs 500 on one screen and Rs 2,500
+ * on the other (bug report item 6), and a −876% profit margin computed from
+ * the bigger one. The payment-method split counted `status: 'COMPLETED'`
+ * only, so a partly refunded payment vanished from it entirely.
+ *
+ *  - **Billed**: invoices issued in the period, not draft or cancelled.
+ *  - **Collected**: cash in, net of refunds (lib/collections.ts).
+ *  - **Outstanding**: owed now, whenever it was billed.
+ *
+ * Profit is cash: collected less stock purchases, both money that moved in
+ * the period. Average bill is billed ÷ invoices billed; collection rate is
+ * collected ÷ billed.
+ */
+async function getFinancialAnalytics(
+  dateFrom: Date,
+  dateTo: Date,
+  hospitalId: string,
+  timezone: string
+) {
+  const window = { gte: dateFrom, lte: dateTo }
 
-  const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0)
-  const totalPaid = invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0)
-  const outstandingAmount = invoices.reduce((sum, inv) => sum + Number(inv.balanceAmount), 0)
+  const [billed, collected, outstanding, billedInvoices, payments, refunds, purchases] =
+    await Promise.all([
+      billedTotals(hospitalId, window),
+      collectionTotals(hospitalId, window),
+      outstandingTotals(hospitalId),
+      prisma.invoice.findMany({
+        where: { hospitalId, ...billedInvoiceWhere(window) },
+        select: { issuedAt: true, createdAt: true, totalAmount: true },
+      }),
+      prisma.payment.findMany({
+        where: {
+          hospitalId,
+          paymentDate: window,
+          status: { in: [...SETTLED_PAYMENT_STATUSES] as never },
+        },
+        select: { paymentDate: true, amount: true },
+      }),
+      prisma.refund.findMany({
+        where: { hospitalId, refundedAt: window },
+        select: { refundedAt: true, amount: true },
+      }),
+      // Expenses: stock bought in the period.
+      prisma.stockTransaction.findMany({
+        where: { hospitalId, type: 'PURCHASE', createdAt: window },
+        select: { createdAt: true, totalPrice: true },
+      }),
+    ])
 
-  // Get expenses from inventory purchases
-  const purchases = await prisma.stockTransaction.findMany({
-    where: {
-      hospitalId,
-      type: 'PURCHASE',
-      createdAt: {
-        gte: dateFrom,
-        lte: dateTo,
-      },
-    },
-  })
+  const totalBilled = billed.billed
+  const totalCollected = money(collected.net)
+  const totalExpenses = money(purchases.reduce((sum, p) => sum + Number(p.totalPrice || 0), 0))
+  const profit = money(totalCollected - totalExpenses)
 
-  const totalExpenses = purchases.reduce((sum, p) => sum + Number(p.totalPrice || 0), 0)
+  const profitMargin = totalCollected > 0 ? (profit / totalCollected) * 100 : 0
+  const avgBillValue = billed.invoiceCount > 0 ? totalBilled / billed.invoiceCount : 0
+  const collectionEfficiency = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
 
-  const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0
-  const avgBillValue = invoices.length > 0 ? totalRevenue / invoices.length : 0
-  const collectionEfficiency = totalRevenue > 0 ? (totalPaid / totalRevenue) * 100 : 0
+  // By clinic month, so a payment late on the 31st in Karachi is October's.
+  const monthly: Record<string, { billed: number; collected: number; expenses: number }> = {}
+  const monthOf = (at: Date) => {
+    const key = dayKeyOf(at, timezone).slice(0, 7)
+    return (monthly[key] ??= { billed: 0, collected: 0, expenses: 0 })
+  }
+  for (const invoice of billedInvoices) {
+    const month = monthOf(billedAt(invoice))
+    month.billed = money(month.billed + money(invoice.totalAmount))
+  }
+  for (const payment of payments) {
+    const month = monthOf(payment.paymentDate)
+    month.collected = money(month.collected + money(payment.amount))
+  }
+  for (const refund of refunds) {
+    const month = monthOf(refund.refundedAt)
+    month.collected = money(month.collected - money(refund.amount))
+  }
+  for (const purchase of purchases) {
+    const month = monthOf(purchase.createdAt)
+    month.expenses = money(month.expenses + Number(purchase.totalPrice || 0))
+  }
 
-  // Revenue by month (for trend)
-  const monthlyRevenue = invoices.reduce(
-    (acc, inv) => {
-      const month = inv.createdAt.toLocaleString('default', { month: 'short', year: '2-digit' })
-      if (!acc[month]) {
-        acc[month] = { revenue: 0, expenses: 0 }
-      }
-      acc[month].revenue += Number(inv.totalAmount)
-      return acc
-    },
-    {} as Record<string, { revenue: number; expenses: number }>
-  )
+  const revenueByMonth = Object.entries(monthly)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, data]) => ({
+      month: monthLabel(key),
+      billed: data.billed,
+      collected: data.collected,
+      expenses: data.expenses,
+      profit: money(data.collected - data.expenses),
+    }))
 
-  purchases.forEach((p) => {
-    const month = p.createdAt.toLocaleString('default', { month: 'short', year: '2-digit' })
-    if (!monthlyRevenue[month]) {
-      monthlyRevenue[month] = { revenue: 0, expenses: 0 }
-    }
-    monthlyRevenue[month].expenses += Number(p.totalPrice || 0)
-  })
-
-  const revenueByMonth = Object.entries(monthlyRevenue).map(([month, data]) => ({
-    month,
-    revenue: data.revenue,
-    expenses: data.expenses,
-    profit: data.revenue - data.expenses,
-  }))
-
-  // Payment method breakdown
-  const payments = await prisma.payment.findMany({
-    where: {
-      hospitalId,
-      paymentDate: {
-        gte: dateFrom,
-        lte: dateTo,
-      },
-      status: 'COMPLETED',
-    },
-  })
-
-  const methodCounts = payments.reduce(
-    (acc, p) => {
-      const method = p.paymentMethod
-      acc[method] = (acc[method] || 0) + Number(p.amount)
-      return acc
-    },
-    {} as Record<string, number>
-  )
-
-  const totalPayments = Object.values(methodCounts).reduce((sum, amt) => sum + amt, 0)
-
-  const paymentMethodBreakdown = Object.entries(methodCounts).map(([method, amount]) => ({
-    method,
-    amount,
-    percentage: totalPayments > 0 ? (amount / totalPayments) * 100 : 0,
+  // What each method actually brought in, net of what went back by it.
+  const paymentMethodBreakdown = collected.byMethod.map((row) => ({
+    method: row.method,
+    amount: money(row.net),
+    percentage: totalCollected > 0 ? (row.net / totalCollected) * 100 : 0,
   }))
 
   return {
-    totalRevenue,
+    totalBilled,
+    totalCollected,
     totalExpenses,
+    profit,
     profitMargin,
     avgBillValue,
     collectionEfficiency,
     revenueByMonth,
     paymentMethodBreakdown,
-    outstandingAmount,
+    outstandingAmount: outstanding.outstanding,
+    invoiceCount: billed.invoiceCount,
   }
 }
 
 // Operational Analytics
-async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId: string) {
+async function getOperationalAnalytics(
+  dateFrom: Date,
+  dateTo: Date,
+  hospitalId: string,
+  showsMoney: boolean
+) {
   const appointments = await prisma.appointment.findMany({
     where: {
       hospitalId,
@@ -403,47 +382,78 @@ async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId:
   // finding 32). See lib/appointment-wait.ts.
   const avgWaitTime = averageWait(appointments)
 
-  // Staff productivity
-  const staffMap = new Map()
-
-  for (const appointment of appointments) {
-    const staffId = appointment.doctorId
-    if (!staffMap.has(staffId)) {
-      staffMap.set(staffId, {
+  // Staff productivity: appointments and completed treatments are the
+  // clinical work; the money column is what was *invoiced* for their
+  // treatments in the period (lib/invoiced.ts), not `Treatment.cost` at list
+  // price, and it is called that on screen.
+  const staffMap = new Map<
+    string,
+    {
+      staffId: string
+      name: string
+      role: string
+      appointmentsHandled: number
+      treatmentsCompleted: number
+      invoiced: number
+    }
+  >()
+  const staffRow = (
+    staffId: string,
+    doctor: { firstName: string; lastName: string; role: string }
+  ) => {
+    let row = staffMap.get(staffId)
+    if (!row) {
+      row = {
         staffId,
-        name: `${appointment.doctor.firstName} ${appointment.doctor.lastName}`,
-        role: appointment.doctor.user.role,
+        name: `${doctor.firstName} ${doctor.lastName}`,
+        role: doctor.role,
         appointmentsHandled: 0,
         treatmentsCompleted: 0,
-        revenue: 0,
-      })
+        invoiced: 0,
+      }
+      staffMap.set(staffId, row)
     }
-    const staff = staffMap.get(staffId)
-    staff.appointmentsHandled++
+    return row
   }
 
-  // Get treatments by doctor
+  for (const appointment of appointments) {
+    staffRow(appointment.doctorId, {
+      firstName: appointment.doctor.firstName,
+      lastName: appointment.doctor.lastName,
+      role: appointment.doctor.user.role,
+    }).appointmentsHandled++
+  }
+
   const treatments = await prisma.treatment.findMany({
     where: {
       hospitalId,
+      status: 'COMPLETED',
       createdAt: {
         gte: dateFrom,
         lte: dateTo,
       },
     },
+    select: { doctorId: true },
   })
 
-  treatments.forEach((t) => {
-    if (staffMap.has(t.doctorId)) {
-      const staff = staffMap.get(t.doctorId)
-      if (t.status === 'COMPLETED') {
-        staff.treatmentsCompleted++
-      }
-      staff.revenue += Number(t.cost)
+  for (const t of treatments) {
+    const row = staffMap.get(t.doctorId)
+    if (row) row.treatmentsCompleted++
+  }
+
+  if (showsMoney) {
+    for (const line of await invoicedLines(hospitalId, { gte: dateFrom, lte: dateTo })) {
+      if (!line.doctor) continue
+      const row = staffRow(line.doctor.id, line.doctor)
+      row.invoiced = money(row.invoiced + line.amount)
     }
-  })
+  }
 
-  const staffProductivity = Array.from(staffMap.values())
+  // Money left out of the answer for a role that may not see it, as on the
+  // dashboard (bug report 12 Oct, finding 41).
+  const staffProductivity = Array.from(staffMap.values()).map(({ invoiced, ...row }) =>
+    showsMoney ? { ...row, invoiced } : row
+  )
 
   // Inventory turnover (simplified)
   const stockTransactions = await prisma.stockTransaction.findMany({
@@ -498,11 +508,19 @@ async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId:
 }
 
 export async function GET(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('reports:operational')
+  const { error, hospitalId, user } = await requirePermission('reports:operational')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // The operational reports are open to the chair-side and lab roles; the
+  // money in them is not. Financial Analytics needs `reports:financial`, as
+  // the billing reports do, and the invoiced column in staff productivity is
+  // left out without it.
+  const seesMoney = user
+    ? holderCan({ role: user.role, clinicalRole: user.clinicalRole }, 'reports:financial')
+    : false
 
   try {
     const { searchParams } = new URL(request.url)
@@ -511,16 +529,35 @@ export async function GET(request: NextRequest) {
     const dateFromParam = searchParams.get('dateFrom')
     const dateToParam = searchParams.get('dateTo')
 
+    // The same windows as Billing → Reports, on the clinic's calendar. This
+    // route had its own copy built on the server's midnight, with weeks from
+    // Monday and current periods running to the end of the month, so "this
+    // week" here and there were different weeks. A custom "to" date was
+    // midnight at its *start*, leaving the last day out.
+    const timezone = await clinicTimezone(prisma, hospitalId)
+
     let dateFrom: Date
     let dateTo: Date
 
     if (dateFromParam && dateToParam) {
-      dateFrom = new Date(dateFromParam)
-      dateTo = new Date(dateToParam)
+      const range = dateRangeFromDays(
+        dateFromParam.slice(0, 10),
+        dateToParam.slice(0, 10),
+        timezone
+      )
+      dateFrom = range.startDate
+      dateTo = range.endDate
     } else {
-      const range = getDateRange(preset)
-      dateFrom = range.from
-      dateTo = range.to
+      const range = getDateRangeFromPreset(preset, timezone)
+      dateFrom = range.startDate
+      dateTo = range.endDate
+    }
+
+    if (Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime())) {
+      return NextResponse.json(
+        { error: 'dateFrom and dateTo must be dates such as 2026-10-14.' },
+        { status: 400 }
+      )
     }
 
     let data
@@ -533,10 +570,16 @@ export async function GET(request: NextRequest) {
         data = await getClinicalAnalytics(dateFrom, dateTo, hospitalId)
         break
       case 'financial':
-        data = await getFinancialAnalytics(dateFrom, dateTo, hospitalId)
+        if (!seesMoney) {
+          return NextResponse.json(
+            { error: 'Financial analytics need the financial reports permission.' },
+            { status: 403 }
+          )
+        }
+        data = await getFinancialAnalytics(dateFrom, dateTo, hospitalId, timezone)
         break
       case 'operational':
-        data = await getOperationalAnalytics(dateFrom, dateTo, hospitalId)
+        data = await getOperationalAnalytics(dateFrom, dateTo, hospitalId, seesMoney)
         break
       default:
         return NextResponse.json({ error: 'Invalid analytics type' }, { status: 400 })

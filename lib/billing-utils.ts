@@ -3,6 +3,8 @@
 import { InvoiceStatus, PaymentMethod, PaymentStatus, DiscountType } from '@prisma/client'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { dayRangeIn, localDay } from '@/lib/appointment-time'
+import { round2 } from '@/lib/till'
 
 type Db = PrismaClient | Prisma.TransactionClient
 import {
@@ -202,29 +204,6 @@ export function resolveTaxRate(
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 }
 
-/**
- * Tax on an amount.
- *
- * A rate of 0 yields a zero tax line, which callers should omit from the
- * printed document rather than show as "Sales Tax: Rs 0.00".
- */
-export function calculateTax(
-  subtotal: number,
-  taxRate: number = taxConfig.rate
-): {
-  subtotal: number
-  taxAmount: number
-  grandTotal: number
-} {
-  const taxAmount = (subtotal * taxRate) / 100
-
-  return {
-    subtotal: Math.round(subtotal * 100) / 100,
-    taxAmount: Math.round(taxAmount * 100) / 100,
-    grandTotal: Math.round((subtotal + taxAmount) * 100) / 100,
-  }
-}
-
 // Calculate discount
 export function calculateDiscount(
   subtotal: number,
@@ -242,12 +221,13 @@ export function calculateDiscount(
     discountAmount = discountValue
   }
 
-  // Ensure discount doesn't exceed subtotal
-  discountAmount = Math.min(discountAmount, subtotal)
+  // Never more than the bill and never negative; the server refuses either
+  // outright (`discountProblem`), this keeps a preview of a half-typed value sane.
+  discountAmount = round2(Math.max(0, Math.min(Number(discountAmount) || 0, subtotal)))
 
   return {
-    discountAmount: Math.round(discountAmount * 100) / 100,
-    afterDiscount: Math.round((subtotal - discountAmount) * 100) / 100,
+    discountAmount,
+    afterDiscount: round2(subtotal - discountAmount),
   }
 }
 
@@ -279,56 +259,85 @@ export function discountProblem(
   return null
 }
 
-// Calculate invoice totals
-export function calculateInvoiceTotals(
-  items: Array<{ quantity: number; unitPrice: number; taxable: boolean }>,
-  discountType: DiscountType = 'FIXED',
-  discountValue: number = 0,
-  taxRate: number = taxConfig.rate
-): {
+/** One line of an invoice, as far as its money goes. */
+export interface InvoiceLineMoney {
+  quantity: number
+  unitPrice: number
+  taxable: boolean
+}
+
+export interface InvoiceTotals {
+  /** Each line as it is stored: price and amount to the paisa, in input order. */
+  lines: Array<{ quantity: number; unitPrice: number; amount: number; taxable: boolean }>
   subtotal: number
   discountAmount: number
+  /** The taxable lines after their share of the discount — what tax is charged on. */
   taxableAmount: number
   nonTaxableAmount: number
   taxAmount: number
   totalAmount: number
-} {
-  // Calculate subtotals
-  let taxableSubtotal = 0
-  let nonTaxableSubtotal = 0
+}
 
-  items.forEach((item) => {
-    const itemTotal = item.quantity * item.unitPrice
-    if (item.taxable) {
-      taxableSubtotal += itemTotal
-    } else {
-      nonTaxableSubtotal += itemTotal
-    }
+/**
+ * The money on an invoice, from its lines, discount and tax rate.
+ *
+ * The one implementation: the create and edit routes, the issue step and both
+ * invoice forms all call it, so what the form previews is what gets stored.
+ *
+ * Every figure is rounded to the paisa *before* the next one is built from it,
+ * and the total is assembled from those rounded parts. This used to round each
+ * output on its own from unrounded intermediates, so the printed lines could
+ * disagree with the printed total: Rs 3,333 at 2.5% off printed
+ * 3,333.00 − 83.33 = 3,249.67 beside a Total of 3,249.68 (invoice review 1.3).
+ *
+ *  - a unit price is taken to 2 dp, as the column stores it, and each line's
+ *    amount is quantity × that price, rounded — the line the patient reads;
+ *  - the subtotal is the sum of those amounts;
+ *  - the discount is clamped to the subtotal and rounded;
+ *  - it is shared pro rata between taxable and exempt lines (review 1.4), the
+ *    taxable share rounded and the exempt share taking the remainder, so the
+ *    two shares always add back to the discount;
+ *  - tax is the rate on the taxable value, rounded;
+ *  - total = subtotal − discount + tax, exactly.
+ */
+export function calculateInvoiceTotals(
+  items: InvoiceLineMoney[],
+  discountType: DiscountType = 'FIXED',
+  discountValue: number = 0,
+  taxRate: number = taxConfig.rate
+): InvoiceTotals {
+  const lines = items.map((item) => {
+    const quantity = Number(item.quantity) || 0
+    const unitPrice = round2(Number(item.unitPrice) || 0)
+    return { quantity, unitPrice, amount: round2(quantity * unitPrice), taxable: !!item.taxable }
   })
 
-  const subtotal = taxableSubtotal + nonTaxableSubtotal
+  const taxableSubtotal = round2(
+    lines.filter((l) => l.taxable).reduce((sum, l) => sum + l.amount, 0)
+  )
+  const nonTaxableSubtotal = round2(
+    lines.filter((l) => !l.taxable).reduce((sum, l) => sum + l.amount, 0)
+  )
+  const subtotal = round2(taxableSubtotal + nonTaxableSubtotal)
 
-  // Apply discount proportionally
   const { discountAmount } = calculateDiscount(subtotal, discountType, discountValue)
 
-  // Proportional discount for taxable amount
-  const taxableDiscountRatio = subtotal > 0 ? taxableSubtotal / subtotal : 0
-  const taxableDiscount = discountAmount * taxableDiscountRatio
-  const taxableAmount = taxableSubtotal - taxableDiscount
-  const nonTaxableAmount = nonTaxableSubtotal - (discountAmount - taxableDiscount)
+  const taxableDiscount = subtotal > 0 ? round2((discountAmount * taxableSubtotal) / subtotal) : 0
+  const nonTaxableDiscount = round2(discountAmount - taxableDiscount)
 
-  // Tax applies only to the taxable portion, after its share of the discount.
-  const taxAmount = (taxableAmount * taxRate) / 100
-
-  const totalAmount = taxableAmount + nonTaxableAmount + taxAmount
+  const taxableAmount = round2(taxableSubtotal - taxableDiscount)
+  const nonTaxableAmount = round2(nonTaxableSubtotal - nonTaxableDiscount)
+  const rate = Number(taxRate) > 0 ? Number(taxRate) : 0
+  const taxAmount = round2((taxableAmount * rate) / 100)
 
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
-    discountAmount: Math.round(discountAmount * 100) / 100,
-    taxableAmount: Math.round(taxableAmount * 100) / 100,
-    nonTaxableAmount: Math.round(nonTaxableAmount * 100) / 100,
-    taxAmount: Math.round(taxAmount * 100) / 100,
-    totalAmount: Math.round(totalAmount * 100) / 100,
+    lines,
+    subtotal,
+    discountAmount,
+    taxableAmount,
+    nonTaxableAmount,
+    taxAmount,
+    totalAmount: round2(subtotal - discountAmount + taxAmount),
   }
 }
 
@@ -423,59 +432,6 @@ export function getPatientName(
   return `${patient.firstName} ${patient.lastName}`
 }
 
-// Calculate balance amount
-export function calculateBalance(totalAmount: number, paidAmount: number): number {
-  return Math.round((totalAmount - paidAmount) * 100) / 100
-}
-
-// Check if invoice is overdue
-export function isInvoiceOverdue(dueDate: Date | string | null, status: InvoiceStatus): boolean {
-  if (!dueDate) return false
-  if (status === 'PAID' || status === 'CANCELLED' || status === 'REFUNDED') {
-    return false
-  }
-
-  const due = typeof dueDate === 'string' ? new Date(dueDate) : dueDate
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  due.setHours(0, 0, 0, 0)
-
-  return due < today
-}
-
-// Get days until due / days overdue
-export function getDueDays(dueDate: Date | string | null): {
-  days: number
-  isOverdue: boolean
-  label: string
-} {
-  if (!dueDate) return { days: 0, isOverdue: false, label: 'No due date' }
-
-  const due = typeof dueDate === 'string' ? new Date(dueDate) : dueDate
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  due.setHours(0, 0, 0, 0)
-
-  const diffTime = due.getTime() - today.getTime()
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) {
-    return {
-      days: Math.abs(diffDays),
-      isOverdue: true,
-      label: `${Math.abs(diffDays)} days overdue`,
-    }
-  } else if (diffDays === 0) {
-    return { days: 0, isOverdue: false, label: 'Due today' }
-  } else {
-    return {
-      days: diffDays,
-      isOverdue: false,
-      label: `Due in ${diffDays} days`,
-    }
-  }
-}
-
 // Payment method icons mapping for Lucide icons
 export const paymentMethodIcons = {
   CASH: 'Banknote',
@@ -496,14 +452,10 @@ export const paymentTermsOptions = [
   { value: 60, label: 'Net 60 Days' },
 ]
 
-// Calculate due date from invoice date
-export function calculateDueDate(invoiceDate: Date, paymentTermDays: number): Date {
-  const dueDate = new Date(invoiceDate)
-  dueDate.setDate(dueDate.getDate() + paymentTermDays)
-  return dueDate
-}
-
-// Number to words (Indian format) for invoice amounts
+// Number to words for invoice amounts, in rupees and paisa.
+//
+// Lakh and crore rather than million: that is how amounts are written in
+// Pakistan, on cheques and invoices alike.
 export function numberToWords(num: number): string {
   if (num === 0) return 'Zero'
 
@@ -552,9 +504,9 @@ export function numberToWords(num: number): string {
     return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convertGroup(n % 100) : '')
   }
 
-  // Handle Indian numbering system
+  // Lakh/crore grouping
   const rupees = Math.floor(num)
-  const paise = Math.round((num - rupees) * 100)
+  const paisa = Math.round((num - rupees) * 100)
 
   let result = ''
 
@@ -583,8 +535,8 @@ export function numberToWords(num: number): string {
 
   result = result.trim() + ' Rupees'
 
-  if (paise > 0) {
-    result += ' and ' + convertGroup(paise) + ' Paise'
+  if (paisa > 0) {
+    result += ' and ' + convertGroup(paisa) + ' Paisa'
   }
 
   result += ' Only'
@@ -607,86 +559,98 @@ export const dateRangePresets = [
   { label: 'Custom Range', value: 'custom' },
 ]
 
-// Get date range from preset
-export function getDateRangeFromPreset(preset: string): {
+/**
+ * `YYYY-MM-DD` for a year, month (1-based) and day, letting the day or month
+ * run over — day 0 is the last day of the month before — the way `Date.UTC`
+ * does.
+ */
+function ymdOf(year: number, month: number, day: number): string {
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10)
+}
+
+/**
+ * The instants covering whole days `from` to `to` on the clinic's calendar,
+ * both included. `endDate` is the last millisecond of `to`, so callers can
+ * keep filtering with `lte`.
+ *
+ * `new Date('2026-10-14')` is UTC midnight, and `setHours(23, 59, 59)` is the
+ * *server's* end of day: a custom range in Reports started five hours late
+ * and ended in the wrong zone. Built from the clinic's midnight instead, the
+ * way `dayRangeIn` builds the appointment day.
+ */
+export function dateRangeFromDays(
+  from: string,
+  to: string,
+  timezone: string
+): { startDate: Date; endDate: Date } {
+  return {
+    startDate: dayRangeIn(from, timezone).gte,
+    endDate: new Date(dayRangeIn(to, timezone).lt.getTime() - 1),
+  }
+}
+
+/**
+ * The instants a report preset covers, on the clinic's calendar.
+ *
+ * This used to be built from the server's midnight. On a host in UTC a
+ * Karachi clinic's "today" started at five in the morning, and the billing
+ * summary, the payments report and the dashboard each drew the edge of a day
+ * in a different place (invoice review, 14 Oct, §3.2). Current periods run to
+ * the end of today; weeks start on Sunday.
+ */
+export function getDateRangeFromPreset(
+  preset: string,
+  timezone: string,
+  now: Date = new Date()
+): {
   startDate: Date
   endDate: Date
 } {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const endOfDay = new Date(today)
-  endOfDay.setHours(23, 59, 59, 999)
+  const today = localDay(now, timezone)
+  const year = Number(today.slice(0, 4))
+  const month = Number(today.slice(5, 7))
+  const date = Number(today.slice(8, 10))
+  const weekday = new Date(`${today}T00:00:00.000Z`).getUTCDay()
+  const range = (from: string, to: string) => dateRangeFromDays(from, to, timezone)
 
   switch (preset) {
     case 'today':
-      return { startDate: today, endDate: endOfDay }
+      return range(today, today)
 
     case 'yesterday': {
-      const yesterday = new Date(today)
-      yesterday.setDate(yesterday.getDate() - 1)
-      const endYesterday = new Date(yesterday)
-      endYesterday.setHours(23, 59, 59, 999)
-      return { startDate: yesterday, endDate: endYesterday }
+      const yesterday = ymdOf(year, month, date - 1)
+      return range(yesterday, yesterday)
     }
 
-    case 'this_week': {
-      const startOfWeek = new Date(today)
-      startOfWeek.setDate(today.getDate() - today.getDay())
-      return { startDate: startOfWeek, endDate: endOfDay }
-    }
+    case 'this_week':
+      return range(ymdOf(year, month, date - weekday), today)
 
-    case 'last_week': {
-      const startOfLastWeek = new Date(today)
-      startOfLastWeek.setDate(today.getDate() - today.getDay() - 7)
-      const endOfLastWeek = new Date(startOfLastWeek)
-      endOfLastWeek.setDate(startOfLastWeek.getDate() + 6)
-      endOfLastWeek.setHours(23, 59, 59, 999)
-      return { startDate: startOfLastWeek, endDate: endOfLastWeek }
-    }
+    case 'last_week':
+      return range(ymdOf(year, month, date - weekday - 7), ymdOf(year, month, date - weekday - 1))
 
-    case 'this_month': {
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-      return { startDate: startOfMonth, endDate: endOfDay }
-    }
+    case 'this_month':
+      return range(ymdOf(year, month, 1), today)
 
-    case 'last_month': {
-      const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
-      endOfLastMonth.setHours(23, 59, 59, 999)
-      return { startDate: startOfLastMonth, endDate: endOfLastMonth }
-    }
+    case 'last_month':
+      return range(ymdOf(year, month - 1, 1), ymdOf(year, month, 0))
 
     case 'this_quarter': {
-      const quarter = Math.floor(today.getMonth() / 3)
-      const startOfQuarter = new Date(today.getFullYear(), quarter * 3, 1)
-      return { startDate: startOfQuarter, endDate: endOfDay }
+      const first = Math.floor((month - 1) / 3) * 3 + 1
+      return range(ymdOf(year, first, 1), today)
     }
 
     case 'last_quarter': {
-      const currentQuarter = Math.floor(today.getMonth() / 3)
-      const lastQuarter = currentQuarter - 1
-      const year = lastQuarter < 0 ? today.getFullYear() - 1 : today.getFullYear()
-      const actualQuarter = lastQuarter < 0 ? 3 : lastQuarter
-      const startOfLastQuarter = new Date(year, actualQuarter * 3, 1)
-      const endOfLastQuarter = new Date(year, (actualQuarter + 1) * 3, 0)
-      endOfLastQuarter.setHours(23, 59, 59, 999)
-      return { startDate: startOfLastQuarter, endDate: endOfLastQuarter }
+      const first = Math.floor((month - 1) / 3) * 3 + 1
+      return range(ymdOf(year, first - 3, 1), ymdOf(year, first, 0))
     }
 
-    case 'this_year': {
-      const startOfYear = new Date(today.getFullYear(), 0, 1)
-      return { startDate: startOfYear, endDate: endOfDay }
-    }
+    case 'this_year':
+      return range(ymdOf(year, 1, 1), today)
 
-    case 'last_year': {
-      const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1)
-      const endOfLastYear = new Date(today.getFullYear() - 1, 11, 31)
-      endOfLastYear.setHours(23, 59, 59, 999)
-      return { startDate: startOfLastYear, endDate: endOfLastYear }
-    }
+    case 'last_year':
+      return range(ymdOf(year - 1, 1, 1), ymdOf(year - 1, 12, 31))
 
     default:
-      return { startDate: today, endDate: endOfDay }
+      return range(today, today)
   }
 }

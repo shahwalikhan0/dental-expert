@@ -5,7 +5,25 @@ import prisma from '@/lib/prisma'
 import { smsService } from './sms.service'
 import { emailService } from './email.service'
 import { templateService } from './template.service'
-import { addDays, startOfDay, endOfDay, format, subDays } from 'date-fns'
+import { addDays, startOfDay, endOfDay, subDays } from 'date-fns'
+import { DEFAULT_TIMEZONE, clinicTimezone, localDay } from '@/lib/appointment-time'
+import {
+  calendarDayOf,
+  dueAnchor,
+  isInvoiceOverdue,
+  owedInvoiceWhere,
+  type DatedInvoice,
+} from '@/lib/invoice-figures'
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** `16-Sep-2026`: the day an invoice fell due, as the clinic's calendar reads it. */
+function dueAnchorLabel(invoice: DatedInvoice, timezone: string): string {
+  const anchor = dueAnchor(invoice)
+  if (!anchor) return 'ASAP'
+  const day = calendarDayOf(anchor, timezone)
+  return `${day.slice(8, 10)}-${MONTHS[Number(day.slice(5, 7)) - 1]}-${day.slice(0, 4)}`
+}
 
 /** What a birthday message is recorded as being about. */
 const BIRTHDAY_RELATED_TYPE = 'PatientBirthday'
@@ -151,26 +169,45 @@ class CommunicationTriggersService {
     }
   }
 
-  // Send payment reminders for overdue invoices
+  /**
+   * Send payment reminders for overdue invoices.
+   *
+   * Overdue by the rule every screen uses (lib/invoice-figures.ts): owed, and
+   * due before today on the clinic's own calendar. This read `dueDate <= now`
+   * on the server's clock — a bill due today was chased this morning — and
+   * skipped every invoice with no due date, which was most of them. Since
+   * 14 Oct every issued invoice has one ("due on receipt" is its issue day),
+   * so those are reminded about now too.
+   */
   async sendPaymentReminders() {
     const today = new Date()
 
-    // Get invoices that are overdue or due soon
-    const overdueInvoices = await prisma.invoice.findMany({
+    // Owed invoices whose due date (or, failing that, issue or creation date)
+    // has passed by the server's clock: a superset, narrowed below by each
+    // clinic's calendar.
+    const candidates = await prisma.invoice.findMany({
       where: {
-        status: {
-          in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'],
-        },
-        balanceAmount: {
-          gt: 0,
-        },
-        dueDate: {
-          lte: today,
-        },
+        ...owedInvoiceWhere(),
+        OR: [
+          { dueDate: { lt: today } },
+          { dueDate: null, issuedAt: { lt: today } },
+          { dueDate: null, issuedAt: null, createdAt: { lt: today } },
+        ],
       },
       include: {
         patient: true,
       },
+    })
+
+    // Each clinic's own day. Read once per clinic per run, not cached across
+    // runs — see `clinicTimezone`.
+    const zones = new Map<string, string>()
+    for (const hospitalId of new Set(candidates.map((invoice) => invoice.hospitalId))) {
+      zones.set(hospitalId, await clinicTimezone(prisma, hospitalId))
+    }
+    const overdueInvoices = candidates.filter((invoice) => {
+      const timezone = zones.get(invoice.hospitalId) ?? DEFAULT_TIMEZONE
+      return isInvoiceOverdue(invoice, localDay(today, timezone), timezone)
     })
 
     console.log(`Found ${overdueInvoices.length} overdue invoices`)
@@ -201,7 +238,8 @@ class CommunicationTriggersService {
           balanceAmount: `Rs ${invoice.balanceAmount.toFixed(2)}`,
           // What the starter payment reminder says; the same figure.
           amount: `Rs ${invoice.balanceAmount.toFixed(2)}`,
-          dueDate: invoice.dueDate ? format(invoice.dueDate, 'dd-MMM-yyyy') : 'ASAP',
+          // The day it fell due on the clinic's calendar, as the invoice shows it.
+          dueDate: dueAnchorLabel(invoice, zones.get(invoice.hospitalId) ?? DEFAULT_TIMEZONE),
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
           clinicPhone: clinicInfo?.phone || '',
         }

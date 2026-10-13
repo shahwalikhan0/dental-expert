@@ -27,10 +27,11 @@ import { minutesBetween } from '@/lib/appointment-wait'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { findDentist, NOT_A_DENTIST } from '@/lib/clinicians'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { holderCan } from '@/lib/rbac'
 
 // GET - Get single appointment
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('appointments:read')
+  const { error, hospitalId, user } = await requirePermission('appointments:read')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -64,6 +65,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             procedure: true,
           },
         },
+        // The bills raised for this visit (review 4.3), cancelled ones too —
+        // as the treatment page lists its invoices — so the history of what
+        // was charged is all there and the status says which still stands.
+        // Only for those who may read billing: a dental assistant opens
+        // appointments but is not shown what patients are charged.
+        ...(holderCan(user, 'billing:read')
+          ? {
+              invoices: {
+                select: {
+                  id: true,
+                  invoiceNo: true,
+                  status: true,
+                  totalAmount: true,
+                  balanceAmount: true,
+                },
+                orderBy: { createdAt: 'asc' as const },
+              },
+            }
+          : {}),
       },
     })
 
