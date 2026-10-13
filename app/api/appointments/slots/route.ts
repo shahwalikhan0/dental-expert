@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { findDentist, NOT_A_DENTIST } from '@/lib/clinicians'
 import { clinicTimezone, dayRangeIn, wallClockIn } from '@/lib/appointment-time'
-import { availableSlots, hoursOn } from '@/lib/working-hours'
-import { readAppointmentSettings } from '@/lib/appointment-settings'
-import {
-  closureOn,
-  obstaclesOn,
-  relevantOn,
-  shiftOn,
-  type AvailabilityRow,
-} from '@/lib/availability'
+import { availableSlots } from '@/lib/working-hours'
+import { dayAvailability } from '@/lib/appointment-availability'
 
 // GET - Get available time slots for a doctor on a specific date
 export async function GET(request: NextRequest) {
@@ -30,70 +25,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Doctor ID and date are required' }, { status: 400 })
     }
 
-    // Get hospital working hours (default 9 AM to 9 PM)
-    const hospital = await prisma.hospital.findUnique({
-      where: { id: hospitalId },
-      select: { workingHours: true, timezone: true },
-    })
+    // Only somebody who can be booked as the dentist is offered times. This
+    // checked only that the staff id belonged to the clinic, so the picker
+    // offered slots for the receptionist (bug report 12 Oct, finding 7).
+    const doctor = await findDentist(hospitalId, doctorId)
+    if (!doctor) {
+      return NextResponse.json({ error: NOT_A_DENTIST }, { status: 400 })
+    }
 
-    const timezone = hospital?.timezone || (await clinicTimezone(prisma, hospitalId))
+    const timezone = await clinicTimezone(prisma, hospitalId)
 
-    // Settings → Appointments, which until now wrote rows nothing read.
-    const settings = await readAppointmentSettings(prisma, hospitalId)
-
-    // The clinic's hours for this weekday. This used to parse the stored JSON
-    // into a shape nothing writes — see lib/working-hours.ts.
-    const workingHours = hoursOn(hospital?.workingHours, date)
-    if (!workingHours) {
+    // The clinic's hours for this weekday, its closures, this dentist's shift
+    // and leave, and the lunch break — the same answer booking itself checks
+    // against. See lib/appointment-availability.ts.
+    const day = await dayAvailability(prisma, hospitalId, date, doctorId)
+    if (day.closed || !day.hours) {
       return NextResponse.json({
         available: false,
-        reason: 'The clinic is closed on this day',
+        reason: day.closed,
         slots: [],
       })
     }
-
-    const dateObj = new Date(date)
-
-    // Verify doctor belongs to this hospital
-    const doctor = await prisma.staff.findFirst({
-      where: { id: doctorId, hospitalId },
-    })
-
-    if (!doctor) {
-      return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
-    }
-
-    // Clinic closures and this dentist's own shifts and leave, in one query.
-    // These were two tables consulted separately, and the holiday check ran
-    // before the doctor was even verified — see lib/availability.ts.
-    const availability = (await prisma.availability.findMany({
-      where: relevantOn(hospitalId, date, doctorId),
-      select: {
-        id: true,
-        staffId: true,
-        dayOfWeek: true,
-        date: true,
-        startTime: true,
-        endTime: true,
-        isAvailable: true,
-        name: true,
-        isRecurring: true,
-      },
-    })) as AvailabilityRow[]
-
-    const closed = closureOn(availability, date)
-    if (closed) {
-      return NextResponse.json({ available: false, reason: closed.reason, slots: [] })
-    }
-
-    const doctorShift = shiftOn(availability, date, doctorId)
 
     // Get existing appointments for the doctor on this date
     const existingAppointments = await prisma.appointment.findMany({
       where: {
         hospitalId,
         doctorId,
-        startsAt: dayRangeIn(dateObj, timezone),
+        startsAt: dayRangeIn(new Date(date), timezone),
         status: {
           notIn: ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'],
         },
@@ -105,26 +64,17 @@ export async function GET(request: NextRequest) {
     })
 
     const slots = availableSlots({
-      hours: workingHours,
-      shift: doctorShift,
+      hours: day.hours,
+      shift: day.shift,
       duration,
       booked: existingAppointments.map((apt) => ({
         start: wallClockIn(apt.startsAt, timezone).scheduledTime,
         duration: apt.duration,
       })),
-      blocked: [
-        ...obstaclesOn(workingHours, availability, date),
-        // The clinic's lunch break, when it has recorded one on the
-        // appointments screen. `Hospital.workingHours` can also carry a
-        // per-weekday break, and `obstaclesOn` already honours that; this is
-        // the simple clinic-wide one the settings page offers.
-        ...(settings.lunchBreakStart && settings.lunchBreakEnd
-          ? [{ start: settings.lunchBreakStart, end: settings.lunchBreakEnd }]
-          : []),
-      ],
+      blocked: day.blocked,
       day: date.slice(0, 10),
-      step: settings.slotDuration,
-      buffer: settings.bufferTime,
+      step: day.settings.slotDuration,
+      buffer: day.settings.bufferTime,
       now: {
         day: wallClockIn(new Date(), timezone).scheduledDate,
         time: wallClockIn(new Date(), timezone).scheduledTime,
@@ -136,11 +86,11 @@ export async function GET(request: NextRequest) {
       date,
       doctorId,
       slots,
-      workingHours: doctorShift
-        ? { open: doctorShift.startTime, close: doctorShift.endTime }
-        : workingHours,
+      workingHours: day.shift ? { open: day.shift.startTime, close: day.shift.endTime } : day.hours,
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching time slots:', error)
     return NextResponse.json({ error: 'Failed to fetch time slots' }, { status: 500 })
   }

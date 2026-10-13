@@ -3,6 +3,43 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import ExcelJS from 'exceljs'
 import { format } from 'date-fns'
+import { escapeHtml } from '@/lib/services/pdf-generator'
+
+/**
+ * The reports there are, and the other names they are asked for by.
+ *
+ * An unknown type used to fall through to the analytics route, come back as
+ * an error, and leave here as a bare 500 — `patients` among them, when the
+ * report is called `patient` (bug report 12 Oct, finding 49). The plurals
+ * are accepted; anything else is a 400 that lists what is.
+ */
+const REPORT_TYPES = ['patient', 'clinical', 'financial', 'operational'] as const
+type ReportType = (typeof REPORT_TYPES)[number]
+
+const REPORT_TYPE_ALIASES: Record<string, ReportType> = {
+  patients: 'patient',
+  treatments: 'clinical',
+  finance: 'financial',
+  finances: 'financial',
+  appointments: 'operational',
+  operations: 'operational',
+}
+
+function reportType(value: string): ReportType | null {
+  const key = value.trim().toLowerCase()
+  if ((REPORT_TYPES as readonly string[]).includes(key)) return key as ReportType
+  return REPORT_TYPE_ALIASES[key] ?? null
+}
+
+/**
+ * What the export can produce. There is no PDF library in this project, and
+ * `format=pdf` used to answer with HTML under a PDF name. It is a print view
+ * now, called that, and the browser's Print → Save as PDF makes the PDF.
+ */
+const EXPORT_FORMATS = ['excel', 'html'] as const
+
+/** Text from the database, made safe to put in the print view. */
+const html = (value: unknown) => escapeHtml(String(value ?? ''))
 
 async function generateExcelReport(
   type: string,
@@ -94,7 +131,7 @@ async function generateExcelReport(
       break
 
     case 'financial':
-      worksheet.addRow(['Metric', 'Value (INR)']).eachCell((cell) => {
+      worksheet.addRow(['Metric', 'Value (Rs)']).eachCell((cell) => {
         cell.style = headerStyle
       })
       worksheet.addRow(['Total Revenue', data.totalRevenue.toFixed(2)])
@@ -106,7 +143,7 @@ async function generateExcelReport(
 
       if (data.paymentMethodBreakdown.length > 0) {
         worksheet.addRow([]) // Empty row
-        worksheet.addRow(['Payment Method', 'Amount (INR)', 'Percentage']).eachCell((cell) => {
+        worksheet.addRow(['Payment Method', 'Amount (Rs)', 'Percentage']).eachCell((cell) => {
           cell.style = headerStyle
         })
         data.paymentMethodBreakdown.forEach((method: any) => {
@@ -151,7 +188,7 @@ async function generateExcelReport(
       if (data.staffProductivity.length > 0) {
         worksheet.addRow([]) // Empty row
         worksheet
-          .addRow(['Staff Member', 'Role', 'Appointments', 'Treatments', 'Revenue (INR)'])
+          .addRow(['Staff Member', 'Role', 'Appointments', 'Treatments', 'Revenue (Rs)'])
           .eachCell((cell) => {
             cell.style = headerStyle
           })
@@ -181,11 +218,13 @@ async function generateExcelReport(
   return workbook
 }
 
-async function generatePDFReport(type: string, data: any, dateRange: string, hospitalName: string) {
-  const html = `
+async function generatePrintView(type: string, data: any, dateRange: string, hospitalName: string) {
+  const page = `
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
+  <title>${html(hospitalName)} – ${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h1 { color: #0070C0; text-align: center; }
@@ -196,11 +235,14 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
     .metric { font-weight: bold; }
     .value { text-align: right; }
     .footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
+    .print { display: block; margin: 0 auto 20px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+    @media print { .print { display: none; } }
   </style>
 </head>
 <body>
+  <button class="print" onclick="window.print()">Print or save as PDF</button>
   <h1>${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report</h1>
-  <p style="text-align: center; color: #666;">Period: ${dateRange}</p>
+  <p style="text-align: center; color: #666;">Period: ${html(dateRange)}</p>
   <p style="text-align: center; color: #666;">Generated on: ${format(new Date(), 'PPpp')}</p>
 
   ${
@@ -230,7 +272,7 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ${data.acquisitionSources
           .map(
             (s: any) => `
-          <tr><td>${s.source}</td><td>${s.count}</td><td>${s.percentage.toFixed(2)}%</td></tr>
+          <tr><td>${html(s.source)}</td><td>${s.count}</td><td>${s.percentage.toFixed(2)}%</td></tr>
         `
           )
           .join('')}
@@ -263,7 +305,7 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ${data.commonProcedures
           .map(
             (p: any) => `
-          <tr><td>${p.name}</td><td>${p.code}</td><td>${p.count}</td><td>${p.successRate.toFixed(2)}%</td></tr>
+          <tr><td>${html(p.name)}</td><td>${html(p.code)}</td><td>${p.count}</td><td>${p.successRate.toFixed(2)}%</td></tr>
         `
           )
           .join('')}
@@ -297,7 +339,7 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ${data.paymentMethodBreakdown
           .map(
             (m: any) => `
-          <tr><td>${m.method}</td><td>Rs ${m.amount.toFixed(2)}</td><td>${m.percentage.toFixed(2)}%</td></tr>
+          <tr><td>${html(m.method)}</td><td>Rs ${m.amount.toFixed(2)}</td><td>${m.percentage.toFixed(2)}%</td></tr>
         `
           )
           .join('')}
@@ -334,7 +376,7 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
         ${data.staffProductivity
           .map(
             (s: any) => `
-          <tr><td>${s.name}</td><td>${s.role}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>Rs ${s.revenue.toFixed(2)}</td></tr>
+          <tr><td>${html(s.name)}</td><td>${html(s.role)}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>Rs ${s.revenue.toFixed(2)}</td></tr>
         `
           )
           .join('')}
@@ -347,14 +389,14 @@ async function generatePDFReport(type: string, data: any, dateRange: string, hos
   }
 
   <div class="footer">
-    <p>${hospitalName}</p>
+    <p>${html(hospitalName)}</p>
     <p>This is a system-generated report</p>
   </div>
 </body>
 </html>
   `
 
-  return html
+  return page
 }
 
 export async function GET(request: NextRequest) {
@@ -374,11 +416,52 @@ export async function GET(request: NextRequest) {
     const hospitalName = hospital?.name || 'Dental Hospital'
 
     const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') || 'patient'
+    const requestedType = searchParams.get('type') || 'patient'
     const exportFormat = searchParams.get('format') || 'excel'
     const preset = searchParams.get('preset') || 'this_month'
     const dateFromParam = searchParams.get('dateFrom')
     const dateToParam = searchParams.get('dateTo')
+
+    const type = reportType(requestedType)
+    if (!type) {
+      return NextResponse.json(
+        {
+          error: `Report type "${requestedType}" is not valid. Use one of: ${REPORT_TYPES.join(', ')}.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    if (exportFormat === 'pdf') {
+      return NextResponse.json(
+        {
+          error:
+            'PDF export is not available. Use format=html for a print view, and save it as PDF from the browser.',
+        },
+        { status: 400 }
+      )
+    }
+    if (!(EXPORT_FORMATS as readonly string[]).includes(exportFormat)) {
+      return NextResponse.json(
+        {
+          error: `Format "${exportFormat}" is not valid. Use one of: ${EXPORT_FORMATS.join(', ')}.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    // A date that does not parse used to reach `format()` and throw.
+    for (const [name, value] of [
+      ['dateFrom', dateFromParam],
+      ['dateTo', dateToParam],
+    ] as const) {
+      if (value && Number.isNaN(new Date(value).getTime())) {
+        return NextResponse.json(
+          { error: `${name} must be a date such as 2026-10-21.` },
+          { status: 400 }
+        )
+      }
+    }
 
     // Fetch the analytics data (reuse the analytics endpoint logic)
     const analyticsUrl = new URL('/api/reports/analytics', request.url)
@@ -414,18 +497,19 @@ export async function GET(request: NextRequest) {
           'Content-Disposition': `attachment; filename="${type}_analytics_${Date.now()}.xlsx"`,
         },
       })
-    } else if (exportFormat === 'pdf') {
-      const html = await generatePDFReport(type, data, dateRange, hospitalName)
-
-      return new NextResponse(html, {
-        headers: {
-          'Content-Type': 'text/html',
-          'Content-Disposition': `inline; filename="${type}_analytics_${Date.now()}.html"`,
-        },
-      })
     }
 
-    return NextResponse.json({ error: 'Invalid format' }, { status: 400 })
+    // The print view, as a file. An attachment rather than a page served from
+    // this origin: it is the clinic's figures in an HTML document, opened and
+    // printed by whoever downloaded it.
+    const page = await generatePrintView(type, data, dateRange, hospitalName)
+
+    return new NextResponse(page, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${type}_analytics_${Date.now()}.html"`,
+      },
+    })
   } catch (error) {
     console.error('Export API error:', error)
     return NextResponse.json({ error: 'Failed to export report' }, { status: 500 })

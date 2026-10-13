@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { smsService } from '@/lib/services/sms.service'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { isSendRefusal } from '@/lib/services/send-refusal'
 
 const sendSMSSchema = z.object({
   phone: z.string().min(10),
@@ -9,26 +11,6 @@ const sendSMSSchema = z.object({
   patientId: z.string().optional(),
   templateId: z.string().optional(),
   scheduledFor: z.string().datetime().optional(),
-})
-
-const bulkSMSSchema = z.object({
-  recipients: z.array(
-    z.object({
-      phone: z.string().min(10),
-      message: z.string().min(1).max(500),
-      patientId: z.string().optional(),
-    })
-  ),
-  templateId: z.string().optional(),
-})
-
-const historySchema = z.object({
-  patientId: z.string().optional(),
-  phone: z.string().optional(),
-  status: z.string().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
-  limit: z.number().min(1).max(1000).optional(),
 })
 
 // POST /api/communications/sms - Send SMS
@@ -56,9 +38,17 @@ export async function POST(req: NextRequest) {
       smsLogId,
       message: data.scheduledFor ? 'SMS scheduled successfully' : 'SMS sent successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
+    // The service's own reasons — no gateway set up, outside the send window,
+    // the patient opted out — are for the person sending. Anything else is
+    // logged, not repeated.
+    if (isSendRefusal(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('SMS send error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to send SMS' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to send SMS' }, { status: 500 })
   }
 }
 
@@ -89,11 +79,10 @@ export async function GET(req: NextRequest) {
       data: history,
       count: history.length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get SMS history error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get SMS history' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get SMS history' }, { status: 500 })
   }
 }

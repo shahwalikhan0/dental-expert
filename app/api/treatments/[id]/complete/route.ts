@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { completeRecare } from '@/lib/recare'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { completeRecare, nextDueDate, type RecallMoved } from '@/lib/recare'
+import { afterTreatmentCompleted } from '@/lib/treatment-completion'
 
 // POST - Complete treatment
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requirePermission('clinical:write')
+  const { error, hospitalId } = await requirePermission('clinical:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -62,18 +64,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Completing the visit that a recall was for moves the recall on.
     //
-    // Named explicitly rather than guessed: there is no link between a
-    // procedure and a recare type, and advancing whatever recall the patient
-    // happens to have because a filling was completed would push their hygiene
-    // visit six months into the future for the wrong reason. The recall list
-    // has its own "mark as done" for the ordinary case.
+    // Two ways. A caller can name the recall (`recareId`), which is checked to
+    // be this patient's. And whether or not it does, the patient's recalls
+    // that this procedure is the visit for are moved too — a scale and polish
+    // moves the "Scale and polish" recall, as Mark as done would (bug report
+    // 12 Oct, finding 46). No screen ever sent `recareId`, so without the
+    // second the recall waited for somebody to remember. The match is narrow
+    // on purpose — see `recareTypeMatchesProcedure` — so a filling never moves
+    // a hygiene recall.
+    let namedRecare: { id: string; recareType: { name: string; intervalMonths: number } } | null =
+      null
     if (body.recareId) {
-      const recare = await prisma.recare.findFirst({
+      namedRecare = await prisma.recare.findFirst({
         where: { id: body.recareId, hospitalId, patientId: treatment.patientId },
-        select: { id: true },
+        select: { id: true, recareType: { select: { name: true, intervalMonths: true } } },
       })
 
-      if (!recare) {
+      if (!namedRecare) {
         return NextResponse.json(
           { error: 'That recare does not belong to this patient' },
           { status: 400 }
@@ -111,12 +118,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       },
     })
 
-    if (body.recareId) {
-      await completeRecare(prisma, body.recareId, updateData.endTime)
+    const recallsMoved: RecallMoved[] = []
+    if (namedRecare) {
+      await completeRecare(prisma, namedRecare.id, updateData.endTime)
+      recallsMoved.push({
+        id: namedRecare.id,
+        name: namedRecare.recareType.name,
+        dueDate: nextDueDate(updateData.endTime, namedRecare.recareType.intervalMonths),
+      })
     }
 
-    return NextResponse.json(updatedTreatment)
+    // The plan step this treatment carries out, and the recalls it is the
+    // visit for.
+    recallsMoved.push(
+      ...(await afterTreatmentCompleted(
+        prisma,
+        {
+          id,
+          hospitalId,
+          patientId: treatment.patientId,
+          procedure: updatedTreatment.procedure,
+        },
+        updateData.endTime,
+        namedRecare ? [namedRecare.id] : []
+      ))
+    )
+
+    return NextResponse.json({ ...updatedTreatment, recallsMoved })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error completing treatment:', error)
     return NextResponse.json({ error: 'Failed to complete treatment' }, { status: 500 })
   }

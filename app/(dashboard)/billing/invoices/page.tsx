@@ -190,29 +190,32 @@ export default function InvoicesPage() {
     return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
   }
 
-  const handleDelete = async (id: string) => {
+  // Cancelling keeps the invoice, its number and its lines; its treatments
+  // become billable again. One with money on it is refused by the server until
+  // the payments are refunded, and is not offered here.
+  const handleCancel = async (invoice: Invoice) => {
     const ok = await confirm({
       title: 'Cancel Invoice',
-      description: 'Are you sure you want to delete/cancel this invoice?',
+      description: `${invoice.invoiceNo} will be marked cancelled. It keeps its number and lines, and its treatments can be billed on a new invoice.`,
       confirmLabel: 'Cancel Invoice',
     })
     if (!ok) return
 
     try {
-      const response = await fetch(`/api/invoices/${id}`, {
+      const response = await fetch(`/api/invoices/${invoice.id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to delete invoice')
+        throw new Error(data.error || 'Failed to cancel invoice')
       }
       fetchInvoices()
     } catch (error) {
-      console.error('Error deleting invoice:', error)
+      console.error('Error cancelling invoice:', error)
       toast({
         variant: 'destructive',
         title: 'Could not cancel the invoice',
-        description: error instanceof Error ? error.message : 'Failed to delete invoice',
+        description: error instanceof Error ? error.message : 'Failed to cancel invoice',
       })
     }
   }
@@ -451,9 +454,9 @@ export default function InvoicesPage() {
                             Print Invoice
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
+                          {invoice.status !== 'CANCELLED' && Number(invoice.paidAmount) <= 0 && (
                             <DropdownMenuItem
-                              onClick={() => handleDelete(invoice.id)}
+                              onClick={() => handleCancel(invoice)}
                               className="text-red-600 dark:text-red-400"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />

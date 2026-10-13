@@ -213,7 +213,9 @@ export default function ReportsPage() {
     fetchAnalytics(activeTab)
   }, [activeTab, datePreset, dateFrom, dateTo])
 
-  const handleExport = async (format: 'pdf' | 'excel') => {
+  // `html` is a print view: there is no PDF library here, so it is called
+  // what it is, and the browser's Print → Save as PDF makes the PDF.
+  const handleExport = async (format: 'html' | 'excel') => {
     try {
       const params = new URLSearchParams({
         type: activeTab,
@@ -228,13 +230,16 @@ export default function ReportsPage() {
       }
 
       const response = await fetch(`/api/reports/export?${params}`)
-      if (!response.ok) throw new Error('Failed to export report')
+      if (!response.ok) {
+        const result = await response.json().catch(() => null)
+        throw new Error(result?.error || 'The report could not be exported. Try again in a moment.')
+      }
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${activeTab}_analytics_${Date.now()}.${format === 'pdf' ? 'pdf' : 'xlsx'}`
+      a.download = `${activeTab}_analytics_${Date.now()}.${format === 'html' ? 'html' : 'xlsx'}`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -243,7 +248,10 @@ export default function ReportsPage() {
       console.error('Export error:', error)
       toast({
         title: 'Export failed',
-        description: 'The report could not be exported. Try again in a moment.',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'The report could not be exported. Try again in a moment.',
         variant: 'destructive',
       })
     }
@@ -311,13 +319,15 @@ export default function ReportsPage() {
               />
             </>
           )}
-          <Select onValueChange={(value) => handleExport(value as 'pdf' | 'excel')}>
+          {/* Held at no value, so it stays an "Export" button and choosing the
+              same format twice exports twice. */}
+          <Select value="" onValueChange={(value) => handleExport(value as 'html' | 'excel')}>
             <SelectTrigger className="w-[140px]">
               <Download className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Export" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="pdf">Export as PDF</SelectItem>
+              <SelectItem value="html">Print view (HTML)</SelectItem>
               <SelectItem value="excel">Export as Excel</SelectItem>
             </SelectContent>
           </Select>

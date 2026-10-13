@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: categories })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('Error fetching medication categories:', err)
+    return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 })
   }
 }

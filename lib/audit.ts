@@ -139,6 +139,39 @@ export const AUDIT_ACTIONS = {
   VISITOR_CONVERTED: 'visitor.converted',
   VISITOR_DISCARDED: 'visitor.discarded',
 
+  /// Money and record changes (bug report 12 Oct, finding 24). Before these,
+  /// the trail recorded refunds and discount decisions and nothing else about
+  /// money: an invoice could be raised, cut, cancelled or deleted and a payment
+  /// taken without a line here.
+  INVOICE_CREATED: 'invoice.created',
+  INVOICE_UPDATED: 'invoice.updated',
+  INVOICE_CANCELLED: 'invoice.cancelled',
+  INVOICE_DELETED: 'invoice.deleted',
+  PAYMENT_RECORDED: 'payment.recorded',
+
+  /// A signature attests to a clinical record; a prescription is a clinical
+  /// act with legal weight. Both are recorded with who did them.
+  TREATMENT_SIGNED: 'treatment.signed',
+  CLINICAL_NOTE_SIGNED: 'clinical_note.signed',
+  PRESCRIPTION_CREATED: 'prescription.created',
+  TREATMENT_DELETED: 'treatment.deleted',
+
+  PATIENT_DEACTIVATED: 'patient.deactivated',
+  PATIENT_REACTIVATED: 'patient.reactivated',
+
+  APPOINTMENT_CANCELLED: 'appointment.cancelled',
+  APPOINTMENT_DELETED: 'appointment.deleted',
+
+  STAFF_CREATED: 'staff.created',
+  STAFF_UPDATED: 'staff.updated',
+  STAFF_DEACTIVATED: 'staff.deactivated',
+  STAFF_REACTIVATED: 'staff.reactivated',
+
+  PROCEDURE_DEACTIVATED: 'procedure.deactivated',
+  INVENTORY_ITEM_DELETED: 'inventory_item.deleted',
+  SUPPLIER_DELETED: 'supplier.deleted',
+  STOCK_ADJUSTED: 'stock.adjusted',
+
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
   SECURITY_UPDATED: 'settings.security.updated',

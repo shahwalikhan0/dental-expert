@@ -114,6 +114,9 @@ class CommunicationTriggersService {
           patientName: `${patient.firstName} ${patient.lastName}`,
           firstName: patient.firstName,
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
+          // The starter birthday template signs off with it, and it was the
+          // one trigger that did not fill it in.
+          clinicPhone: clinicInfo?.phone || '',
         }
 
         // Send SMS. Whether this patient wants birthday messages is decided by
@@ -196,6 +199,8 @@ class CommunicationTriggersService {
           invoiceNo: invoice.invoiceNo,
           invoiceAmount: `Rs ${invoice.totalAmount.toFixed(2)}`,
           balanceAmount: `Rs ${invoice.balanceAmount.toFixed(2)}`,
+          // What the starter payment reminder says; the same figure.
+          amount: `Rs ${invoice.balanceAmount.toFixed(2)}`,
           dueDate: invoice.dueDate ? format(invoice.dueDate, 'dd-MMM-yyyy') : 'ASAP',
           clinicName: clinicInfo?.name || 'Your Dental Clinic',
           clinicPhone: clinicInfo?.phone || '',

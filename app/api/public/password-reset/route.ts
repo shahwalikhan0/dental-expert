@@ -5,6 +5,7 @@ import { generateToken } from '@/lib/api-helpers'
 import { resetExpiry, RESET_TTL_MINUTES } from '@/lib/password-reset'
 import { sendPasswordResetEmail } from '@/lib/email-helpers'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { emailField } from '@/lib/email-address'
 
 /**
  * POST /api/public/password-reset — ask for a reset link.
@@ -28,7 +29,9 @@ import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
  * without it this is a way to send mail to any address, repeatedly.
  */
 const schema = z.object({
-  email: z.string().email(),
+  // Trimmed and lower-cased before it is checked, so an address pasted with a
+  // trailing space is still an address (finding 29).
+  email: emailField(),
 })
 
 /** What the caller is told, whatever actually happened. */
@@ -50,7 +53,7 @@ export async function POST(request: Request) {
   // smaller disclosure than the rest, but there is no reason to vary at all.
   if (!parsed.success) return NextResponse.json(SAME_ANSWER)
 
-  const email = parsed.data.email.trim().toLowerCase()
+  const email = parsed.data.email
 
   try {
     const accounts = await prisma.user.findMany({

@@ -53,7 +53,7 @@ This is the half that makes localization more than a find-and-replace.
    India-specific, none optional in the UI.
 
 4. **Address forms.** Hardcoded Indian state dropdowns appear in
-   `app/(dashboard)/onboarding/page.tsx`, `patients/new/page.tsx`,
+   `app/(onboarding)/onboarding/page.tsx`, `patients/new/page.tsx`,
    `staff/new/page.tsx`, `settings/clinic/page.tsx` and `lab/vendors/page.tsx`.
 
 5. **Seed data.** [`prisma/seed.ts`](../prisma/seed.ts) seeds an Indian medication

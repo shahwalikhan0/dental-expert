@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readTeeth } from '@/lib/teeth'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
@@ -138,6 +139,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       appointmentId = appointment.id
     }
 
+    // FDI numbers, permanent or primary — the same rule a treatment and a
+    // note edit follow (bug report 12 Oct, finding 54).
+    const teeth = readTeeth(data.toothNumbers)
+    if (!teeth.ok) return NextResponse.json({ error: teeth.error }, { status: 400 })
+
     const note = await prisma.clinicalNote.create({
       data: {
         hospitalId,
@@ -147,7 +153,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         kind: data.kind,
         summary: data.summary,
         body: data.body,
-        toothNumbers: data.toothNumbers || null,
+        toothNumbers: teeth.column,
         authorId: user.id,
       },
       include: NOTE_INCLUDE,

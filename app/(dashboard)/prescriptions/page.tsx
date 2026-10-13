@@ -23,6 +23,8 @@ import { ClipboardList, Plus, Search, Eye, Trash2 } from 'lucide-react'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { fetchHandedPatient } from '@/lib/prefill'
+import { prescriberName } from '@/lib/prescribing'
+import { useCan } from '@/hooks/use-can'
 
 interface Prescription {
   id: string
@@ -31,7 +33,9 @@ interface Prescription {
   createdAt: string
   validUntil: string | null
   patient: { id: string; patientId: string; firstName: string; lastName: string }
-  doctor: { id: string; name: string }
+  /** The staff record, as the API returns it. There is no `name` column; the
+      page read one, so the Doctor column and the export were blank. */
+  doctor: { id: string; firstName: string; lastName: string } | null
   medications: {
     id: string
     medicationName: string
@@ -58,6 +62,10 @@ export default function PrescriptionsPage() {
   const patientId = searchParams.get('patientId') ?? ''
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  // Only a dentist prescribes (bug report 12 Oct, finding 36). Hidden rather
+  // than offered to a form that can only end in a refusal; `null` while the
+  // session loads, so it does not flash on and off.
+  const canPrescribe = useCan('clinical:sign') === true
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -180,7 +188,7 @@ export default function PrescriptionsPage() {
                 'Rx #': rx.prescriptionNo,
                 Patient: `${rx.patient.firstName} ${rx.patient.lastName}`,
                 'Patient ID': rx.patient.patientId,
-                Doctor: rx.doctor.name,
+                Doctor: prescriberName(rx.doctor),
                 Diagnosis: rx.diagnosis || '',
                 Medications: rx.medications
                   .map((m) => `${m.medicationName} ${m.dosage} ${m.frequency} ${m.duration}`)
@@ -205,18 +213,20 @@ export default function PrescriptionsPage() {
             Writing a prescription for the patient whose list you are reading
             should not start by searching for them again.
           */}
-          <Button
-            onClick={() =>
-              router.push(
-                trail.to(
-                  patientId ? `/prescriptions/new?patientId=${patientId}` : '/prescriptions/new'
+          {canPrescribe && (
+            <Button
+              onClick={() =>
+                router.push(
+                  trail.to(
+                    patientId ? `/prescriptions/new?patientId=${patientId}` : '/prescriptions/new'
+                  )
                 )
-              )
-            }
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Prescription
-          </Button>
+              }
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Prescription
+            </Button>
+          )}
         </div>
       </div>
 
@@ -302,7 +312,7 @@ export default function PrescriptionsPage() {
                     <br />
                     <span className="text-xs text-muted-foreground">{rx.patient.patientId}</span>
                   </TableCell>
-                  <TableCell>{rx.doctor.name}</TableCell>
+                  <TableCell>{prescriberName(rx.doctor) || '—'}</TableCell>
                   <TableCell className="text-sm">{rx.diagnosis || '—'}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">

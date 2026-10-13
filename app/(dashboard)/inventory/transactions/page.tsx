@@ -14,6 +14,40 @@ import { isoDay } from '@/lib/dates'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
 
+/**
+ * The movements a person records by hand, in the API's own spelling.
+ *
+ * The form used to offer `adjustment`, `usage` and `wastage`, none of which is
+ * a `StockTransactionType` — the route answered 400 for all three, so the only
+ * movements this screen could record were a purchase and a return. A
+ * delivery against an order is booked in on the order, not here.
+ */
+const RECORDABLE_TYPES = [
+  { value: 'CONSUMPTION', label: 'Used in treatment' },
+  { value: 'ADJUSTMENT_IN', label: 'Adjustment (add)' },
+  { value: 'ADJUSTMENT_OUT', label: 'Adjustment (remove)' },
+  { value: 'DAMAGED', label: 'Damaged' },
+  { value: 'EXPIRED', label: 'Expired' },
+  { value: 'RETURNED', label: 'Returned to supplier' },
+  { value: 'PURCHASE', label: 'Purchase (no order)' },
+]
+
+/** Every type, for the filter: movements of all kinds appear in the history. */
+const ALL_TYPES = [
+  ...RECORDABLE_TYPES,
+  { value: 'SALE', label: 'Sale' },
+  { value: 'TRANSFERRED', label: 'Transfer' },
+]
+
+const TYPE_LABEL = new Map(ALL_TYPES.map((t) => [t.value, t.label]))
+
+interface Batch {
+  id: string
+  batchNumber: string
+  remainingQty: number
+  expiryDate: string | null
+}
+
 interface Transaction {
   id: number
   type: string
@@ -58,14 +92,42 @@ export default function TransactionsPage() {
   })
 
   const [formData, setFormData] = useState({
-    type: 'purchase',
+    type: 'CONSUMPTION',
     itemId: handedItemId,
+    batchId: '',
     quantity: 0,
     unitPrice: 0,
     transactionDate: isoDay(new Date()),
     supplierId: '',
     notes: '',
   })
+  const [batches, setBatches] = useState<Batch[]>([])
+
+  const selectedItem = items.find((item) => item.id === formData.itemId)
+  const needsBatch = !!selectedItem?.batchTracking
+
+  /**
+   * The batches of a batch-tracked item, for the picker (finding 19). Every
+   * movement of such an item names its batch, so the batches keep adding up
+   * to the item's stock.
+   */
+  useEffect(() => {
+    if (!formData.itemId || !needsBatch) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBatches([])
+      return
+    }
+    let cancelled = false
+    fetch(`/api/inventory/items/${formData.itemId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data.success) setBatches(data.data.batches ?? [])
+      })
+      .catch((err) => console.error('Error loading batches:', err))
+    return () => {
+      cancelled = true
+    }
+  }, [formData.itemId, needsBatch])
 
   useEffect(() => {
     fetchTransactions()
@@ -134,17 +196,29 @@ export default function TransactionsPage() {
       setFormData({ ...formData, [name]: value })
     }
 
-    // Auto-fill unit price when item is selected
-    if (name === 'itemId' && value) {
-      const selectedItem = items.find((item) => item.id === parseInt(value))
-      if (selectedItem) {
-        setFormData((prev) => ({ ...prev, unitPrice: selectedItem.unitPrice }))
-      }
+    // A new item means a new batch list, and its own price. Item ids are
+    // strings; this used to compare them with parseInt and never matched.
+    if (name === 'itemId') {
+      const chosen = items.find((item) => item.id === value)
+      setFormData((prev) => ({
+        ...prev,
+        batchId: '',
+        unitPrice: chosen ? Number(chosen.purchasePrice) || 0 : 0,
+      }))
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (needsBatch && !formData.batchId) {
+      toast({
+        title: 'Choose a batch',
+        description: `${selectedItem?.name ?? 'This item'} is batch-tracked: say which batch moved.`,
+        variant: 'destructive',
+      })
+      return
+    }
 
     try {
       const response = await fetch('/api/inventory/transactions', {
@@ -152,7 +226,11 @@ export default function TransactionsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          batchId: formData.batchId || undefined,
+          supplierId: formData.supplierId || undefined,
+        }),
       })
 
       const data = await response.json()
@@ -163,8 +241,9 @@ export default function TransactionsPage() {
         fetchTransactions()
         // Reset form
         setFormData({
-          type: 'purchase',
+          type: 'CONSUMPTION',
           itemId: '',
+          batchId: '',
           quantity: 0,
           unitPrice: 0,
           transactionDate: isoDay(new Date()),
@@ -189,19 +268,23 @@ export default function TransactionsPage() {
   }
 
   const getTransactionTypeBadge = (type: string) => {
-    const badges: any = {
-      purchase: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-      sale: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-      adjustment: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
-      return: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
-      usage: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
-      wastage: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-      previousStock: 'bg-muted text-foreground',
+    // Keyed by the enum the API returns; the old lowercase keys never matched
+    // a row, so every badge was grey.
+    const badges: Record<string, string> = {
+      PURCHASE: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+      ADJUSTMENT_IN: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+      SALE: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+      TRANSFERRED: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+      ADJUSTMENT_OUT: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
+      RETURNED: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
+      CONSUMPTION: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
+      DAMAGED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+      EXPIRED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
     }
 
     return (
       <Badge className={`border-0 ${badges[type] || 'bg-muted text-foreground'}`}>
-        {humanise(type)}
+        {TYPE_LABEL.get(type) ?? humanise(type)}
       </Badge>
     )
   }
@@ -239,12 +322,11 @@ export default function TransactionsPage() {
             className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Types</option>
-            <option value="purchase">Purchase</option>
-            <option value="sale">Sale</option>
-            <option value="adjustment">Adjustment</option>
-            <option value="return">Return</option>
-            <option value="usage">Usage</option>
-            <option value="wastage">Wastage</option>
+            {ALL_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </select>
 
           <input
@@ -298,7 +380,9 @@ export default function TransactionsPage() {
             },
             {
               label: 'Type',
-              value: transactionType ? humanise(transactionType) : null,
+              value: transactionType
+                ? (TYPE_LABEL.get(transactionType) ?? humanise(transactionType))
+                : null,
               onClear: () => {
                 setTransactionType('')
                 setPagination((p) => ({ ...p, page: 1 }))
@@ -403,11 +487,11 @@ export default function TransactionsPage() {
                     required
                     className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="purchase">Purchase</option>
-                    <option value="adjustment">Adjustment</option>
-                    <option value="usage">Usage</option>
-                    <option value="wastage">Wastage</option>
-                    <option value="return">Return</option>
+                    {RECORDABLE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -441,7 +525,8 @@ export default function TransactionsPage() {
                     value={formData.quantity}
                     onChange={handleChange}
                     required
-                    step="0.01"
+                    min="1"
+                    step="1"
                     className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -455,6 +540,7 @@ export default function TransactionsPage() {
                     name="unitPrice"
                     value={formData.unitPrice}
                     onChange={handleChange}
+                    min="0"
                     step="0.01"
                     className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -474,7 +560,35 @@ export default function TransactionsPage() {
                   />
                 </div>
 
-                {formData.type === 'purchase' && (
+                {needsBatch && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Batch <span className="text-red-500 dark:text-red-400">*</span>
+                    </label>
+                    <select
+                      name="batchId"
+                      value={formData.batchId}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Batch</option>
+                      {batches.map((batch) => (
+                        <option key={batch.id} value={batch.id}>
+                          {batch.batchNumber} — {batch.remainingQty} left
+                          {batch.expiryDate ? `, expires ${batch.expiryDate.slice(0, 10)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {batches.length === 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        No batches yet. Receive this item against a purchase order to create one.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {formData.type === 'PURCHASE' && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Supplier

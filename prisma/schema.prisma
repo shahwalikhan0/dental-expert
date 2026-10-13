@@ -994,11 +994,18 @@ model TreatmentPlanItem {
 
   notes           String?
 
+  /// The treatment that carries this item out, once one is started from it.
+  /// Without it nothing could move an item off PENDING: a root canal could be
+  /// done, completed and signed and the plan still said it was to do. One
+  /// treatment per item — a second attempt is a new item, not a second link.
+  treatmentId     String?                 @unique
+
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
   treatmentPlan   TreatmentPlan           @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
   procedure       Procedure               @relation(fields: [procedureId], references: [id])
+  treatment       Treatment?              @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
 
   @@index([treatmentPlanId])
   @@index([treatmentPlanId, phase, priority])
@@ -1076,6 +1083,8 @@ model Treatment {
   prescriptions   Prescription[]
   invoiceItems    InvoiceItem[]
   documents       Document[]
+  planItem        TreatmentPlanItem?
+  labOrders       LabOrder[]
 
   @@unique([hospitalId, treatmentNo])
   @@index([hospitalId, status, createdAt(sort: Desc)])
@@ -2013,6 +2022,10 @@ model LabOrder {
   specialInstructions String?    @db.Text
   createdBy       String?
 
+  /// The treatment the work is for — the crown preparation the crown fits.
+  /// Optional: a night guard or a model may be ordered with no treatment.
+  treatmentId     String?
+
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?
@@ -2020,10 +2033,12 @@ model LabOrder {
   hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient         Patient        @relation(fields: [patientId], references: [id])
   labVendor       Vendor         @relation(fields: [labVendorId], references: [id])
+  treatment       Treatment?     @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
 
   @@unique([hospitalId, orderNumber])
   @@index([hospitalId, deletedAt, status, orderDate(sort: Desc)])
   @@index([hospitalId, patientId, orderDate(sort: Desc)])
+  @@index([treatmentId])
 }
 
 /// Status-transition audit trail for a lab order. Replaces the legacy

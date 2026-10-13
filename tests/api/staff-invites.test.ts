@@ -162,8 +162,10 @@ describe('Staff Invites API', () => {
 
   // ─── POST /api/staff-invites ──────────────────────
   describe('POST /api/staff-invites', () => {
+    // The existing-address lookup ignores case (finding 29), so it is a
+    // `findFirst` on an insensitive match rather than the unique index.
     it('creates a new invite and sends email', async () => {
-      ;(prisma.user.findUnique as any).mockResolvedValue(null)
+      ;(prisma.user.findFirst as any).mockResolvedValue(null)
       ;(prisma.user.create as any).mockResolvedValue(
         invitation({ id: 'inv-new', email: 'newdoc@clinic.com', name: 'New Doc' })
       )
@@ -187,6 +189,18 @@ describe('Staff Invites API', () => {
         isActive: false,
         inviteToken: 'mock-token-abc123',
       })
+    })
+
+    it('stores the address lower-cased', async () => {
+      ;(prisma.user.findFirst as any).mockResolvedValue(null)
+      ;(prisma.user.create as any).mockResolvedValue(invitation({ id: 'inv-new' }))
+      ;(prisma.hospital.findUnique as any).mockResolvedValue({ name: 'Test Clinic' })
+
+      const res = await invitesListModule.POST(
+        makeListRequest('POST', { email: ' NewDoc@Clinic.COM ', name: 'New Doc', role: 'DOCTOR' })
+      )
+      expect(res.status).toBe(200)
+      expect((prisma.user.create as any).mock.calls[0][0].data.email).toBe('newdoc@clinic.com')
     })
 
     it('returns 400 for invalid email', async () => {
@@ -215,7 +229,7 @@ describe('Staff Invites API', () => {
     })
 
     it('returns 409 when user already exists', async () => {
-      ;(prisma.user.findUnique as any).mockResolvedValue(account({ id: 'existing-user' }))
+      ;(prisma.user.findFirst as any).mockResolvedValue(account({ id: 'existing-user' }))
 
       const res = await invitesListModule.POST(
         makeListRequest('POST', { email: 'existing@clinic.com', name: 'Existing', role: 'DOCTOR' })
@@ -224,7 +238,7 @@ describe('Staff Invites API', () => {
     })
 
     it('returns 409 when pending invite exists', async () => {
-      ;(prisma.user.findUnique as any).mockResolvedValue(invitation({ id: 'inv-pending' }))
+      ;(prisma.user.findFirst as any).mockResolvedValue(invitation({ id: 'inv-pending' }))
 
       const res = await invitesListModule.POST(
         makeListRequest('POST', { email: 'pending@clinic.com', name: 'Pending', role: 'DOCTOR' })
@@ -236,7 +250,7 @@ describe('Staff Invites API', () => {
     // Asking again for exactly what the lapsed invitation was for is not an
     // error; it is the clinic saying the link should work again.
     it('re-issues an invitation that has expired instead of refusing it', async () => {
-      ;(prisma.user.findUnique as any).mockResolvedValue(
+      ;(prisma.user.findFirst as any).mockResolvedValue(
         invitation({ inviteExpiresAt: new Date(Date.now() - 1000) })
       )
       ;(prisma.user.update as any).mockResolvedValue(invitation())

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildStorageKey, getStorage } from '@/lib/storage'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { parseFile } from '@/lib/import/parsers'
+import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { requireFeature } from '@/lib/plan-gate'
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 const ALLOWED_EXTENSIONS = ['csv', 'xlsx', 'xls', 'pdf']
@@ -13,6 +15,12 @@ export async function POST(req: NextRequest) {
   const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Data import is a paid feature (finding 26). Checked before the file is
+  // stored, so a Free clinic's spreadsheet is not kept for an import it
+  // cannot run.
+  const notIncluded = await requireFeature(hospitalId, 'dataImport')
+  if (notIncluded) return notIncluded
 
   try {
     const formData = await req.formData()
@@ -55,8 +63,17 @@ export async function POST(req: NextRequest) {
     let parsed
     try {
       parsed = await parseFile(buffer, ext)
-    } catch (parseErr: any) {
-      return NextResponse.json({ error: parseErr.message }, { status: 400 })
+    } catch (parseErr) {
+      if (!(parseErr instanceof FileParseError)) console.error('Import parse error:', parseErr)
+      return NextResponse.json(
+        {
+          error:
+            parseErr instanceof FileParseError
+              ? parseErr.message
+              : 'The file could not be read. Check that it is a valid CSV or Excel file.',
+        },
+        { status: 400 }
+      )
     }
 
     if (parsed.columns.length === 0) {
@@ -98,8 +115,10 @@ export async function POST(req: NextRequest) {
       sampleData: parsed.rows.slice(0, 5),
       totalRows: parsed.totalRows,
     })
-  } catch (err: any) {
+  } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Data import upload error:', err)
-    return NextResponse.json({ error: err.message || 'Upload failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
   }
 }

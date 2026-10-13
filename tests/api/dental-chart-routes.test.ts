@@ -191,6 +191,28 @@ describe('Dental Chart API', () => {
       expect(body.error).toContain('FDI')
     })
 
+    it('charts a primary tooth (finding 55)', async () => {
+      // Tooth 75 on an eleven-year-old was refused: the list was 11–48 only.
+      ;(prisma.patient.findFirst as any).mockResolvedValue({ id: 'p1' })
+      ;(prisma.dentalChartEntry.create as any).mockResolvedValue({
+        id: 'primary-entry',
+        toothNumber: 75,
+        condition: 'CAVITY',
+      })
+
+      const res = await listModule.POST(
+        makePostRequest({ patientId: 'p1', toothNumber: 75, condition: 'CAVITY' })
+      )
+      expect(res.status).toBe(201)
+    })
+
+    it('still refuses numbers between the dentitions', async () => {
+      const res = await listModule.POST(
+        makePostRequest({ patientId: 'p1', toothNumber: 56, condition: 'CAVITY' })
+      )
+      expect(res.status).toBe(400)
+    })
+
     it('returns 404 when patient not found', async () => {
       ;(prisma.patient.findFirst as any).mockResolvedValue(null)
 

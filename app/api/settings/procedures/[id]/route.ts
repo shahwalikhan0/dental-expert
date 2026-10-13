@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -22,7 +24,8 @@ const procedureUpdateSchema = z.object({
     .optional(),
   description: z.string().optional(),
   defaultDuration: z.number().int().positive().optional(),
-  basePrice: z.number().positive().optional(),
+  // Zero is a price (bug report 12 Oct, finding 50); negative is not.
+  basePrice: z.number().min(0, 'The base price cannot be negative').optional(),
   materials: z.string().optional(),
   preInstructions: z.string().optional(),
   postInstructions: z.string().optional(),
@@ -58,16 +61,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       success: true,
       data: procedure,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get procedure error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to get procedure' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to get procedure' }, { status: 500 })
   }
 }
 
 // PUT /api/settings/procedures/[id] - Update procedure
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -101,24 +106,38 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       data,
     })
 
+    // The Active switch on the catalogue page is this route. Taking a
+    // procedure out of use is recorded, however it is done (finding 24).
+    if (existing.isActive && data.isActive === false) {
+      void recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.PROCEDURE_DEACTIVATED,
+        entityType: 'Procedure',
+        entityId: id,
+        oldValues: { isActive: true },
+        newValues: { code: existing.code, name: existing.name, isActive: false },
+        ...requestContext(req.headers),
+      })
+    }
+
     return NextResponse.json({
       success: true,
       data: procedure,
       message: 'Procedure updated successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Update procedure error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update procedure' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update procedure' }, { status: 500 })
   }
 }
 
 // DELETE /api/settings/procedures/[id] - Deactivate procedure
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -139,16 +158,32 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       data: { isActive: false },
     })
 
+    // Recorded once, when it actually goes out of use (finding 24).
+    if (existing.isActive) {
+      void recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.PROCEDURE_DEACTIVATED,
+        entityType: 'Procedure',
+        entityId: id,
+        oldValues: { isActive: true },
+        newValues: { code: existing.code, name: existing.name, isActive: false },
+        ...requestContext(req.headers),
+      })
+    }
+
     return NextResponse.json({
       success: true,
       data: procedure,
+      // The settings page reads this to say what happened. The procedure is
+      // kept: treatments and plans that used it still name it.
+      deactivated: true,
       message: 'Procedure deactivated successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Delete procedure error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to delete procedure' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to delete procedure' }, { status: 500 })
   }
 }

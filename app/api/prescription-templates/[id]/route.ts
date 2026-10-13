@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { templateRefusal } from '@/lib/prescription-templates'
-import { itemRows } from '../route'
+import { itemRows, templateMedicationRefusal } from '@/lib/prescription-template-lines'
 
 const ITEM_INCLUDE = {
   items: {
     orderBy: { sortOrder: 'asc' as const },
-    include: { medication: { select: { id: true, name: true, genericName: true } } },
+    // `isActive` so the screens can mark a line whose drug has since been
+    // retired from the catalogue (bug report 12 Oct, finding 48).
+    include: {
+      medication: { select: { id: true, name: true, genericName: true, isActive: true } },
+    },
   },
 }
 
@@ -59,6 +63,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { name, description, category, diagnosis, notes, items } = body
     const refusal = templateRefusal({ name, items })
     if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
+
+    const medicineRefusal = await templateMedicationRefusal(hospitalId, items)
+    if (medicineRefusal) return NextResponse.json({ error: medicineRefusal }, { status: 400 })
 
     const clash = await prisma.prescriptionTemplate.findFirst({
       where: { hospitalId, name: name.trim(), NOT: { id } },

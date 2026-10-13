@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PaymentMethod, PaymentStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 
 // GET - List all payments with filters
 export async function GET(request: NextRequest) {
@@ -40,18 +41,13 @@ export async function GET(request: NextRequest) {
     if (status) {
       // Checked here rather than left to Prisma, which rejects an unknown enum
       // value by throwing — a bookmarked `?status=all` came back as a 500.
-      if (!(Object.values(PaymentStatus) as string[]).includes(status)) {
-        return NextResponse.json({ error: `Unknown status: ${status}` }, { status: 400 })
-      }
+      if (!isEnumMember(PaymentStatus, status)) return enumRefusal('status', status, PaymentStatus)
       where.status = status
     }
 
     if (paymentMethod) {
-      if (!(Object.values(PaymentMethod) as string[]).includes(paymentMethod)) {
-        return NextResponse.json(
-          { error: `Unknown payment method: ${paymentMethod}` },
-          { status: 400 }
-        )
+      if (!isEnumMember(PaymentMethod, paymentMethod)) {
+        return enumRefusal('paymentMethod', paymentMethod, PaymentMethod)
       }
       where.paymentMethod = paymentMethod
     }
@@ -131,6 +127,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching payments:', error)
     return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 })
   }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { VendorStatus } from '@prisma/client'
+import { requireFeature } from '@/lib/plan-gate'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
@@ -34,12 +37,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return NextResponse.json({ success: true, data: vendor })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching lab vendor:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch lab vendor', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch lab vendor' }, { status: 500 })
   }
 }
 
@@ -50,6 +52,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // The lab module is a paid feature (finding 26). Reads stay open.
+  const gated = await requireFeature(hospitalId, 'labModule')
+  if (gated) return gated
 
   try {
     const { id } = await params
@@ -101,6 +107,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Vendor code already exists' }, { status: 409 })
     }
 
+    // Zero, blank and absent are all "not rated", stored as null (finding 20).
+    const parsedRating = parseRating(rating)
+    if (!parsedRating.ok) return NextResponse.json({ error: parsedRating.error }, { status: 400 })
+
+    // Text, never a number handed to a text column (finding 49).
+    const terms = parsePaymentTerms(paymentTerms)
+    if (!terms.ok) return NextResponse.json({ error: terms.error }, { status: 400 })
+
+    const limit = parseCreditLimit(creditLimit)
+    if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 400 })
+
     await prisma.vendor.update({
       where: { id },
       data: {
@@ -118,21 +135,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         nationalTaxNo: nationalTaxNo || null,
         specializations: specializations || null,
         avgTurnaround: avgTurnaround ?? null,
-        rating: rating ?? null,
-        paymentTerms: paymentTerms ?? null,
-        creditLimit: creditLimit ?? null,
+        rating: parsedRating.value ?? null,
+        paymentTerms: terms.value ?? null,
+        creditLimit: limit.value ?? null,
         notes: notes || null,
         ...(parseStatus(body.status) ? { status: parseStatus(body.status)! } : {}),
       },
     })
 
     return NextResponse.json({ success: true, message: 'Lab vendor updated successfully' })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating lab vendor:', error)
-    return NextResponse.json(
-      { error: 'Failed to update lab vendor', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update lab vendor' }, { status: 500 })
   }
 }
 
@@ -146,6 +162,10 @@ export async function DELETE(
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // The lab module is a paid feature (finding 26). Reads stay open.
+  const gated = await requireFeature(hospitalId, 'labModule')
+  if (gated) return gated
 
   try {
     const { id } = await params
@@ -179,11 +199,10 @@ export async function DELETE(
     })
 
     return NextResponse.json({ success: true, message: 'Lab vendor deleted successfully' })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error deleting lab vendor:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete lab vendor', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to delete lab vendor' }, { status: 500 })
   }
 }

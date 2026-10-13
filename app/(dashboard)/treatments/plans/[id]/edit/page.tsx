@@ -35,15 +35,14 @@ import { ArrowDown, ArrowUp, Loader2, Plus, Save, Trash2 } from 'lucide-react'
  *
  * The plans list and the plan header both linked here; the page did not exist.
  *
- * Two things this screen is careful about, because the update route replaces
- * the plan's items wholesale:
+ * Each line goes back with its `id`, and the update route matches it to the
+ * stored item rather than deleting and rewriting the list. That keeps a
+ * step's link to the treatment carrying it out, its progress and its phase.
  *
- *  - A step that has been started or completed cannot be removed. The route
- *    deletes every item and writes the list back, so dropping a line here
- *    would take its progress with it.
- *  - Every line carries a price. The route settles a blank one to the
- *    procedure's list price and adds that to the plan total, so a line left at
- *    zero on this screen would be quoted at list price on the next.
+ *  - A step that has been started or completed cannot be removed here, and
+ *    the route refuses it too. It goes by cancelling its treatment.
+ *  - Every line carries a price, and zero is a price: the route settles only a
+ *    blank one to the procedure's list price.
  */
 
 interface Procedure {
@@ -56,6 +55,7 @@ interface Procedure {
 
 interface PlanItem {
   id?: string
+  phase: number
   procedureId: string
   procedureName: string
   procedureCode: string
@@ -122,6 +122,7 @@ export default function EditTreatmentPlanPage() {
         setItems(
           (plan.items ?? []).map((item: any) => ({
             id: item.id,
+            phase: item.phase ?? 1,
             procedureId: item.procedureId,
             procedureName: item.procedure?.name ?? 'Procedure',
             procedureCode: item.procedure?.code ?? '',
@@ -163,6 +164,9 @@ export default function EditTreatmentPlanPage() {
     setItems([
       ...items,
       {
+        // Added to the last phase, which is where a step added afterwards
+        // usually belongs; the plan page shows it there.
+        phase: items.length ? Math.max(...items.map((item) => item.phase)) : 1,
         procedureId: procedure.id,
         procedureName: procedure.name,
         procedureCode: procedure.code,
@@ -241,6 +245,8 @@ export default function EditTreatmentPlanPage() {
           startDate: startDate || null,
           expectedEndDate: expectedEndDate || null,
           items: items.map((item, index) => ({
+            id: item.id,
+            phase: item.phase,
             procedureId: item.procedureId,
             toothNumbers: item.toothNumbers || null,
             priority: index + 1,

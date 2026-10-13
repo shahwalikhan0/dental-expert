@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { averageWait } from '@/lib/appointment-wait'
 import { requirePermission } from '@/lib/api-helpers'
 import { parseRange } from '@/lib/attendance'
 import { personalRecord } from '@/lib/attendance-records'
@@ -65,15 +67,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       completed: appointments.filter((a) => a.status === 'COMPLETED').length,
       cancelled: appointments.filter((a) => a.status === 'CANCELLED').length,
       noShow: appointments.filter((a) => a.status === 'NO_SHOW').length,
-      avgWaitTime: 0,
-    }
-
-    const completedWithWaitTime = appointments.filter((a) => a.status === 'COMPLETED' && a.waitTime)
-    if (completedWithWaitTime.length > 0) {
-      appointmentStats.avgWaitTime = Math.round(
-        completedWithWaitTime.reduce((sum, a) => sum + (a.waitTime || 0), 0) /
-          completedWithWaitTime.length
-      )
+      // Check-in until called in, over this dentist's patients who were
+      // called in — the same figure Reports → Operational shows. This skipped
+      // a wait of 0, the best case, and read `waitTime` when it still held how
+      // late the patient had arrived (bug report 12 Oct, finding 32).
+      avgWaitTime: averageWait(appointments),
     }
 
     // Get treatments stats
@@ -198,6 +196,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       prescriptionsWritten: prescriptionsCount,
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching performance:', error)
     return NextResponse.json({ error: 'Failed to fetch performance statistics' }, { status: 500 })
   }

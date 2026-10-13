@@ -75,10 +75,11 @@ interface LabVendor {
   taxRegistrationNo: string
   nationalTaxNo: string
   specializations: string
-  avgTurnaround: number
-  rating: number
-  paymentTerms: string
-  creditLimit: number
+  avgTurnaround: number | null
+  /** 1–5, or null for a laboratory nobody has rated. */
+  rating: number | null
+  paymentTerms: string | null
+  creditLimit: number | string | null
   /** Stored as the `VendorStatus` enum — ACTIVE / INACTIVE / BLOCKED. */
   status: string
   notes: string
@@ -91,6 +92,19 @@ interface PaginationInfo {
   limit: number
   total: number
   pages: number
+}
+
+/**
+ * The mean of the ratings somebody has actually given, or a dash.
+ *
+ * A laboratory with no rating has a null here (bug report 12 Oct, finding 20)
+ * and is left out of the average rather than counted as zero, which would
+ * drag every clinic's figure down for laboratories nobody has judged yet.
+ */
+function averageRating(vendors: LabVendor[]): string {
+  const rated = vendors.map((v) => Number(v.rating)).filter((r) => Number.isFinite(r) && r > 0)
+  if (rated.length === 0) return '—'
+  return (rated.reduce((sum, r) => sum + r, 0) / rated.length).toFixed(1)
 }
 
 export default function LabVendorsPage() {
@@ -130,9 +144,10 @@ export default function LabVendorsPage() {
     nationalTaxNo: '',
     specializations: '',
     avgTurnaround: 7,
-    rating: 0,
+    /** '' is "not rated"; sent as null, never as 0. */
+    rating: '',
     paymentTerms: 'Net 30',
-    creditLimit: 0,
+    creditLimit: 0 as number | string | null,
     status: 'active',
     notes: '',
   })
@@ -160,9 +175,9 @@ export default function LabVendorsPage() {
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
 
       const response = await fetch(`/api/lab-vendors?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch vendors')
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch lab vendors')
 
-      const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setVendors(data.data)
@@ -171,7 +186,7 @@ export default function LabVendorsPage() {
       console.error('Error fetching vendors:', error)
       toast({
         title: 'Error',
-        description: 'Failed to fetch lab vendors',
+        description: error instanceof Error ? error.message : 'Failed to fetch lab vendors',
         variant: 'destructive',
       })
     } finally {
@@ -201,7 +216,7 @@ export default function LabVendorsPage() {
     if (vendor) {
       setEditingVendor(vendor)
       setFormData({
-        code: vendor.code,
+        code: vendor.code || '',
         name: vendor.name,
         contactPerson: vendor.contactPerson || '',
         email: vendor.email || '',
@@ -214,10 +229,10 @@ export default function LabVendorsPage() {
         taxRegistrationNo: vendor.taxRegistrationNo || '',
         nationalTaxNo: vendor.nationalTaxNo || '',
         specializations: vendor.specializations || '',
-        avgTurnaround: vendor.avgTurnaround,
-        rating: vendor.rating,
-        paymentTerms: vendor.paymentTerms,
-        creditLimit: vendor.creditLimit,
+        avgTurnaround: vendor.avgTurnaround ?? 7,
+        rating: vendor.rating ? String(vendor.rating) : '',
+        paymentTerms: vendor.paymentTerms || '',
+        creditLimit: vendor.creditLimit ?? null,
         // The picker's options are lowercase; the record holds the enum.
         status: (vendor.status || 'active').toLowerCase(),
         notes: vendor.notes || '',
@@ -239,7 +254,7 @@ export default function LabVendorsPage() {
         nationalTaxNo: '',
         specializations: '',
         avgTurnaround: 7,
-        rating: 0,
+        rating: '',
         paymentTerms: 'Net 30',
         creditLimit: 0,
         status: 'active',
@@ -260,11 +275,15 @@ export default function LabVendorsPage() {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // "Not rated" is null. Sending 0 is what the page then tripped over.
+          rating: formData.rating === '' ? null : Number(formData.rating),
+        }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({}))
         throw new Error(error.error || 'Failed to save vendor')
       }
 
@@ -300,7 +319,7 @@ export default function LabVendorsPage() {
       })
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({}))
         throw new Error(error.error || 'Failed to delete vendor')
       }
 
@@ -404,11 +423,7 @@ export default function LabVendorsPage() {
             <Star className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {vendors.length > 0
-                ? (vendors.reduce((sum, v) => sum + v.rating, 0) / vendors.length).toFixed(1)
-                : '0.0'}
-            </div>
+            <div className="text-2xl font-bold">{averageRating(vendors)}</div>
           </CardContent>
         </Card>
       </div>
@@ -515,16 +530,24 @@ export default function LabVendorsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center">
-                      <Clock className="mr-1 h-3 w-3" />
-                      {vendor.avgTurnaround} days
-                    </div>
+                    {vendor.avgTurnaround != null ? (
+                      <div className="flex items-center">
+                        <Clock className="mr-1 h-3 w-3" />
+                        {vendor.avgTurnaround} days
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center">
-                      <Star className="mr-1 h-3 w-3 fill-yellow-400 text-yellow-400" />
-                      {vendor.rating.toFixed(1)}
-                    </div>
+                    {vendor.rating ? (
+                      <div className="flex items-center">
+                        <Star className="mr-1 h-3 w-3 fill-yellow-400 text-yellow-400" />
+                        {Number(vendor.rating).toFixed(1)}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Not rated</span>
+                    )}
                   </TableCell>
                   <TableCell>{getStatusBadge(vendor.status)}</TableCell>
                   <GridActionsCell>
@@ -701,20 +724,26 @@ export default function LabVendorsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rating">Quality Rating</Label>
-                <Input
-                  id="rating"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="5"
-                  value={formData.rating}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      rating: parseFloat(e.target.value) || 0,
-                    })
+                {/* Whole stars, or none. The column is an integer, and a
+                    blank rating is "not rated" rather than zero. */}
+                <Select
+                  value={formData.rating === '' ? 'none' : formData.rating}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, rating: value === 'none' ? '' : value })
                   }
-                />
+                >
+                  <SelectTrigger id="rating">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not rated</SelectItem>
+                    {['1', '2', '3', '4', '5'].map((n) => (
+                      <SelectItem key={n} value={n}>
+                        {n} {n === '1' ? 'star' : 'stars'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>

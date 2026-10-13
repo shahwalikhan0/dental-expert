@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { emailService } from '@/lib/services/email.service'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { isSendRefusal } from '@/lib/services/send-refusal'
 
 const sendEmailSchema = z.object({
   to: z.string().email(),
@@ -58,7 +60,10 @@ export async function POST(req: NextRequest) {
         data.templateId,
         data.variables,
         data.attachments,
-        data.patientId
+        data.patientId,
+        // Only this clinic's templates: the send goes out over the
+        // template's clinic's mail account.
+        hospitalId
       )
 
       return NextResponse.json({
@@ -86,9 +91,15 @@ export async function POST(req: NextRequest) {
         message: data.scheduledFor ? 'Email scheduled successfully' : 'Email sent successfully',
       })
     }
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
+    // As for SMS: the service's own reasons are repeated, nothing else is.
+    if (isSendRefusal(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('Email send error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to send email' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to send email' }, { status: 500 })
   }
 }
 
@@ -119,11 +130,10 @@ export async function GET(req: NextRequest) {
       data: history,
       count: history.length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get email history error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get email history' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get email history' }, { status: 500 })
   }
 }

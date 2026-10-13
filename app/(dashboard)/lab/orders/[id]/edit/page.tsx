@@ -19,7 +19,8 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { Loader2, Save } from 'lucide-react'
-import { normaliseWorkType, WORK_TYPES } from '@/lib/lab-orders'
+import { checkLabOrderValues, normaliseWorkType, WORK_TYPES } from '@/lib/lab-orders'
+import { LabTreatmentPicker } from '@/components/lab/treatment-picker'
 
 /**
  * Correct the details of a lab case.
@@ -36,10 +37,10 @@ import { normaliseWorkType, WORK_TYPES } from '@/lib/lab-orders'
  * the milestone dates and writes the audit entry.
  */
 
+// `LabOrderPriority` has two values. Low and High were offered here and were
+// a Prisma validation error on save.
 const PRIORITIES = [
-  { value: 'LOW', label: 'Low' },
   { value: 'NORMAL', label: 'Normal' },
-  { value: 'HIGH', label: 'High' },
   { value: 'URGENT', label: 'Urgent' },
 ]
 
@@ -72,6 +73,7 @@ export default function EditLabOrderPage() {
     priority: 'NORMAL',
     notes: '',
     specialInstructions: '',
+    treatmentId: '',
   })
 
   const trail = useTrail(orderNumber)
@@ -116,6 +118,7 @@ export default function EditLabOrderPage() {
           priority: order.priority ?? 'NORMAL',
           notes: order.notes ?? '',
           specialInstructions: order.specialInstructions ?? '',
+          treatmentId: order.treatmentId ?? '',
         })
       } catch (err) {
         toast({
@@ -145,6 +148,13 @@ export default function EditLabOrderPage() {
       return
     }
 
+    // The same rules the API applies (finding 59), said before the round trip.
+    const invalid = checkLabOrderValues(form)
+    if (invalid) {
+      toast({ title: 'Check the dates and costs', description: invalid, variant: 'destructive' })
+      return
+    }
+
     setSaving(true)
     try {
       const res = await fetch(`/api/lab-orders/${orderId}`, {
@@ -157,6 +167,8 @@ export default function EditLabOrderPage() {
           // same as billing nothing.
           actualCost: form.actualCost === '' ? null : Number(form.actualCost),
           expectedDate: form.expectedDate || null,
+          // Blank is "no treatment", which clears a link made by mistake.
+          treatmentId: form.treatmentId || null,
         }),
       })
       const data = await res.json()
@@ -270,6 +282,13 @@ export default function EditLabOrderPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="col-span-2">
+            <LabTreatmentPicker
+              patientId={form.patientId}
+              value={form.treatmentId}
+              onChange={(treatmentId) => set('treatmentId', treatmentId)}
+            />
+          </div>
           <div className="space-y-2 col-span-2">
             <Label htmlFor="description">Description</Label>
             <Input
@@ -300,6 +319,7 @@ export default function EditLabOrderPage() {
             <Input
               id="expectedDate"
               type="date"
+              min={form.orderDate || undefined}
               value={form.expectedDate}
               onChange={(e) => set('expectedDate', e.target.value)}
             />

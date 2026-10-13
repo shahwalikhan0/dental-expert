@@ -81,9 +81,22 @@ describe('one account', () => {
     await resolveLogin({ email: 'dr.sana@example.com', password: 'correct-horse' })
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { email: 'dr.sana@example.com' },
+      // Without regard to case (finding 29): accounts stored before addresses
+      // were lower-cased may still carry a capital.
+      where: { email: { equals: 'dr.sana@example.com', mode: 'insensitive' } },
       include: { staff: true, hospital: true },
     })
+  })
+
+  it('finds an account typed with capitals and spaces', async () => {
+    found([account()])
+    await resolveLogin({ email: '  Dr.Sana@Example.COM ', password: 'correct-horse' })
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: 'dr.sana@example.com', mode: 'insensitive' } },
+      })
+    )
   })
 
   it('narrows to one clinic when the sign-in page named one', async () => {
@@ -95,7 +108,10 @@ describe('one account', () => {
     })
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { email: 'dr.sana@example.com', hospital: { slug: 'smile-clinic' } },
+      where: {
+        email: { equals: 'dr.sana@example.com', mode: 'insensitive' },
+        hospital: { slug: 'smile-clinic' },
+      },
       include: { staff: true, hospital: true },
     })
   })

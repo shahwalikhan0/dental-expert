@@ -166,6 +166,7 @@ describe('PUT /api/medications/[id]', () => {
       isActive: true,
     }
     vi.mocked(prisma.medication.findFirst).mockResolvedValue(existing as any)
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([])
     vi.mocked(prisma.medication.update).mockResolvedValue({
       ...existing,
       strength: '250mg',
@@ -199,6 +200,7 @@ describe('PUT /api/medications/[id]', () => {
       isActive: true,
     }
     vi.mocked(prisma.medication.findFirst).mockResolvedValue(existing as any)
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([])
     vi.mocked(prisma.medication.update).mockResolvedValue({
       ...existing,
       name: 'Amox Updated',
@@ -212,6 +214,35 @@ describe('PUT /api/medications/[id]', () => {
     const updateCall = vi.mocked(prisma.medication.update).mock.calls[0][0]
     expect(updateCall.data.genericName).toBe('Amoxicillin')
     expect(updateCall.data.contraindications).toBe('Penicillin allergy')
+  })
+
+  it('refuses an edit that makes it a duplicate of another active entry (finding 56)', async () => {
+    mockAuth()
+    vi.mocked(prisma.medication.findFirst).mockResolvedValue({
+      id: 'm2',
+      name: 'Amoxil',
+      genericName: 'Amoxicillin',
+      form: 'Capsule',
+      strength: '250mg',
+      isActive: true,
+    } as any)
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([
+      { id: 'm1', name: 'Amoxil', genericName: 'Amoxicillin', strength: '500mg', form: 'Capsule' },
+    ] as any)
+
+    const res = await medDetailPUT(
+      makeReq('/api/medications/m2', 'PUT', { strength: '500MG' }),
+      makeParams('m2') as any
+    )
+
+    expect(res.status).toBe(409)
+    expect(prisma.medication.update).not.toHaveBeenCalled()
+    // The entry being edited is not compared with itself.
+    expect(prisma.medication.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ NOT: { id: 'm2' } }),
+      })
+    )
   })
 })
 

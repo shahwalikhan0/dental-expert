@@ -6,15 +6,14 @@
  * replace it, the clinic would hold a working credential to every patient's
  * record indefinitely, which is not a portal, it is a shared account.
  *
- * The clinic's own password policy applies, so a clinic that has decided what
- * a password must look like does not have to decide twice.
+ * The same 8-to-32-character rule applies as everywhere else
+ * (lib/password-policy.ts).
  */
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
-import { passwordPolicyFor } from '@/lib/security-settings'
 import { validatePassword } from '@/lib/password-policy'
 import { requirePortalPatient } from '@/lib/portal/auth'
 import { hashPortalPassword } from '@/lib/portal/accounts'
@@ -46,8 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'That is not your current password.' }, { status: 400 })
   }
 
-  const policy = await passwordPolicyFor(prisma, caller.patient.hospitalId)
-  const refusal = validatePassword(newPassword, policy)
+  const refusal = validatePassword(newPassword)
   if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
 
   // Catching the commonest way a temporary password becomes permanent: the

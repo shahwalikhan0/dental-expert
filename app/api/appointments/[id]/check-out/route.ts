@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // POST - Check out patient (complete appointment)
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json(updatedAppointment)
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error checking out appointment:', error)
     return NextResponse.json({ error: 'Failed to check out' }, { status: 500 })
   }

@@ -6,9 +6,15 @@ import { Role } from '@prisma/client'
 import { sendInviteEmail } from '@/lib/email-helpers'
 import { INVITABLE_ROLES } from '@/lib/rbac'
 import { INVITATION_FILTER, invitationStatus, inviteExpiry, isInvitation } from '@/lib/invitations'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { emailEquals, emailField } from '@/lib/email-address'
+import { planName } from '@/lib/plans'
+import { getTenant } from '@/lib/tenant'
 
 const inviteSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  // Lower-cased, so the invitation and the account it becomes match the
+  // address however it is typed at sign-in (finding 29).
+  email: emailField(),
   name: z.string().min(2, 'Name must be at least 2 characters'),
   role: z.enum(INVITABLE_ROLES),
 })
@@ -37,12 +43,15 @@ export async function POST(request: Request) {
     // Check staff limit
     const staffLimit = await checkStaffLimit(hospitalId)
     if (!staffLimit.allowed) {
+      const tenant = await getTenant(hospitalId).catch(() => null)
       return NextResponse.json(
         {
           error: 'Staff limit reached',
-          message: `Your plan allows up to ${staffLimit.max} staff members. Please upgrade to add more.`,
+          message: `The ${planName(tenant?.plan)} plan allows up to ${staffLimit.max} active staff accounts. Please upgrade to add more.`,
+          code: 'STAFF_LIMIT',
           current: staffLimit.current,
           max: staffLimit.max,
+          upgradeUrl: '/pricing',
         },
         { status: 403 }
       )
@@ -51,9 +60,10 @@ export async function POST(request: Request) {
     // An invitation and an account are the same row, so one lookup answers
     // both "is this person already here" and "have we already invited them" —
     // and the unique index on (hospitalId, email) means the answer cannot go
-    // stale between the check and the write.
-    const existing = await prisma.user.findUnique({
-      where: { hospitalId_email: { hospitalId, email } },
+    // stale between the check and the write. Without regard to case, because
+    // rows from before addresses were lower-cased may still carry a capital.
+    const existing = await prisma.user.findFirst({
+      where: { hospitalId, email: emailEquals(email) },
       select: { id: true, password: true, inviteToken: true, inviteExpiresAt: true },
     })
 
@@ -134,6 +144,8 @@ export async function POST(request: Request) {
       }),
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Create invite error:', error)
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }
@@ -178,6 +190,8 @@ export async function GET() {
 
     return NextResponse.json({ invites })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('List invites error:', error)
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }

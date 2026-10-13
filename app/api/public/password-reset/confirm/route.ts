@@ -3,8 +3,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
-import { describePolicy, validatePassword } from '@/lib/password-policy'
-import { passwordPolicyFor } from '@/lib/security-settings'
+import { PASSWORD_RULES, validatePassword } from '@/lib/password-policy'
 import { resetRefusal } from '@/lib/password-reset'
 
 /**
@@ -15,9 +14,8 @@ import { resetRefusal } from '@/lib/password-reset'
  * could not learn by trying it. What it must never do is say which account the
  * token belongs to before the password is set.
  *
- * The clinic's own password policy applies, read from the account's clinic
- * rather than from anything the caller sent. A reset is a way in; it is not a
- * way round Settings → Security.
+ * The same 8-to-32-character rule applies as everywhere a password is set
+ * (lib/password-policy.ts).
  *
  * Setting the password clears the token, in the same update and conditioned on
  * the token still being there, so two people who both opened the link cannot
@@ -52,13 +50,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ valid: false, error: refusal })
   }
 
-  const policy = await passwordPolicyFor(prisma, account.hospitalId)
   return NextResponse.json({
     valid: true,
     // Named so somebody who works at two clinics can see which account this
     // link is for before they change anything.
     clinicName: account.hospital.name,
-    rules: describePolicy(policy),
+    rules: PASSWORD_RULES,
   })
 }
 
@@ -98,8 +95,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: refusal }, { status: 400 })
     }
 
-    const policy = await passwordPolicyFor(prisma, account.hospitalId)
-    const complaint = validatePassword(password, policy)
+    const complaint = validatePassword(password)
     if (complaint) {
       return NextResponse.json({ error: complaint }, { status: 400 })
     }

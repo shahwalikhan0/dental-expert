@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { findDentist } from '@/lib/clinicians'
 import { dayRangeIn, wallClockIn } from '@/lib/appointment-time'
 import { availableSlots, hoursOn } from '@/lib/working-hours'
 import { readAppointmentSettings } from '@/lib/appointment-settings'
@@ -61,12 +62,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     const dateObj = new Date(date)
 
-    // Verify doctor
-    const doctor = await prisma.staff.findFirst({
-      where: { id: doctorId, hospitalId },
-    })
+    // A dentist the clinic can actually book — not the receptionist, not
+    // somebody deactivated this morning. See lib/clinicians.ts.
+    const doctor = await findDentist(hospitalId, doctorId)
     if (!doctor) {
-      return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
+      return NextResponse.json({ error: 'That dentist is not available' }, { status: 404 })
     }
 
     // Clinic closures plus this dentist's shifts and leave, in one query —

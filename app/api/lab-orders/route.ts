@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
-import { normaliseWorkType } from '@/lib/lab-orders'
+import { checkLabOrderValues, normaliseWorkType } from '@/lib/lab-orders'
+import { resolveTreatmentLink } from '@/lib/lab-order-links'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { requireFeature } from '@/lib/plan-gate'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // GET - Fetch all lab orders with filters
 export async function GET(request: NextRequest) {
@@ -34,8 +37,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
-    // Build where clause
-    const where: any = { hospitalId }
+    // Build where clause. A deleted case is kept for its trail, not listed —
+    // the same rule as deleted inventory items (finding 58).
+    const where: any = { hospitalId, deletedAt: null }
 
     // Add search filter
     if (search) {
@@ -146,12 +150,11 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching lab orders:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch lab orders', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch lab orders' }, { status: 500 })
   }
 }
 
@@ -162,6 +165,11 @@ export async function POST(request: NextRequest) {
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // The lab module is a paid feature (finding 26). The 403 carries a sentence
+  // the form shows as it is.
+  const gated = await requireFeature(hospitalId, 'labModule')
+  if (gated) return gated
 
   try {
     const body = await request.json()
@@ -176,6 +184,7 @@ export async function POST(request: NextRequest) {
       expectedDate,
       estimatedCost,
       notes,
+      treatmentId,
     } = body
 
     // Validation
@@ -198,6 +207,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Due before ordered, or a negative cost (finding 59).
+    const invalid = checkLabOrderValues({ orderDate, expectedDate, estimatedCost })
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+
     // Verify patient exists and belongs to this hospital
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, hospitalId },
@@ -216,6 +229,12 @@ export async function POST(request: NextRequest) {
 
     if (!vendor) {
       return NextResponse.json({ error: 'Lab vendor not found' }, { status: 404 })
+    }
+
+    // The treatment the work is for, if one was chosen (finding 60).
+    const treatment = await resolveTreatmentLink(prisma, { hospitalId, patientId, treatmentId })
+    if (!treatment.ok) {
+      return NextResponse.json({ error: treatment.error }, { status: treatment.status })
     }
 
     const year = new Date().getFullYear()
@@ -246,7 +265,8 @@ export async function POST(request: NextRequest) {
         shadeGuide: shadeGuide || null,
         orderDate: new Date(orderDate),
         expectedDate: expectedDate ? new Date(expectedDate) : null,
-        estimatedCost,
+        estimatedCost: Number(estimatedCost),
+        treatmentId: treatment.treatmentId ?? null,
         status: 'CREATED',
         qualityCheck: null,
         notes: notes || null,
@@ -275,11 +295,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     )
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating lab order:', error)
-    return NextResponse.json(
-      { error: 'Failed to create lab order', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create lab order' }, { status: 500 })
   }
 }

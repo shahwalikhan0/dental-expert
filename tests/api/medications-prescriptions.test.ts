@@ -192,6 +192,7 @@ describe('POST /api/medications', () => {
 
   it('creates medication successfully', async () => {
     mockAuth()
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([])
     const mockMed = {
       id: 'm1',
       name: 'Amoxicillin',
@@ -227,6 +228,7 @@ describe('POST /api/medications', () => {
 
   it('sets null for optional fields when not provided', async () => {
     mockAuth()
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([])
     vi.mocked(prisma.medication.create).mockResolvedValue({ id: 'm1' } as any)
 
     await medicationsPOST(makeReq('/api/medications', 'POST', { name: 'Test Med' }))
@@ -239,6 +241,59 @@ describe('POST /api/medications', () => {
         manufacturer: null,
       }),
     })
+  })
+})
+
+describe('POST /api/medications — duplicates (bug report 12 Oct, finding 56)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('refuses the same drug twice, ignoring case and spacing, with a 409', async () => {
+    mockAuth()
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([
+      { id: 'm1', name: 'Amoxil', genericName: 'Amoxicillin', strength: '500mg', form: 'Capsule' },
+    ] as any)
+
+    const res = await medicationsPOST(
+      makeReq('/api/medications', 'POST', {
+        name: 'amoxil',
+        genericName: ' AMOXICILLIN ',
+        strength: '500MG',
+        form: 'capsule',
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.error).toMatch(/already in the drug catalogue/)
+    expect(prisma.medication.create).not.toHaveBeenCalled()
+    // Only active entries are compared.
+    expect(prisma.medication.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          hospitalId: 'h1',
+          isActive: true,
+          name: { equals: 'amoxil', mode: 'insensitive' },
+        }),
+      })
+    )
+  })
+
+  it('accepts the same name at another strength', async () => {
+    mockAuth()
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([
+      { id: 'm1', name: 'Amoxil', genericName: 'Amoxicillin', strength: '500mg', form: 'Capsule' },
+    ] as any)
+    vi.mocked(prisma.medication.create).mockResolvedValue({ id: 'm2' } as any)
+
+    const res = await medicationsPOST(
+      makeReq('/api/medications', 'POST', {
+        name: 'Amoxil',
+        genericName: 'Amoxicillin',
+        strength: '250mg',
+        form: 'Capsule',
+      })
+    )
+    expect(res.status).toBe(201)
   })
 })
 
@@ -337,6 +392,23 @@ describe('GET /api/prescriptions', () => {
 // 4. POST /api/prescriptions
 // ═════════════════════════════════════════════════════════════════════════════
 
+/** Only a dentist prescribes (finding 36), so these run as one. */
+function mockDentist(overrides: Record<string, unknown> = {}) {
+  mockAuth({
+    user: { id: 'u1', name: 'Dr Qasim', role: 'DOCTOR' },
+    session: { user: { id: 'u1', name: 'Dr Qasim', role: 'DOCTOR' } },
+    ...overrides,
+  })
+}
+
+const AMOX_LINE = {
+  medicationId: 'med-amox',
+  medicationName: 'Amoxil 500mg (Capsule)',
+  dosage: '1 capsule',
+  frequency: 'TID',
+  duration: '5 days',
+}
+
 describe('POST /api/prescriptions', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -347,7 +419,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('returns 400 when patientId is missing', async () => {
-    mockAuth()
+    mockDentist()
     const res = await prescriptionsPOST(
       makeReq('/api/prescriptions', 'POST', {
         medications: [{ medicationName: 'Amox', dosage: '500mg' }],
@@ -360,7 +432,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('returns 400 when medications array is empty', async () => {
-    mockAuth()
+    mockDentist()
     const res = await prescriptionsPOST(
       makeReq('/api/prescriptions', 'POST', {
         patientId: 'p1',
@@ -373,7 +445,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('returns 404 when patient not found', async () => {
-    mockAuth()
+    mockDentist()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue(null)
 
     const res = await prescriptionsPOST(
@@ -391,7 +463,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('returns 400 when doctor staff record not found', async () => {
-    mockAuth()
+    mockDentist()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
     vi.mocked(prisma.prescription.findFirst).mockResolvedValue(null)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue(null)
@@ -411,7 +483,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('creates prescription with generated number', async () => {
-    mockAuth()
+    mockDentist()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
     vi.mocked(prisma.prescription.findFirst).mockResolvedValue(null) // no previous
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 's1' } as any)
@@ -454,7 +526,7 @@ describe('POST /api/prescriptions', () => {
   })
 
   it('increments prescription number from last existing', async () => {
-    mockAuth()
+    mockDentist()
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
     vi.mocked(prisma.prescription.findFirst).mockResolvedValue({
       prescriptionNo: 'RX20260015',
@@ -474,5 +546,135 @@ describe('POST /api/prescriptions', () => {
     // The number comes from a counter row now, so what is asserted is the
     // seed that continues the clinic's existing series.
     expect(vi.mocked(prisma.$queryRaw).mock.calls[0].slice(1)).toContain(17)
+  })
+})
+
+describe('POST /api/prescriptions — checks before anything is written', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1', medicalHistory: null } as any)
+    vi.mocked(prisma.prescription.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 's1' } as any)
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([
+      { id: 'med-amox', name: 'Amoxil', genericName: 'Amoxicillin', isActive: true },
+    ] as any)
+    vi.mocked(prisma.prescription.create).mockResolvedValue({
+      id: 'rx1',
+      prescriptionNo: 'RX20260001',
+    } as any)
+  })
+
+  it('refuses a prescription from a non-dentist (finding 36)', async () => {
+    for (const role of ['ADMIN', 'DENTAL_ASSISTANT']) {
+      mockAuth({ user: { id: 'u2', role }, session: { user: { id: 'u2', role } } })
+      const res = await prescriptionsPOST(
+        makeReq('/api/prescriptions', 'POST', { patientId: 'p1', medications: [AMOX_LINE] })
+      )
+      expect(res.status).toBe(403)
+    }
+    expect(prisma.prescription.create).not.toHaveBeenCalled()
+  })
+
+  it('lets an administrator who also holds DOCTOR as a clinical role prescribe', async () => {
+    mockAuth({
+      user: { id: 'u3', role: 'ADMIN', clinicalRole: 'DOCTOR' },
+      session: { user: { id: 'u3', role: 'ADMIN', clinicalRole: 'DOCTOR' } },
+    })
+    const res = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', { patientId: 'p1', medications: [AMOX_LINE] })
+    )
+    expect(res.status).toBe(201)
+  })
+
+  it('names the row and the field when a row is empty or incomplete (finding 4)', async () => {
+    mockDentist()
+    const empty = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', {
+        patientId: 'p1',
+        medications: [AMOX_LINE, { medicationName: '', dosage: '', frequency: '', duration: '' }],
+      })
+    )
+    expect(empty.status).toBe(400)
+    expect((await empty.json()).error).toMatch(/Medication 2 is empty/)
+
+    const noDuration = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', {
+        patientId: 'p1',
+        medications: [{ ...AMOX_LINE, duration: '' }],
+      })
+    )
+    expect(noDuration.status).toBe(400)
+    expect((await noDuration.json()).error).toMatch(/Medication 1 .*needs a duration/)
+
+    // Validated before a number is taken, so a refusal leaves no gap.
+    expect(prisma.$queryRaw).not.toHaveBeenCalled()
+    expect(prisma.prescription.create).not.toHaveBeenCalled()
+  })
+
+  it('never returns a Prisma message to the browser', async () => {
+    mockDentist()
+    vi.mocked(prisma.prescription.create).mockRejectedValue(
+      new Error(
+        'Invalid `prisma.prescription.create()` invocation in /Users/x/.next/server/chunks/1.js'
+      )
+    )
+    const res = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', { patientId: 'p1', medications: [AMOX_LINE] })
+    )
+    const body = await res.json()
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Failed to create prescription')
+    expect(JSON.stringify(body)).not.toMatch(/\.next|prisma/)
+  })
+
+  it('refuses a deactivated medication (finding 48)', async () => {
+    mockDentist()
+    vi.mocked(prisma.medication.findMany).mockResolvedValue([
+      { id: 'med-amox', name: 'Amoxil', genericName: 'Amoxicillin', isActive: false },
+    ] as any)
+    const res = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', { patientId: 'p1', medications: [AMOX_LINE] })
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/deactivated/)
+    expect(prisma.prescription.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses an allergy clash with a 409 unless it is acknowledged (finding 35)', async () => {
+    mockDentist()
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({
+      id: 'p1',
+      medicalHistory: { allergies: ['Penicillin'] },
+    } as any)
+
+    const refused = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', { patientId: 'p1', medications: [AMOX_LINE] })
+    )
+    const body = await refused.json()
+    expect(refused.status).toBe(409)
+    expect(body.code).toBe('ALLERGY_CLASH')
+    expect(body.allergyClashes[0]).toEqual(
+      expect.objectContaining({ allergy: 'Penicillin', line: 0 })
+    )
+    expect(prisma.prescription.create).not.toHaveBeenCalled()
+
+    const accepted = await prescriptionsPOST(
+      makeReq('/api/prescriptions', 'POST', {
+        patientId: 'p1',
+        medications: [AMOX_LINE],
+        allergyAcknowledged: true,
+      })
+    )
+    expect(accepted.status).toBe(201)
+
+    // Recorded, with the clash the prescriber chose to override (finding 24).
+    const entry = vi
+      .mocked(prisma.auditLog.create)
+      .mock.calls.map((c: any) => c[0].data)
+      .find((d: any) => d.action === 'prescription.created')
+    expect(entry).toBeTruthy()
+    expect(JSON.parse(entry.newValues)).toEqual(
+      expect.objectContaining({ prescriptionNo: 'RX20260001', allergyAcknowledged: true })
+    )
   })
 })

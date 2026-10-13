@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { PaymentStatus } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
+import { SETTLED_PAYMENT_STATUSES, getOpenSession } from '@/lib/cashier'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import {
+  BillingRefusal,
+  billingRefusalResponse,
+  lockInvoice,
+  readSettlement,
+  settleInvoice,
+} from '@/lib/invoice-settlement'
 
 // GET - Get single payment details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -67,14 +79,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ ...payment, clinic })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching payment:', error)
     return NextResponse.json({ error: 'Failed to fetch payment' }, { status: 500 })
   }
 }
 
-// PUT - Update payment (mainly for notes or processing refunds)
+// PUT - Update payment (mainly for notes or settling a pending payment)
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, session } = await requirePermission('billing:write')
+  const { error, hospitalId, user } = await requirePermission('billing:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -82,105 +96,165 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const body = await request.json()
+    const { notes, status } = body
 
-    // Check if payment exists
-    const existingPayment = await prisma.payment.findUnique({
+    if (status !== undefined && status !== null && !isEnumMember(PaymentStatus, status)) {
+      return enumRefusal('status', status, PaymentStatus)
+    }
+
+    const located = await prisma.payment.findUnique({
       where: { id, hospitalId },
-      include: {
-        invoice: true,
-      },
+      select: { id: true, invoiceId: true },
     })
-
-    if (!existingPayment) {
+    if (!located) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    const { notes, status } = body
+    const { payment, before, completed } = await prisma.$transaction(async (tx) => {
+      // Completing a pending payment moves the invoice's money, so it takes
+      // the same lock as taking a payment does.
+      await lockInvoice(tx, located.invoiceId, hospitalId)
 
-    let updateData: any = {}
+      const existingPayment = await tx.payment.findUnique({
+        where: { id, hospitalId },
+        include: {
+          invoice: true,
+        },
+      })
 
-    // Allow updating notes
-    if (notes !== undefined) {
-      updateData.notes = notes
-    }
+      if (!existingPayment) throw new BillingRefusal(404, 'Payment not found')
 
-    // Handle status changes (mainly for pending payments)
-    if (status && status !== existingPayment.status) {
-      // Only allow certain status changes
-      if (existingPayment.status === 'PENDING') {
-        if (status === 'COMPLETED' || status === 'CANCELLED' || status === 'FAILED') {
-          updateData.status = status
+      const updateData: Prisma.PaymentUncheckedUpdateInput = {}
 
-          // If completing a pending payment, update invoice
-          if (status === 'COMPLETED') {
-            const newPaidAmount =
-              Number(existingPayment.invoice.paidAmount) + Number(existingPayment.amount)
-            const newBalanceAmount = Number(existingPayment.invoice.totalAmount) - newPaidAmount
+      // Allow updating notes
+      if (notes !== undefined) {
+        updateData.notes = notes
+      }
 
-            let newInvoiceStatus = existingPayment.invoice.status
-            if (newBalanceAmount <= 0) {
-              newInvoiceStatus = 'PAID'
-            } else if (newPaidAmount > 0) {
-              newInvoiceStatus = 'PARTIALLY_PAID'
-            }
+      let completed = false
 
-            await prisma.invoice.update({
-              where: { id: existingPayment.invoiceId },
-              data: {
-                paidAmount: newPaidAmount,
-                balanceAmount: newBalanceAmount,
-                status: newInvoiceStatus,
-              },
-            })
-          }
-        } else {
-          return NextResponse.json(
-            { error: `Cannot change payment status from ${existingPayment.status} to ${status}` },
-            { status: 400 }
+      // Handle status changes (mainly for pending payments)
+      if (status && status !== existingPayment.status) {
+        if (existingPayment.status !== 'PENDING') {
+          throw new BillingRefusal(
+            400,
+            existingPayment.status === 'COMPLETED'
+              ? 'Cannot change status of a completed payment. Use refund instead.'
+              : `Cannot change payment status from ${existingPayment.status} to ${status}`
           )
         }
-      } else if (existingPayment.status === 'COMPLETED' && status !== 'COMPLETED') {
-        return NextResponse.json(
-          { error: 'Cannot change status of a completed payment. Use refund instead.' },
-          { status: 400 }
-        )
+        if (status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'FAILED') {
+          throw new BillingRefusal(
+            400,
+            `Cannot change payment status from ${existingPayment.status} to ${status}`
+          )
+        }
+
+        updateData.status = status
+
+        if (status === 'COMPLETED') {
+          // The same rules as taking the payment fresh: the invoice must be
+          // issued, its discount decided, and the money not more than it owes.
+          const invoice = existingPayment.invoice
+          if (['DRAFT', 'CANCELLED', 'REFUNDED'].includes(invoice.status)) {
+            throw new BillingRefusal(
+              409,
+              `A payment cannot be completed on a ${invoice.status.toLowerCase()} invoice`
+            )
+          }
+          if (
+            invoice.discountApprovalStatus === 'PENDING' ||
+            invoice.discountApprovalStatus === 'REJECTED'
+          ) {
+            throw new BillingRefusal(
+              409,
+              'The discount on this invoice has not been approved, so the payment cannot be completed'
+            )
+          }
+          const current = await readSettlement(tx, invoice)
+          if (Number(existingPayment.amount) > current.balanceAmount) {
+            throw new BillingRefusal(
+              400,
+              `Payment amount (${Number(existingPayment.amount)}) exceeds balance (${current.balanceAmount})`
+            )
+          }
+
+          // Money received now belongs to the till open now (finding 38).
+          if (!existingPayment.cashierSessionId) {
+            const openSession = await getOpenSession(hospitalId, { db: tx, userId: user?.id })
+            if (openSession) updateData.cashierSessionId = openSession.id
+          }
+          completed = true
+        }
       }
-    }
 
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
-    }
+      if (Object.keys(updateData).length === 0) {
+        throw new BillingRefusal(400, 'No valid fields to update')
+      }
 
-    const payment = await prisma.payment.update({
-      where: { id, hospitalId },
-      data: updateData,
-      include: {
-        invoice: {
-          select: {
-            id: true,
-            invoiceNo: true,
-            totalAmount: true,
-            paidAmount: true,
-            balanceAmount: true,
-            status: true,
+      const payment = await tx.payment.update({
+        where: { id, hospitalId },
+        data: updateData,
+        include: {
+          invoice: {
+            select: {
+              id: true,
+              invoiceNo: true,
+              totalAmount: true,
+              paidAmount: true,
+              balanceAmount: true,
+              status: true,
+            },
           },
         },
-      },
+      })
+
+      if (!completed) return { payment, before: existingPayment, completed }
+
+      // The invoice in the response is the one as recounted, not as it was
+      // read a moment before the recount.
+      const settlement = await settleInvoice(tx, existingPayment.invoice)
+      return {
+        payment: { ...payment, invoice: { ...payment.invoice, ...settlement } },
+        before: existingPayment,
+        completed,
+      }
     })
+
+    if (completed) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.PAYMENT_RECORDED,
+        entityType: 'Payment',
+        entityId: payment.id,
+        oldValues: { status: before.status },
+        newValues: {
+          paymentNo: payment.paymentNo,
+          invoiceId: before.invoiceId,
+          amount: Number(payment.amount),
+          method: payment.paymentMethod,
+          status: 'COMPLETED',
+        },
+        ...requestContext(request.headers),
+      })
+    }
 
     return NextResponse.json(payment)
   } catch (error) {
+    const known = billingRefusalResponse(error) ?? knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating payment:', error)
     return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 })
   }
 }
 
-// DELETE - Delete a pending payment
+// DELETE - Delete a payment that never settled
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, session } = await requirePermission('billing:void')
+  const { error, hospitalId } = await requirePermission('billing:void')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -197,8 +271,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    // Only allow deleting pending or failed payments
-    if (existingPayment.status === 'COMPLETED') {
+    // Only a payment that never brought money in can go. A completed one is
+    // refunded instead; so is one already refunded in part or in full, whose
+    // refund rows are the record of money leaving and must keep their payment.
+    if ((SETTLED_PAYMENT_STATUSES as readonly string[]).includes(existingPayment.status)) {
       return NextResponse.json(
         { error: 'Cannot delete a completed payment. Use refund instead.' },
         { status: 400 }
@@ -212,6 +288,8 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Payment deleted successfully' })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error deleting payment:', error)
     return NextResponse.json({ error: 'Failed to delete payment' }, { status: 500 })
   }

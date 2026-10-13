@@ -37,6 +37,9 @@ export interface TemplateItemDraft {
   timing: string
   quantity: string
   instructions: string
+  /** The linked drug has been deactivated in the catalogue since this line was
+      saved (bug report 12 Oct, finding 48). Shown on the row; not sent. */
+  inactive?: boolean
 }
 
 export interface TemplateDraft {
@@ -152,6 +155,8 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
               ...item,
               medicationId: option.id,
               medicationName: `${option.label}${option.hint ? ` (${option.hint})` : ''}`,
+              // The search only offers active drugs, so a new choice is one.
+              inactive: false,
             }
           : item
       ),
@@ -161,7 +166,7 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
     setDraft((d) => ({
       ...d,
       items: d.items.map((item, i) =>
-        i === index ? { ...item, medicationId: null, medicationName: '' } : item
+        i === index ? { ...item, medicationId: null, medicationName: '', inactive: false } : item
       ),
     }))
 
@@ -188,7 +193,10 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
         {
           method: templateId ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(draft),
+          body: JSON.stringify({
+            ...draft,
+            items: draft.items.map(({ inactive: _inactive, ...item }) => item),
+          }),
         }
       )
       const result = await res.json()
@@ -345,6 +353,12 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
                     }
                     aria-label="Medicine"
                   />
+                  {item.inactive && (
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                      Inactive — this medicine has been deactivated in the drug catalogue and is
+                      left out when the template is used. Choose another or remove the line.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="label-required">Dosage</Label>

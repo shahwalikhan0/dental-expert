@@ -37,6 +37,11 @@ vi.mock('@/lib/prisma', () => {
     hospital: {
       findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
+    // Clinic holidays and the dentist's shifts and leave, read on every
+    // booking (lib/appointment-availability.ts). Empty: none.
+    availability: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   }
 
   client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
@@ -88,6 +93,8 @@ import { GET, POST } from '@/app/api/appointments/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { instantAt } from '@/lib/appointment-time'
+import { NOT_A_DENTIST } from '@/lib/clinicians'
+import { INACTIVE_PATIENT } from '@/lib/appointment-status'
 
 const KARACHI = 'Asia/Karachi'
 
@@ -218,6 +225,7 @@ describe('Appointments API - POST /api/appointments', () => {
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'patient-1',
       hospitalId: 'hospital-1',
+      isActive: true,
     } as any)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({
       id: 'doctor-1',
@@ -296,10 +304,13 @@ describe('Appointments API - POST /api/appointments', () => {
     expect(data.error).toBe('Patient not found')
   })
 
-  it('should return 404 when doctor not found', async () => {
+  // Not found, another clinic's, not a dentist, or deactivated: one answer
+  // (bug report 12 Oct, findings 2 and 7).
+  it('should return 400 when the doctor is not an active dentist here', async () => {
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'patient-1',
       hospitalId: 'hospital-1',
+      isActive: true,
     } as any)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue(null)
 
@@ -314,15 +325,17 @@ describe('Appointments API - POST /api/appointments', () => {
     })
     const response = await POST(request)
 
-    expect(response.status).toBe(404)
+    expect(response.status).toBe(400)
     const data = await response.json()
-    expect(data.error).toBe('Doctor not found')
+    expect(data.error).toBe(NOT_A_DENTIST)
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
   })
 
   it('should return 409 for conflicting appointments', async () => {
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'patient-1',
       hospitalId: 'hospital-1',
+      isActive: true,
     } as any)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({
       id: 'doctor-1',
@@ -368,6 +381,7 @@ describe('Appointments API - POST /api/appointments', () => {
     vi.mocked(prisma.patient.findFirst).mockResolvedValue({
       id: 'patient-1',
       hospitalId: 'hospital-1',
+      isActive: true,
     } as any)
     vi.mocked(prisma.staff.findFirst).mockResolvedValue({
       id: 'doctor-1',
@@ -390,5 +404,157 @@ describe('Appointments API - POST /api/appointments', () => {
     expect(response.status).toBe(500)
     const data = await response.json()
     expect(data.error).toBe('Failed to create appointment')
+  })
+})
+
+/**
+ * Booking keeps to the clinic's calendar (bug report 12 Oct, finding 6): the
+ * slot picker refused holidays, closed hours and lunch, and the API checked
+ * none of them. 15 June 2030 is a Saturday; with no hours configured the
+ * clinic is open 09:00–21:00 with lunch 13:00–14:00.
+ */
+describe('Appointments API - POST /api/appointments — the clinic calendar', () => {
+  const book = (overrides: Record<string, unknown> = {}) =>
+    POST(
+      new NextRequest('http://localhost:3000/api/appointments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: 'patient-1',
+          doctorId: 'doctor-1',
+          scheduledDate: '2030-06-15',
+          scheduledTime: '10:00',
+          duration: 30,
+          ...overrides,
+        }),
+      })
+    )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(requireAuthAndRole).mockResolvedValue({
+      error: null,
+      user: { id: 'user-1', email: 'admin@test.com', role: 'ADMIN' },
+      hospitalId: 'hospital-1',
+      session: { user: { id: 'user-1' } },
+    })
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({
+      id: 'patient-1',
+      isActive: true,
+    } as any)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'doctor-1' } as any)
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
+    vi.mocked(prisma.appointment.create).mockResolvedValue({
+      id: 'new-apt-id',
+      startsAt: at('10:00'),
+      status: 'SCHEDULED',
+    } as any)
+  })
+
+  it('refuses a clinic holiday', async () => {
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([
+      {
+        id: 'hol-1',
+        staffId: null,
+        dayOfWeek: null,
+        date: new Date('2030-06-15T00:00:00.000Z'),
+        startTime: null,
+        endTime: null,
+        isAvailable: false,
+        name: 'QA closure day',
+        isRecurring: false,
+      },
+    ] as any)
+
+    const res = await book()
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('QA closure day')
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a time after the clinic closes', async () => {
+    const res = await book({ scheduledTime: '23:30' })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('opening hours')
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses an appointment that would run past closing', async () => {
+    const res = await book({ scheduledTime: '20:45', duration: 30 })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses the lunch break', async () => {
+    const res = await book({ scheduledTime: '13:15' })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('lunch')
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a day the clinic does not open', async () => {
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
+      id: 'h1',
+      timezone: 'Asia/Karachi',
+      workingHours: JSON.stringify({
+        monday: { open: '09:00', close: '17:00' },
+        saturday: { open: null, close: null },
+      }),
+    } as any)
+
+    const res = await book()
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('closed')
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
+      id: 'h1',
+      timezone: 'Asia/Karachi',
+    } as any)
+  })
+
+  it('books an open slot', async () => {
+    const res = await book()
+
+    expect(res.status).toBe(201)
+  })
+
+  // Finding 22: a deactivated patient could still be booked.
+  it('refuses an inactive patient', async () => {
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({
+      id: 'patient-1',
+      isActive: false,
+    } as any)
+
+    const res = await book()
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(INACTIVE_PATIENT)
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+  })
+
+  // Finding 49: an unknown type was a 500.
+  it('refuses an unknown appointment type with a 400 naming the valid ones', async () => {
+    const res = await book({ appointmentType: 'TREATMENT' })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('CONSULTATION')
+    expect(prisma.appointment.create).not.toHaveBeenCalled()
+  })
+
+  it('asks only for an active dentist of this clinic', async () => {
+    await book()
+
+    expect(prisma.staff.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'doctor-1',
+          hospitalId: 'hospital-1',
+          isActive: true,
+        }),
+      })
+    )
   })
 })

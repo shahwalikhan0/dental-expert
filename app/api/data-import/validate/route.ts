@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
-import { parseFile } from '@/lib/import/parsers'
+import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import type { FieldDefinition } from '@/lib/import/schema-definitions'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { requireFeature } from '@/lib/plan-gate'
 
 interface ValidationError {
   row: number
@@ -18,6 +20,10 @@ export async function POST(req: NextRequest) {
   const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Data import is a paid feature (finding 26).
+  const notIncluded = await requireFeature(hospitalId, 'dataImport')
+  if (notIncluded) return notIncluded
 
   try {
     const { jobId, mapping, editedRows } = await req.json()
@@ -120,9 +126,14 @@ export async function POST(req: NextRequest) {
       transformedPreview,
       foreignKeyResolution: fkReport,
     })
-  } catch (err: any) {
+  } catch (err) {
+    if (err instanceof FileParseError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Validation error:', err)
-    return NextResponse.json({ error: err.message || 'Validation failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Validation failed' }, { status: 500 })
   }
 }
 

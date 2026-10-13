@@ -51,7 +51,11 @@ interface Appointment {
   tokenNumber: string | null
   scheduledTime: string
   status: string
-  waitTime: number | null
+  /**
+   * Minutes waited: so far, for somebody still in the waiting room; check-in
+   * to call-in, for somebody already seen. Worked out by /api/appointments/today.
+   */
+  waitMinutes: number | null
   duration: number
   appointmentType: string
   chiefComplaint: string | null
@@ -82,6 +86,14 @@ const EMPTY: Queue = {
   completed: [],
   noShow: [],
   cancelled: [],
+}
+
+const EMPTY_STATS = {
+  waiting: 0,
+  inProgress: 0,
+  completed: 0,
+  avgWaitTime: 0,
+  avgSeenWaitTime: 0,
 }
 
 const subjectOf = (a: Appointment) =>
@@ -179,8 +191,8 @@ function Column({
                 <div className="text-lg font-bold leading-none tabular-nums">
                   {formatToken(a.tokenNumber)}
                 </div>
-                {a.waitTime != null && a.waitTime > 0 && (
-                  <div className="text-[10px] text-muted-foreground mt-1">{a.waitTime}m</div>
+                {a.waitMinutes != null && a.waitMinutes > 0 && (
+                  <div className="text-[10px] text-muted-foreground mt-1">{a.waitMinutes}m</div>
                 )}
               </div>
 
@@ -229,7 +241,7 @@ export default function QueuePage() {
   const trail = useTrail('Queue')
 
   const [queue, setQueue] = useState<Queue>(EMPTY)
-  const [stats, setStats] = useState({ waiting: 0, inProgress: 0, completed: 0, avgWaitTime: 0 })
+  const [stats, setStats] = useState(EMPTY_STATS)
   const [doctors, setDoctors] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [doctorFilter, setDoctorFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -245,7 +257,7 @@ export default function QueuePage() {
       if (!res.ok) throw new Error('The queue could not be loaded')
       const data = await res.json()
       setQueue(data.queue ?? EMPTY)
-      setStats(data.stats ?? { waiting: 0, inProgress: 0, completed: 0, avgWaitTime: 0 })
+      setStats(data.stats ?? EMPTY_STATS)
     } catch (err) {
       toast({
         title: 'Error',
@@ -366,7 +378,14 @@ export default function QueuePage() {
           { label: 'Waiting', value: stats.waiting, icon: Clock },
           { label: 'In the chair', value: stats.inProgress, icon: LogIn },
           { label: 'Finished today', value: stats.completed, icon: CheckCircle2 },
-          { label: 'Average wait', value: `${stats.avgWaitTime}m`, icon: Clock },
+          // A wait runs from check-in to being called in. The first figure is
+          // the waiting room as it stands; the second, those already seen.
+          {
+            label: 'Waiting so far, on average',
+            value: `${stats.avgWaitTime}m`,
+            note: `Seen today waited ${stats.avgSeenWaitTime}m`,
+            icon: Clock,
+          },
         ].map((card) => (
           <Card key={card.label}>
             <CardContent className="flex items-center gap-3 py-4">
@@ -374,6 +393,9 @@ export default function QueuePage() {
               <div>
                 <p className="text-xs text-muted-foreground">{card.label}</p>
                 <p className="text-xl font-bold">{card.value}</p>
+                {'note' in card && card.note && (
+                  <p className="text-xs text-muted-foreground">{card.note}</p>
+                )}
               </div>
             </CardContent>
           </Card>

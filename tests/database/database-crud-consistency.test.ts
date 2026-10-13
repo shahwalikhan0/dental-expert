@@ -126,11 +126,20 @@ vi.mock('@/lib/billing-utils', async () => {
   }
 })
 
-vi.mock('@prisma/client', () => ({
-  Prisma: { JsonNull: 'DbNull' },
-  DiscountType: { PERCENTAGE: 'PERCENTAGE', FIXED: 'FIXED' },
-  InvoiceStatus: { DRAFT: 'DRAFT', PENDING: 'PENDING', PAID: 'PAID' },
-}))
+vi.mock('@prisma/client', async (importOriginal) => {
+  // The appointment routes refuse an unknown type, priority or status against
+  // the real enums, and hand a caught error to `knownErrorResponse`, which
+  // checks it against Prisma's error classes.
+  const actual: any = await importOriginal()
+  return {
+    Prisma: { ...actual.Prisma, JsonNull: 'DbNull' },
+    DiscountType: { PERCENTAGE: 'PERCENTAGE', FIXED: 'FIXED' },
+    InvoiceStatus: { DRAFT: 'DRAFT', PENDING: 'PENDING', PAID: 'PAID' },
+    AppointmentType: actual.AppointmentType,
+    AppointmentStatus: actual.AppointmentStatus,
+    Priority: actual.Priority,
+  }
+})
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

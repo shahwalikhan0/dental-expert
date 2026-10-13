@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { DENTIST_WHERE } from '@/lib/clinicians'
 
 /**
  * GET: Public endpoint — list active doctors for a hospital by slug.
@@ -22,11 +23,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     }
 
     const doctors = await prisma.staff.findMany({
-      where: {
-        hospitalId: hospital.id,
-        isActive: true,
-        user: { role: 'DOCTOR' },
-      },
+      // The same people the desk can book — see lib/clinicians.ts. The account
+      // being active matters too: a deactivated dentist's staff row can outlive
+      // their sign-in.
+      where: { hospitalId: hospital.id, ...DENTIST_WHERE },
       select: {
         id: true,
         firstName: true,

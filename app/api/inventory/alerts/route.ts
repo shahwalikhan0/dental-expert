@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { Prisma, StockAlertType } from '@prisma/client'
 
 const ALERT_TYPES = Object.values(StockAlertType) as string[]
@@ -90,12 +91,11 @@ export async function GET(request: NextRequest) {
         expired: countFor(StockAlertType.EXPIRED),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching stock alerts:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch stock alerts', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch stock alerts' }, { status: 500 })
   }
 }
 
@@ -137,11 +137,10 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, message: 'Alert acknowledged successfully' })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error acknowledging alert:', error)
-    return NextResponse.json(
-      { error: 'Failed to acknowledge alert', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to acknowledge alert' }, { status: 500 })
   }
 }

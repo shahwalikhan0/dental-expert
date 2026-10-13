@@ -3,6 +3,10 @@ import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { noteRecordAccess } from '@/lib/record-access'
 import { requestContext } from '@/lib/audit'
+import { holderCan } from '@/lib/rbac'
+// Adds the title only when the name does not already carry it ("Dr. Dr.").
+import { prescriberName } from '@/lib/prescribing'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 interface TimelineEvent {
   id: string
@@ -57,6 +61,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const events: TimelineEvent[] = []
 
+    /**
+     * Each kind of event behind the permission that reads it on its own
+     * screen. The timeline is the whole history on one page, and it handed the
+     * front desk the treatments and diagnoses that `/api/treatments` refuses
+     * them (bug report 12 Oct, finding 5), and the lab technician the invoices
+     * and payments that the patient's ledger refuses them. A kind the caller
+     * cannot read is left out, not shown empty.
+     */
+    const holder = { role: user.role, clinicalRole: user.clinicalRole }
+    const canReadClinical = holderCan(holder, 'clinical:read')
+    const canReadBilling = holderCan(holder, 'billing:read')
+    const canReadLab = holderCan(holder, 'lab:read')
+
     // Fetch appointments
     if (!typeFilter || typeFilter === 'appointment') {
       const appointments = await prisma.appointment.findMany({
@@ -75,9 +92,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           type: 'appointment',
           date: apt.startsAt,
           title: `${apt.appointmentType} Appointment`,
-          description: apt.doctor
-            ? `with Dr. ${apt.doctor.firstName} ${apt.doctor.lastName}`
-            : undefined,
+          description: apt.doctor ? `with ${prescriberName(apt.doctor)}` : undefined,
           status: apt.status,
           metadata: {
             appointmentType: apt.appointmentType,
@@ -89,7 +104,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // Fetch treatments
-    if (!typeFilter || typeFilter === 'treatment') {
+    if (canReadClinical && (!typeFilter || typeFilter === 'treatment')) {
       const treatments = await prisma.treatment.findMany({
         where: { patientId: id, hospitalId },
         include: {
@@ -109,9 +124,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           type: 'treatment',
           date: treatment.createdAt,
           title: treatment.procedure.name,
-          description: treatment.doctor
-            ? `by Dr. ${treatment.doctor.firstName} ${treatment.doctor.lastName}`
-            : undefined,
+          description: treatment.doctor ? `by ${prescriberName(treatment.doctor)}` : undefined,
           status: treatment.status,
           metadata: {
             category: treatment.procedure.category,
@@ -124,7 +137,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // Fetch payments
-    if (!typeFilter || typeFilter === 'payment') {
+    if (canReadBilling && (!typeFilter || typeFilter === 'payment')) {
       const invoices = await prisma.invoice.findMany({
         where: { patientId: id, hospitalId },
         select: {
@@ -196,7 +209,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // Fetch prescriptions
-    if (!typeFilter || typeFilter === 'prescription') {
+    if (canReadClinical && (!typeFilter || typeFilter === 'prescription')) {
       const prescriptions = await prisma.prescription.findMany({
         where: { patientId: id, hospitalId },
         include: {
@@ -213,9 +226,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           type: 'prescription',
           date: rx.createdAt,
           title: `Prescription ${rx.prescriptionNo}`,
-          description: rx.doctor
-            ? `by Dr. ${rx.doctor.firstName} ${rx.doctor.lastName}`
-            : undefined,
+          description: rx.doctor ? `by ${prescriberName(rx.doctor)}` : undefined,
           metadata: {
             diagnosis: rx.diagnosis,
           },
@@ -224,7 +235,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // Fetch lab orders
-    if (!typeFilter || typeFilter === 'lab_order') {
+    if (canReadLab && (!typeFilter || typeFilter === 'lab_order')) {
       const labOrders = await prisma.labOrder.findMany({
         where: { patientId: id, hospitalId },
         include: {
@@ -273,11 +284,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       total: events.length,
       hasMore: offset + limit < events.length,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching patient timeline:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch timeline' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch timeline' }, { status: 500 })
   }
 }

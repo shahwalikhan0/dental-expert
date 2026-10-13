@@ -33,6 +33,8 @@ import { ClinicalNotesCard } from '@/components/patients/clinical-notes-card'
 import { PatientLedger } from '@/components/billing/patient-ledger'
 import { useSession } from 'next-auth/react'
 import { holderCan } from '@/lib/rbac'
+import { useCan } from '@/hooks/use-can'
+import { prescriberName } from '@/lib/prescribing'
 import {
   ArrowLeft,
   Calendar,
@@ -54,6 +56,8 @@ import {
   Smile,
   Merge,
   NotebookPen,
+  UserCheck,
+  UserX,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
@@ -65,6 +69,7 @@ import { PerioPanel } from '@/components/clinical/perio-panel'
 import { bloodGroupLabel, genderLabel } from '@/lib/labels'
 import { displayDate } from '@/lib/dates'
 import { ActiveFilters } from '@/components/ui/active-filters'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { humanise } from '@/lib/labels'
 
 interface Patient {
@@ -83,6 +88,8 @@ interface Patient {
   state?: string
   postalCode?: string
   occupation?: string
+  /** False once deactivated, or merged away as a duplicate. */
+  isActive: boolean
   emergencyContactName?: string
   emergencyContactPhone?: string
   emergencyContactRelation?: string
@@ -100,14 +107,18 @@ interface Patient {
     familyDentalHistory?: string | null
   }
   appointments: any[]
-  treatments: any[]
-  invoices: any[]
-  prescriptions: Prescription[]
+  /**
+   * Absent when the caller may not read them — the clinical parts without
+   * `clinical:read`, the invoices without `billing:read`. See the route.
+   */
+  treatments?: any[]
+  invoices?: any[]
+  prescriptions?: Prescription[]
   _count: {
     appointments: number
-    treatments: number
-    invoices: number
-    prescriptions: number
+    treatments?: number
+    invoices?: number
+    prescriptions?: number
   }
 }
 
@@ -151,6 +162,17 @@ const PATIENT_TABS = [
   'forms',
 ]
 
+/**
+ * Tabs that are the clinical record, and the one that is the account.
+ *
+ * Shown only to somebody who may read them. The front desk was shown the
+ * chart, the perio exam, the treatments, the notes and the prescriptions —
+ * diagnoses and medicines included — on a record whose every one of those
+ * screens refuses them on its own (bug report 12 Oct, finding 5).
+ */
+const CLINICAL_TABS = ['dental-chart', 'perio', 'treatments', 'notes', 'prescriptions']
+const BILLING_TABS = ['billing']
+
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
@@ -158,11 +180,24 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   // Offering a button the server will refuse is worse than not offering it.
   // The server remains the authority; see the route.
   const { data: session } = useSession()
-  const canManagePortal = holderCan(
-    { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole },
-    'patients:write'
-  )
+  const holder = { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole }
+  const canManagePortal = holderCan(holder, 'patients:write')
+  const canEditPatient = holderCan(holder, 'patients:write')
+  const canReadClinical = holderCan(holder, 'clinical:read')
+  const canWriteClinical = holderCan(holder, 'clinical:write')
+  // Prescribing is the dentist's act: `clinical:sign`, as the prescription
+  // route requires. `clinical:write` let the assistant and the administrator
+  // open a form that would be refused.
+  const canPrescribe = useCan('clinical:sign') === true
+  const canReadBilling = holderCan(holder, 'billing:read')
+  const canReadLab = holderCan(holder, 'lab:read')
+  const canBook = holderCan(holder, 'appointments:write')
+  // Merging and deactivating are both behind `patients:delete` on the server
+  // — see their routes for why a merge is not a `patients:write` act.
+  const canRetire = holderCan(holder, 'patients:delete')
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [deactivateOpen, setDeactivateOpen] = useState(false)
+  const [reactivating, setReactivating] = useState(false)
   const [patient, setPatient] = useState<Patient | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(patient ? `${patient.firstName} ${patient.lastName}` : null)
@@ -177,7 +212,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
    */
   const searchParams = useSearchParams()
   const requestedTab = searchParams.get('tab') ?? ''
-  const activeTab = PATIENT_TABS.includes(requestedTab) ? requestedTab : 'overview'
+  const visibleTabs = PATIENT_TABS.filter(
+    (tab) =>
+      (canReadClinical || !CLINICAL_TABS.includes(tab)) &&
+      (canReadBilling || !BILLING_TABS.includes(tab))
+  )
+  const activeTab = visibleTabs.includes(requestedTab) ? requestedTab : 'overview'
 
   /**
    * Is there anything to show, rather than: is there a row?
@@ -236,6 +276,54 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     fetchPatient()
   }, [fetchPatient])
+
+  /**
+   * Deactivate, with the server's reasons for refusing shown as they are.
+   *
+   * The route refuses a patient who owes money or is in the chair, and says
+   * which — the toast is that sentence, so the desk knows what to settle first.
+   */
+  const deactivate = async () => {
+    try {
+      const response = await fetch(`/api/patients/${resolvedParams.id}`, { method: 'DELETE' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'The patient could not be deactivated')
+      toast({ title: 'Patient deactivated', description: data.message })
+      fetchPatient()
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not deactivate',
+        description: error.message,
+      })
+    }
+  }
+
+  const reactivate = async () => {
+    setReactivating(true)
+    try {
+      const response = await fetch(`/api/patients/${resolvedParams.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: true }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'The patient could not be reactivated')
+      toast({
+        title: 'Patient reactivated',
+        description: 'They are back on the register and can be booked again.',
+      })
+      fetchPatient()
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not reactivate',
+        description: error.message,
+      })
+    } finally {
+      setReactivating(false)
+    }
+  }
 
   const fetchTimeline = useCallback(async () => {
     try {
@@ -302,6 +390,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             </h1>
             <p className="text-muted-foreground">Patient ID: {patient.patientId}</p>
             <div className="flex items-center gap-2 mt-2">
+              {!patient.isActive && !patient.mergedInto && (
+                <Badge variant="destructive">Inactive</Badge>
+              )}
               <Badge variant="outline">{genderLabel(patient.gender)}</Badge>
               {patient.bloodGroup && (
                 <Badge variant="secondary">{bloodGroupLabel(patient.bloodGroup)}</Badge>
@@ -310,28 +401,40 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/patients/${patient.id}/edit`}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Link>
-          </Button>
+          {canEditPatient && (
+            <Button variant="outline" asChild>
+              <Link href={`/patients/${patient.id}/edit`}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Link>
+            </Button>
+          )}
           {/*
             Two records for one person is the commonest mess a front desk makes.
             The registration form has always warned about a likely duplicate
             before it is created; this is what to do about the ones already in
             the register, of which there was previously nothing at all.
           */}
-          <Button variant="outline" onClick={() => setMergeOpen(true)}>
-            <Merge className="h-4 w-4 mr-2" />
-            Merge duplicate
-          </Button>
-          <Button asChild>
-            <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Book Appointment
-            </Link>
-          </Button>
+          {canRetire && patient.isActive && (
+            <Button variant="outline" onClick={() => setMergeOpen(true)}>
+              <Merge className="h-4 w-4 mr-2" />
+              Merge duplicate
+            </Button>
+          )}
+          {canRetire && patient.isActive && (
+            <Button variant="outline" onClick={() => setDeactivateOpen(true)}>
+              <UserX className="h-4 w-4 mr-2" />
+              Deactivate
+            </Button>
+          )}
+          {canBook && patient.isActive && (
+            <Button asChild>
+              <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
+                <Calendar className="h-4 w-4 mr-2" />
+                Book Appointment
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -358,6 +461,28 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </Card>
       )}
 
+      {/*
+        Deactivated, and not merged away. There was no way back from this (bug
+        report 12 Oct, finding 22); the history is all still here, and a
+        patient who returns after two years is the same patient.
+      */}
+      {!patient.isActive && !patient.mergedInto && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <p className="text-sm">
+              This patient is inactive. They cannot be booked or invoiced until they are
+              reactivated.
+            </p>
+            {canEditPatient && (
+              <Button size="sm" variant="outline" onClick={reactivate} disabled={reactivating}>
+                <UserCheck className="h-4 w-4 mr-2" />
+                {reactivating ? 'Reactivating…' : 'Reactivate'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full">
@@ -365,14 +490,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <User className="h-4 w-4" />
             <span>Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="dental-chart" className="gap-2">
-            <Smile className="h-4 w-4" />
-            <span>Dental Chart</span>
-          </TabsTrigger>
-          <TabsTrigger value="perio" className="gap-2">
-            <Activity className="h-4 w-4" />
-            <span>Perio</span>
-          </TabsTrigger>
+          {canReadClinical && (
+            <TabsTrigger value="dental-chart" className="gap-2">
+              <Smile className="h-4 w-4" />
+              <span>Dental Chart</span>
+            </TabsTrigger>
+          )}
+          {canReadClinical && (
+            <TabsTrigger value="perio" className="gap-2">
+              <Activity className="h-4 w-4" />
+              <span>Perio</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="timeline" className="gap-2">
             <History className="h-4 w-4" />
             <span>Timeline</span>
@@ -381,25 +510,33 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <Calendar className="h-4 w-4" />
             <span>Appointments</span>
           </TabsTrigger>
-          <TabsTrigger value="treatments" className="gap-2">
-            <Stethoscope className="h-4 w-4" />
-            <span>Treatments</span>
-          </TabsTrigger>
-          <TabsTrigger value="notes" className="gap-2">
-            <NotebookPen className="h-4 w-4" />
-            <span>Notes</span>
-          </TabsTrigger>
-          <TabsTrigger value="prescriptions" className="gap-2">
-            <Pill className="h-4 w-4" />
-            <span>Prescriptions</span>
-            <Badge variant="secondary" className="ml-1">
-              {patient._count.prescriptions}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="billing" className="gap-2">
-            <CreditCard className="h-4 w-4" />
-            <span>Billing</span>
-          </TabsTrigger>
+          {canReadClinical && (
+            <TabsTrigger value="treatments" className="gap-2">
+              <Stethoscope className="h-4 w-4" />
+              <span>Treatments</span>
+            </TabsTrigger>
+          )}
+          {canReadClinical && (
+            <TabsTrigger value="notes" className="gap-2">
+              <NotebookPen className="h-4 w-4" />
+              <span>Notes</span>
+            </TabsTrigger>
+          )}
+          {canReadClinical && (
+            <TabsTrigger value="prescriptions" className="gap-2">
+              <Pill className="h-4 w-4" />
+              <span>Prescriptions</span>
+              <Badge variant="secondary" className="ml-1">
+                {patient._count.prescriptions ?? 0}
+              </Badge>
+            </TabsTrigger>
+          )}
+          {canReadBilling && (
+            <TabsTrigger value="billing" className="gap-2">
+              <CreditCard className="h-4 w-4" />
+              <span>Billing</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="forms" className="gap-2">
             <FileCheck className="h-4 w-4" />
             <span>Forms</span>
@@ -520,11 +657,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                   <Heart className="h-4 w-4" />
                   Medical History
                 </CardTitle>
-                <Button size="sm" variant="ghost" asChild>
-                  <Link href={trail.to(`/patients/${patient.id}/edit`)}>
-                    {hasMedicalHistory ? 'Edit' : 'Record'}
-                  </Link>
-                </Button>
+                {canEditPatient && (
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href={trail.to(`/patients/${patient.id}/edit`)}>
+                      {hasMedicalHistory ? 'Edit' : 'Record'}
+                    </Link>
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {hasMedicalHistory ? (
@@ -571,15 +710,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </TabsContent>
 
         {/* Dental Chart Tab */}
-        <TabsContent value="dental-chart" className="space-y-6">
-          <DentalChart patientId={patient.id} />
-        </TabsContent>
+        {canReadClinical && (
+          <TabsContent value="dental-chart" className="space-y-6">
+            <DentalChart patientId={patient.id} />
+          </TabsContent>
+        )}
 
         {/* The tooth chart says what a tooth is; this says what the gum around
             it is doing. Adjacent tabs because they are read together. */}
-        <TabsContent value="perio" className="space-y-6">
-          <PerioPanel patientId={patient.id} />
-        </TabsContent>
+        {canReadClinical && (
+          <TabsContent value="perio" className="space-y-6">
+            <PerioPanel patientId={patient.id} />
+          </TabsContent>
+        )}
 
         {/* Timeline Tab */}
         <TabsContent value="timeline" className="space-y-6">
@@ -598,11 +741,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <SelectContent>
                   <SelectItem value="all">All Events</SelectItem>
                   <SelectItem value="appointment">Appointments</SelectItem>
-                  <SelectItem value="treatment">Treatments</SelectItem>
-                  <SelectItem value="payment">Payments</SelectItem>
+                  {/* Only the kinds the timeline will return to this caller —
+                      the route leaves the others out. */}
+                  {canReadClinical && <SelectItem value="treatment">Treatments</SelectItem>}
+                  {canReadBilling && <SelectItem value="payment">Payments</SelectItem>}
                   <SelectItem value="document">Documents</SelectItem>
-                  <SelectItem value="prescription">Prescriptions</SelectItem>
-                  <SelectItem value="lab_order">Lab Orders</SelectItem>
+                  {canReadClinical && <SelectItem value="prescription">Prescriptions</SelectItem>}
+                  {canReadLab && <SelectItem value="lab_order">Lab Orders</SelectItem>}
                 </SelectContent>
               </Select>
             </CardHeader>
@@ -768,12 +913,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle>Appointments</CardTitle>
                 <CardDescription>Recent and upcoming appointments</CardDescription>
               </div>
-              <Button asChild>
-                <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
-                  <Calendar className="h-4 w-4 mr-2" />
-                  New Appointment
-                </Link>
-              </Button>
+              {canBook && patient.isActive && (
+                <Button asChild>
+                  <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    New Appointment
+                  </Link>
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {patient.appointments.length === 0 ? (
@@ -808,9 +955,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                         </TableCell>
                         <TableCell>{apt.appointmentType}</TableCell>
                         <TableCell>
-                          {apt.doctor
-                            ? `Dr. ${apt.doctor.firstName} ${apt.doctor.lastName}`
-                            : 'Not assigned'}
+                          {apt.doctor ? prescriberName(apt.doctor) : 'Not assigned'}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -835,168 +980,186 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </TabsContent>
 
         {/* Treatments Tab */}
-        <TabsContent value="treatments" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Treatment History</CardTitle>
-              <CardDescription>Past procedures and treatments</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {patient.treatments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[200px]">
-                  <Stethoscope className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No treatments recorded</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Procedure</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Doctor</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {patient.treatments.map((treatment) => (
-                      <ClickableRow
-                        key={treatment.id}
-                        href={trail.to(`/treatments/${treatment.id}`)}
-                        label={`Open ${treatment.procedure.name}`}
-                      >
-                        <TableCell>{displayDate(treatment.createdAt)}</TableCell>
-                        <TableCell className="font-medium">{treatment.procedure.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{treatment.procedure.category}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {treatment.doctor
-                            ? `Dr. ${treatment.doctor.firstName} ${treatment.doctor.lastName}`
-                            : 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              treatment.status === 'COMPLETED'
-                                ? 'default'
-                                : treatment.status === 'CANCELLED'
-                                  ? 'destructive'
-                                  : 'secondary'
-                            }
-                          >
-                            {treatment.status}
-                          </Badge>
-                        </TableCell>
-                      </ClickableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canReadClinical && (
+          <TabsContent value="treatments" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Treatment History</CardTitle>
+                <CardDescription>Past procedures and treatments</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(patient.treatments ?? []).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[200px]">
+                    <Stethoscope className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No treatments recorded</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Procedure</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Doctor</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(patient.treatments ?? []).map((treatment) => (
+                        <ClickableRow
+                          key={treatment.id}
+                          href={trail.to(`/treatments/${treatment.id}`)}
+                          label={`Open ${treatment.procedure.name}`}
+                        >
+                          <TableCell>{displayDate(treatment.createdAt)}</TableCell>
+                          <TableCell className="font-medium">{treatment.procedure.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{treatment.procedure.category}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {treatment.doctor ? prescriberName(treatment.doctor) : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                treatment.status === 'COMPLETED'
+                                  ? 'default'
+                                  : treatment.status === 'CANCELLED'
+                                    ? 'destructive'
+                                    : 'secondary'
+                              }
+                            >
+                              {treatment.status}
+                            </Badge>
+                          </TableCell>
+                        </ClickableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Notes Tab */}
+        {canReadClinical && (
+          <TabsContent value="notes" className="space-y-6">
+            <ClinicalNotesCard
+              patientId={patient.id}
+              canWrite={canWriteClinical}
+              canSign={holderCan(holder, 'clinical:sign')}
+            />
+          </TabsContent>
+        )}
 
         {/* Prescriptions Tab */}
-        <TabsContent value="notes" className="space-y-6">
-          <ClinicalNotesCard
-            patientId={patient.id}
-            canWrite={holderCan(session?.user, 'clinical:write')}
-            canSign={holderCan(session?.user, 'clinical:sign')}
-          />
-        </TabsContent>
-
-        <TabsContent value="prescriptions" className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Prescriptions</CardTitle>
-                <CardDescription>What this patient was told to take, and when</CardDescription>
-              </div>
-              <Button asChild>
-                <Link href={trail.to(`/prescriptions/new?patientId=${patient.id}`)}>
-                  <Pill className="h-4 w-4 mr-2" />
-                  New Prescription
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {patient.prescriptions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[200px]">
-                  <Pill className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No prescriptions written</p>
+        {canReadClinical && (
+          <TabsContent value="prescriptions" className="space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Prescriptions</CardTitle>
+                  <CardDescription>What this patient was told to take, and when</CardDescription>
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Number</TableHead>
-                      <TableHead>Medications</TableHead>
-                      <TableHead>Doctor</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {patient.prescriptions.map((rx) => (
-                      <ClickableRow
-                        key={rx.id}
-                        href={trail.to(`/prescriptions/${rx.id}`)}
-                        label={`Open prescription ${rx.prescriptionNo}`}
-                      >
-                        <TableCell>{displayDate(rx.createdAt)}</TableCell>
-                        <TableCell className="font-medium">{rx.prescriptionNo}</TableCell>
-                        <TableCell>
-                          {rx.medications.length === 0 ? (
-                            <span className="text-muted-foreground">No medicines</span>
-                          ) : (
-                            <div className="space-y-0.5">
-                              {rx.medications.map((med) => (
-                                <p key={med.id} className="text-sm">
-                                  <span className="font-medium">{med.medicationName}</span>
-                                  <span className="text-muted-foreground">
-                                    {' '}
-                                    {med.dosage} · {med.frequency}
-                                  </span>
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                          {rx.diagnosis && (
-                            <p className="text-xs text-muted-foreground mt-1">{rx.diagnosis}</p>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {rx.doctor ? `Dr. ${rx.doctor.firstName} ${rx.doctor.lastName}` : 'N/A'}
-                        </TableCell>
-                      </ClickableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                {/* Writing one needs `clinical:sign`; reading the list does not. */}
+                {canPrescribe && patient.isActive && (
+                  <Button asChild>
+                    <Link href={trail.to(`/prescriptions/new?patientId=${patient.id}`)}>
+                      <Pill className="h-4 w-4 mr-2" />
+                      New Prescription
+                    </Link>
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {(patient.prescriptions ?? []).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[200px]">
+                    <Pill className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No prescriptions written</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Number</TableHead>
+                        <TableHead>Medications</TableHead>
+                        <TableHead>Doctor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(patient.prescriptions ?? []).map((rx) => (
+                        <ClickableRow
+                          key={rx.id}
+                          href={trail.to(`/prescriptions/${rx.id}`)}
+                          label={`Open prescription ${rx.prescriptionNo}`}
+                        >
+                          <TableCell>{displayDate(rx.createdAt)}</TableCell>
+                          <TableCell className="font-medium">{rx.prescriptionNo}</TableCell>
+                          <TableCell>
+                            {rx.medications.length === 0 ? (
+                              <span className="text-muted-foreground">No medicines</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                {rx.medications.map((med) => (
+                                  <p key={med.id} className="text-sm">
+                                    <span className="font-medium">{med.medicationName}</span>
+                                    <span className="text-muted-foreground">
+                                      {' '}
+                                      {med.dosage} · {med.frequency}
+                                    </span>
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                            {rx.diagnosis && (
+                              <p className="text-xs text-muted-foreground mt-1">{rx.diagnosis}</p>
+                            )}
+                          </TableCell>
+                          <TableCell>{rx.doctor ? prescriberName(rx.doctor) : 'N/A'}</TableCell>
+                        </ClickableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         {/* Billing Tab */}
-        <TabsContent value="billing" className="space-y-6">
-          {/*
-            A running balance, not a list of invoices with their own balances.
-            What the desk is asked is "what do I owe you?", and the old table
-            left that sum to whoever was standing there. See lib/ledger.ts.
-          */}
-          <PatientLedger patientId={patient.id} />
-        </TabsContent>
+        {canReadBilling && (
+          <TabsContent value="billing" className="space-y-6">
+            {/*
+              A running balance, not a list of invoices with their own balances.
+              What the desk is asked is "what do I owe you?", and the old table
+              left that sum to whoever was standing there. See lib/ledger.ts.
+            */}
+            <PatientLedger patientId={patient.id} />
+          </TabsContent>
+        )}
 
         {/* Forms Tab */}
         <TabsContent value="forms" className="space-y-6">
           <PatientFormSubmissions patientId={patient.id} />
         </TabsContent>
       </Tabs>
-      <MergeDialog
-        open={mergeOpen}
-        onOpenChange={setMergeOpen}
-        patient={patient}
-        onMerged={() => fetchPatient()}
+      {canRetire && (
+        <MergeDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          patient={patient}
+          onMerged={() => fetchPatient()}
+        />
+      )}
+      <ConfirmDialog
+        open={deactivateOpen}
+        onOpenChange={setDeactivateOpen}
+        title={`Deactivate ${patient.firstName} ${patient.lastName}?`}
+        description="They leave the patient list and their upcoming appointments are cancelled. Their history is kept, and they can be reactivated from this record at any time. A patient who owes money or is in the clinic now cannot be deactivated."
+        confirmLabel="Deactivate"
+        onConfirm={deactivate}
       />
     </div>
   )

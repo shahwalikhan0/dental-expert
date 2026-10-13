@@ -173,7 +173,6 @@ export default function EditInvoicePage() {
           discountType,
           discountValue: Number(discountValue) || 0,
           discountReason: discountReason || null,
-          taxRate: Number(taxRate) || 0,
           dueDate: dueDate || null,
           notes,
           ...(issue ? { status: 'PENDING' } : {}),
@@ -363,6 +362,7 @@ export default function EditInvoicePage() {
                   id="discountValue"
                   type="number"
                   min="0"
+                  max={discountType === 'PERCENTAGE' ? 100 : undefined}
                   step="0.01"
                   value={discountValue}
                   onChange={(e) => setDiscountValue(e.target.value)}
@@ -380,14 +380,10 @@ export default function EditInvoicePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="taxRate">Tax rate (%)</Label>
-                <Input
-                  id="taxRate"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(e.target.value)}
-                />
+                {/* Read-only: the rate is the clinic's, stamped on the invoice
+                    when it was raised. The server does not take one from the
+                    form, so an editable box here would change nothing. */}
+                <Input id="taxRate" type="number" value={taxRate} readOnly disabled />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dueDate">Due date</Label>

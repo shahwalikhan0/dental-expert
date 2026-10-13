@@ -116,9 +116,9 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Backup export error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to export backup' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to export backup' }, { status: 500 })
   }
 }
 
@@ -147,11 +147,8 @@ export async function POST(req: NextRequest) {
       data: stats,
       timestamp: new Date().toISOString(),
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Backup stats error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get backup statistics' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get backup statistics' }, { status: 500 })
   }
 }

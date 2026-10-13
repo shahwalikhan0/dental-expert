@@ -10,7 +10,7 @@ A comprehensive, AI-powered **dental hospital management system** built with Nex
 
 - **Patient Management** — Records, medical history, dental charting, document uploads
 - **Appointment Scheduling** — Calendar view, slot management, reminders, no-show prediction
-- **Treatment Plans** — Treatment tracking, procedure catalog, AI-assisted treatment advice
+- **Treatment Plans** — Treatment tracking, procedure catalog
 - **Billing & Invoicing** — GST-compliant invoicing, payment tracking, payment plans (EMI)
 - **Prescriptions** — Digital prescriptions, medication database, print/PDF export
 - **Inventory Management** — Stock tracking, low-stock alerts, AI-powered demand forecasting

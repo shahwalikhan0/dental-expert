@@ -200,11 +200,39 @@ describe('Inventory supplier detail and reports', () => {
       expect(res.status).toBe(404)
     })
 
+    // Finding 44: MedSupply Karachi was deleted with a draft order on its
+    // books, and the draft was then sent to a supplier that no longer existed.
+    it('refuses to delete a supplier with an open order', async () => {
+      prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1', name: 'MedSupply Karachi' })
+      prisma.purchaseOrder.count.mockResolvedValueOnce(1)
+
+      const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)
+
+      expect(res.status).toBe(409)
+      expect((await res.json()).error).toContain('open purchase order')
+      expect(prisma.purchaseOrder.count.mock.calls[0][0].where).toMatchObject({
+        supplierId: 'sup-1',
+        status: {
+          in: [
+            PurchaseOrderStatus.DRAFT,
+            PurchaseOrderStatus.ORDERED,
+            PurchaseOrderStatus.PARTIALLY_RECEIVED,
+          ],
+        },
+      })
+      expect(prisma.vendor.update).not.toHaveBeenCalled()
+      expect(prisma.vendor.delete).not.toHaveBeenCalled()
+    })
+
+    // Dental Depot, with received order PO20260001, keeps its history.
     it('soft deletes a supplier that is still referenced', async () => {
       prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1' })
-      prisma.purchaseOrder.count.mockResolvedValue(2)
+      prisma.purchaseOrder.count.mockResolvedValueOnce(0).mockResolvedValueOnce(2)
       prisma.inventoryItem.count.mockResolvedValue(0)
+      prisma.inventoryBatch.count.mockResolvedValue(0)
+      prisma.stockTransaction.count.mockResolvedValue(0)
       prisma.vendor.update.mockResolvedValue({ id: 'sup-1' })
+      prisma.auditLog.create.mockResolvedValue({ id: 'log-1' })
 
       const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)
       expect(res.status).toBe(200)
@@ -215,12 +243,19 @@ describe('Inventory supplier detail and reports', () => {
       // One lifecycle field. `isActive` and `status` both existed, and the
       // schema comment on `isActive` admitted it merely mirrored the enum.
       expect(data).not.toHaveProperty('isActive')
+      // Finding 24.
+      expect(prisma.auditLog.create.mock.calls[0][0].data).toMatchObject({
+        action: 'supplier.deleted',
+        entityId: 'sup-1',
+      })
     })
 
     it('hard deletes a supplier with no references', async () => {
       prisma.vendor.findFirst.mockResolvedValue({ id: 'sup-1' })
       prisma.purchaseOrder.count.mockResolvedValue(0)
       prisma.inventoryItem.count.mockResolvedValue(0)
+      prisma.inventoryBatch.count.mockResolvedValue(0)
+      prisma.stockTransaction.count.mockResolvedValue(0)
       prisma.vendor.delete.mockResolvedValue({ id: 'sup-1' })
 
       const res = await supplierDetailDELETE(makeReq('/api/inventory/suppliers/sup-1'), ctx)

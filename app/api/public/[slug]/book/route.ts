@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { DEFAULT_APPOINTMENT_DURATION, findAppointmentConflicts } from '@/lib/appointment-conflicts'
 import { prisma } from '@/lib/prisma'
+import { findDentist } from '@/lib/clinicians'
+import { dayAvailability, timeRefusal } from '@/lib/appointment-availability'
+import { prescriberName } from '@/lib/prescribing'
 import { instantAt, wallClockIn } from '@/lib/appointment-time'
 import { nextAppointmentNo } from '@/lib/numbering'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
@@ -115,13 +118,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       return NextResponse.json({ error: WINDOW_MESSAGES[refusal](settings) }, { status: 400 })
     }
 
-    const doctor = await prisma.staff.findFirst({
-      where: { id: doctorId, hospitalId, isActive: true },
-      select: { id: true, firstName: true, lastName: true },
-    })
+    const doctor = await findDentist(hospitalId, doctorId)
 
     if (!doctor) {
       return NextResponse.json({ error: 'That dentist is not available' }, { status: 404 })
+    }
+
+    /**
+     * Holidays, opening hours, the dentist's shift and the lunch break.
+     *
+     * The slot list leaves these out, but this route took whatever date and
+     * time it was sent, so a request made without the page — or from a page
+     * left open across a newly added holiday — booked straight into a closed
+     * clinic (bug report 12 Oct, finding 6). The same answer the desk's
+     * booking route gets, from lib/appointment-availability.ts.
+     */
+    const closedRefusal = timeRefusal(
+      await dayAvailability(prisma, hospitalId, date, doctor.id),
+      time,
+      DEFAULT_APPOINTMENT_DURATION
+    )
+    if (closedRefusal) {
+      return NextResponse.json(
+        { error: 'That time is not available. Please choose one of the times offered.' },
+        { status: 400 }
+      )
     }
 
     /**
@@ -246,7 +267,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           recipient: phone,
           body: [
             `${hospital.name}: your appointment is booked for ${wall.scheduledDate} at ${wall.scheduledTime}`,
-            `with Dr. ${doctor.firstName} ${doctor.lastName}`.trimEnd() + '.',
+            `with ${prescriberName(doctor)}.`,
             `Reference ${appointment.appointmentNo}.`,
             hospital.phone ? `To change it, call ${hospital.phone}.` : '',
           ]
@@ -271,7 +292,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           reference: appointment.appointmentNo,
           date: wall.scheduledDate,
           time: wall.scheduledTime,
-          doctor: `Dr. ${doctor.firstName} ${doctor.lastName}`.trim(),
+          doctor: prescriberName(doctor),
         },
       },
       { status: 201 }

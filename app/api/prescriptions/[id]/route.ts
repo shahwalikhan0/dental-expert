@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // GET — single prescription with medications
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -79,9 +80,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ success: true, data: prescription, hospital })
   } catch (err: any) {
     console.error('Error fetching prescription:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to fetch prescription' },
-      { status: 500 }
+    // Never `err.message`: it carries Prisma's query and the server's paths.
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to fetch prescription' }, { status: 500 })
     )
   }
 }
@@ -108,9 +110,10 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: 'Prescription deleted' })
   } catch (err: any) {
     console.error('Error deleting prescription:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to delete prescription' },
-      { status: 500 }
+    // Never `err.message`: it carries Prisma's query and the server's paths.
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to delete prescription' }, { status: 500 })
     )
   }
 }

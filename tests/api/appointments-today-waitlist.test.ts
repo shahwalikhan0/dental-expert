@@ -81,7 +81,9 @@ describe('Appointments Today & Waitlist API', () => {
         {
           id: 'a1',
           status: 'CHECKED_IN',
-          waitTime: 10,
+          // Waiting so far: now minus check-in (finding 32).
+          checkedInAt: new Date(Date.now() - 10 * 60000),
+          waitTime: null,
           scheduledTime: '09:00',
           patient: { id: 'p1' },
           doctor: { id: 'd1' },
@@ -89,7 +91,8 @@ describe('Appointments Today & Waitlist API', () => {
         {
           id: 'a2',
           status: 'CHECKED_IN',
-          waitTime: 20,
+          checkedInAt: new Date(Date.now() - 20 * 60000),
+          waitTime: null,
           scheduledTime: '09:30',
           patient: { id: 'p2' },
           doctor: { id: 'd1' },
@@ -104,6 +107,8 @@ describe('Appointments Today & Waitlist API', () => {
         {
           id: 'a4',
           status: 'COMPLETED',
+          // Called in 6 minutes after checking in.
+          waitTime: 6,
           scheduledTime: '08:00',
           patient: { id: 'p4' },
           doctor: { id: 'd1' },
@@ -134,7 +139,8 @@ describe('Appointments Today & Waitlist API', () => {
       expect(body.stats.upcoming).toBe(1)
       expect(body.stats.completed).toBe(1)
       expect(body.stats.noShow).toBe(1)
-      expect(body.stats.avgWaitTime).toBe(15) // (10+20)/2
+      expect(body.stats.avgWaitTime).toBe(15) // (10+20)/2, still waiting
+      expect(body.stats.avgSeenWaitTime).toBe(6) // those already called in
       expect(body.queue.waiting).toHaveLength(2)
       expect(body.queue.inProgress).toHaveLength(1)
     })

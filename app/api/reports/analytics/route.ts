@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { averageWait } from '@/lib/appointment-wait'
 import {
   startOfDay,
   endOfDay,
@@ -395,13 +397,11 @@ async function getOperationalAnalytics(dateFrom: Date, dateTo: Date, hospitalId:
   const appointmentUtilization =
     totalAppointments > 0 ? (completedAppointments / totalAppointments) * 100 : 0
 
-  // Calculate average wait time
-  const appointmentsWithWaitTime = appointments.filter((a) => a.waitTime !== null)
-  const avgWaitTime =
-    appointmentsWithWaitTime.length > 0
-      ? appointmentsWithWaitTime.reduce((sum, a) => sum + (a.waitTime || 0), 0) /
-        appointmentsWithWaitTime.length
-      : 0
+  // Average wait: check-in until called in, over patients who were called in.
+  // `waitTime` used to be how late the patient arrived, written at check-in,
+  // and was averaged over anybody who had ever checked in (bug report 12 Oct,
+  // finding 32). See lib/appointment-wait.ts.
+  const avgWaitTime = averageWait(appointments)
 
   // Staff productivity
   const staffMap = new Map()
@@ -544,6 +544,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Analytics API error:', error)
     return NextResponse.json({ error: 'Failed to fetch analytics data' }, { status: 500 })
   }

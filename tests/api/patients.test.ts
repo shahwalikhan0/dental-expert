@@ -273,6 +273,29 @@ describe('Patients API - POST /api/patients', () => {
     expect(data.error).toContain('required')
   })
 
+  // Bug report 12 Oct, finding 30.
+  it.each([
+    [{ dateOfBirth: '2030-01-01' }, /future/],
+    [{ phone: 'xyz' }, /Phone/],
+    [{ email: 'nope' }, /Email/],
+    [{ emergencyContactPhone: 'ask her son' }, /Emergency contact phone/],
+  ])('refuses to register %j', async (override, message) => {
+    const request = new NextRequest('http://localhost:3000/api/patients', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName: 'Ali',
+        lastName: 'Khan',
+        phone: '03001234567',
+        ...override,
+      }),
+    })
+    const response = await POST(request)
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(message)
+    expect(prisma.patient.create).not.toHaveBeenCalled()
+  })
+
   it('allows a shared phone number, and names who else is on it', async () => {
     // Families share a number. The CNIC is what identifies a person here, and
     // that is still unique; this is a warning, not a refusal.

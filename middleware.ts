@@ -33,6 +33,9 @@ const publicRoutes = [
   '/pricing',
   '/verify-email',
   '/invite/accept',
+  // The user guide. Linked from the sign-in and signup cards, so it has to
+  // open for somebody who has no account yet.
+  '/docs',
   '/portal',
   // The patient booking application. It is a separate application that happens
   // to be served from the same deployment — no staff session, no clinic
@@ -51,6 +54,46 @@ const publicRoutes = [
  */
 const CHANGE_PASSWORD_PATH = '/settings/password'
 
+/**
+ * The signed-out pages whose forms carry a password.
+ *
+ * Their forms are `method="post"` (bug report 12 Oct, finding 3): a form
+ * submitted before React has hydrated used to be a native GET, which put the
+ * password in the URL — the address bar, the history, the access log. A native
+ * POST keeps it in the body, and nothing on the server reads that body: these
+ * are client pages, and every real submission goes to an API route with
+ * `fetch`. So the POST is answered here with a 303 back to the page, which the
+ * browser follows with a plain GET, and the person simply submits again once
+ * the page is ready.
+ */
+const CREDENTIAL_PAGES = [
+  '/login',
+  '/signup',
+  '/invite/accept',
+  '/reset-password',
+  '/forgot-password',
+]
+
+/** Query parameters that must never survive in a URL, from a GET submitted the old way. */
+const CREDENTIAL_PARAMS = ['password', 'confirmPassword', 'newPassword', 'email', 'phone']
+
+function isCredentialPage(pathname: string): boolean {
+  return CREDENTIAL_PAGES.includes(pathname.replace(/\/+$/, '') || '/')
+}
+
+/** The same page, without anything a form might have put in its query string. */
+function withoutCredentials(nextUrl: {
+  pathname: string
+  origin: string
+  searchParams: URLSearchParams
+}): URL {
+  const clean = new URL(nextUrl.pathname, nextUrl.origin)
+  nextUrl.searchParams.forEach((value, key) => {
+    if (!CREDENTIAL_PARAMS.includes(key)) clean.searchParams.append(key, value)
+  })
+  return clean
+}
+
 export default auth((req) => {
   const { nextUrl, auth: session } = req
   const isLoggedIn = !!session?.user
@@ -62,6 +105,28 @@ export default auth((req) => {
   const isApiRoute = pathname.startsWith('/api/')
   const isApiAuth = pathname.startsWith('/api/auth')
   const isPublicApi = pathname.startsWith('/api/public')
+
+  /**
+   * A native form submission to a sign-in page — see CREDENTIAL_PAGES. A POST
+   * is sent back to the page as a GET; a GET that arrived with a password in
+   * its query string, from a page built before the forms said `post`, is sent
+   * to the same address without it, so it at least leaves the address bar.
+   * Server actions identify themselves with `next-action` and are left alone,
+   * although none of these pages uses one.
+   */
+  if (isCredentialPage(pathname)) {
+    const method = (req.method ?? 'GET').toUpperCase()
+    const isServerAction = !!req.headers?.get?.('next-action')
+    if (method === 'POST' && !isServerAction) {
+      return NextResponse.redirect(withoutCredentials(nextUrl), 303)
+    }
+    if (
+      (method === 'GET' || method === 'HEAD') &&
+      CREDENTIAL_PARAMS.some((param) => nextUrl.searchParams.has(param))
+    ) {
+      return NextResponse.redirect(withoutCredentials(nextUrl), 303)
+    }
+  }
 
   /**
    * Rate limiting, for the handful of endpoints anybody can reach.

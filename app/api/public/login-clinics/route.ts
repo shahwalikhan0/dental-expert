@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requestContext } from '@/lib/audit'
 import { resolveLogin } from '@/lib/login'
+import { emailField } from '@/lib/email-address'
 
 /**
  * Why was that sign-in refused?
@@ -35,7 +36,8 @@ import { resolveLogin } from '@/lib/login'
  * guards /api/auth must guard this too.
  */
 const schema = z.object({
-  email: z.string().email(),
+  // Trimmed and lower-cased, as sign-in does — see lib/auth.ts.
+  email: emailField(),
   // No minimum: this asks about a password that was just tried, whatever it
   // was. See the same note in lib/auth.ts.
   password: z.string().min(1),

@@ -13,12 +13,23 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { MAXIMUM_PASSWORD_LENGTH, MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
+import { PHONE_PLACEHOLDER, PHONE_RULE, isValidPhone } from '@/lib/staff-rules'
 
 const acceptInviteSchema = z
   .object({
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    password: z
+      .string()
+      .min(
+        MINIMUM_PASSWORD_LENGTH,
+        `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`
+      )
+      .max(
+        MAXIMUM_PASSWORD_LENGTH,
+        `Password must be ${MAXIMUM_PASSWORD_LENGTH} characters or fewer`
+      ),
     confirmPassword: z.string(),
-    phone: z.string().min(10, 'Phone number must be at least 10 digits'),
+    phone: z.string().refine((value) => isValidPhone(value), PHONE_RULE),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -216,13 +227,15 @@ function AcceptInviteContent() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* `method="post"` so a submit before the page has hydrated never puts
+            the password in the address bar — see middleware.ts. */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
             <Input
               id="phone"
               type="tel"
-              placeholder="9876543210"
+              placeholder={PHONE_PLACEHOLDER}
               {...register('phone')}
               disabled={isSubmitting}
             />
@@ -234,7 +247,7 @@ function AcceptInviteContent() {
             <Input
               id="password"
               type="password"
-              placeholder="At least 8 characters"
+              placeholder={`${MINIMUM_PASSWORD_LENGTH} to ${MAXIMUM_PASSWORD_LENGTH} characters`}
               {...register('password')}
               disabled={isSubmitting}
             />

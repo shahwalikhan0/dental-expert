@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // GET /api/settings/audit-logs - Get audit logs
 export async function GET(req: NextRequest) {
@@ -62,11 +63,10 @@ export async function GET(req: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get audit logs error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get audit logs' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get audit logs' }, { status: 500 })
   }
 }

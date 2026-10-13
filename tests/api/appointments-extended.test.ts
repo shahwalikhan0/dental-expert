@@ -262,7 +262,15 @@ describe('GET /api/appointments/today', () => {
     const { GET } = await import('@/app/api/appointments/today/route')
 
     const appts = [
-      { id: 'a1', status: 'CHECKED_IN', waitTime: 10, patient: {}, doctor: {} },
+      // In the waiting room for ten minutes so far (bug report 12 Oct, finding 32).
+      {
+        id: 'a1',
+        status: 'CHECKED_IN',
+        checkedInAt: new Date(Date.now() - 10 * 60000),
+        waitTime: null,
+        patient: {},
+        doctor: {},
+      },
       { id: 'a2', status: 'SCHEDULED', waitTime: 0, patient: {}, doctor: {} },
       { id: 'a3', status: 'COMPLETED', waitTime: 0, patient: {}, doctor: {} },
     ]
@@ -279,6 +287,7 @@ describe('GET /api/appointments/today', () => {
     expect(data.queue.completed).toHaveLength(1)
     expect(data.stats.total).toBe(3)
     expect(data.stats.avgWaitTime).toBe(10)
+    expect(data.queue.waiting[0].waitMinutes).toBe(10)
   })
 
   it('filters by doctorId', async () => {
@@ -387,7 +396,8 @@ describe('GET /api/appointments/slots', () => {
     expect(data.error).toContain('required')
   })
 
-  it('returns 404 if doctor not found', async () => {
+  // Not found, not a dentist or deactivated: one answer (finding 7).
+  it('returns 400 if the doctor is not an active dentist', async () => {
     const { GET } = await import('@/app/api/appointments/slots/route')
 
     vi.mocked(prisma.hospital.findUnique).mockResolvedValue({ workingHours: null } as any)
@@ -396,7 +406,7 @@ describe('GET /api/appointments/slots', () => {
     const req = makeRequest('http://localhost/api/appointments/slots?doctorId=bad&date=2026-03-15')
     const res = await GET(req)
 
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(400)
   })
 
   it('marks booked slots as unavailable', async () => {

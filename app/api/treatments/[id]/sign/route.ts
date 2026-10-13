@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 /**
  * POST /api/treatments/[id]/sign — FR-007.
@@ -12,8 +13,12 @@ import { requirePermission } from '@/lib/api-helpers'
  * Signing is what locks the note. There is no unsign — that is the entire
  * point of a signature — so a note signed in error is corrected the same way
  * as any other mistake, by an amendment that says so.
+ *
+ * And only the treating dentist signs. Holding `clinical:sign` was the whole
+ * check, so Dr Danish could sign Dr Sana's scaling (bug report 12 Oct,
+ * finding 12) — attesting as the treating provider for work he did not do.
  */
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, hospitalId, user } = await requirePermission('clinical:sign')
   if (error || !hospitalId || !user?.id) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,7 +29,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
     const treatment = await prisma.treatment.findFirst({
       where: { id, hospitalId },
-      select: { id: true, treatmentNo: true, status: true, signedAt: true },
+      select: {
+        id: true,
+        treatmentNo: true,
+        status: true,
+        signedAt: true,
+        doctorId: true,
+        patientId: true,
+        doctor: { select: { firstName: true, lastName: true } },
+      },
     })
 
     if (!treatment) {
@@ -46,6 +59,24 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       )
     }
 
+    // The signer's own staff record, looked up rather than read from the
+    // session token, which can be hours old.
+    const signer = await prisma.staff.findFirst({
+      where: { hospitalId, userId: user.id },
+      select: { id: true },
+    })
+    if (!signer || signer.id !== treatment.doctorId) {
+      const name = treatment.doctor
+        ? `Dr ${treatment.doctor.firstName} ${treatment.doctor.lastName}`.trim()
+        : 'the treating dentist'
+      return NextResponse.json(
+        {
+          error: `Only ${name}, the treating dentist, can sign ${treatment.treatmentNo}. A signature attests as the treating provider.`,
+        },
+        { status: 403 }
+      )
+    }
+
     const signed = await prisma.treatment.update({
       where: { id },
       data: { signedById: user.id, signedAt: new Date() },
@@ -53,6 +84,22 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         signedBy: { select: { id: true, name: true } },
         doctor: { select: { id: true, firstName: true, lastName: true } },
       },
+    })
+
+    // A signature attests to a clinical record, so the trail carries it
+    // (finding 24).
+    void recordAudit({
+      hospitalId,
+      userId: user.id,
+      action: AUDIT_ACTIONS.TREATMENT_SIGNED,
+      entityType: 'Treatment',
+      entityId: treatment.id,
+      newValues: {
+        treatmentNo: treatment.treatmentNo,
+        patientId: treatment.patientId,
+        signedAt: signed.signedAt,
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json({

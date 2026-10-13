@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { duplicateMedicationMessage, findDuplicateMedication } from '@/lib/medication-catalogue'
 
 // GET — single medication
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,9 +24,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ success: true, data: medication })
   } catch (err: any) {
     console.error('Error fetching medication:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to fetch medication' },
-      { status: 500 }
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to fetch medication' }, { status: 500 })
     )
   }
 }
@@ -44,30 +46,45 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const body = await request.json()
-    const medication = await prisma.medication.update({
-      where: { id },
-      data: {
-        name: body.name ?? existing.name,
-        genericName: body.genericName ?? existing.genericName,
-        category: body.category ?? existing.category,
-        form: body.form ?? existing.form,
-        strength: body.strength ?? existing.strength,
-        manufacturer: body.manufacturer ?? existing.manufacturer,
-        defaultDosage: body.defaultDosage ?? existing.defaultDosage,
-        defaultFrequency: body.defaultFrequency ?? existing.defaultFrequency,
-        defaultDuration: body.defaultDuration ?? existing.defaultDuration,
-        contraindications: body.contraindications ?? existing.contraindications,
-        sideEffects: body.sideEffects ?? existing.sideEffects,
-        isActive: body.isActive ?? existing.isActive,
-      },
-    })
+    const data = {
+      name: body.name ?? existing.name,
+      genericName: body.genericName ?? existing.genericName,
+      category: body.category ?? existing.category,
+      form: body.form ?? existing.form,
+      strength: body.strength ?? existing.strength,
+      manufacturer: body.manufacturer ?? existing.manufacturer,
+      defaultDosage: body.defaultDosage ?? existing.defaultDosage,
+      defaultFrequency: body.defaultFrequency ?? existing.defaultFrequency,
+      defaultDuration: body.defaultDuration ?? existing.defaultDuration,
+      contraindications: body.contraindications ?? existing.contraindications,
+      sideEffects: body.sideEffects ?? existing.sideEffects,
+      isActive: body.isActive ?? existing.isActive,
+    }
+
+    /*
+     * An edit can make two entries the same drug as surely as an add can —
+     * renaming one, or reactivating a retired copy of something now stocked
+     * again (finding 56). Checked against what the entry will be, and only
+     * when it will be active: a retired duplicate is history, not a clash.
+     */
+    if (data.isActive) {
+      const duplicate = await findDuplicateMedication(hospitalId, data, id)
+      if (duplicate) {
+        return NextResponse.json(
+          { error: duplicateMedicationMessage(duplicate), duplicateOf: duplicate.id },
+          { status: 409 }
+        )
+      }
+    }
+
+    const medication = await prisma.medication.update({ where: { id }, data })
 
     return NextResponse.json({ success: true, data: medication })
   } catch (err: any) {
     console.error('Error updating medication:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to update medication' },
-      { status: 500 }
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to update medication' }, { status: 500 })
     )
   }
 }
@@ -94,9 +111,9 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: 'Medication deactivated' })
   } catch (err: any) {
     console.error('Error deleting medication:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to delete medication' },
-      { status: 500 }
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to delete medication' }, { status: 500 })
     )
   }
 }

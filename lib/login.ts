@@ -34,6 +34,7 @@ import { decideIp, parseIpRules } from './ip-rules'
 import { lockoutState, minutesRemaining } from './lockout'
 import { passwordHasExpired } from './password-policy'
 import { readSecuritySettings, type SecuritySettings } from './security-settings'
+import { emailEquals } from './email-address'
 
 export interface LoginIdentity {
   id: string
@@ -114,9 +115,14 @@ export async function resolveLogin({
   context = {},
   audit = true,
 }: ResolveLoginOptions): Promise<LoginOutcome> {
+  /**
+   * Matched without regard to case (finding 29). Addresses are lower-cased
+   * where they are written now, but accounts made before that may hold a
+   * capital, and their owners type their address however they type it.
+   */
   const candidates = await prisma.user.findMany({
     where: {
-      email,
+      email: emailEquals(email),
       ...(clinicSlug ? { hospital: { slug: clinicSlug } } : {}),
     },
     include: { staff: true, hospital: true },

@@ -19,6 +19,8 @@ import { formatCurrency, formatDate } from '@/lib/i18n/format'
 import { ArrowLeft, FlaskConical, Phone, User } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
+import { nextStatuses } from '@/lib/lab-orders'
+import type { LabOrderStatus } from '@prisma/client'
 
 interface HistoryEntry {
   id: string
@@ -58,21 +60,17 @@ interface LabOrder {
   patientName: string
   patientPhone: string
   createdByName: string | null
+  /** The treatment the work is for, when one was chosen (finding 60). */
+  treatment: {
+    id: string
+    treatmentNo: string
+    procedureName: string | null
+    toothNumbers: string | null
+    status: string
+    createdAt: string
+  } | null
   history: HistoryEntry[]
 }
-
-/** The order a case actually moves through, so the picker reads as a journey. */
-const STATUSES = [
-  'CREATED',
-  'SENT_TO_LAB',
-  'IN_PROGRESS',
-  'QUALITY_CHECK',
-  'READY',
-  'DELIVERED',
-  'FITTED',
-  'REMAKE_REQUIRED',
-  'CANCELLED',
-] as const
 
 const STATUS_STYLE: Record<string, string> = {
   CREATED: 'bg-muted text-foreground',
@@ -106,17 +104,23 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
     setLoading(true)
     try {
       const response = await fetch(`/api/lab-orders/${id}`)
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'This lab case could not be loaded')
       if (data.success) {
         setOrder(data.data)
         setStatus(data.data.status)
       }
     } catch (err) {
       console.error('Error loading lab case:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load the case',
+        description: err instanceof Error ? err.message : 'This lab case could not be loaded',
+      })
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, toast])
 
   useEffect(() => {
     fetchOrder()
@@ -131,10 +135,16 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, notes: note || undefined }),
       })
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        toast({ variant: 'destructive', title: 'Could not update', description: data.error })
+        // The refusal names the moves that are allowed, or the plan that is
+        // needed (findings 26 and 45) — shown as the API wrote it.
+        toast({
+          variant: 'destructive',
+          title: 'Could not update',
+          description: data.error || 'The status could not be changed',
+        })
         return
       }
 
@@ -168,6 +178,8 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
       </div>
     )
   }
+
+  const moves = nextStatuses(order.status as LabOrderStatus)
 
   return (
     <div className="space-y-6">
@@ -224,43 +236,51 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Move the case on</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="sm:w-64" aria-label="Status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {label(s)}
+          {moves.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Move the case on</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {/* Only the moves the case can make from here: forward one
+                      stage, or the rework steps (finding 45). Offering every
+                      status was how a case went from Created to Fitted. */}
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className="sm:w-64" aria-label="Status">
+                      <SelectValue placeholder="Choose the next step" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={order.status} disabled>
+                        {label(order.status)} (now)
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={moveTo} disabled={saving || status === order.status}>
-                  {saving ? 'Saving…' : 'Update status'}
-                </Button>
-              </div>
-              <Textarea
-                id="status-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder="What happened? (optional)"
-              />
-              {/* Every move is written to the audit log, which is where the
-                  trail below comes from — LabOrderHistory recorded exactly
-                  this and nothing else. */}
-              <p className="text-xs text-muted-foreground">
-                Each change is recorded against this case with who made it and when.
-              </p>
-            </CardContent>
-          </Card>
+                      {moves.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {label(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={moveTo} disabled={saving || status === order.status}>
+                    {saving ? 'Saving…' : 'Update status'}
+                  </Button>
+                </div>
+                <Textarea
+                  id="status-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                  placeholder="What happened? (optional)"
+                />
+                {/* Every move is written to the audit log, which is where the
+                    trail below comes from — LabOrderHistory recorded exactly
+                    this and nothing else. */}
+                <p className="text-xs text-muted-foreground">
+                  Each change is recorded against this case with who made it and when.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -319,6 +339,33 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                 <Phone className="h-3 w-3 text-muted-foreground" />
                 {order.patientPhone}
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Treatment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              {order.treatment ? (
+                <>
+                  <Link
+                    href={trail.to(`/treatments/${order.treatment.id}`)}
+                    className="font-medium hover:underline"
+                  >
+                    {order.treatment.treatmentNo}
+                  </Link>
+                  {order.treatment.procedureName && <p>{order.treatment.procedureName}</p>}
+                  {order.treatment.toothNumbers && (
+                    <p className="text-muted-foreground">
+                      {describeTeethByQuadrant(parseTeeth(order.treatment.toothNumbers))}
+                    </p>
+                  )}
+                  <p className="text-muted-foreground">{formatDate(order.treatment.createdAt)}</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Not linked to a treatment.</p>
+              )}
             </CardContent>
           </Card>
 

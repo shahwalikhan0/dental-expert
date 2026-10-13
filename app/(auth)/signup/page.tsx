@@ -12,14 +12,29 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { MAXIMUM_PASSWORD_LENGTH, MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
+import { PHONE_PLACEHOLDER, PHONE_RULE, isValidPhone } from '@/lib/staff-rules'
+import { planFor } from '@/lib/plans'
+
+/** What a new clinic starts on, said before it signs up (finding 53). */
+const FREE_PLAN = planFor('FREE')
 
 const signupSchema = z
   .object({
     hospitalName: z.string().min(2, 'Hospital name must be at least 2 characters'),
     adminName: z.string().min(2, 'Your name must be at least 2 characters'),
     email: z.string().email('Please enter a valid email address'),
-    phone: z.string().min(10, 'Phone number must be at least 10 digits'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    phone: z.string().refine((value) => isValidPhone(value), PHONE_RULE),
+    password: z
+      .string()
+      .min(
+        MINIMUM_PASSWORD_LENGTH,
+        `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`
+      )
+      .max(
+        MAXIMUM_PASSWORD_LENGTH,
+        `Password must be ${MAXIMUM_PASSWORD_LENGTH} characters or fewer`
+      ),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -69,13 +84,20 @@ export default function SignupPage() {
         return
       }
 
+      // The route says whether the verification email actually went. When the
+      // clinic's mail is not set up yet it did not, and the next page must not
+      // claim otherwise (finding 27).
+      const emailSent = result.emailSent === true
       toast({
         title: 'Account created!',
-        description: 'Please check your email to verify your account.',
+        description: emailSent
+          ? 'Please check your email to verify your account.'
+          : 'You can sign in now.',
       })
 
-      // Redirect to verification pending page
-      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
+      router.push(
+        `/verify-email?email=${encodeURIComponent(data.email)}&sent=${emailSent ? '1' : '0'}`
+      )
     } catch {
       toast({
         variant: 'destructive',
@@ -96,10 +118,15 @@ export default function SignupPage() {
           </div>
         </div>
         <CardTitle className="text-2xl font-bold">Create your clinic</CardTitle>
-        <CardDescription>Start your free trial with up to 100 patients</CardDescription>
+        <CardDescription>
+          You start on the {FREE_PLAN.name} plan: up to {FREE_PLAN.entitlements.patients} patients
+          and {FREE_PLAN.entitlements.staff} staff accounts, yours included.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* `method="post"` so a submit before the page has hydrated never puts
+            the password in the address bar — see middleware.ts. */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="hospitalName">Hospital/Clinic Name</Label>
             <Input
@@ -143,7 +170,7 @@ export default function SignupPage() {
             <Input
               id="phone"
               type="tel"
-              placeholder="9876543210"
+              placeholder={PHONE_PLACEHOLDER}
               {...register('phone')}
               disabled={isLoading}
             />
@@ -155,7 +182,7 @@ export default function SignupPage() {
             <Input
               id="password"
               type="password"
-              placeholder="At least 8 characters"
+              placeholder={`${MINIMUM_PASSWORD_LENGTH} to ${MAXIMUM_PASSWORD_LENGTH} characters`}
               {...register('password')}
               disabled={isLoading}
             />
@@ -192,6 +219,12 @@ export default function SignupPage() {
             <ArrowLeft className="h-3 w-3" />
             Already have an account? Sign in
           </Link>
+          <p className="mt-2 text-muted-foreground">
+            Not sure where to start?{' '}
+            <Link href="/docs#getting-started" className="font-medium text-primary hover:underline">
+              Read the docs
+            </Link>
+          </p>
         </div>
 
         <div className="mt-4 text-center text-xs text-muted-foreground">

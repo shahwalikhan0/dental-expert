@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { noteRecordAccess } from '@/lib/record-access'
 import { requestContext } from '@/lib/audit'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { isTooth, TOOTH_NUMBER_HINT } from '@/lib/teeth'
 
 // GET - Get dental chart entries for a patient
 export async function GET(request: NextRequest) {
@@ -51,7 +53,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (toothNumber) {
-      where.toothNumber = parseInt(toothNumber)
+      const tooth = Number(toothNumber)
+      if (!isTooth(tooth)) {
+        return NextResponse.json(
+          { error: `Invalid tooth number. ${TOOTH_NUMBER_HINT}` },
+          { status: 400 }
+        )
+      }
+      where.toothNumber = tooth
     }
 
     if (condition) {
@@ -100,6 +109,8 @@ export async function GET(request: NextRequest) {
       patientId,
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching dental chart:', error)
     return NextResponse.json({ error: 'Failed to fetch dental chart' }, { status: 500 })
   }
@@ -137,15 +148,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate tooth number (FDI notation: 11-18, 21-28, 31-38, 41-48)
-    const validToothNumbers = [
-      11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37,
-      38, 41, 42, 43, 44, 45, 46, 47, 48,
-    ]
-
-    if (!validToothNumbers.includes(toothNumber)) {
+    // FDI notation, permanent (11–48) or primary (51–85). The list here was
+    // permanent teeth only, so tooth 75 on an eleven-year-old was refused
+    // (bug report 12 Oct, finding 55).
+    if (!isTooth(toothNumber)) {
       return NextResponse.json(
-        { error: 'Invalid tooth number. Use FDI notation (11-18, 21-28, 31-38, 41-48)' },
+        { error: `Invalid tooth number. ${TOOTH_NUMBER_HINT}` },
         { status: 400 }
       )
     }
@@ -207,6 +215,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(entry, { status: 201 })
   } catch (error) {
+    // An unknown condition or severity is a 400 naming the field, not a 500.
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating dental chart entry:', error)
     return NextResponse.json({ error: 'Failed to create dental chart entry' }, { status: 500 })
   }

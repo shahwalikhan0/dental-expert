@@ -251,6 +251,34 @@ export function calculateDiscount(
   }
 }
 
+/**
+ * Why a discount cannot be applied to this subtotal, or null if it can.
+ *
+ * `calculateDiscount` clamps a discount to the subtotal, which is right for a
+ * form previewing what is being typed and wrong for the server: a 150%
+ * discount, or Rs 5,000 off a Rs 1,500 bill, was accepted and quietly billed
+ * at zero (bug report 12 Oct, finding 37). Whoever typed it meant something
+ * else, and the invoice should say so rather than guess.
+ */
+export function discountProblem(
+  subtotal: number,
+  discountType: DiscountType | string | null | undefined,
+  discountValue: unknown
+): string | null {
+  const value = Number(discountValue ?? 0)
+  if (!Number.isFinite(value) || value < 0) return 'The discount must be zero or more'
+  if (discountType !== 'PERCENTAGE' && discountType !== 'FIXED') {
+    return 'The discount type must be PERCENTAGE or FIXED'
+  }
+  if (discountType === 'PERCENTAGE' && value > 100) {
+    return 'A percentage discount must be between 0 and 100'
+  }
+  if (discountType === 'FIXED' && value > Math.round(subtotal * 100) / 100) {
+    return `A discount of ${value} is more than the ${Math.round(subtotal * 100) / 100} being billed`
+  }
+  return null
+}
+
 // Calculate invoice totals
 export function calculateInvoiceTotals(
   items: Array<{ quantity: number; unitPrice: number; taxable: boolean }>,

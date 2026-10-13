@@ -4,15 +4,22 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { normalizeCNIC } from '@/lib/cnic'
-import { parseFile } from '@/lib/import/parsers'
+import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import { clinicTimezone, instantAt } from '@/lib/appointment-time'
 import bcrypt from 'bcryptjs'
+import { RowError, rowErrorMessage } from '@/lib/import/row-error'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { requireFeature } from '@/lib/plan-gate'
 
 export async function POST(req: NextRequest) {
   const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Data import is a paid feature (finding 26).
+  const notIncluded = await requireFeature(hospitalId, 'dataImport')
+  if (notIncluded) return notIncluded
 
   try {
     const { jobId, mapping, editedRows, skipErrorRows = false } = await req.json()
@@ -128,12 +135,14 @@ export async function POST(req: NextRequest) {
           ))
           break
       }
-    } catch (batchErr: any) {
+    } catch (batchErr) {
+      const reason = rowErrorMessage(batchErr)
+      if (!(batchErr instanceof RowError)) console.error('Data import row error:', batchErr)
       await prisma.dataImportJob.update({
         where: { id: jobId },
         data: {
           status: 'FAILED',
-          errorLog: batchErr.message,
+          errorLog: reason,
           successCount,
           errorCount,
         },
@@ -144,7 +153,7 @@ export async function POST(req: NextRequest) {
         totalRows: parsed.totalRows,
         imported: successCount,
         skipped: errorCount,
-        errors: [{ row: 0, message: batchErr.message }],
+        errors: [{ row: 0, message: reason }],
       })
     }
 
@@ -186,9 +195,14 @@ export async function POST(req: NextRequest) {
       skipped: errorCount,
       errors: importErrors.slice(0, 50),
     })
-  } catch (err: any) {
+  } catch (err) {
+    if (err instanceof FileParseError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Data import commit error:', err)
-    return NextResponse.json({ error: err.message || 'Import failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Import failed' }, { status: 500 })
   }
 }
 
@@ -254,7 +268,7 @@ async function importPatients(
           errors.push({ row: row._rowNum, message: 'Missing required: firstName or phone' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Missing firstName or phone`)
+        throw new RowError(`Row ${row._rowNum}: Missing firstName or phone`)
       }
 
       await prisma.patient.create({
@@ -285,7 +299,7 @@ async function importPatients(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -319,7 +333,7 @@ async function importStaff(
           errors.push({ row: row._rowNum, message: 'Missing required: firstName, email, or phone' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Missing firstName, email, or phone`)
+        throw new RowError(`Row ${row._rowNum}: Missing firstName, email, or phone`)
       }
 
       // Check if email already exists
@@ -332,7 +346,7 @@ async function importStaff(
           errors.push({ row: row._rowNum, message: `Email ${row.email} already exists` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Email ${row.email} already exists`)
+        throw new RowError(`Row ${row._rowNum}: Email ${row.email} already exists`)
       }
 
       const employeeId =
@@ -397,7 +411,7 @@ async function importStaff(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -454,7 +468,7 @@ async function importAppointments(
           errors.push({ row: row._rowNum, message: `Patient "${row.patientRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Patient "${row.patientRef}" not found`)
+        throw new RowError(`Row ${row._rowNum}: Patient "${row.patientRef}" not found`)
       }
 
       const doctorId =
@@ -465,7 +479,7 @@ async function importAppointments(
           errors.push({ row: row._rowNum, message: `Doctor "${row.doctorRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Doctor "${row.doctorRef}" not found`)
+        throw new RowError(`Row ${row._rowNum}: Doctor "${row.doctorRef}" not found`)
       }
 
       if (!row.scheduledDate || !row.scheduledTime) {
@@ -474,7 +488,7 @@ async function importAppointments(
           errors.push({ row: row._rowNum, message: 'Missing scheduledDate or scheduledTime' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Missing scheduledDate or scheduledTime`)
+        throw new RowError(`Row ${row._rowNum}: Missing scheduledDate or scheduledTime`)
       }
 
       // The spreadsheet gives a day and an `HH:MM` in the clinic's own terms;
@@ -486,7 +500,7 @@ async function importAppointments(
           errors.push({ row: row._rowNum, message: 'Unreadable scheduledDate or scheduledTime' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Unreadable scheduledDate or scheduledTime`)
+        throw new RowError(`Row ${row._rowNum}: Unreadable scheduledDate or scheduledTime`)
       }
 
       const appointmentNo =
@@ -510,7 +524,7 @@ async function importAppointments(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -571,7 +585,7 @@ async function importTreatments(
           errors.push({ row: row._rowNum, message: `Patient "${row.patientRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Patient not found`)
+        throw new RowError(`Row ${row._rowNum}: Patient not found`)
       }
 
       const doctorId =
@@ -582,7 +596,7 @@ async function importTreatments(
           errors.push({ row: row._rowNum, message: `Doctor "${row.doctorRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Doctor not found`)
+        throw new RowError(`Row ${row._rowNum}: Doctor not found`)
       }
 
       const procedureId = procLookup.get(row.procedureRef?.toLowerCase?.())
@@ -592,7 +606,7 @@ async function importTreatments(
           errors.push({ row: row._rowNum, message: `Procedure "${row.procedureRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Procedure not found`)
+        throw new RowError(`Row ${row._rowNum}: Procedure not found`)
       }
 
       if (row.cost === null || row.cost === undefined) {
@@ -601,7 +615,7 @@ async function importTreatments(
           errors.push({ row: row._rowNum, message: 'Cost is required' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Cost is required`)
+        throw new RowError(`Row ${row._rowNum}: Cost is required`)
       }
 
       const treatmentNo =
@@ -628,7 +642,7 @@ async function importTreatments(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -667,7 +681,7 @@ async function importInvoices(
           errors.push({ row: row._rowNum, message: `Patient "${row.patientRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Patient not found`)
+        throw new RowError(`Row ${row._rowNum}: Patient not found`)
       }
 
       const invoiceNo =
@@ -705,7 +719,7 @@ async function importInvoices(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -743,7 +757,7 @@ async function importPayments(
           errors.push({ row: row._rowNum, message: `Invoice "${row.invoiceRef}" not found` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Invoice not found`)
+        throw new RowError(`Row ${row._rowNum}: Invoice not found`)
       }
 
       if (!row.amount || !row.paymentMethod) {
@@ -752,7 +766,7 @@ async function importPayments(
           errors.push({ row: row._rowNum, message: 'Amount and paymentMethod are required' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: Amount and paymentMethod are required`)
+        throw new RowError(`Row ${row._rowNum}: Amount and paymentMethod are required`)
       }
 
       const paymentNo =
@@ -777,7 +791,7 @@ async function importPayments(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }
@@ -803,7 +817,7 @@ async function importInventory(
           errors.push({ row: row._rowNum, message: 'name, unit, and purchasePrice are required' })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: name, unit, and purchasePrice are required`)
+        throw new RowError(`Row ${row._rowNum}: name, unit, and purchasePrice are required`)
       }
 
       const sku = row.sku || (await generateId(hospitalId, 'inventoryItem', 'SKU', 'sku'))
@@ -818,7 +832,7 @@ async function importInventory(
           errors.push({ row: row._rowNum, message: `SKU "${sku}" already exists` })
           continue
         }
-        throw new Error(`Row ${row._rowNum}: SKU "${sku}" already exists`)
+        throw new RowError(`Row ${row._rowNum}: SKU "${sku}" already exists`)
       }
 
       await prisma.inventoryItem.create({
@@ -842,7 +856,7 @@ async function importInventory(
     } catch (err: any) {
       if (skipErrors) {
         errorCount++
-        errors.push({ row: row._rowNum, message: err.message })
+        errors.push({ row: row._rowNum, message: rowErrorMessage(err) })
       } else {
         throw err
       }

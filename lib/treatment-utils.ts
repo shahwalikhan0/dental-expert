@@ -332,6 +332,33 @@ export const toothNames: Record<number, string> = {
   48: 'Lower Right Third Molar',
 }
 
+/**
+ * Primary teeth by number (FDI quadrants 5–8). Kept apart from `toothNames`,
+ * which is the permanent dentition and is counted as thirty-two in places.
+ */
+export const primaryToothNames: Record<number, string> = {
+  55: 'Upper Right Primary Second Molar',
+  54: 'Upper Right Primary First Molar',
+  53: 'Upper Right Primary Canine',
+  52: 'Upper Right Primary Lateral Incisor',
+  51: 'Upper Right Primary Central Incisor',
+  61: 'Upper Left Primary Central Incisor',
+  62: 'Upper Left Primary Lateral Incisor',
+  63: 'Upper Left Primary Canine',
+  64: 'Upper Left Primary First Molar',
+  65: 'Upper Left Primary Second Molar',
+  71: 'Lower Left Primary Central Incisor',
+  72: 'Lower Left Primary Lateral Incisor',
+  73: 'Lower Left Primary Canine',
+  74: 'Lower Left Primary First Molar',
+  75: 'Lower Left Primary Second Molar',
+  81: 'Lower Right Primary Central Incisor',
+  82: 'Lower Right Primary Lateral Incisor',
+  83: 'Lower Right Primary Canine',
+  84: 'Lower Right Primary First Molar',
+  85: 'Lower Right Primary Second Molar',
+}
+
 // Format treatment duration in minutes to readable string
 export function formatDuration(minutes: number): string {
   if (minutes < 60) {
@@ -437,11 +464,20 @@ export function formatDateTime(date: Date | string, locale?: string): string {
   return baseFormatDateTime(date, { locale, hour12: true })
 }
 
-// Calculate treatment plan progress percentage
+/**
+ * How far through a plan the patient is, as a percentage.
+ *
+ * A cancelled step is not work left to do, so it leaves the count rather than
+ * holding the plan below 100% for ever: four steps with one dropped and three
+ * done is a finished plan. Steps only move now that a treatment started from a
+ * plan item carries it through (bug report 12 Oct, finding 11); before that
+ * this was 0% on every plan however much had been done.
+ */
 export function calculatePlanProgress(items: { status: string }[]): number {
-  if (!items || items.length === 0) return 0
-  const completed = items.filter((item) => item.status === 'COMPLETED').length
-  return Math.round((completed / items.length) * 100)
+  const live = (items ?? []).filter((item) => item.status !== 'CANCELLED')
+  if (live.length === 0) return 0
+  const completed = live.filter((item) => item.status === 'COMPLETED').length
+  return Math.round((completed / live.length) * 100)
 }
 
 // Get treatment status badge component props

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { PurchaseOrderStatus } from '@prisma/client'
-import { isEditable, orderTotals } from '@/lib/purchase-orders'
+import { checkOrderParties, isEditable, orderTotals } from '@/lib/purchase-orders'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 const ORDER_SELECT = {
@@ -113,7 +114,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const existing = await prisma.purchaseOrder.findFirst({
       where: { id, hospitalId, deletedAt: null },
-      select: { id: true, status: true, orderNumber: true },
+      select: {
+        id: true,
+        status: true,
+        orderNumber: true,
+        supplierId: true,
+        items: { select: { itemId: true } },
+      },
     })
 
     if (!existing) {
@@ -158,6 +165,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return NextResponse.json({ error: 'Only a draft can be placed' }, { status: 409 })
       }
 
+      // The supplier and every item, as they stand now rather than when the
+      // draft was saved (finding 44): PO20260002 was sent to a deleted
+      // supplier for a deleted item.
+      const parties = await checkOrderParties(prisma, {
+        hospitalId,
+        supplierId: existing.supplierId,
+        itemIds: (existing.items ?? []).map((line) => line.itemId),
+      })
+      if (!parties.ok) {
+        return NextResponse.json({ error: parties.error }, { status: parties.status })
+      }
+
       await prisma.purchaseOrder.update({
         where: { id },
         data: { status: PurchaseOrderStatus.ORDERED, orderDate: new Date() },
@@ -186,16 +205,36 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ? body.items
       : []
 
-    if (lines.length > 0) {
-      for (const line of lines) {
-        if (!line.itemId || !Number.isInteger(line.quantity) || line.quantity <= 0) {
-          return NextResponse.json(
-            { error: 'Every line needs an item and a quantity of at least one' },
-            { status: 400 }
-          )
-        }
+    for (const line of lines) {
+      if (!line.itemId || !Number.isInteger(line.quantity) || line.quantity <= 0) {
+        return NextResponse.json(
+          { error: 'Every line needs an item and a quantity of at least one' },
+          { status: 400 }
+        )
       }
+      if (
+        line.unitPrice != null &&
+        (!Number.isFinite(Number(line.unitPrice)) || Number(line.unitPrice) < 0)
+      ) {
+        return NextResponse.json({ error: 'A line price cannot be negative' }, { status: 400 })
+      }
+    }
 
+    // A changed supplier, or new lines, are checked the way a new order is:
+    // this clinic's, not deleted, not inactive (finding 44). The supplier id
+    // used to be written unchecked.
+    if (body.supplierId || lines.length > 0) {
+      const parties = await checkOrderParties(prisma, {
+        hospitalId,
+        supplierId: body.supplierId || existing.supplierId,
+        itemIds: lines.map((l) => l.itemId),
+      })
+      if (!parties.ok) {
+        return NextResponse.json({ error: parties.error }, { status: parties.status })
+      }
+    }
+
+    if (lines.length > 0) {
       const items = await prisma.inventoryItem.findMany({
         where: { id: { in: lines.map((l) => l.itemId) }, hospitalId, deletedAt: null },
         select: { id: true, purchasePrice: true, taxPercentage: true },
@@ -253,6 +292,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json({ success: true, message: 'Purchase order updated' })
   } catch (err: any) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error updating purchase order:', err)
     return NextResponse.json({ error: 'Failed to update purchase order' }, { status: 500 })
   }

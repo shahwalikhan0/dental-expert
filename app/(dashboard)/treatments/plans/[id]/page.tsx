@@ -49,7 +49,9 @@ import {
   calculatePlanProgress,
 } from '@/lib/treatment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { useToast } from '@/hooks/use-toast'
 import { parseTeeth } from '@/lib/teeth'
+import { planIsFinished } from '@/lib/treatment-plan-status'
 import { formatToothNumbers } from '@/lib/treatment-utils'
 import { groupByPhase } from '@/lib/treatment-phases'
 
@@ -61,6 +63,8 @@ interface TreatmentPlanItem {
   estimatedCost: string | number
   notes: string | null
   status: string
+  /** The treatment carrying this step out, once one has been started from it. */
+  treatment: { id: string; treatmentNo: string; status: string } | null
   procedure: {
     id: string
     code: string
@@ -112,6 +116,28 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const [actionLoading, setActionLoading] = useState(false)
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const { toast } = useToast()
+
+  /** The route's own words, as a toast, rather than a line in the console. */
+  const refused = (title: string, error: unknown) =>
+    toast({
+      variant: 'destructive',
+      title,
+      description: error instanceof Error ? error.message : undefined,
+    })
+
+  /** PUT a change to the plan; throws with the route's message on a refusal. */
+  const savePlan = async (change: Record<string, unknown>, fallback: string) => {
+    const response = await fetch(`/api/treatment-plans/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(change),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error || fallback)
+    }
+  }
 
   const fetchPlan = async () => {
     try {
@@ -134,15 +160,10 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const handleStatusChange = async (status: string) => {
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatment-plans/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!response.ok) throw new Error('Failed to update status')
+      await savePlan({ status }, 'Failed to update status')
       fetchPlan()
     } catch (error) {
-      console.error('Error updating status:', error)
+      refused('Could not update the plan', error)
     } finally {
       setActionLoading(false)
     }
@@ -151,19 +172,17 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const handleConsentGiven = async () => {
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatment-plans/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await savePlan(
+        {
           consentGiven: true,
           status: plan?.status === 'PROPOSED' ? 'ACCEPTED' : plan?.status,
-        }),
-      })
-      if (!response.ok) throw new Error('Failed to record consent')
+        },
+        'Failed to record consent'
+      )
       setConsentDialogOpen(false)
       fetchPlan()
     } catch (error) {
-      console.error('Error recording consent:', error)
+      refused('Could not record consent', error)
     } finally {
       setActionLoading(false)
     }
@@ -172,19 +191,31 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const handleCancelPlan = async () => {
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatment-plans/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CANCELLED' }),
-      })
-      if (!response.ok) throw new Error('Failed to cancel plan')
+      await savePlan({ status: 'CANCELLED' }, 'Failed to cancel plan')
       setCancelDialogOpen(false)
       fetchPlan()
     } catch (error) {
-      console.error('Error cancelling plan:', error)
+      refused('Could not cancel the plan', error)
     } finally {
       setActionLoading(false)
     }
+  }
+
+  /**
+   * Where a step's Start goes: a new treatment for this patient and procedure,
+   * carrying the plan item, its teeth and its quoted price, so the treatment
+   * is linked to the step and moves it as it progresses (bug report 12 Oct,
+   * finding 11).
+   */
+  const startHref = (item: TreatmentPlanItem) => {
+    const query = new URLSearchParams({
+      patientId: plan!.patient.id,
+      procedureId: item.procedure.id,
+      planItemId: item.id,
+      cost: String(Number(item.estimatedCost)),
+    })
+    if (item.toothNumbers) query.set('teeth', item.toothNumbers)
+    return `/treatments/new?${query.toString()}`
   }
 
   const getStatusBadge = (status: string) => {
@@ -277,6 +308,18 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
             <Button onClick={() => handleStatusChange('IN_PROGRESS')} disabled={actionLoading}>
               <Play className="h-4 w-4 mr-2" />
               Start Treatment
+            </Button>
+          )}
+          {/*
+            Only once every step is done or dropped — the rule the route
+            enforces. A plan finishes on its own when its last step's treatment
+            is completed; this is for the plan whose last open step was
+            cancelled instead.
+          */}
+          {plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
+            <Button onClick={() => handleStatusChange('COMPLETED')} disabled={actionLoading}>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Mark Plan Complete
             </Button>
           )}
           {!['COMPLETED', 'CANCELLED'].includes(plan.status) && (
@@ -403,14 +446,20 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                           </TableCell>
                           <TableCell>{getItemStatusBadge(item.status)}</TableCell>
                           <TableCell>
-                            {item.status === 'PENDING' && plan.status === 'IN_PROGRESS' && (
-                              <Button size="sm" variant="outline" asChild>
-                                <Link
-                                  href={`/treatments/new?patientId=${plan.patient.id}&procedureId=${item.procedure.id}`}
-                                >
-                                  Start
-                                </Link>
-                              </Button>
+                            {item.treatment ? (
+                              <Link
+                                href={trail.to(`/treatments/${item.treatment.id}`)}
+                                className="text-sm text-primary hover:underline"
+                              >
+                                {item.treatment.treatmentNo}
+                              </Link>
+                            ) : (
+                              ['PENDING', 'SCHEDULED'].includes(item.status) &&
+                              ['ACCEPTED', 'IN_PROGRESS'].includes(plan.status) && (
+                                <Button size="sm" variant="outline" asChild>
+                                  <Link href={startHref(item)}>Start</Link>
+                                </Button>
+                              )
                             )}
                           </TableCell>
                         </TableRow>

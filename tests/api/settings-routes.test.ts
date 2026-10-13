@@ -197,10 +197,13 @@ describe('POST /api/settings', () => {
     )
   })
 
-  it('returns 500 for invalid schema (missing key)', async () => {
+  it('returns 400 naming the field for invalid schema (missing key)', async () => {
     mockAuth()
     const res = await settingsPOST(makeReq('/api/settings', 'POST', { value: 'only-value' }))
-    expect(res.status).toBe(500) // Zod error caught in catch block
+    // A request that is simply wrong is a 400 the toast can read, not a 500
+    // carrying zod's issue list (finding 25).
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/^key:/)
   })
 })
 
@@ -246,6 +249,13 @@ describe('PUT /api/settings', () => {
     expect(body.success).toBe(true)
     expect(body.count).toBe(2)
     expect(prisma.setting.upsert).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns 400 when an entry has no key', async () => {
+    mockAuth()
+    const res = await settingsPUT(makeReq('/api/settings', 'PUT', { settings: [{ value: '1' }] }))
+    expect(res.status).toBe(400)
+    expect(prisma.setting.upsert).not.toHaveBeenCalled()
   })
 
   it('handles empty settings array', async () => {
@@ -363,8 +373,10 @@ describe('POST /api/settings/clinic', () => {
   it('still validates the fields that are present', async () => {
     mockAuth()
     const res = await clinicPOST(makeReq('/api/settings/clinic', 'POST', { taxRate: 500 }))
-    // A rate over 100% is nonsense whether or not the rest of the body is there.
-    expect(res.status).toBe(500)
+    // A rate over 100% is nonsense whether or not the rest of the body is there,
+    // and the refusal is a 400 that names the field (finding 25).
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/taxRate/)
   })
 
   it('rejects an empty body rather than issuing a no-op update', async () => {

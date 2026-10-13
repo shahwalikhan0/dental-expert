@@ -94,7 +94,8 @@ export default function AppointmentSettingsPage() {
           description: 'Appointment settings saved successfully',
         })
       } else {
-        throw new Error('Failed to save settings')
+        const result = await response.json().catch(() => null)
+        throw new Error(result?.error || 'Failed to save settings')
       }
     } catch (error: any) {
       toast({
@@ -123,7 +124,9 @@ export default function AppointmentSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newHoliday.name,
-          date: new Date(newHoliday.date).toISOString(),
+          // The date input's own `YYYY-MM-DD`: a holiday is a calendar day,
+          // and turning it into an instant here could move it a day.
+          date: newHoliday.date,
         }),
       })
 
@@ -135,7 +138,9 @@ export default function AppointmentSettingsPage() {
         setNewHoliday({ name: '', date: '' })
         fetchHolidays()
       } else {
-        throw new Error('Failed to add holiday')
+        // The server says why: a date already taken by another holiday names it.
+        const result = await response.json().catch(() => null)
+        throw new Error(result?.error || 'Failed to add holiday')
       }
     } catch (error: any) {
       toast({
@@ -159,7 +164,8 @@ export default function AppointmentSettingsPage() {
         })
         fetchHolidays()
       } else {
-        throw new Error('Failed to delete holiday')
+        const result = await response.json().catch(() => null)
+        throw new Error(result?.error || 'Failed to delete holiday')
       }
     } catch (error: any) {
       toast({

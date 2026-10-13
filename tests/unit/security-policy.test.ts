@@ -10,66 +10,52 @@
 import { describe, it, expect, vi } from 'vitest'
 
 import {
+  MAXIMUM_PASSWORD_LENGTH,
   MINIMUM_PASSWORD_LENGTH,
-  describePolicy,
+  PASSWORD_RULES,
   passwordHasExpired,
   validatePassword,
-  type PasswordPolicy,
 } from '@/lib/password-policy'
 import { decideIp, ipMatches, parseIpRules } from '@/lib/ip-rules'
-import { DEFAULT_SECURITY, passwordPolicyOf, securityFrom } from '@/lib/security-settings'
+import { DEFAULT_SECURITY, securityFrom } from '@/lib/security-settings'
 import { isScoped, mayBeScoped, ownPatientsFilter, patientScopeFilter } from '@/lib/patient-scope'
 import { lockoutState, minutesRemaining } from '@/lib/lockout'
 import { AUDIT_ACTIONS } from '@/lib/audit'
 
-const lax: PasswordPolicy = {
-  minLength: 8,
-  requireUppercase: false,
-  requireLowercase: false,
-  requireNumbers: false,
-  requireSpecialChars: false,
-}
-
-describe('password policy', () => {
-  it('accepts a password that satisfies every rule', () => {
-    expect(validatePassword('Correct1!', passwordPolicyOf(DEFAULT_SECURITY))).toBeNull()
+describe('password rule', () => {
+  it('is 8 to 32 characters', () => {
+    expect(MINIMUM_PASSWORD_LENGTH).toBe(8)
+    expect(MAXIMUM_PASSWORD_LENGTH).toBe(32)
   })
 
-  it('names the first unmet rule rather than listing all of them', () => {
-    const message = validatePassword('correct1!', passwordPolicyOf(DEFAULT_SECURITY))
-    expect(message).toMatch(/capital/i)
+  it('accepts any password of an allowed length, whatever it is made of', () => {
+    // No capital, number or symbol requirements.
+    expect(validatePassword('alllowercase')).toBeNull()
+    expect(validatePassword('12345678')).toBeNull()
+    expect(validatePassword('a'.repeat(32))).toBeNull()
   })
 
-  it('refuses a password shorter than the clinic asked for', () => {
-    expect(validatePassword('Ab1!efg', { ...lax, minLength: 12 })).toMatch(/12/)
+  it('refuses a password shorter than 8 characters', () => {
+    expect(validatePassword('abcdefg')).toMatch(/at least 8/)
   })
 
-  it('will not go below the platform floor, whatever the clinic configured', () => {
-    // The settings route refuses to store a smaller minimum, but a row can
-    // arrive from an import or an older version, and the floor has to hold
-    // wherever the number came from.
-    expect(validatePassword('Abc1!', { ...lax, minLength: 4 })).toMatch(
-      String(MINIMUM_PASSWORD_LENGTH)
-    )
+  it('refuses a password longer than 32 characters', () => {
+    expect(validatePassword('a'.repeat(33))).toMatch(/32/)
   })
 
-  it('counts the bcrypt limit in bytes, not characters', () => {
-    // 70 emoji is under 72 characters and well over 72 bytes, and everything
+  it('refuses an empty or missing password', () => {
+    expect(validatePassword('')).toMatch(/required/)
+    expect(validatePassword(undefined)).toMatch(/required/)
+  })
+
+  it('refuses a password bcrypt would truncate', () => {
+    // 20 emoji is under 32 characters and over bcrypt's 72 bytes, and everything
     // past the limit would be silently ignored at hashing and at checking.
-    expect(validatePassword('A1!' + '😀'.repeat(70), lax)).toMatch(/72/)
+    expect(validatePassword('😀'.repeat(20))).not.toBeNull()
   })
 
-  it('treats any non-letter, non-digit as a symbol', () => {
-    // Not a hardcoded list of ASCII punctuation, which rejects every
-    // non-Latin keyboard.
-    const policy = { ...lax, requireSpecialChars: true }
-    expect(validatePassword('passwordé£', policy)).toBeNull()
-  })
-
-  it('states the rules before anybody types', () => {
-    const rules = describePolicy(passwordPolicyOf(DEFAULT_SECURITY))
-    expect(rules).toContain('One capital letter')
-    expect(rules[0]).toMatch(/8/)
+  it('states the rule before anybody types', () => {
+    expect(PASSWORD_RULES).toEqual(['Between 8 and 32 characters'])
   })
 
   it('never expires a password when the expiry is off', () => {
@@ -163,9 +149,6 @@ describe('reading the stored settings', () => {
     // These rows outlive any one version of the route that validates them, and
     // zero attempts would lock a clinic out on its first keystroke.
     expect(securityFrom([{ key: 'maxLoginAttempts', value: '0' }]).maxLoginAttempts).toBe(1)
-    expect(securityFrom([{ key: 'passwordMinLength', value: '2' }]).passwordMinLength).toBe(
-      MINIMUM_PASSWORD_LENGTH
-    )
   })
 
   it('defaults the session to what the application already did', () => {

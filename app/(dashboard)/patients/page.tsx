@@ -37,7 +37,10 @@ import {
 import { IconTooltip } from '@/components/ui/icon-action'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { bloodGroupLabel, genderLabel } from '@/lib/labels'
+import { BLOOD_GROUP_OPTIONS, bloodGroupLabel, genderLabel } from '@/lib/labels'
+import { useToast } from '@/hooks/use-toast'
+import { useSession } from 'next-auth/react'
+import { holderCan } from '@/lib/rbac'
 
 interface Patient {
   id: string
@@ -50,6 +53,18 @@ interface Patient {
   age: number
   bloodGroup: string
   city: string
+  isActive: boolean
+}
+
+/**
+ * Which part of the register is listed. Active is the default and the one the
+ * desk works from; Inactive is how a deactivated patient is found again to be
+ * reactivated (bug report 12 Oct, finding 22).
+ */
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  inactive: 'Inactive',
+  all: 'Active and inactive',
 }
 
 interface PaginationInfo {
@@ -63,6 +78,14 @@ export default function PatientsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Patients')
   const router = useRouter()
+  const { toast } = useToast()
+  // Registering and editing are `patients:write`; the dental assistant, the
+  // accountant and the lab technician read the register without it.
+  const { data: session } = useSession()
+  const canWrite = holderCan(
+    { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole },
+    'patients:write'
+  )
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -79,6 +102,7 @@ export default function PatientsPage() {
   const sort = useSort()
   const [genderFilter, setGenderFilter] = useState('all')
   const [bloodGroupFilter, setBloodGroupFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('active')
 
   /**
    * Which request is the current one.
@@ -106,16 +130,23 @@ export default function PatientsPage() {
       if (genderFilter && genderFilter !== 'all') params.append('gender', genderFilter)
       if (bloodGroupFilter && bloodGroupFilter !== 'all')
         params.append('bloodGroup', bloodGroupFilter)
+      if (statusFilter !== 'active') params.append('status', statusFilter)
 
       const response = await fetch(`/api/patients?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch patients')
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch patients')
 
-      const data = await response.json()
       if (requestId !== latestRequest.current) return
       setPatients(data.patients)
       setPagination(data.pagination)
-    } catch (error) {
+    } catch (error: any) {
+      if (requestId !== latestRequest.current) return
       console.error('Error fetching patients:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Could not load patients',
+        description: error.message,
+      })
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
@@ -133,7 +164,7 @@ export default function PatientsPage() {
     // extra pass, only when a filter changes while the list is off page one.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [debouncedSearch, genderFilter, bloodGroupFilter, sort.column, sort.direction])
+  }, [debouncedSearch, genderFilter, bloodGroupFilter, statusFilter, sort.column, sort.direction])
 
   useEffect(() => {
     fetchPatients()
@@ -145,6 +176,7 @@ export default function PatientsPage() {
     debouncedSearch,
     genderFilter,
     bloodGroupFilter,
+    statusFilter,
     sort.column,
     sort.direction,
   ])
@@ -189,12 +221,14 @@ export default function PatientsPage() {
               }))
             }
           />
-          <Button asChild>
-            <Link href="/patients/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Patient
-            </Link>
-          </Button>
+          {canWrite && (
+            <Button asChild>
+              <Link href="/patients/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New Patient
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -229,14 +263,25 @@ export default function PatientsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Blood Groups</SelectItem>
-                  <SelectItem value="A+">A+</SelectItem>
-                  <SelectItem value="A-">A-</SelectItem>
-                  <SelectItem value="B+">B+</SelectItem>
-                  <SelectItem value="B-">B-</SelectItem>
-                  <SelectItem value="O+">O+</SelectItem>
-                  <SelectItem value="O-">O-</SelectItem>
-                  <SelectItem value="AB+">AB+</SelectItem>
-                  <SelectItem value="AB-">AB-</SelectItem>
+                  {/* The stored values (A_POSITIVE), not their labels: the
+                      route filters on the column, and "A+" matched nothing. */}
+                  {BLOOD_GROUP_OPTIONS.map((bg) => (
+                    <SelectItem key={bg.value} value={bg.value}>
+                      {bg.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]" aria-label="Status">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -249,6 +294,7 @@ export default function PatientsPage() {
               setSearch('')
               setGenderFilter('all')
               setBloodGroupFilter('all')
+              setStatusFilter('active')
             }}
             filters={[
               { label: 'Search', value: search, onClear: () => setSearch('') },
@@ -261,6 +307,11 @@ export default function PatientsPage() {
                 label: 'Blood group',
                 value: bloodGroupFilter === 'all' ? null : bloodGroupLabel(bloodGroupFilter),
                 onClear: () => setBloodGroupFilter('all'),
+              },
+              {
+                label: 'Status',
+                value: statusFilter === 'active' ? null : STATUS_LABELS[statusFilter],
+                onClear: () => setStatusFilter('active'),
               },
             ]}
           />
@@ -303,8 +354,8 @@ export default function PatientsPage() {
               emptyIcon={User}
               emptyTitle="No patients found"
               emptyDescription="Nobody on the register matches this search."
-              emptyActionLabel="Add Patient"
-              emptyActionHref="/patients/new"
+              emptyActionLabel={canWrite ? 'Add Patient' : undefined}
+              emptyActionHref={canWrite ? '/patients/new' : undefined}
             >
               {patients.map((patient) => (
                 <ClickableRow
@@ -323,6 +374,7 @@ export default function PatientsPage() {
                       <div className="font-medium">
                         {patient.firstName} {patient.lastName}
                       </div>
+                      {!patient.isActive && <Badge variant="destructive">Inactive</Badge>}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -363,12 +415,14 @@ export default function PatientsPage() {
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/patients/${patient.id}/edit`)}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
+                        {canWrite && (
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/patients/${patient.id}/edit`)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         {/* Medical history lives on the overview of the
                             patient's own record. This used to push at

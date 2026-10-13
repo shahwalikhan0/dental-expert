@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { smsService } from '@/lib/services/sms.service'
 import { emailService } from '@/lib/services/email.service'
+import { isSendRefusal } from '@/lib/services/send-refusal'
+
+/**
+ * What to tell the person testing the connection. The service's own reasons —
+ * "SMS API key not configured", "Failed to connect to SMTP server", the
+ * gateway's refusal — are the answer to the test and are repeated; anything
+ * else is a library's message and is logged instead (finding 25).
+ */
+function testFailureDetail(error: unknown): string {
+  return isSendRefusal(error)
+    ? error.message
+    : 'Check the settings above and the server log for the reason.'
+}
 
 // POST - Test SMS or email connection
 export async function POST(request: NextRequest) {
@@ -54,13 +67,13 @@ export async function POST(request: NextRequest) {
           message: 'Test SMS sent successfully',
           details: `SMS sent to ${testData.phone}`,
         })
-      } catch (error: any) {
+      } catch (error) {
         console.error('SMS test failed:', error)
         return NextResponse.json(
           {
             success: false,
             error: 'Failed to send test SMS',
-            details: error.message,
+            details: testFailureDetail(error),
           },
           { status: 400 }
         )
@@ -110,13 +123,13 @@ export async function POST(request: NextRequest) {
           message: 'Test email sent successfully',
           details: `Email sent to ${testData.email}`,
         })
-      } catch (error: any) {
+      } catch (error) {
         console.error('Email test failed:', error)
         return NextResponse.json(
           {
             success: false,
             error: 'Failed to send test email',
-            details: error.message,
+            details: testFailureDetail(error),
           },
           { status: 400 }
         )
@@ -124,13 +137,12 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error testing communication settings:', error)
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to test communication settings',
-        details: error.message,
       },
       { status: 500 }
     )

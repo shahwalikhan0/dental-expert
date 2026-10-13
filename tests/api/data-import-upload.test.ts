@@ -46,6 +46,13 @@ const mockStorage = vi.hoisted(() => ({
 
 const mockParsers = vi.hoisted(() => ({
   parseFile: vi.fn(),
+  FileParseError: class FileParseError extends Error {},
+}))
+
+// Data import is a paid feature (finding 26). The clinic here is on a plan
+// that includes it unless a test says otherwise.
+const mockPlanGate = vi.hoisted(() => ({
+  requireFeature: vi.fn(),
 }))
 
 vi.mock('@/lib/api-helpers', () => mockAuth)
@@ -59,6 +66,7 @@ vi.mock('path', async (importOriginal) => {
   return { ...actual, default: actual }
 })
 vi.mock('@/lib/import/parsers', () => mockParsers)
+vi.mock('@/lib/plan-gate', () => mockPlanGate)
 
 const mod = await import('@/app/api/data-import/upload/route')
 
@@ -254,5 +262,47 @@ describe('POST /api/data-import/upload', () => {
     const req = makeMockFormDataRequest({})
     const res = await mod.POST(req)
     expect(res.status).toBe(403)
+  })
+
+  it('refuses a clinic whose plan has no data import, before storing the file (finding 26)', async () => {
+    mockPlanGate.requireFeature.mockResolvedValueOnce(
+      Response.json(
+        { error: 'Data import is not included in the Free plan. Upgrade to use it.' },
+        { status: 403 }
+      )
+    )
+    const mockFile = {
+      name: 'patients.csv',
+      size: 5000,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    }
+
+    const res = await mod.POST(makeMockFormDataRequest({ file: mockFile, entityType: 'patients' }))
+
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toContain('Free plan')
+    expect(mockPlanGate.requireFeature).toHaveBeenCalledWith('hospital-1', 'dataImport')
+    expect(mockStorage.put).not.toHaveBeenCalled()
+  })
+
+  it("repeats the parser's own reason but not a library's (finding 25)", async () => {
+    const mockFile = {
+      name: 'patients.csv',
+      size: 5000,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    }
+    mockParsers.parseFile.mockRejectedValueOnce(
+      new mockParsers.FileParseError('No column headers found in the first row.')
+    )
+    const own = await mod.POST(makeMockFormDataRequest({ file: mockFile, entityType: 'patients' }))
+    expect(own.status).toBe(400)
+    expect((await own.json()).error).toBe('No column headers found in the first row.')
+
+    mockParsers.parseFile.mockRejectedValueOnce(new Error('End of data reached (data length = 8)'))
+    const library = await mod.POST(
+      makeMockFormDataRequest({ file: mockFile, entityType: 'patients' })
+    )
+    expect(library.status).toBe(400)
+    expect((await library.json()).error).not.toContain('End of data')
   })
 })

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, PurchaseOrderStatus } from '@prisma/client'
-import { nextOrderNumber, orderTotals } from '@/lib/purchase-orders'
+import { checkOrderParties, nextOrderNumber, orderTotals } from '@/lib/purchase-orders'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 const ORDER_STATUSES = Object.values(PurchaseOrderStatus) as string[]
@@ -109,17 +110,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'An order needs at least one item' }, { status: 400 })
     }
 
-    // `kind` on every lookup: suppliers and laboratories share one table, and
-    // a dental laboratory does not supply consumables.
-    const supplier = await prisma.vendor.findFirst({
-      where: { id: supplierId, hospitalId, kind: 'SUPPLIER', deletedAt: null },
-      select: { id: true },
-    })
-
-    if (!supplier) {
-      return NextResponse.json({ error: 'Supplier not found' }, { status: 404 })
-    }
-
     for (const line of lines) {
       if (!line.itemId) {
         return NextResponse.json({ error: 'Every line needs an item' }, { status: 400 })
@@ -130,6 +120,24 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         )
       }
+      if (
+        line.unitPrice != null &&
+        (!Number.isFinite(Number(line.unitPrice)) || Number(line.unitPrice) < 0)
+      ) {
+        return NextResponse.json({ error: 'A line price cannot be negative' }, { status: 400 })
+      }
+    }
+
+    // A live, active supplier — `kind` on the lookup, because suppliers and
+    // laboratories share one table and a laboratory does not sell gloves — and
+    // live, active items, all this clinic's (finding 44).
+    const parties = await checkOrderParties(prisma, {
+      hospitalId,
+      supplierId,
+      itemIds: lines.map((l) => l.itemId),
+    })
+    if (!parties.ok) {
+      return NextResponse.json({ error: parties.error }, { status: parties.status })
     }
 
     // One query rather than one per line, and scoped to the clinic — an item id
@@ -215,6 +223,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: created }, { status: 201 })
   } catch (err: any) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Error creating purchase order:', err)
     return NextResponse.json({ error: 'Failed to create purchase order' }, { status: 500 })
   }

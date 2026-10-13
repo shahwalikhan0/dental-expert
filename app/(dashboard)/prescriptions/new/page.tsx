@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useId } from 'react'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -28,7 +28,14 @@ import {
   ArrowLeft,
   AlertTriangle,
 } from 'lucide-react'
-import { allergyClashes, medicalAlerts } from '@/lib/medical-history'
+import { medicalAlerts, type AllergyClash } from '@/lib/medical-history'
+import {
+  describeAllergyClashes,
+  isEmptyLine,
+  lineRefusal,
+  prescriptionAllergyClashes,
+} from '@/lib/prescribing'
+import { useCan } from '@/hooks/use-can'
 import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
 import {
   medicationStock,
@@ -37,7 +44,11 @@ import {
 } from '@/lib/medication-stock'
 import { cn } from '@/lib/utils'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
-import { appendTemplateLines, linesFromTemplate } from '@/lib/prescription-templates'
+import {
+  appendTemplateLines,
+  linesFromTemplate,
+  usableTemplateItems,
+} from '@/lib/prescription-templates'
 import { formatTeeth, parseTeeth } from '@/lib/teeth'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { fetchHandedPatient } from '@/lib/prefill'
@@ -90,7 +101,7 @@ interface TemplateOption {
     timing: string | null
     quantity: number | null
     instructions: string | null
-    medication?: { genericName: string | null } | null
+    medication?: { genericName: string | null; isActive?: boolean } | null
   }>
 }
 
@@ -154,6 +165,12 @@ const TIMINGS = [
   'Morning & Evening',
 ]
 
+/** A React key per row, so a removed row does not hand its state to the next.
+ *  Module state, so it must never reach the DOM: the server's copy has been
+ *  counting since the process started while the browser's starts at zero.
+ *  It used to be the label ↔ input id, which is what made this page log a
+ *  hydration mismatch on every open (bug report 12 Oct, finding 67). The ids
+ *  come from `useId` now — see `idBase` below. */
 let rowKey = 0
 
 /**
@@ -191,6 +208,17 @@ export default function NewPrescriptionPage() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  // Label ↔ input ids, the same on the server and in the browser. See
+  // `rowKey` above for why they are not the row keys.
+  const idBase = useId()
+
+  /*
+   * Only a dentist prescribes (finding 36); the API refuses anyone else. A
+   * form that can only end in a 403 is a form filled in for nothing, so other
+   * roles are told so instead of being given one. `null` while the session
+   * loads, which shows the form rather than flashing the notice.
+   */
+  const canPrescribe = useCan('clinical:sign')
 
   const [saving, setSaving] = useState(false)
 
@@ -323,17 +351,16 @@ export default function NewPrescriptionPage() {
    * is still looking at that row.
    */
   const clashesByRow = useMemo(() => {
-    const allergies = selectedPatient?.medicalHistory?.allergies
-    if (!allergies?.length) return new Map<number, ReturnType<typeof allergyClashes>>()
-
-    const map = new Map<number, ReturnType<typeof allergyClashes>>()
-    medications.forEach((row, index) => {
-      const found = allergyClashes(allergies, {
-        name: row.medicationName,
-        genericName: row.genericName,
-      })
-      if (found.length > 0) map.set(index, found)
-    })
+    // The same function `POST /api/prescriptions` runs, so the warning here
+    // and the server's refusal cannot disagree about what clashes.
+    const found = prescriptionAllergyClashes(
+      selectedPatient?.medicalHistory?.allergies,
+      medications.map((row) => ({ name: row.medicationName, genericName: row.genericName }))
+    )
+    const map = new Map<number, AllergyClash[]>()
+    for (const { line, ...clash } of found) {
+      map.set(line, [...(map.get(line) ?? []), clash])
+    }
     return map
   }, [selectedPatient, medications])
 
@@ -490,7 +517,25 @@ export default function NewPrescriptionPage() {
    * silently adding a second amoxicillin is how somebody dispenses twice.
    */
   const applyTemplate = (template: TemplateOption) => {
-    const result = appendTemplateLines(medications, linesFromTemplate(template.items) as any)
+    // A medicine retired from the catalogue since the template was saved is
+    // left out and named, not added (the server would refuse it) and not
+    // dropped in silence (finding 48).
+    const { usable, inactive } = usableTemplateItems(template.items)
+    // One sentence for the toast, because the toaster shows one toast at a
+    // time and a second would hide the first.
+    const leftOut = inactive.length
+      ? `${inactive.join(', ')} ${inactive.length === 1 ? 'was' : 'were'} left out: deactivated in the drug catalogue.`
+      : ''
+    if (usable.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: `Nothing added from ${template.name}`,
+        description: leftOut,
+      })
+      return
+    }
+
+    const result = appendTemplateLines(medications, linesFromTemplate(usable) as any)
 
     // Filled out to a whole row rather than spread onto nothing: a template
     // line carries no key and none of the catalogue's display fields, and a
@@ -507,14 +552,16 @@ export default function NewPrescriptionPage() {
     if (template.diagnosis) setDiagnosis((current) => current || template.diagnosis || '')
     if (template.notes) setNotes((current) => (current ? current : template.notes || ''))
 
+    const added = result.duplicates.length
+      ? `${result.added} medicine${result.added === 1 ? '' : 's'} added. ${result.duplicates.join(
+          ', '
+        )} was already on this prescription — check the dose before saving.`
+      : `${result.added} medicine${result.added === 1 ? '' : 's'} added to what you had.`
+
     toast({
       title: `${template.name} added`,
-      description: result.duplicates.length
-        ? `${result.added} medicine${result.added === 1 ? '' : 's'} added. ${result.duplicates.join(
-            ', '
-          )} was already on this prescription — check the dose before saving.`
-        : `${result.added} medicine${result.added === 1 ? '' : 's'} added to what you had.`,
-      variant: result.duplicates.length ? 'destructive' : undefined,
+      description: leftOut ? `${added} ${leftOut}` : added,
+      variant: result.duplicates.length || leftOut ? 'destructive' : undefined,
     })
   }
 
@@ -524,9 +571,24 @@ export default function NewPrescriptionPage() {
       return
     }
 
-    const validMeds = medications.filter(
-      (m) => m.medicationName && m.dosage && m.frequency && m.duration
-    )
+    /*
+     * The untouched starter row is left out; every other row must be whole.
+     *
+     * This used to keep only the complete rows and send those, so a row with a
+     * drug but no dosage vanished from the prescription without a word. The
+     * same per-row check the server runs (lib/prescribing.ts) names the row and
+     * what it is missing instead.
+     */
+    for (let i = 0; i < medications.length; i++) {
+      const row = medications[i]
+      if (isEmptyLine(row)) continue
+      const refusal = lineRefusal(row, i)
+      if (refusal) {
+        toast({ variant: 'destructive', title: 'Not saved', description: refusal })
+        return
+      }
+    }
+    const validMeds = medications.filter((m) => !isEmptyLine(m))
     if (validMeds.length === 0) {
       toast({
         variant: 'destructive',
@@ -540,52 +602,73 @@ export default function NewPrescriptionPage() {
     // This one asks for a deliberate answer, and takes no for one — but it does
     // not refuse, because a prescriber may have a reason and software that
     // says no outright gets worked around on paper.
-    if (clashesByRow.size > 0) {
-      const listed = [...clashesByRow.values()]
-        .flat()
-        .map((c) => `${c.drug} against a recorded allergy to ${c.allergy}`)
-        .join('; ')
-
-      const proceed = await confirm({
+    const confirmClashes = (clashes: AllergyClash[]) =>
+      confirm({
         title: 'This prescription clashes with a recorded allergy',
-        description: `${listed}. Prescribe anyway?`,
+        description: `${describeAllergyClashes(clashes)}. Prescribe anyway?`,
         confirmLabel: 'Prescribe anyway',
         variant: 'destructive',
       })
-      if (!proceed) return
+
+    // Sent only once the prescriber has said yes. The server runs the same
+    // check and refuses a clash without it (finding 35).
+    let allergyAcknowledged = false
+    if (clashesByRow.size > 0) {
+      if (!(await confirmClashes([...clashesByRow.values()].flat()))) return
+      allergyAcknowledged = true
     }
+
+    const payload = {
+      patientId: selectedPatient.id,
+      // Provenance, clinical context, and this patient's teeth. All three
+      // are optional and all three are copied, never referenced — see the
+      // notes on the Prescription model.
+      templateId: appliedTemplateId,
+      treatmentId: treatment?.id ?? null,
+      toothNumbers: formatTeeth(teeth),
+      diagnosis,
+      notes,
+      validUntil: validUntil || null,
+      medications: validMeds.map((m) => ({
+        medicationId: m.medicationId,
+        medicationName: m.medicationName,
+        dosage: m.dosage,
+        frequency: m.frequency,
+        duration: m.duration,
+        route: m.route,
+        timing: m.timing || null,
+        // Sent as typed: the server refuses anything that is not a whole
+        // number above zero, rather than this quietly sending `NaN`.
+        quantity: m.quantity.trim() ? Number(m.quantity) : null,
+        instructions: m.instructions || null,
+      })),
+    }
+
+    const post = (acknowledged: boolean) =>
+      fetch('/api/prescriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, allergyAcknowledged: acknowledged }),
+      })
 
     setSaving(true)
     try {
-      const res = await fetch('/api/prescriptions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: selectedPatient.id,
-          // Provenance, clinical context, and this patient's teeth. All three
-          // are optional and all three are copied, never referenced — see the
-          // notes on the Prescription model.
-          templateId: appliedTemplateId,
-          treatmentId: treatment?.id ?? null,
-          toothNumbers: formatTeeth(teeth),
-          diagnosis,
-          notes,
-          validUntil: validUntil || null,
-          medications: validMeds.map((m) => ({
-            medicationId: m.medicationId,
-            medicationName: m.medicationName,
-            dosage: m.dosage,
-            frequency: m.frequency,
-            duration: m.duration,
-            route: m.route,
-            timing: m.timing || null,
-            quantity: m.quantity ? parseInt(m.quantity) : null,
-            instructions: m.instructions || null,
-          })),
-        }),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error)
+      let res = await post(allergyAcknowledged)
+      let result = await res.json()
+
+      /*
+       * The server found a clash this screen did not show — it reads the
+       * generic name from the catalogue, and the record may have changed since
+       * the patient was loaded. Asked here the same way, and sent again only
+       * on a yes.
+       */
+      if (res.status === 409 && result?.code === 'ALLERGY_CLASH' && !allergyAcknowledged) {
+        if (!(await confirmClashes(result.allergyClashes ?? []))) return
+        res = await post(true)
+        result = await res.json()
+      }
+
+      if (!res.ok) throw new Error(result.error || 'Failed to save prescription')
 
       toast({
         title: 'Prescription created',
@@ -597,6 +680,25 @@ export default function NewPrescriptionPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (canPrescribe === false) {
+    return (
+      <div className="mx-auto max-w-4xl">
+        <Button variant="ghost" className="mb-4" onClick={() => router.push('/prescriptions')}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Prescriptions
+        </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle>Only a dentist can write a prescription</CardTitle>
+            <CardDescription>
+              A prescription is issued in the prescriber&apos;s name, so it is written from a
+              dentist&apos;s account. You can still read and print the prescriptions already issued.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -877,9 +979,9 @@ export default function NewPrescriptionPage() {
                   check on this screen.
                 */}
                 <div>
-                  <Label htmlFor={`medication-${med.key}`}>Medication *</Label>
+                  <Label htmlFor={`${idBase}-medication-${index}`}>Medication *</Label>
                   <SearchSelect
-                    id={`medication-${med.key}`}
+                    id={`${idBase}-medication-${index}`}
                     value={med.medicationId}
                     selectedLabel={med.medicationName}
                     options={medOptionsForSelect}

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { AppointmentType, Priority } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { nextAppointmentNo } from '@/lib/numbering'
 import { requirePermission } from '@/lib/api-helpers'
@@ -7,15 +8,12 @@ import {
   findAppointmentConflicts,
   getDoubleBookingPolicy,
 } from '@/lib/appointment-conflicts'
-import {
-  clinicTimezone,
-  dayRangeIn,
-  instantAt,
-  localDay,
-  withWallClock,
-} from '@/lib/appointment-time'
+import { clinicTimezone, dayRangeIn, instantAt, withWallClock } from '@/lib/appointment-time'
 import { validateVisitor } from '@/lib/visitors'
-import { readAppointmentSettings } from '@/lib/appointment-settings'
+import { scheduleRefusal } from '@/lib/appointment-availability'
+import { INACTIVE_PATIENT } from '@/lib/appointment-status'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { findDentist, NOT_A_DENTIST } from '@/lib/clinicians'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 
 /**
@@ -182,6 +180,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching appointments:', error)
     return NextResponse.json({ error: 'Failed to fetch appointments' }, { status: 500 })
   }
@@ -245,8 +245,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // An unknown type or priority was passed to Prisma and came back as a
+    // 500 (finding 49). Refused here with the values that are allowed.
+    if (!isEnumMember(AppointmentType, appointmentType)) {
+      return enumRefusal('appointmentType', appointmentType, AppointmentType)
+    }
+    if (!isEnumMember(Priority, priority)) {
+      return enumRefusal('priority', priority, Priority)
+    }
+
     // Validate duration (between 5 and 480 minutes / 8 hours max)
-    if (duration < 5 || duration > 480) {
+    if (
+      typeof duration !== 'number' ||
+      !Number.isInteger(duration) ||
+      duration < 5 ||
+      duration > 480
+    ) {
       return NextResponse.json(
         { error: 'Duration must be between 5 and 480 minutes' },
         { status: 400 }
@@ -261,58 +275,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid appointment date' }, { status: 400 })
     }
 
-    // "In the past" means the clinic's yesterday, not the server's: a booking
-    // made at 02:00 Karachi for later that morning is not in the past, however
-    // the host's own clock reads.
-    if (localDay(startsAt, timezone) < localDay(new Date(), timezone)) {
-      return NextResponse.json(
-        { error: 'Cannot schedule appointments in the past' },
-        { status: 400 }
-      )
-    }
-
-    /**
-     * How far ahead the desk may book.
-     *
-     * `appointments.maxAdvanceBookingDays` was stored by Settings →
-     * Appointments and read by nothing, so the only horizon in the application
-     * was the public page's. A diary with no far end is one where a mistyped
-     * year puts a patient in 2036 and the clinic carries the row until somebody
-     * notices.
-     *
-     * Counted in the clinic's own calendar days, so it agrees with the "in the
-     * past" check above rather than with the server's clock.
-     */
-    const scheduling = await readAppointmentSettings(prisma, hospitalId)
-    const horizon =
-      scheduling.maxAdvanceBookingDays === null
-        ? null
-        : new Date(Date.now() + scheduling.maxAdvanceBookingDays * 24 * 60 * 60 * 1000)
-    if (horizon && localDay(startsAt, timezone) > localDay(horizon, timezone)) {
-      return NextResponse.json(
-        {
-          error: `Appointments can be booked up to ${scheduling.maxAdvanceBookingDays} days ahead. Change this at Settings → Appointments.`,
-        },
-        { status: 400 }
-      )
+    // Not in the past, inside the booking horizon, on a day the clinic is
+    // open, inside the dentist's hours and clear of lunch and closures. The
+    // slot picker applied the last three and this route none of them, so the
+    // API booked holidays, 23:30 and the middle of lunch (bug report 12 Oct,
+    // finding 6). One function now answers for both.
+    const refusal = await scheduleRefusal(prisma, {
+      hospitalId,
+      doctorId,
+      startsAt,
+      duration,
+      timezone,
+    })
+    if (refusal) {
+      return NextResponse.json({ error: refusal }, { status: 400 })
     }
 
     if (patientId) {
       const patient = await prisma.patient.findFirst({
         where: { id: patientId, hospitalId },
-        select: { id: true },
+        select: { id: true, isActive: true },
       })
       if (!patient) {
         return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
       }
+      // A deactivated patient could still be booked (bug report 12 Oct,
+      // finding 22): the record had vanished from the register, and the diary
+      // went on filling up for them.
+      if (!patient.isActive) {
+        return NextResponse.json({ error: INACTIVE_PATIENT }, { status: 400 })
+      }
     }
 
-    // Check if doctor exists and belongs to this hospital
-    const doctor = await prisma.staff.findFirst({
-      where: { id: doctorId, hospitalId },
-    })
+    // An active dentist at this clinic. This checked only that the staff id
+    // belonged to the clinic, so the receptionist, or a dentist deactivated
+    // that morning, could be booked (finding 7).
+    const doctor = await findDentist(hospitalId, doctorId)
     if (!doctor) {
-      return NextResponse.json({ error: 'Doctor not found' }, { status: 404 })
+      return NextResponse.json({ error: NOT_A_DENTIST }, { status: 400 })
     }
 
     // FR-004: refuse (or warn about) an overlap on the doctor. This compares
@@ -398,6 +398,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(body201, { status: 201 })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating appointment:', error)
     return NextResponse.json({ error: 'Failed to create appointment' }, { status: 500 })
   }

@@ -23,6 +23,10 @@ import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
 import { useCan } from '@/hooks/use-can'
 import { isoDay } from '@/lib/dates'
+import { validatePassword } from '@/lib/password-policy'
+import { ToastAction } from '@/components/ui/toast'
+import { isValidEmail } from '@/lib/email-address'
+import { PHONE_PLACEHOLDER, phoneProblem } from '@/lib/staff-rules'
 
 export default function NewStaffPage() {
   const router = useRouter()
@@ -93,12 +97,28 @@ export default function NewStaffPage() {
       return
     }
 
-    if (formData.password.length < 6) {
+    // The same rules the API applies (finding 28), checked here first so the
+    // form says so before a round trip.
+    if (!isValidEmail(formData.email)) {
       toast({
         variant: 'destructive',
         title: 'Validation Error',
-        description: 'Password must be at least 6 characters',
+        description: 'Please enter a valid email address',
       })
+      return
+    }
+    const badPhone =
+      phoneProblem(formData.phone, 'Phone', { required: true }) ??
+      phoneProblem(formData.alternatePhone, 'Alternate phone') ??
+      phoneProblem(formData.emergencyPhone, 'Emergency phone')
+    if (badPhone) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: badPhone })
+      return
+    }
+
+    const weak = validatePassword(formData.password)
+    if (weak) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: weak })
       return
     }
 
@@ -115,6 +135,22 @@ export default function NewStaffPage() {
 
       if (!response.ok) {
         const error = await response.json()
+        // The plan's staff limit: say which plan, and offer the way past it
+        // rather than leave the administrator to find the pricing page
+        // (finding 53).
+        if (error.code === 'STAFF_LIMIT') {
+          toast({
+            variant: 'destructive',
+            title: 'Staff limit reached',
+            description: error.error,
+            action: (
+              <ToastAction altText="See plans" onClick={() => router.push('/pricing')}>
+                See plans
+              </ToastAction>
+            ),
+          })
+          return
+        }
         throw new Error(error.error || 'Failed to create staff member')
       }
 
@@ -205,7 +241,7 @@ export default function NewStaffPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={formData.password}
                     onChange={(e) => handleChange('password', e.target.value)}
-                    placeholder="Enter password"
+                    placeholder="8 to 32 characters"
                     required
                   />
                   <Button
@@ -286,9 +322,10 @@ export default function NewStaffPage() {
                   <Label htmlFor="phone">Phone Number *</Label>
                   <Input
                     id="phone"
+                    type="tel"
                     value={formData.phone}
                     onChange={(e) => handleChange('phone', e.target.value)}
-                    placeholder="+92 300 1234567"
+                    placeholder={PHONE_PLACEHOLDER}
                     required
                   />
                 </div>
@@ -298,7 +335,7 @@ export default function NewStaffPage() {
                     id="alternatePhone"
                     value={formData.alternatePhone}
                     onChange={(e) => handleChange('alternatePhone', e.target.value)}
-                    placeholder="+92 300 1234567"
+                    placeholder={PHONE_PLACEHOLDER}
                   />
                 </div>
               </div>
@@ -450,6 +487,7 @@ export default function NewStaffPage() {
                   <Input
                     id="joiningDate"
                     type="date"
+                    max={isoDay(new Date())}
                     value={formData.joiningDate}
                     onChange={(e) => handleChange('joiningDate', e.target.value)}
                   />
@@ -480,7 +518,7 @@ export default function NewStaffPage() {
                   id="emergencyPhone"
                   value={formData.emergencyPhone}
                   onChange={(e) => handleChange('emergencyPhone', e.target.value)}
-                  placeholder="+92 300 1234567"
+                  placeholder={PHONE_PLACEHOLDER}
                 />
               </div>
             </CardContent>

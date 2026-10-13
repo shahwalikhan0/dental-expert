@@ -342,11 +342,12 @@ export default function ProceduresSettingsPage() {
         throw new Error(data.error || 'Failed to delete procedure')
       }
 
+      // This route deactivates rather than deletes, so treatments and plans
+      // that used the procedure keep naming it; it is no longer offered for
+      // new ones.
       toast({
-        title: 'Success',
-        description: data.deactivated
-          ? 'Procedure has been deactivated as it is used in existing treatments'
-          : 'Procedure deleted successfully',
+        title: 'Procedure deactivated',
+        description: `${selectedProcedure.name} is no longer offered for new treatments or plans.`,
       })
 
       setDeleteDialogOpen(false)
@@ -371,7 +372,10 @@ export default function ProceduresSettingsPage() {
         body: JSON.stringify({ isActive: !procedure.isActive }),
       })
 
-      if (!response.ok) throw new Error('Failed to update procedure')
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to update procedure status')
+      }
 
       toast({
         title: 'Success',
@@ -380,10 +384,9 @@ export default function ProceduresSettingsPage() {
 
       fetchProcedures()
     } catch (error: any) {
-      console.error('Error updating procedure:', error)
       toast({
-        title: 'Error',
-        description: 'Failed to update procedure status',
+        title: 'Could not update the procedure',
+        description: error.message,
         variant: 'destructive',
       })
     }
@@ -663,6 +666,7 @@ export default function ProceduresSettingsPage() {
                 <Input
                   id="basePrice"
                   type="number"
+                  min={0}
                   step="0.01"
                   value={formData.basePrice}
                   onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
@@ -801,8 +805,8 @@ export default function ProceduresSettingsPage() {
           <DialogHeader>
             <DialogTitle>Delete Procedure</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{selectedProcedure?.name}"? If this procedure is used
-              in treatments, it will be deactivated instead.
+              "{selectedProcedure?.name}" will be deactivated. Treatments and plans that used it
+              keep it; it is no longer offered for new ones. You can switch it back on later.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

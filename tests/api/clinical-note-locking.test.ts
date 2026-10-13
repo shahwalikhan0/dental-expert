@@ -71,6 +71,9 @@ const UNSIGNED = {
   hospitalId: 'h1',
   treatmentNo: 'TRT-0001',
   status: 'COMPLETED',
+  // The treating dentist's staff record; doc-1 is their user account.
+  doctorId: 'staff-doc-1',
+  doctor: { firstName: 'Sana', lastName: 'Khan' },
   signedAt: null,
   signedById: null,
   toothNumbers: '26',
@@ -98,15 +101,33 @@ beforeEach(() => {
 })
 
 describe('POST /api/treatments/[id]/sign', () => {
-  it('lets a doctor sign a completed treatment', async () => {
+  it('lets the treating dentist sign a completed treatment', async () => {
     signedInAs('DOCTOR', 'doc-1')
     vi.mocked(prisma.treatment.findFirst).mockResolvedValue(UNSIGNED as never)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'staff-doc-1' } as never)
 
     const res = await SIGN(send('POST'), params)
     expect(res.status).toBe(200)
     expect(vi.mocked(prisma.treatment.update).mock.calls[0][0].data).toMatchObject({
       signedById: 'doc-1',
     })
+    // And the signature is on the audit trail (bug report 12 Oct, finding 24).
+    expect(vi.mocked(prisma.auditLog.create).mock.calls[0][0].data).toMatchObject({
+      action: 'treatment.signed',
+      entityId: 't1',
+    })
+  })
+
+  // Bug report 12 Oct, finding 12: Dr Danish signed Dr Sana's scaling.
+  it("refuses a dentist signing another dentist's treatment", async () => {
+    signedInAs('DOCTOR', 'doc-2')
+    vi.mocked(prisma.treatment.findFirst).mockResolvedValue(UNSIGNED as never)
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'staff-doc-2' } as never)
+
+    const res = await SIGN(send('POST'), params)
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toContain('Sana Khan')
+    expect(prisma.treatment.update).not.toHaveBeenCalled()
   })
 
   // A signature attests as the treating provider. ADMIN is a practice manager

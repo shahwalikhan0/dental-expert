@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, VendorStatus } from '@prisma/client'
+import { requireFeature } from '@/lib/plan-gate'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
@@ -82,12 +85,11 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching lab vendors:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch lab vendors', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch lab vendors' }, { status: 500 })
   }
 }
 
@@ -99,18 +101,29 @@ export async function POST(request: NextRequest) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // The lab module is a paid feature (finding 26): a Free clinic created a
+  // laboratory with a 201. The 403 carries a sentence the toast shows as it is.
+  const gated = await requireFeature(hospitalId, 'labModule')
+  if (gated) return gated
+
   try {
     const body = await request.json()
     const {
+      code,
       name,
       contactPerson,
       phone,
+      alternatePhone,
       email,
       address,
+      city,
+      state,
+      postalCode,
+      taxRegistrationNo,
+      nationalTaxNo,
       specializations,
       avgTurnaround = 7,
-      rating = 0,
-      status = VendorStatus.ACTIVE,
+      notes,
     } = body
 
     // Validation
@@ -118,19 +131,69 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields: name, phone' }, { status: 400 })
     }
 
+    // Zero, blank and absent are all "not rated", stored as null (finding 20).
+    const rating = parseRating(body.rating)
+    if (!rating.ok) return NextResponse.json({ error: rating.error }, { status: 400 })
+
+    const paymentTerms = parsePaymentTerms(body.paymentTerms)
+    if (!paymentTerms.ok) return NextResponse.json({ error: paymentTerms.error }, { status: 400 })
+
+    const creditLimit = parseCreditLimit(body.creditLimit)
+    if (!creditLimit.ok) return NextResponse.json({ error: creditLimit.error }, { status: 400 })
+
+    const turnaround = avgTurnaround === '' || avgTurnaround == null ? null : Number(avgTurnaround)
+    if (turnaround !== null && (!Number.isInteger(turnaround) || turnaround < 0)) {
+      return NextResponse.json(
+        { error: 'The turnaround must be a whole number of days' },
+        { status: 400 }
+      )
+    }
+
+    // The form sends lowercase; the column holds the enum. Passing `active`
+    // straight through was a Prisma validation error.
+    const status = body.status == null ? VendorStatus.ACTIVE : parseStatus(String(body.status))
+    if (!status) {
+      return NextResponse.json(
+        { error: `Status "${body.status}" is not valid. Use active, inactive or blocked.` },
+        { status: 400 }
+      )
+    }
+
+    if (code) {
+      const duplicate = await prisma.vendor.findFirst({
+        where: { code, hospitalId, kind: 'LAB', deletedAt: null },
+        select: { id: true },
+      })
+      if (duplicate) {
+        return NextResponse.json({ error: 'Vendor code already exists' }, { status: 409 })
+      }
+    }
+
     // Create lab vendor
     const vendor = await prisma.vendor.create({
       data: {
         hospitalId,
         kind: 'LAB',
+        // The form has always asked for a code, and this route dropped it —
+        // so the edit dialog, which requires one, could not save the record.
+        code: code || null,
         name,
         contactPerson: contactPerson || null,
         phone,
+        alternatePhone: alternatePhone || null,
         email: email || null,
         address: address || null,
+        city: city || null,
+        state: state || null,
+        postalCode: postalCode || null,
+        taxRegistrationNo: taxRegistrationNo || null,
+        nationalTaxNo: nationalTaxNo || null,
         specializations: specializations || null,
-        avgTurnaround: avgTurnaround || null,
-        rating: rating || null,
+        avgTurnaround: turnaround || null,
+        rating: rating.value ?? null,
+        paymentTerms: paymentTerms.value ?? null,
+        creditLimit: creditLimit.value ?? null,
+        notes: notes || null,
         status,
       },
     })
@@ -143,11 +206,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     )
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating lab vendor:', error)
-    return NextResponse.json(
-      { error: 'Failed to create lab vendor', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create lab vendor' }, { status: 500 })
   }
 }

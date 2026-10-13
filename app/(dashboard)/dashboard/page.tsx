@@ -37,8 +37,16 @@ import {
 import { CHART_COLORS } from '@/lib/chart-theme'
 import { displayDate, displayDateShort } from '@/lib/dates'
 import { formatTime } from '@/lib/appointment-utils'
+import { useSession } from 'next-auth/react'
+import { holderCan, type Permission } from '@/lib/rbac'
 
 interface DashboardStats {
+  /**
+   * False when the caller holds no billing permission. The money figures are
+   * then absent from the answer altogether (bug report 12 Oct, finding 41),
+   * and their cards and charts are left off the page.
+   */
+  showsMoney?: boolean
   overview: {
     totalPatients: number
     newPatientsThisMonth: number
@@ -48,17 +56,17 @@ interface DashboardStats {
     appointmentGrowth: number
     pendingAppointments: number
     completedAppointmentsToday: number
-    thisMonthRevenue: number
-    todayRevenue: number
-    revenueGrowth: number
-    pendingPayments: number
-    totalRevenue: number
+    thisMonthRevenue?: number
+    todayRevenue?: number
+    revenueGrowth?: number
+    pendingPayments?: number
+    totalRevenue?: number
   }
   charts: {
     last7DaysRevenue: Array<{ date: string; revenue: number }>
     last6MonthsRevenue: Array<{ month: string; revenue: number }>
     appointmentsByStatus: Array<{ status: string; count: number }>
-    topProcedures: Array<{ name: string; count: number; revenue: number }>
+    topProcedures: Array<{ name: string; count: number; revenue?: number }>
   }
   recentActivity: {
     upcomingAppointments: Array<{
@@ -96,16 +104,39 @@ interface DashboardStats {
  * hundred pixels of analysis between somebody arriving at the dashboard and the
  * button for the task they arrived to do. Charts are for looking back; this row
  * is for the next thirty seconds, so it goes first.
+ *
+ * Each names the permission its screen needs, and is offered only to somebody
+ * who holds it: a dental assistant was shown "New invoice", which opens a form
+ * that the server refuses to save.
  */
-const QUICK_ACTIONS = [
+const QUICK_ACTIONS: Array<{
+  href: string
+  icon: typeof Calendar
+  title: string
+  hint: string
+  permission: Permission
+}> = [
   {
     href: '/appointments/new',
     icon: Calendar,
     title: 'Book appointment',
     hint: 'Schedule a visit',
+    permission: 'appointments:write',
   },
-  { href: '/patients/new', icon: UserPlus, title: 'Add patient', hint: 'Register someone new' },
-  { href: '/billing/invoices/new', icon: FilePlus2, title: 'New invoice', hint: 'Bill a patient' },
+  {
+    href: '/patients/new',
+    icon: UserPlus,
+    title: 'Add patient',
+    hint: 'Register someone new',
+    permission: 'patients:write',
+  },
+  {
+    href: '/billing/invoices/new',
+    icon: FilePlus2,
+    title: 'New invoice',
+    hint: 'Bill a patient',
+    permission: 'billing:write',
+  },
   {
     // Replaces the old "View Reports" tile. Reports are a monthly errand and
     // live one click away in the sidebar; the queue is what reception looks at
@@ -114,6 +145,7 @@ const QUICK_ACTIONS = [
     icon: ClipboardList,
     title: "Today's queue",
     hint: 'Who is waiting',
+    permission: 'appointments:read',
   },
 ]
 
@@ -122,6 +154,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const holder = { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole }
+  const actions = QUICK_ACTIONS.filter((action) => holderCan(holder, action.permission))
 
   useEffect(() => {
     fetchDashboardStats()
@@ -177,7 +212,7 @@ export default function DashboardPage() {
 
   const quickActions = (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {QUICK_ACTIONS.map(({ href, icon: Icon, title, hint }) => (
+      {actions.map(({ href, icon: Icon, title, hint }) => (
         <Link
           key={href}
           href={href}
@@ -251,7 +286,9 @@ export default function DashboardPage() {
   }
 
   const patientTrend = growth(stats.overview.patientGrowth)
-  const revenueTrend = growth(stats.overview.revenueGrowth)
+  const showsMoney = stats.showsMoney !== false
+  const revenueGrowth = stats.overview.revenueGrowth ?? 0
+  const revenueTrend = growth(revenueGrowth)
   const lowStock = stats.recentActivity.lowStockItems ?? []
   const upcoming = stats.recentActivity.upcomingAppointments ?? []
 
@@ -329,7 +366,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-4 md:grid-cols-2 ${showsMoney ? 'lg:grid-cols-4' : ''}`}>
         {stat(
           '/patients',
           'Total Patients',
@@ -354,32 +391,34 @@ export default function DashboardPage() {
             {stats.overview.pendingAppointments} pending
           </span>
         )}
-        {stat(
-          '/billing/reports',
-          'This Month Revenue',
-          TrendingUp,
-          formatCurrency(stats.overview.thisMonthRevenue),
-          <>
-            {revenueTrend.icon}
-            <span className={revenueTrend.color}>
-              {stats.overview.revenueGrowth > 0 ? '+' : ''}
-              {stats.overview.revenueGrowth.toFixed(1)}%
-            </span>
-            <span>from last month</span>
-          </>
-        )}
-        {stat(
-          '/billing/invoices',
-          'Pending Payments',
-          Receipt,
-          formatCurrency(stats.overview.pendingPayments),
-          <span>Outstanding receivables</span>
-        )}
+        {showsMoney &&
+          stat(
+            '/billing/reports',
+            'This Month Revenue',
+            TrendingUp,
+            formatCurrency(stats.overview.thisMonthRevenue ?? 0),
+            <>
+              {revenueTrend.icon}
+              <span className={revenueTrend.color}>
+                {revenueGrowth > 0 ? '+' : ''}
+                {revenueGrowth.toFixed(1)}%
+              </span>
+              <span>from last month</span>
+            </>
+          )}
+        {showsMoney &&
+          stat(
+            '/billing/invoices',
+            'Pending Payments',
+            Receipt,
+            formatCurrency(stats.overview.pendingPayments ?? 0),
+            <span>Outstanding receivables</span>
+          )}
       </div>
 
       {/* The day itself, ahead of the analysis of it */}
       <div className="grid gap-4 lg:grid-cols-7">
-        <Card className="lg:col-span-3">
+        <Card className={showsMoney ? 'lg:col-span-3' : 'lg:col-span-7'}>
           <CardHeader>
             <CardTitle>Next appointments</CardTitle>
             <CardDescription>The next five in the book</CardDescription>
@@ -422,44 +461,48 @@ export default function DashboardPage() {
         </Card>
 
         {/* Revenue Chart */}
-        <Card className="lg:col-span-4">
-          <CardHeader>
-            <CardTitle>Revenue Overview</CardTitle>
-            <CardDescription>Last 7 days revenue trend</CardDescription>
-          </CardHeader>
-          <CardContent className="pl-2">
-            {stats.charts.last7DaysRevenue && stats.charts.last7DaysRevenue.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={stats.charts.last7DaysRevenue.map((item: any) => ({
-                    date: displayDateShort(item.date),
-                    revenue: Number(item.revenue),
-                  }))}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip
-                    formatter={(value) => (typeof value === 'number' ? formatCurrency(value) : '')}
-                    labelStyle={{ color: 'inherit' }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    activeDot={{ r: 8 }}
-                    name="Revenue"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
-            )}
-          </CardContent>
-        </Card>
+        {showsMoney && (
+          <Card className="lg:col-span-4">
+            <CardHeader>
+              <CardTitle>Revenue Overview</CardTitle>
+              <CardDescription>Last 7 days revenue trend</CardDescription>
+            </CardHeader>
+            <CardContent className="pl-2">
+              {stats.charts.last7DaysRevenue && stats.charts.last7DaysRevenue.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart
+                    data={stats.charts.last7DaysRevenue.map((item: any) => ({
+                      date: displayDateShort(item.date),
+                      revenue: Number(item.revenue),
+                    }))}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip
+                      formatter={(value) =>
+                        typeof value === 'number' ? formatCurrency(value) : ''
+                      }
+                      labelStyle={{ color: 'inherit' }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      activeDot={{ r: 8 }}
+                      name="Revenue"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Everything below here is for looking back, and is labelled as such */}
@@ -468,7 +511,7 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground">How the practice has been trending.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={`grid gap-4 ${showsMoney ? 'md:grid-cols-2' : ''}`}>
         <Card>
           <CardHeader>
             <CardTitle>Appointments by Status</CardTitle>
@@ -513,41 +556,45 @@ export default function DashboardPage() {
         </Card>
 
         {/* Monthly Revenue Trend */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Revenue Trend</CardTitle>
-            <CardDescription>Last 6 months revenue comparison</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {stats.charts.last6MonthsRevenue && stats.charts.last6MonthsRevenue.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart
-                  data={stats.charts.last6MonthsRevenue.map((item: any) => ({
-                    month: item.month,
-                    revenue: Number(item.revenue),
-                  }))}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip
-                    formatter={(value) => (typeof value === 'number' ? formatCurrency(value) : '')}
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="revenue"
-                    fill="hsl(var(--primary))"
-                    name="Revenue"
-                    radius={[6, 6, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
-            )}
-          </CardContent>
-        </Card>
+        {showsMoney && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Revenue Trend</CardTitle>
+              <CardDescription>Last 6 months revenue comparison</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stats.charts.last6MonthsRevenue && stats.charts.last6MonthsRevenue.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={stats.charts.last6MonthsRevenue.map((item: any) => ({
+                      month: item.month,
+                      revenue: Number(item.revenue),
+                    }))}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip
+                      formatter={(value) =>
+                        typeof value === 'number' ? formatCurrency(value) : ''
+                      }
+                    />
+                    <Legend />
+                    <Bar
+                      dataKey="revenue"
+                      fill="hsl(var(--primary))"
+                      name="Revenue"
+                      radius={[6, 6, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="py-8 text-center text-muted-foreground">No revenue data available</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card>
@@ -562,14 +609,16 @@ export default function DashboardPage() {
                 data={stats.charts.topProcedures.map((proc: any) => ({
                   name: proc.name.length > 20 ? proc.name.substring(0, 20) + '...' : proc.name,
                   count: Number(proc.count),
-                  revenue: Number(proc.revenue),
+                  revenue: proc.revenue === undefined ? undefined : Number(proc.revenue),
                 }))}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--chart-1))" />
-                <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" />
+                {showsMoney && (
+                  <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" />
+                )}
                 <Tooltip
                   formatter={(value, _name, item) => {
                     if (typeof value !== 'number') return ''
@@ -588,13 +637,15 @@ export default function DashboardPage() {
                   name="Count"
                   radius={[6, 6, 0, 0]}
                 />
-                <Bar
-                  yAxisId="right"
-                  dataKey="revenue"
-                  fill="hsl(var(--chart-2))"
-                  name="Revenue (Rs)"
-                  radius={[6, 6, 0, 0]}
-                />
+                {showsMoney && (
+                  <Bar
+                    yAxisId="right"
+                    dataKey="revenue"
+                    fill="hsl(var(--chart-2))"
+                    name="Revenue (Rs)"
+                    radius={[6, 6, 0, 0]}
+                  />
+                )}
               </BarChart>
             </ResponsiveContainer>
           ) : (

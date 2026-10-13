@@ -15,6 +15,9 @@ vi.mock('@prisma/client', () => ({
 vi.mock('bcryptjs', () => ({
   default: { hash: vi.fn().mockResolvedValue('hashed-password') },
 }))
+// The plan's staff limit is checked when the seat is taken (finding 63).
+const helpers = vi.hoisted(() => ({ checkStaffLimit: vi.fn() }))
+vi.mock('@/lib/api-helpers', () => helpers)
 
 const mod = await import('@/app/api/public/invite/accept/route')
 
@@ -59,7 +62,7 @@ const accept = () =>
 describe('POST /api/public/invite/accept', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(prisma.staff.count as any).mockResolvedValue(5)
+    helpers.checkStaffLimit.mockResolvedValue({ allowed: true, current: 2, max: 3 })
     ;(prisma.user.updateMany as any).mockResolvedValue({ count: 1 })
     ;(prisma.staff.create as any).mockResolvedValue({ id: 'staff-new' })
   })
@@ -156,6 +159,24 @@ describe('POST /api/public/invite/accept', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('no longer active')
+  })
+
+  it('refuses when the plan has no free staff account, and leaves the invitation usable', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue(invitation())
+    helpers.checkStaffLimit.mockResolvedValue({ allowed: false, current: 3, max: 3 })
+
+    const res = await accept()
+    expect(res.status).toBe(403)
+    expect(prisma.user.updateMany).not.toHaveBeenCalled()
+    expect(prisma.staff.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a phone that is not a number', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue(invitation())
+    const res = await mod.POST(
+      makePostRequest({ token: 'valid-token-123', password: 'SecurePass123!', phone: 'abcdefghij' })
+    )
+    expect(res.status).toBe(400)
   })
 
   it('falls back to the address when no name was given', async () => {

@@ -290,4 +290,19 @@ describe('getOpenSession', () => {
       where: { hospitalId: 'h1', status: 'OPEN' },
     })
   })
+
+  // Finding 38: a payment belongs in the drawer of the person who took it.
+  it('prefers a till the receiving user opened, and falls back to any open till', async () => {
+    vi.mocked(prisma.cashierSession.findFirst)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({ id: 'cs-other' } as never)
+
+    await expect(getOpenSession('h1', { userId: 'u1' })).resolves.toEqual({ id: 'cs-other' })
+
+    const calls = vi.mocked(prisma.cashierSession.findFirst).mock.calls
+    expect(calls[0][0]).toMatchObject({
+      where: { hospitalId: 'h1', status: 'OPEN', openedById: 'u1' },
+    })
+    expect(calls[1][0]).toMatchObject({ where: { hospitalId: 'h1', status: 'OPEN' } })
+  })
 })

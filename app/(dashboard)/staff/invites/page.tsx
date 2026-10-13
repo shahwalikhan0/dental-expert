@@ -31,6 +31,7 @@ import {
   usePagedRows,
 } from '@/components/ui/data-grid'
 import { useToast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { formatDate } from '@/lib/i18n/format'
 import { MailPlus, RotateCw, X, ArrowLeft } from 'lucide-react'
@@ -122,6 +123,14 @@ export default function StaffInvitesPage() {
           variant: 'destructive',
           title: 'Could not send the invitation',
           description: data.message || data.error || 'Please try again.',
+          // The plan's staff limit comes with the way past it (finding 53).
+          ...(data.code === 'STAFF_LIMIT' && {
+            action: (
+              <ToastAction altText="See plans" onClick={() => window.location.assign('/pricing')}>
+                See plans
+              </ToastAction>
+            ),
+          }),
         })
         return
       }

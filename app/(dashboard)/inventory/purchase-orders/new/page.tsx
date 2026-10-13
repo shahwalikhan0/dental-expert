@@ -44,8 +44,10 @@ export default function NewPurchaseOrderPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/inventory/suppliers?limit=100&sort=name').then((r) => r.json()),
-      fetch('/api/inventory/items?limit=500').then((r) => r.json()),
+      // Active suppliers and items only: an order naming an inactive one is
+      // refused (finding 44), and deleted items are never listed (finding 58).
+      fetch('/api/inventory/suppliers?status=active&limit=100&sort=name').then((r) => r.json()),
+      fetch('/api/inventory/items?status=active&limit=500').then((r) => r.json()),
     ])
       .then(([supplierData, itemData]) => {
         if (supplierData.success) setSuppliers(supplierData.data)

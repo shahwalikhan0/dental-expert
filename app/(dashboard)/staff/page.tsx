@@ -57,6 +57,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
+import {
+  OpenAppointmentsDialog,
+  type OpenAppointment,
+} from '@/app/(dashboard)/staff/_components/open-appointments-dialog'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { ALL_ROLES, roleColor, roleLabel } from '@/lib/rbac'
 import { ActiveFilters } from '@/components/ui/active-filters'
@@ -79,6 +83,15 @@ interface Staff {
     isActive: boolean
     email: string
   }
+}
+
+/** From /api/staff/usage — see that route for why it exists. */
+interface StaffUsage {
+  planName: string
+  current: number
+  max: number
+  unlimited: boolean
+  atLimit: boolean
 }
 
 interface PaginationInfo {
@@ -120,6 +133,32 @@ export default function StaffPage() {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null)
+  // The patients still booked with the person being deactivated, when the
+  // server has refused the plain request and wants it confirmed.
+  const [openDiary, setOpenDiary] = useState<OpenAppointment[] | null>(null)
+  const [deactivating, setDeactivating] = useState(false)
+
+  /**
+   * How many of the plan's staff accounts are in use. The Free plan's limit
+   * used to be discovered by adding the third person (finding 53).
+   */
+  const [usage, setUsage] = useState<StaffUsage | null>(null)
+
+  const fetchUsage = async () => {
+    try {
+      const response = await fetch('/api/staff/usage')
+      if (!response.ok) return
+      const data = await response.json()
+      // Decoration, not data: anything unexpected just hides the line.
+      if (typeof data?.max === 'number' && typeof data?.planName === 'string') setUsage(data)
+    } catch {
+      /* the line is optional; the list is not */
+    }
+  }
+
+  useEffect(() => {
+    fetchUsage()
+  }, [])
 
   /**
    * Which request is the current one.
@@ -181,21 +220,50 @@ export default function StaffPage() {
     fetchStaff()
   }, [pagination.page, pagination.limit, debouncedSearch, roleFilter, statusFilter])
 
-  const handleDeactivate = async () => {
+  /**
+   * Deactivate, asking a second time when the server lists appointments still
+   * booked with this person (finding 21). `confirm` is sent only from that
+   * second dialog, after the list has been shown.
+   */
+  const handleDeactivate = async (confirm = false) => {
     if (!staffToDelete) return
 
     try {
+      setDeactivating(true)
       const response = await fetch(`/api/staff/${staffToDelete.id}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm }),
       })
+      const data = await response.json().catch(() => ({}))
 
-      if (!response.ok) throw new Error('Failed to deactivate staff')
+      if (response.status === 409 && Array.isArray(data.appointments)) {
+        setDeleteDialogOpen(false)
+        setOpenDiary(data.appointments)
+        return
+      }
+
+      if (!response.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not deactivate',
+          description: data.error || 'Failed to deactivate staff member',
+        })
+        setDeleteDialogOpen(false)
+        setOpenDiary(null)
+        setStaffToDelete(null)
+        return
+      }
 
       toast({
         title: 'Success',
         description: 'Staff member deactivated successfully',
       })
+      setDeleteDialogOpen(false)
+      setOpenDiary(null)
+      setStaffToDelete(null)
       fetchStaff()
+      fetchUsage()
     } catch (error) {
       console.error('Error deactivating staff:', error)
       toast({
@@ -203,9 +271,11 @@ export default function StaffPage() {
         title: 'Error',
         description: 'Failed to deactivate staff member',
       })
-    } finally {
       setDeleteDialogOpen(false)
+      setOpenDiary(null)
       setStaffToDelete(null)
+    } finally {
+      setDeactivating(false)
     }
   }
 
@@ -224,6 +294,21 @@ export default function StaffPage() {
         <div>
           <h1 className="page-title">Staff Management</h1>
           <p className="text-muted-foreground">Manage staff members, roles, and permissions</p>
+          {usage && !usage.unlimited && (
+            <p
+              className={`mt-1 text-sm ${usage.atLimit ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}
+            >
+              {usage.current} of {usage.max} staff accounts used on the {usage.planName} plan
+              {usage.atLimit && (
+                <>
+                  {' — '}
+                  <Link href="/pricing" className="font-medium underline">
+                    upgrade to add more
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <ExportMenu
@@ -484,12 +569,35 @@ export default function StaffPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeactivate} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={(e) => {
+                // Kept open until the server answers: it may come back with a
+                // list of appointments to confirm first.
+                e.preventDefault()
+                handleDeactivate(false)
+              }}
+              disabled={deactivating}
+              className="bg-red-600 hover:bg-red-700"
+            >
               Deactivate
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <OpenAppointmentsDialog
+        open={openDiary !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpenDiary(null)
+            setStaffToDelete(null)
+          }
+        }}
+        name={staffToDelete ? `${staffToDelete.firstName} ${staffToDelete.lastName}` : ''}
+        appointments={openDiary ?? []}
+        busy={deactivating}
+        onConfirm={() => handleDeactivate(true)}
+      />
     </div>
   )
 }

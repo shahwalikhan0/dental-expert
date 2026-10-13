@@ -45,6 +45,7 @@ vi.mock('@/lib/services/template.service', () => ({
     validateTemplate: vi.fn(),
     createTemplate: vi.fn(),
     getTemplates: vi.fn(),
+    findByName: vi.fn(),
   },
 }))
 
@@ -71,6 +72,8 @@ import {
 } from '@/app/api/communications/templates/route'
 import { POST as smsPOST, GET as smsGET } from '@/app/api/communications/sms/route'
 import { POST as emailPOST, GET as emailGET } from '@/app/api/communications/email/route'
+import { POST as bulkSmsPOST } from '@/app/api/communications/sms/bulk/route'
+import { prisma } from '@/lib/prisma'
 
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { templateService } from '@/lib/services/template.service'
@@ -176,11 +179,41 @@ describe('POST /api/communications/templates', () => {
     const body = await res.json()
 
     expect(res.status).toBe(400)
-    expect(body.error).toBe('Template validation failed')
+    // The toast shows `error`, so it carries the reason rather than a heading.
+    expect(body.error).toBe('Unknown variable {{badVar}}')
     expect(body.unknownVariables).toContain('badVar')
+    expect(body.validVariables).toContain('firstName')
+    expect(templateService.createTemplate).not.toHaveBeenCalled()
   })
 
-  it('returns 500 for invalid category enum', async () => {
+  it('returns 409 when the clinic already has a template of that name (finding 62)', async () => {
+    mockAuth()
+    vi.mocked(templateService.validateTemplate).mockReturnValue({
+      isValid: true,
+      errors: [],
+      unknownVariables: [],
+    })
+    vi.mocked(templateService.findByName).mockResolvedValueOnce({
+      id: 't0',
+      name: 'Post-op care (SMS)',
+    } as any)
+
+    const res = await templatesPOST(
+      makeReq('/api/communications/templates', 'POST', {
+        name: 'post-op care (sms)',
+        category: 'GENERAL',
+        channel: 'SMS',
+        content: 'Rinse gently, {{firstName}}.',
+      })
+    )
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('Post-op care (SMS)')
+    expect(templateService.findByName).toHaveBeenCalledWith('h1', 'post-op care (sms)')
+    expect(templateService.createTemplate).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 naming the valid categories for an invalid category (finding 25)', async () => {
     mockAuth()
     const res = await templatesPOST(
       makeReq('/api/communications/templates', 'POST', {
@@ -190,7 +223,10 @@ describe('POST /api/communications/templates', () => {
         content: 'Hi',
       })
     )
-    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/^category:/)
+    expect(body.error).toContain('APPOINTMENT')
   })
 })
 
@@ -286,7 +322,7 @@ describe('POST /api/communications/sms', () => {
     expect(body.smsLogId).toBe('sms1')
   })
 
-  it('returns 500 for validation error (phone too short)', async () => {
+  it('returns 400 for validation error (phone too short)', async () => {
     mockAuth()
     const res = await smsPOST(
       makeReq('/api/communications/sms', 'POST', {
@@ -294,10 +330,11 @@ describe('POST /api/communications/sms', () => {
         message: 'Hello',
       })
     )
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/^phone:/)
   })
 
-  it('returns 500 for validation error (message too long)', async () => {
+  it('returns 400 for validation error (message too long)', async () => {
     mockAuth()
     const res = await smsPOST(
       makeReq('/api/communications/sms', 'POST', {
@@ -305,7 +342,29 @@ describe('POST /api/communications/sms', () => {
         message: 'x'.repeat(501),
       })
     )
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(400)
+  })
+
+  it("repeats the service's own refusal, and nothing else", async () => {
+    mockAuth()
+    const { SendRefusal } = await import('@/lib/services/send-refusal')
+    vi.mocked(smsService.sendSMS).mockRejectedValueOnce(
+      new SendRefusal('SMS gateway not configured')
+    )
+    const refused = await smsPOST(
+      makeReq('/api/communications/sms', 'POST', { phone: '3001234567', message: 'Hi' })
+    )
+    expect(refused.status).toBe(400)
+    expect((await refused.json()).error).toBe('SMS gateway not configured')
+
+    vi.mocked(smsService.sendSMS).mockRejectedValueOnce(
+      new Error('connect ECONNREFUSED 10.0.0.5:443 at /srv/app/node_modules/x.js')
+    )
+    const crashed = await smsPOST(
+      makeReq('/api/communications/sms', 'POST', { phone: '3001234567', message: 'Hi' })
+    )
+    expect(crashed.status).toBe(500)
+    expect((await crashed.json()).error).toBe('Failed to send SMS')
   })
 })
 
@@ -447,5 +506,36 @@ describe('GET /api/communications/email', () => {
         limit: 25,
       })
     )
+  })
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// POST /api/communications/sms/bulk — a paid feature (finding 26)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('POST /api/communications/sms/bulk', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('refuses a clinic on the Free plan, saying so', async () => {
+    mockAuth()
+    vi.mocked(prisma.hospital.findUnique).mockResolvedValueOnce({
+      id: 'h1',
+      name: 'Smile Clinic',
+      slug: 'smile',
+      isActive: true,
+      onboardingCompleted: true,
+      subscription: { plan: 'FREE', status: 'ACTIVE' },
+    } as any)
+
+    const res = await bulkSmsPOST(
+      makeReq('/api/communications/sms/bulk', 'POST', {
+        recipients: [{ phone: '3001234567', message: 'Hi' }],
+      })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(403)
+    expect(body.code).toBe('PLAN_FEATURE')
+    expect(body.error).toContain('Bulk messaging')
   })
 })

@@ -52,6 +52,32 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.PORTAL_LOGIN_FAILED]: 'Patient sign-in failed',
   [AUDIT_ACTIONS.PORTAL_PASSWORD_CHANGED]: 'Patient changed their password',
 
+  [AUDIT_ACTIONS.INVOICE_CREATED]: 'Invoice raised',
+  [AUDIT_ACTIONS.INVOICE_UPDATED]: 'Invoice changed',
+  [AUDIT_ACTIONS.INVOICE_CANCELLED]: 'Invoice cancelled',
+  [AUDIT_ACTIONS.INVOICE_DELETED]: 'Invoice deleted',
+  [AUDIT_ACTIONS.PAYMENT_RECORDED]: 'Payment taken',
+
+  [AUDIT_ACTIONS.TREATMENT_SIGNED]: 'Treatment signed',
+  [AUDIT_ACTIONS.CLINICAL_NOTE_SIGNED]: 'Clinical note signed',
+  [AUDIT_ACTIONS.PRESCRIPTION_CREATED]: 'Prescription written',
+  [AUDIT_ACTIONS.TREATMENT_DELETED]: 'Treatment deleted',
+
+  [AUDIT_ACTIONS.PATIENT_DEACTIVATED]: 'Patient deactivated',
+  [AUDIT_ACTIONS.PATIENT_REACTIVATED]: 'Patient reactivated',
+  [AUDIT_ACTIONS.APPOINTMENT_CANCELLED]: 'Appointment cancelled',
+  [AUDIT_ACTIONS.APPOINTMENT_DELETED]: 'Appointment deleted',
+
+  [AUDIT_ACTIONS.STAFF_CREATED]: 'Staff member added',
+  [AUDIT_ACTIONS.STAFF_UPDATED]: 'Staff member changed',
+  [AUDIT_ACTIONS.STAFF_DEACTIVATED]: 'Staff member deactivated',
+  [AUDIT_ACTIONS.STAFF_REACTIVATED]: 'Staff member reactivated',
+
+  [AUDIT_ACTIONS.PROCEDURE_DEACTIVATED]: 'Procedure withdrawn',
+  [AUDIT_ACTIONS.INVENTORY_ITEM_DELETED]: 'Stock item deleted',
+  [AUDIT_ACTIONS.SUPPLIER_DELETED]: 'Supplier deleted',
+  [AUDIT_ACTIONS.STOCK_ADJUSTED]: 'Stock moved',
+
   [AUDIT_ACTIONS.SETTINGS_UPDATED]: 'Settings changed',
   [AUDIT_ACTIONS.CLINIC_UPDATED]: 'Clinic details changed',
   [AUDIT_ACTIONS.SECURITY_UPDATED]: 'Security settings changed',
@@ -95,9 +121,24 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
     key: 'money',
     label: 'Money',
     actions: [
+      AUDIT_ACTIONS.INVOICE_CREATED,
+      AUDIT_ACTIONS.INVOICE_UPDATED,
+      AUDIT_ACTIONS.INVOICE_CANCELLED,
+      AUDIT_ACTIONS.INVOICE_DELETED,
+      AUDIT_ACTIONS.PAYMENT_RECORDED,
       AUDIT_ACTIONS.DISCOUNT_APPROVED,
       AUDIT_ACTIONS.DISCOUNT_REJECTED,
       AUDIT_ACTIONS.REFUND_ISSUED,
+    ],
+  },
+  {
+    key: 'clinical',
+    label: 'Clinical',
+    actions: [
+      AUDIT_ACTIONS.TREATMENT_SIGNED,
+      AUDIT_ACTIONS.CLINICAL_NOTE_SIGNED,
+      AUDIT_ACTIONS.PRESCRIPTION_CREATED,
+      AUDIT_ACTIONS.TREATMENT_DELETED,
     ],
   },
   {
@@ -109,12 +150,22 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED,
       AUDIT_ACTIONS.GUARANTOR_CHANGED,
       AUDIT_ACTIONS.RECALL_CONTACTED,
+      AUDIT_ACTIONS.PATIENT_DEACTIVATED,
+      AUDIT_ACTIONS.PATIENT_REACTIVATED,
+      AUDIT_ACTIONS.APPOINTMENT_CANCELLED,
+      AUDIT_ACTIONS.APPOINTMENT_DELETED,
     ],
   },
   {
     key: 'staff',
     label: 'Staff',
-    actions: [AUDIT_ACTIONS.ATTENDANCE_MARKED],
+    actions: [
+      AUDIT_ACTIONS.ATTENDANCE_MARKED,
+      AUDIT_ACTIONS.STAFF_CREATED,
+      AUDIT_ACTIONS.STAFF_UPDATED,
+      AUDIT_ACTIONS.STAFF_DEACTIVATED,
+      AUDIT_ACTIONS.STAFF_REACTIVATED,
+    ],
   },
   {
     key: 'portal',
@@ -136,6 +187,9 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.GOODS_RECEIVED,
       AUDIT_ACTIONS.PURCHASE_ORDER_PLACED,
       AUDIT_ACTIONS.PURCHASE_ORDER_CANCELLED,
+      AUDIT_ACTIONS.INVENTORY_ITEM_DELETED,
+      AUDIT_ACTIONS.SUPPLIER_DELETED,
+      AUDIT_ACTIONS.STOCK_ADJUSTED,
     ],
   },
   {
@@ -143,6 +197,7 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
     label: 'Configuration',
     actions: [
       AUDIT_ACTIONS.SETTINGS_UPDATED,
+      AUDIT_ACTIONS.PROCEDURE_DEACTIVATED,
       AUDIT_ACTIONS.CLINIC_UPDATED,
       AUDIT_ACTIONS.SECURITY_UPDATED,
       AUDIT_ACTIONS.COMMUNICATIONS_UPDATED,

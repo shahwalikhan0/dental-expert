@@ -143,19 +143,43 @@ export interface ExpirySweep {
  */
 export async function reconcileExpiryAlerts(
   db: Db,
-  state: { hospitalId: string; at?: Date; warningDays?: number }
+  state: {
+    hospitalId: string
+    at?: Date
+    warningDays?: number
+    /**
+     * Only these batches, for a caller that has just changed them — a
+     * delivery booked in, a batch consumed. Without this an expired receipt
+     * waited for the overnight sweep, and the alerts page said 0 in the
+     * meantime (bug report 12 Oct, finding 43). The orphan and legacy
+     * clean-up below belongs to the full sweep and is skipped.
+     */
+    batchIds?: string[]
+  }
 ): Promise<ExpirySweep> {
   const at = state.at ?? new Date()
   const warningDays = state.warningDays ?? DEFAULT_EXPIRY_WARNING_DAYS
+  const scoped = state.batchIds !== undefined
+
+  if (scoped && state.batchIds!.length === 0) return { raised: 0, cleared: 0, checked: 0 }
 
   const batches = await db.inventoryBatch.findMany({
-    where: { hospitalId: state.hospitalId, expiryDate: { not: null }, item: { deletedAt: null } },
+    where: {
+      hospitalId: state.hospitalId,
+      expiryDate: { not: null },
+      item: { deletedAt: null },
+      ...(scoped ? { id: { in: state.batchIds } } : {}),
+    },
     select: { id: true, itemId: true, expiryDate: true, remainingQty: true },
   })
 
   // Acknowledged ones included, so the sweep can see what has been dealt with.
   const existing = await db.stockAlert.findMany({
-    where: { hospitalId: state.hospitalId, alertType: { in: [...EXPIRY_TYPES] } },
+    where: {
+      hospitalId: state.hospitalId,
+      alertType: { in: [...EXPIRY_TYPES] },
+      ...(scoped ? { batchId: { in: state.batchIds } } : {}),
+    },
     select: { id: true, batchId: true, alertType: true, isAcknowledged: true },
   })
 
@@ -200,11 +224,17 @@ export async function reconcileExpiryAlerts(
 
   // Alerts whose batch has gone, and legacy ones raised against no batch at
   // all. Acknowledged ones stay: they are a record of what somebody did.
+  //
+  // A scoped run still clears the alerts of a named batch that no longer
+  // qualifies (its item was deleted, its date removed); it leaves everything
+  // else to the full sweep.
   for (const orphans of byBatch.values()) {
     for (const alert of orphans) if (!alert.isAcknowledged) stale.push(alert.id)
   }
-  for (const legacy of existing) {
-    if (!legacy.batchId && !legacy.isAcknowledged) stale.push(legacy.id)
+  if (!scoped) {
+    for (const legacy of existing) {
+      if (!legacy.batchId && !legacy.isAcknowledged) stale.push(legacy.id)
+    }
   }
 
   if (stale.length > 0) {
@@ -225,4 +255,21 @@ export async function expiryWarningDays(db: Db, hospitalId: string): Promise<num
   // A blank or malformed setting falls back to the default rather than to
   // zero, which would silence every warning until the day of expiry.
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_EXPIRY_WARNING_DAYS
+}
+
+/**
+ * Bring the expiry alerts of the batches just touched into line, using the
+ * clinic's own warning window. For routes that move stock in or out of a
+ * batch, so an expired or soon-to-expire delivery is flagged at once rather
+ * than by the next morning's sweep (finding 43).
+ */
+export async function reconcileBatchExpiry(
+  db: Db,
+  hospitalId: string,
+  batchIds: (string | null | undefined)[]
+): Promise<void> {
+  const ids = [...new Set(batchIds.filter((id): id is string => !!id))]
+  if (ids.length === 0) return
+  const warningDays = await expiryWarningDays(db, hospitalId)
+  await reconcileExpiryAlerts(db, { hospitalId, warningDays, batchIds: ids })
 }

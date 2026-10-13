@@ -7,8 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock Prisma
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma: any = {
+    // Creating a treatment and linking its plan step are one write.
+    $transaction: vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
@@ -24,14 +26,17 @@ vi.mock('@/lib/prisma', () => ({
     patient: {
       findUnique: vi.fn(),
     },
+    // The treating dentist is found with `findDentist` (lib/clinicians.ts).
     staff: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
     procedure: {
       findUnique: vi.fn(),
     },
     appointment: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
     invoiceItem: {
       findMany: vi.fn(),
@@ -41,8 +46,9 @@ vi.mock('@/lib/prisma', () => ({
     hospital: {
       findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
-  },
-}))
+  }
+  return { prisma }
+})
 
 // Mock auth
 vi.mock('@/lib/api-helpers', async () => {
@@ -258,15 +264,18 @@ describe('Treatments API - Comprehensive Tests', () => {
         id: mockPatientId,
         hospitalId: mockHospitalId,
       })
-      mockPrisma.staff.findUnique.mockResolvedValue({
+      mockPrisma.staff.findFirst.mockResolvedValue({
         id: mockDoctorId,
-        hospitalId: mockHospitalId,
+        firstName: 'Sana',
+        lastName: 'Khan',
+        userId: 'doctor-user',
       })
       mockPrisma.procedure.findUnique.mockResolvedValue({
         id: mockProcedureId,
         hospitalId: mockHospitalId,
         name: 'Root Canal',
         basePrice: 5000,
+        isActive: true,
       })
     })
 
@@ -330,22 +339,51 @@ describe('Treatments API - Comprehensive Tests', () => {
       expect(data.error).toBe('Patient not found')
     })
 
-    it('should reject treatment for non-existent doctor', async () => {
-      mockPrisma.staff.findUnique.mockResolvedValue(null)
+    it('should reject a treating dentist who is not an active dentist here (finding 7)', async () => {
+      // `findDentist` finds nobody for a receptionist, a deactivated dentist or
+      // another clinic's staff — all the same refusal.
+      mockPrisma.staff.findFirst.mockResolvedValue(null)
 
       const request = new NextRequest('http://localhost/api/treatments', {
         method: 'POST',
         body: JSON.stringify({
           patientId: mockPatientId,
           procedureId: mockProcedureId,
-          doctorId: 'non-existent',
+          doctorId: 'receptionist-staff',
         }),
       })
       const response = await POST(request)
 
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data.error).toBe('Doctor not found')
+      expect(data.code).toBe('NOT_A_DENTIST')
+      expect(mockPrisma.staff.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'receptionist-staff', isActive: true }),
+        })
+      )
+    })
+
+    it('should refuse a deactivated procedure (finding 48)', async () => {
+      mockPrisma.procedure.findUnique.mockResolvedValue({
+        id: mockProcedureId,
+        name: 'Composite Filling',
+        basePrice: 1500,
+        isActive: false,
+      })
+
+      const request = new NextRequest('http://localhost/api/treatments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: mockPatientId,
+          procedureId: mockProcedureId,
+          doctorId: mockDoctorId,
+        }),
+      })
+      const response = await POST(request)
+
+      expect(response.status).toBe(400)
+      expect(mockPrisma.treatment.create).not.toHaveBeenCalled()
     })
 
     it('should reject treatment for non-existent procedure', async () => {
@@ -416,9 +454,9 @@ describe('Treatments API - Comprehensive Tests', () => {
 
     it('should link treatment to appointment if provided', async () => {
       const mockAppointmentId = 'appointment-123'
-      mockPrisma.appointment.findUnique.mockResolvedValue({
+      mockPrisma.appointment.findFirst.mockResolvedValue({
         id: mockAppointmentId,
-        hospitalId: mockHospitalId,
+        patientId: mockPatientId,
       })
       mockPrisma.treatment.findFirst.mockResolvedValue(null)
       mockPrisma.treatment.create.mockResolvedValue({ id: 'trt-1' })
@@ -443,8 +481,31 @@ describe('Treatments API - Comprehensive Tests', () => {
       )
     })
 
+    it('should refuse another patient’s appointment (finding 9)', async () => {
+      mockPrisma.appointment.findFirst.mockResolvedValue({
+        id: 'appointment-456',
+        patientId: 'someone-else',
+      })
+
+      const request = new NextRequest('http://localhost/api/treatments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: mockPatientId,
+          procedureId: mockProcedureId,
+          doctorId: mockDoctorId,
+          appointmentId: 'appointment-456',
+        }),
+      })
+      const response = await POST(request)
+
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.error).toBe('That appointment is not this patient’s')
+      expect(mockPrisma.treatment.create).not.toHaveBeenCalled()
+    })
+
     it('should reject invalid appointment ID', async () => {
-      mockPrisma.appointment.findUnique.mockResolvedValue(null)
+      mockPrisma.appointment.findFirst.mockResolvedValue(null)
 
       const request = new NextRequest('http://localhost/api/treatments', {
         method: 'POST',
@@ -503,10 +564,44 @@ describe('Treatments API - Comprehensive Tests', () => {
       expect(mockPrisma.treatment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            toothNumbers: ['16', '17'],
+            // Checked and stored as the column every reader parses.
+            toothNumbers: '16,17',
           }),
         })
       )
+    })
+
+    it('should refuse tooth numbers that are not FDI teeth (finding 54)', async () => {
+      const request = new NextRequest('http://localhost/api/treatments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: mockPatientId,
+          procedureId: mockProcedureId,
+          doctorId: mockDoctorId,
+          toothNumbers: '99,ABC',
+        }),
+      })
+      const response = await POST(request)
+
+      expect(response.status).toBe(400)
+      expect(mockPrisma.treatment.create).not.toHaveBeenCalled()
+    })
+
+    it('should accept primary teeth', async () => {
+      mockPrisma.treatment.create.mockResolvedValue({ id: 'trt-1' })
+
+      const request = new NextRequest('http://localhost/api/treatments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: mockPatientId,
+          procedureId: mockProcedureId,
+          doctorId: mockDoctorId,
+          toothNumbers: '75',
+        }),
+      })
+      const response = await POST(request)
+
+      expect(response.status).toBe(201)
     })
 
     it('should handle follow-up requirements', async () => {
@@ -624,15 +719,18 @@ describe('Treatments API - Comprehensive Tests', () => {
         id: mockPatientId,
         hospitalId: mockHospitalId,
       })
-      mockPrisma.staff.findUnique.mockResolvedValue({
+      mockPrisma.staff.findFirst.mockResolvedValue({
         id: mockDoctorId,
-        hospitalId: mockHospitalId,
+        firstName: 'Sana',
+        lastName: 'Khan',
+        userId: 'doctor-user',
       })
       mockPrisma.procedure.findUnique.mockResolvedValue({
         id: mockProcedureId,
         hospitalId: mockHospitalId,
         name: 'Root Canal',
         basePrice: 5000,
+        isActive: true,
       })
 
       mockPrisma.treatment.findFirst.mockResolvedValueOnce({
@@ -719,9 +817,13 @@ describe('Treatments API - Comprehensive Tests', () => {
       const response = await POST(request)
 
       expect(response.status).toBe(201)
+      // Kept at 0, not replaced by the list price (finding 33).
+      expect(mockPrisma.treatment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ cost: 0 }) })
+      )
     })
 
-    it('should handle negative cost gracefully', async () => {
+    it('should refuse a negative cost (finding 33)', async () => {
       const request = new NextRequest('http://localhost/api/treatments', {
         method: 'POST',
         body: JSON.stringify({
@@ -733,8 +835,8 @@ describe('Treatments API - Comprehensive Tests', () => {
       })
       const response = await POST(request)
 
-      // Should reject negative cost or handle gracefully
-      expect([201, 400]).toContain(response.status)
+      expect(response.status).toBe(400)
+      expect(mockPrisma.treatment.create).not.toHaveBeenCalled()
     })
   })
 })

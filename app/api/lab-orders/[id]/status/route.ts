@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { AUDIT_ACTIONS } from '@/lib/audit'
+import { requireFeature } from '@/lib/plan-gate'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { canMoveStatus, milestoneUpdate, nextStatuses, statusLabel } from '@/lib/lab-orders'
 import { LabOrderStatus, Prisma } from '@prisma/client'
 
 const LAB_ORDER_STATUSES = Object.values(LabOrderStatus) as string[]
@@ -20,6 +23,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // The lab module is a paid feature (finding 26). Reading a case stays open
+  // to a clinic that has dropped plans; moving one on does not.
+  const gated = await requireFeature(hospitalId, 'labModule')
+  if (gated) return gated
 
   try {
     const { id } = await params
@@ -52,13 +60,36 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const currentStatus = order.status
-    const now = new Date()
 
-    // Stamp the milestone dates the first time each status is reached.
-    const data: Prisma.LabOrderUpdateInput = { status }
-    if (status === LabOrderStatus.SENT_TO_LAB && !order.sentDate) data.sentDate = now
-    if (status === LabOrderStatus.READY && !order.receivedDate) data.receivedDate = now
-    if (status === LabOrderStatus.FITTED && !order.deliveredDate) data.deliveredDate = now
+    // One stage at a time, plus the rework steps lib/lab-orders.ts names
+    // (finding 45). Anything else is refused with the moves that are allowed,
+    // so the toast tells the desk what to do instead.
+    if (status === currentStatus) {
+      return NextResponse.json(
+        { error: `This case is already ${statusLabel(status).toLowerCase()}` },
+        { status: 400 }
+      )
+    }
+
+    if (!canMoveStatus(currentStatus, status)) {
+      const allowed = nextStatuses(currentStatus).map((s) => statusLabel(s).toLowerCase())
+      return NextResponse.json(
+        {
+          error:
+            allowed.length > 0
+              ? `A case that is ${statusLabel(currentStatus).toLowerCase()} cannot move to ${statusLabel(status).toLowerCase()}. It can go to: ${allowed.join(', ')}.`
+              : `A case that is ${statusLabel(currentStatus).toLowerCase()} cannot change status.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Stamp the milestone dates the first time each stage is reached, and
+    // clear the ones a move back leaves the case short of.
+    const data: Prisma.LabOrderUpdateInput = {
+      status,
+      ...milestoneUpdate(order, currentStatus, status),
+    }
 
     await prisma.$transaction([
       prisma.labOrder.update({ where: { id }, data }),
@@ -83,11 +114,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       success: true,
       message: 'Lab order status updated successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating lab order status:', error)
-    return NextResponse.json(
-      { error: 'Failed to update lab order status', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update lab order status' }, { status: 500 })
   }
 }

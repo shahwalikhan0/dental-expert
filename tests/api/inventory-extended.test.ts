@@ -50,6 +50,8 @@ import {
   POST as transactionsPOST,
 } from '@/app/api/inventory/transactions/route'
 import { GET as alertsGET, POST as alertsPOST } from '@/app/api/inventory/alerts/route'
+import { POST as itemsPOST } from '@/app/api/inventory/items/route'
+import { DELETE as itemDELETE } from '@/app/api/inventory/items/[id]/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 
@@ -249,6 +251,60 @@ describe('POST /api/inventory/suppliers', () => {
     expect(body.data.id).toBe('new-id')
     expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.hospitalId).toBe('h1')
   })
+
+  // Finding 49: the column is text, and `paymentTerms: 30` was a 500.
+  it('reads payment terms sent as a number as days, rather than failing', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.create).mockResolvedValue({ id: 'new-id' } as any)
+
+    const res = await suppliersPOST(
+      makeReq('/api/inventory/suppliers', 'POST', {
+        code: 'SUP003',
+        name: 'Numbers Ltd',
+        phone: '9876543210',
+        paymentTerms: 30,
+      })
+    )
+
+    expect(res.status).toBe(201)
+    expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.paymentTerms).toBe('Net 30')
+  })
+
+  it('refuses payment terms that are neither text nor a number with a 400', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
+
+    const res = await suppliersPOST(
+      makeReq('/api/inventory/suppliers', 'POST', {
+        code: 'SUP004',
+        name: 'Objects Ltd',
+        phone: '9876543210',
+        paymentTerms: { days: 30 },
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('Payment terms')
+    expect(prisma.vendor.create).not.toHaveBeenCalled()
+  })
+
+  it('stores no rating as null, not zero', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.vendor.create).mockResolvedValue({ id: 'new-id' } as any)
+
+    await suppliersPOST(
+      makeReq('/api/inventory/suppliers', 'POST', {
+        code: 'SUP005',
+        name: 'Unrated',
+        phone: '9876543210',
+        rating: 0,
+      })
+    )
+
+    expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.rating).toBeNull()
+  })
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -312,7 +368,31 @@ describe('POST /api/inventory/transactions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     passthroughTransaction()
+    // Stock and batch writes are conditional on what was read, so a lost
+    // update shows up as a count of 0. One row written is the normal case.
+    vi.mocked(prisma.inventoryItem.updateMany).mockResolvedValue({ count: 1 } as any)
+    vi.mocked(prisma.inventoryBatch.updateMany).mockResolvedValue({ count: 1 } as any)
+    vi.mocked(prisma.inventoryBatch.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.inventoryBatch.findMany).mockResolvedValue([])
+    vi.mocked(prisma.stockAlert.findMany).mockResolvedValue([])
+    vi.mocked(prisma.stockAlert.deleteMany).mockResolvedValue({ count: 0 } as any)
+    vi.mocked(prisma.stockAlert.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.stockAlert.create).mockResolvedValue({ id: 'a1' } as any)
+    vi.mocked(prisma.auditLog.create).mockResolvedValue({ id: 'log-1' } as any)
   })
+
+  /** Lignocaine: batch-tracked, 89 on the shelf. */
+  function batchTrackedItem() {
+    vi.mocked(prisma.inventoryItem.findFirst).mockResolvedValue({
+      id: 'lig',
+      name: 'Lignocaine',
+      currentStock: 89,
+      minimumStock: 10,
+      purchasePrice: 20,
+      batchTracking: true,
+    } as any)
+    vi.mocked(prisma.stockTransaction.create).mockResolvedValue({ id: 'tx1' } as any)
+  }
 
   it('returns 400 when required fields missing', async () => {
     mockAuth()
@@ -389,7 +469,10 @@ describe('POST /api/inventory/transactions', () => {
     expect(created.newStock).toBe(15)
     expect(created.totalPrice).toBe(100)
 
-    expect(vi.mocked(prisma.inventoryItem.update).mock.calls[0][0].data.currentStock).toBe(15)
+    const write = vi.mocked(prisma.inventoryItem.updateMany).mock.calls[0][0]
+    expect(write.data.currentStock).toBe(15)
+    // Conditional on the level that was read, so a concurrent movement is not lost.
+    expect(write.where).toMatchObject({ id: 'i1', currentStock: 10 })
     // Stock is healthy again, so open shortage alerts are cleared.
     expect(prisma.stockAlert.deleteMany).toHaveBeenCalled()
   })
@@ -419,6 +502,131 @@ describe('POST /api/inventory/transactions', () => {
     expect(vi.mocked(prisma.stockAlert.create).mock.calls[0][0].data.alertType).toBe(
       StockAlertType.LOW_STOCK
     )
+  })
+
+  // Finding 19: consumption of a batch-tracked item with no batch was accepted.
+  it('refuses to consume a batch-tracked item without naming a batch', async () => {
+    mockAuth()
+    batchTrackedItem()
+
+    const res = await transactionsPOST(
+      makeReq('/api/inventory/transactions', 'POST', {
+        type: 'CONSUMPTION',
+        itemId: 'lig',
+        quantity: 5,
+        transactionDate: '2026-10-12',
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('batch')
+    expect(prisma.stockTransaction.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a batch that belongs to another item', async () => {
+    mockAuth()
+    batchTrackedItem()
+    // The lookup is scoped to the item, so another item's batch is not found.
+    vi.mocked(prisma.inventoryBatch.findFirst).mockResolvedValue(null)
+
+    const res = await transactionsPOST(
+      makeReq('/api/inventory/transactions', 'POST', {
+        type: 'ADJUSTMENT_IN',
+        itemId: 'lig',
+        batchId: 'gloves-batch',
+        quantity: 1,
+        transactionDate: '2026-10-12',
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect(vi.mocked(prisma.inventoryBatch.findFirst).mock.calls[0][0].where).toMatchObject({
+      id: 'gloves-batch',
+      itemId: 'lig',
+      hospitalId: 'h1',
+    })
+    expect(prisma.inventoryBatch.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('refuses to take a batch below zero', async () => {
+    mockAuth()
+    batchTrackedItem()
+    vi.mocked(prisma.inventoryBatch.findFirst).mockResolvedValue({
+      id: 'b1',
+      batchNumber: 'LIG-2610',
+      remainingQty: 50,
+    } as any)
+
+    const res = await transactionsPOST(
+      makeReq('/api/inventory/transactions', 'POST', {
+        type: 'CONSUMPTION',
+        itemId: 'lig',
+        batchId: 'b1',
+        quantity: 60,
+        transactionDate: '2026-10-12',
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('LIG-2610 holds only 50')
+    expect(prisma.inventoryItem.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('moves the item and the batch together, and audits the adjustment', async () => {
+    mockAuth()
+    batchTrackedItem()
+    vi.mocked(prisma.inventoryBatch.findFirst).mockResolvedValue({
+      id: 'b1',
+      batchNumber: 'LIG-2610',
+      remainingQty: 50,
+    } as any)
+
+    const res = await transactionsPOST(
+      makeReq('/api/inventory/transactions', 'POST', {
+        type: 'CONSUMPTION',
+        itemId: 'lig',
+        batchId: 'b1',
+        quantity: 10,
+        transactionDate: '2026-10-12',
+      })
+    )
+
+    expect(res.status).toBe(201)
+    expect(vi.mocked(prisma.inventoryItem.updateMany).mock.calls[0][0].data.currentStock).toBe(79)
+    const batchWrite = vi.mocked(prisma.inventoryBatch.updateMany).mock.calls[0][0]
+    expect(batchWrite.where).toMatchObject({ id: 'b1', remainingQty: { gte: 10 } })
+    expect(batchWrite.data).toEqual({ remainingQty: { decrement: 10 } })
+    expect(vi.mocked(prisma.stockTransaction.create).mock.calls[0][0].data).toMatchObject({
+      batchId: 'b1',
+      batchNumber: 'LIG-2610',
+    })
+
+    // Finding 24.
+    const entry = vi.mocked(prisma.auditLog.create).mock.calls[0][0].data
+    expect(entry).toMatchObject({ action: 'stock.adjusted', entityId: 'lig', userId: 'u1' })
+  })
+
+  it('refuses the movement if the batch was emptied in the meantime', async () => {
+    mockAuth()
+    batchTrackedItem()
+    vi.mocked(prisma.inventoryBatch.findFirst).mockResolvedValue({
+      id: 'b1',
+      batchNumber: 'LIG-2610',
+      remainingQty: 50,
+    } as any)
+    vi.mocked(prisma.inventoryBatch.updateMany).mockResolvedValue({ count: 0 } as any)
+
+    const res = await transactionsPOST(
+      makeReq('/api/inventory/transactions', 'POST', {
+        type: 'CONSUMPTION',
+        itemId: 'lig',
+        batchId: 'b1',
+        quantity: 10,
+        transactionDate: '2026-10-12',
+      })
+    )
+
+    expect(res.status).toBe(409)
   })
 })
 
@@ -528,5 +736,131 @@ describe('POST /api/inventory/alerts', () => {
 
     const res = await alertsPOST(makeReq('/api/inventory/alerts', 'POST', { alert_id: 'a1' }))
     expect(res.status).toBe(200)
+  })
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Items: creation rules (finding 57) and deletion (findings 24 and 44)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('POST /api/inventory/items', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    passthroughTransaction()
+    vi.mocked(prisma.inventoryItem.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.inventoryItem.create).mockResolvedValue({ id: 'i-new' } as any)
+    vi.mocked(prisma.stockTransaction.create).mockResolvedValue({ id: 'tx1' } as any)
+    vi.mocked(prisma.stockAlert.deleteMany).mockResolvedValue({ count: 0 } as any)
+    vi.mocked(prisma.stockAlert.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.stockAlert.create).mockResolvedValue({ id: 'a1' } as any)
+  })
+
+  const body = { sku: 'cmp-a2', name: 'Composite A2', unit: 'syringe', purchasePrice: 1500 }
+
+  it('stores the SKU upper-cased and checks it case-insensitively', async () => {
+    mockAuth()
+
+    const res = await itemsPOST(makeReq('/api/inventory/items', 'POST', body))
+
+    expect(res.status).toBe(201)
+    expect(vi.mocked(prisma.inventoryItem.findFirst).mock.calls[0][0].where).toMatchObject({
+      hospitalId: 'h1',
+      sku: { equals: 'CMP-A2', mode: 'insensitive' },
+    })
+    expect(vi.mocked(prisma.inventoryItem.create).mock.calls[0][0].data.sku).toBe('CMP-A2')
+  })
+
+  it('refuses a SKU that differs from an existing one only in case', async () => {
+    mockAuth()
+    vi.mocked(prisma.inventoryItem.findFirst).mockResolvedValue({
+      id: 'i1',
+      deletedAt: null,
+    } as any)
+
+    const res = await itemsPOST(makeReq('/api/inventory/items', 'POST', body))
+
+    expect(res.status).toBe(409)
+  })
+
+  it('refuses a negative price or opening stock', async () => {
+    mockAuth()
+
+    const price = await itemsPOST(
+      makeReq('/api/inventory/items', 'POST', { ...body, purchasePrice: -5 })
+    )
+    const stock = await itemsPOST(
+      makeReq('/api/inventory/items', 'POST', { ...body, currentStock: -10 })
+    )
+
+    expect(price.status).toBe(400)
+    expect(stock.status).toBe(400)
+    expect(prisma.inventoryItem.create).not.toHaveBeenCalled()
+  })
+
+  it('raises the low-stock alert for an item created at its minimum', async () => {
+    mockAuth()
+
+    await itemsPOST(
+      makeReq('/api/inventory/items', 'POST', { ...body, currentStock: 3, minimumStock: 5 })
+    )
+
+    expect(vi.mocked(prisma.stockAlert.create).mock.calls[0][0].data).toMatchObject({
+      itemId: 'i-new',
+      alertType: StockAlertType.LOW_STOCK,
+    })
+  })
+})
+
+describe('DELETE /api/inventory/items/[id]', () => {
+  const params = { params: Promise.resolve({ id: 'i1' }) }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(prisma.inventoryItem.findFirst).mockResolvedValue({
+      id: 'i1',
+      sku: 'GIC-01',
+      name: 'GIC restorative',
+      currentStock: 12,
+    } as any)
+    vi.mocked(prisma.purchaseOrder.findMany).mockResolvedValue([])
+    vi.mocked(prisma.purchaseOrder.count).mockResolvedValue(0)
+    vi.mocked(prisma.stockTransaction.count).mockResolvedValue(0)
+    vi.mocked(prisma.inventoryBatch.count).mockResolvedValue(0)
+    vi.mocked(prisma.inventoryItem.update).mockResolvedValue({} as any)
+    vi.mocked(prisma.inventoryItem.delete).mockResolvedValue({} as any)
+    vi.mocked(prisma.auditLog.create).mockResolvedValue({ id: 'log-1' } as any)
+  })
+
+  // GIC restorative was deleted while on draft order PO20260002.
+  it('refuses while the item is on an open purchase order', async () => {
+    mockAuth()
+    vi.mocked(prisma.purchaseOrder.findMany).mockResolvedValue([
+      { orderNumber: 'PO20260002' },
+    ] as any)
+
+    const res = await itemDELETE(makeReq('/api/inventory/items/i1', 'DELETE'), params)
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('PO20260002')
+    expect(prisma.inventoryItem.update).not.toHaveBeenCalled()
+    expect(prisma.inventoryItem.delete).not.toHaveBeenCalled()
+  })
+
+  it('keeps an item with history, and audits the deletion', async () => {
+    mockAuth()
+    vi.mocked(prisma.stockTransaction.count).mockResolvedValue(4)
+
+    const res = await itemDELETE(makeReq('/api/inventory/items/i1', 'DELETE'), params)
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.inventoryItem.update).mock.calls[0][0].data.deletedAt).toBeInstanceOf(
+      Date
+    )
+    expect(prisma.inventoryItem.delete).not.toHaveBeenCalled()
+    expect(vi.mocked(prisma.auditLog.create).mock.calls[0][0].data).toMatchObject({
+      action: 'inventory_item.deleted',
+      entityId: 'i1',
+      userId: 'u1',
+    })
   })
 })

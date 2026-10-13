@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, localDay, withWallClock } from '@/lib/appointment-time'
+import { averageWait, waitingFor } from '@/lib/appointment-wait'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 /**
  * GET — the day, for the queue screen.
@@ -68,7 +70,21 @@ export async function GET(request: NextRequest) {
       orderBy: { startsAt: 'asc' },
     })
 
-    const appointments = rows.map((a) => withWallClock(a, timezone))
+    /**
+     * How long each patient has waited, in minutes.
+     *
+     * For somebody still in the waiting room it is how long they have been
+     * sitting there so far — now minus check-in. For somebody already called
+     * in it is the wait recorded at that moment. It used to be how late they
+     * had arrived, written at check-in (bug report 12 Oct, finding 32), so a
+     * patient who walked in an hour late and was seen at once showed an hour,
+     * and one who had sat there all morning showed nothing.
+     */
+    const now = new Date()
+    const appointments = rows.map((a) => ({
+      ...withWallClock(a, timezone),
+      waitMinutes: a.status === 'CHECKED_IN' ? waitingFor(a.checkedInAt, now) : a.waitTime,
+    }))
 
     // Group appointments by status for queue view
     // Waiting is a queue, so it is ordered by the number people were given at
@@ -92,10 +108,14 @@ export async function GET(request: NextRequest) {
       completed: completed.length,
       noShow: noShow.length,
       cancelled: cancelled.length,
+      // How long the people in the waiting room right now have been there,
+      // on average.
       avgWaitTime:
         waiting.length > 0
-          ? Math.round(waiting.reduce((acc, a) => acc + (a.waitTime || 0), 0) / waiting.length)
+          ? Math.round(waiting.reduce((acc, a) => acc + (a.waitMinutes ?? 0), 0) / waiting.length)
           : 0,
+      // And how long those called in today waited, check-in to call-in.
+      avgSeenWaitTime: averageWait(appointments),
     }
 
     return NextResponse.json({
@@ -112,6 +132,8 @@ export async function GET(request: NextRequest) {
       stats,
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error("Error fetching today's appointments:", error)
     return NextResponse.json({ error: "Failed to fetch today's appointments" }, { status: 500 })
   }

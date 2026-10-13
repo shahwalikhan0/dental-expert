@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { TreatmentPlanStatus } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
-import { normalisePhaseNames, phaseOf } from '@/lib/treatment-phases'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { normalisePhaseNames } from '@/lib/treatment-phases'
+import { readPlanItems } from '@/lib/treatment-plan-items'
 
 // Generate unique plan number for a hospital
 async function generatePlanNumber(hospitalId: string): Promise<string> {
@@ -57,6 +60,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
+      if (!isEnumMember(TreatmentPlanStatus, status)) {
+        return enumRefusal('Status', status, TreatmentPlanStatus)
+      }
       where.status = status
     }
 
@@ -151,53 +157,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
-    // Validate procedures exist and belong to this hospital
-    if (items.length > 0) {
-      const procedureIds = items.map((item: any) => item.procedureId)
-      const procedures = await prisma.procedure.findMany({
-        where: {
-          id: { in: procedureIds },
-          hospitalId,
-        },
-      })
-
-      if (procedures.length !== procedureIds.length) {
-        return NextResponse.json({ error: 'One or more procedures not found' }, { status: 404 })
-      }
+    // Same procedure on several lines, deactivated procedures, teeth and
+    // prices — all checked in one place for create and edit.
+    const checked = await readPlanItems(prisma, hospitalId, items)
+    if (!checked.ok) {
+      return NextResponse.json({ error: checked.error }, { status: checked.status })
     }
+    const { estimatedCost, estimatedDuration } = checked
 
     // Generate plan number unique to this hospital
     const planNumber = await generatePlanNumber(hospitalId)
-
-    // Calculate estimated cost and duration
-    let estimatedCost = 0
-    let estimatedDuration = 0
-
-    if (items.length > 0) {
-      const procedures = await prisma.procedure.findMany({
-        where: {
-          id: { in: items.map((item: any) => item.procedureId) },
-          hospitalId,
-        },
-      })
-
-      const procedureMap = new Map(procedures.map((p) => [p.id, p]))
-
-      // The line's own price is settled here, once, and both the line and the
-      // plan total are built from it. They used to be worked out separately:
-      // the total fell back to the procedure's list price where no price was
-      // given, while the line was written as zero. A plan quoting two
-      // procedures at nothing and a total of 4,500 is not an estimate anyone
-      // can hand to a patient.
-      items.forEach((item: any) => {
-        const proc = procedureMap.get(item.procedureId)
-        if (proc) {
-          item.estimatedCost = Number(item.estimatedCost ?? 0) || Number(proc.basePrice)
-          estimatedCost += item.estimatedCost
-          estimatedDuration += proc.defaultDuration
-        }
-      })
-    }
 
     // Create treatment plan with items
     const treatmentPlan = await prisma.treatmentPlan.create({
@@ -215,15 +184,14 @@ export async function POST(request: NextRequest) {
         consentGiven: false,
         phaseNames: normalisePhaseNames(phaseNames) ?? undefined,
         items: {
-          create: items.map((item: any, index: number) => ({
+          create: checked.items.map((item) => ({
             procedureId: item.procedureId,
-            toothNumbers: item.toothNumbers || null,
-            // Clamped rather than trusted: `phase` comes from a form and is
-            // what the printed estimate groups on.
-            phase: phaseOf(item),
-            priority: item.priority || index + 1,
-            estimatedCost: item.estimatedCost ?? 0,
-            notes: item.notes || null,
+            toothNumbers: item.toothNumbers,
+            phase: item.phase,
+            priority: item.priority,
+            estimatedCost: item.estimatedCost,
+            notes: item.notes,
+            // A new plan has done nothing yet.
             status: 'PENDING',
           })),
         },
@@ -256,6 +224,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(treatmentPlan, { status: 201 })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating treatment plan:', error)
     return NextResponse.json({ error: 'Failed to create treatment plan' }, { status: 500 })
   }

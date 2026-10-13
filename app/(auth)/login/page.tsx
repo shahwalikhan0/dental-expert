@@ -15,8 +15,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast'
 import { GLASS_FIELD } from '@/lib/surface'
 
+/**
+ * The seeded demo account, printed under the form.
+ *
+ * Only on a development build, or where a demo deployment asks for it with
+ * `NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS=true`. It used to appear on every
+ * deployment, a working administrator login on the front page of any install
+ * that had been seeded and not cleaned (finding 64). Both values are inlined
+ * at build time, so production ships without the box at all.
+ */
+const SHOW_DEMO_CREDENTIALS =
+  process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true'
+
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  // Trimmed and lower-cased: an address is the same address in any case, and
+  // a capital typed by habit used to fail the sign-in (finding 29).
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 })
 
@@ -188,13 +202,22 @@ function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/*
+          `method="post"`, because a form with no method is a GET. Submitted
+          before React has hydrated — a slow connection, a slow compile, a
+          script error — the browser used to send the email and password as
+          `/login?email=…&password=…`, into the address bar, the history and
+          the server's access log (bug report 12 Oct, finding 3). As a POST
+          they travel in the body, and middleware.ts answers that POST with a
+          redirect back here, so nothing reads it.
+        */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder="admin@demo-dental.com"
+              placeholder="you@yourclinic.com"
               className={field}
               {...register('email')}
               disabled={isLoading}
@@ -267,14 +290,22 @@ function LoginForm() {
               Sign up for free
             </a>
           </p>
-        </div>
-
-        <div className="text-muted-foreground mt-6 rounded-xl border border-white/40 bg-white/25 px-4 py-3 text-center text-xs dark:border-white/10 dark:bg-white/[0.03]">
-          <p className="font-medium">Demo credentials</p>
-          <p className="mt-1 font-mono text-[11px] text-foreground/70">
-            admin@demo-dental.com / Admin@123
+          <p className="mt-2 text-muted-foreground">
+            New here, or stuck?{' '}
+            <Link href="/docs" className="font-medium text-primary hover:underline">
+              Read the docs
+            </Link>
           </p>
         </div>
+
+        {SHOW_DEMO_CREDENTIALS && (
+          <div className="text-muted-foreground mt-6 rounded-xl border border-white/40 bg-white/25 px-4 py-3 text-center text-xs dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="font-medium">Demo credentials</p>
+            <p className="mt-1 font-mono text-[11px] text-foreground/70">
+              admin@demo-dental.com / Admin@123
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

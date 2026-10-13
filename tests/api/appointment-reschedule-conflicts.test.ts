@@ -43,6 +43,8 @@ import { PUT } from '@/app/api/appointments/[id]/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { instantAt } from '@/lib/appointment-time'
+import { NOT_A_DENTIST } from '@/lib/clinicians'
+import { INACTIVE_PATIENT } from '@/lib/appointment-status'
 
 const params = { params: Promise.resolve({ id: 'apt-1' }) }
 
@@ -90,6 +92,14 @@ beforeEach(() => {
   vi.mocked(prisma.appointment.findFirst).mockResolvedValue(EXISTING as never)
   vi.mocked(prisma.appointment.update).mockResolvedValue({ id: 'apt-1' } as never)
   vi.mocked(prisma.setting.findUnique).mockResolvedValue(null as never)
+  // A move or a new dentist is checked like a booking: an active dentist, the
+  // clinic open, no holiday (lib/appointment-availability.ts).
+  vi.mocked(prisma.staff.findFirst).mockResolvedValue({ id: 'doc-1' } as never)
+  vi.mocked(prisma.availability.findMany).mockResolvedValue([] as never)
+  vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
+    id: 'h1',
+    timezone: KARACHI,
+  } as never)
 })
 
 describe('PUT /api/appointments/[id] — conflicts', () => {
@@ -177,5 +187,194 @@ describe('PUT /api/appointments/[id] — WARN policy', () => {
     expect(body.conflicts).toHaveLength(1)
     expect(body.conflicts[0].message).toContain('Nadia Aslam')
     expect(prisma.appointment.update).toHaveBeenCalled()
+  })
+})
+
+/**
+ * The rest of PUT's rules (bug report 12 Oct, findings 2, 8, 22, 24 and 32).
+ */
+describe('PUT /api/appointments/[id] — rules', () => {
+  beforeEach(() => {
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([] as never)
+  })
+
+  // Finding 2: another clinic's administrator was accepted as the dentist.
+  it('refuses a dentist who is not an active dentist of this clinic', async () => {
+    vi.mocked(prisma.staff.findFirst).mockResolvedValue(null as never)
+
+    const res = await PUT(put({ doctorId: 'other-clinic-admin' }), params)
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toMatchObject({ error: NOT_A_DENTIST })
+    expect(vi.mocked(prisma.staff.findFirst).mock.calls[0][0]).toMatchObject({
+      where: { id: 'other-clinic-admin', hospitalId: 'h1', isActive: true },
+    })
+    expect(prisma.appointment.update).not.toHaveBeenCalled()
+  })
+
+  it('refuses a move into the past', async () => {
+    const res = await PUT(put({ scheduledDate: '2020-09-01' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('past')
+    expect(prisma.appointment.update).not.toHaveBeenCalled()
+  })
+
+  it('refuses a move into the lunch break', async () => {
+    const res = await PUT(put({ scheduledTime: '13:15' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('lunch')
+  })
+
+  it('refuses a move onto a clinic holiday', async () => {
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([
+      {
+        id: 'hol-1',
+        staffId: null,
+        dayOfWeek: null,
+        date: new Date('2030-06-16T00:00:00.000Z'),
+        startTime: null,
+        endTime: null,
+        isAvailable: false,
+        name: 'QA closure day',
+        isRecurring: false,
+      },
+    ] as never)
+
+    const res = await PUT(put({ scheduledDate: '2030-06-16' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('QA closure day')
+  })
+
+  // Finding 22: rebooking a deactivated patient is booking them.
+  it('refuses to move an inactive patient', async () => {
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
+      ...EXISTING,
+      patientId: 'pat-1',
+    } as never)
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({ isActive: false } as never)
+
+    const res = await PUT(put({ scheduledTime: '14:00' }), params)
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toMatchObject({ error: INACTIVE_PATIENT })
+  })
+
+  it('keeps notes editable on an appointment whose day has passed', async () => {
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
+      ...EXISTING,
+      startsAt: instantAt('2020-09-01', '09:00', KARACHI),
+      status: 'COMPLETED',
+    } as never)
+
+    // What the edit screen sends: everything, unchanged, plus the new note.
+    const res = await PUT(
+      put({ scheduledDate: '2020-09-01', scheduledTime: '09:00', notes: 'Follow up by phone' }),
+      params
+    )
+
+    expect(res.status).toBe(200)
+  })
+
+  it('refuses an unknown status with a 400 naming the valid ones', async () => {
+    const res = await PUT(put({ status: 'FOO' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('SCHEDULED')
+  })
+
+  it('refuses an unknown appointment type with a 400', async () => {
+    const res = await PUT(put({ appointmentType: 'TREATMENT' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('CONSULTATION')
+  })
+
+  // Finding 8: SCHEDULED → COMPLETED skipped check-in and check-out.
+  it('does not complete an appointment that was never checked in', async () => {
+    const res = await PUT(put({ status: 'COMPLETED' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('Check Out')
+    expect(prisma.appointment.update).not.toHaveBeenCalled()
+  })
+
+  it('does not reopen a completed appointment', async () => {
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
+      ...EXISTING,
+      status: 'COMPLETED',
+    } as never)
+
+    const res = await PUT(put({ status: 'SCHEDULED' }), params)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('does not record a no-show before the appointment has started', async () => {
+    const res = await PUT(put({ status: 'NO_SHOW' }), params)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('no-show')
+  })
+
+  it('records a no-show once the appointment has started', async () => {
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
+      ...EXISTING,
+      startsAt: new Date(Date.now() - 60 * 60000),
+    } as never)
+
+    const res = await PUT(put({ status: 'NO_SHOW' }), params)
+
+    expect(res.status).toBe(200)
+  })
+
+  // Findings 8 and 24.
+  it('stamps and audits a cancellation', async () => {
+    const res = await PUT(
+      put({ status: 'CANCELLED', cancellationReason: ' Patient unwell ' }),
+      params
+    )
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.appointment.update).mock.calls[0][0].data).toMatchObject({
+      status: 'CANCELLED',
+      cancelledAt: expect.any(Date),
+      cancellationReason: 'Patient unwell',
+    })
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'appointment.cancelled',
+          entityType: 'Appointment',
+          entityId: 'apt-1',
+          userId: 'u1',
+        }),
+      })
+    )
+  })
+
+  // Finding 32: the wait ends when the patient is called in.
+  it('records the wait as check-in until called in', async () => {
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
+      ...EXISTING,
+      status: 'CHECKED_IN',
+      checkedInAt: new Date(Date.now() - 25 * 60000),
+    } as never)
+
+    const res = await PUT(put({ status: 'IN_PROGRESS' }), params)
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.appointment.update).mock.calls[0][0].data).toMatchObject({
+      status: 'IN_PROGRESS',
+      waitTime: 25,
+    })
+  })
+
+  it('calls in only a checked-in patient', async () => {
+    const res = await PUT(put({ status: 'IN_PROGRESS' }), params)
+
+    expect(res.status).toBe(400)
   })
 })

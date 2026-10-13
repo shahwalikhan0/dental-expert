@@ -141,6 +141,40 @@ describe('Appointments Check-in & Check-out API', () => {
       expect(res.status).toBe(404)
     })
 
+    // Bug report 12 Oct, finding 31: tomorrow's appointment was checked in
+    // today, given today's token, and then appeared in neither day's queue.
+    it("refuses to check in an appointment that is not today's", async () => {
+      ;(prisma.appointment.findFirst as any).mockResolvedValue({
+        id: 'apt-1',
+        status: 'SCHEDULED',
+        startsAt: new Date(todayAt('10:00').getTime() + 24 * 60 * 60000),
+      })
+
+      const res = await checkInModule.POST(makeRequest('POST'), ctx)
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toContain('day of their appointment')
+      expect(prisma.appointment.update).not.toHaveBeenCalled()
+    })
+
+    // Finding 32: the wait is written when the patient is called in, not as
+    // how late they arrived.
+    it('starts the wait at check-in rather than recording lateness', async () => {
+      ;(prisma.appointment.findFirst as any).mockResolvedValue({
+        id: 'apt-1',
+        status: 'SCHEDULED',
+        startsAt: todayAt('00:00'),
+      })
+      ;(prisma.appointment.update as any).mockResolvedValue({ id: 'apt-1', status: 'CHECKED_IN' })
+
+      const res = await checkInModule.POST(makeRequest('POST'), ctx)
+      expect(res.status).toBe(200)
+      expect((prisma.appointment.update as any).mock.calls[0][0].data).toMatchObject({
+        checkedInAt: expect.any(Date),
+        waitTime: null,
+      })
+    })
+
     it('returns 401 when not authenticated', async () => {
       mockAuth.requireAuthAndRole.mockResolvedValue({
         error: Response.json({ error: 'Unauthorized' }, { status: 401 }),

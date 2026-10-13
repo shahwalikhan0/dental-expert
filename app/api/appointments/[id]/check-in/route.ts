@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
+import { clinicTimezone, formatCalendarDay, localDay, withWallClock } from '@/lib/appointment-time'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { issueToken } from '@/lib/tokens'
 
 /**
@@ -50,14 +51,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const checkedInAt = new Date()
 
-    // How late the patient is. This used to rebuild the moment out of a date
-    // column and an `HH:MM` string using `setHours`, which applies the
-    // *server's* timezone — so on a host in UTC every Karachi patient looked
-    // five hours late.
-    const waitTime = Math.max(
-      0,
-      Math.round((checkedInAt.getTime() - appointment.startsAt.getTime()) / 60000)
-    )
+    /**
+     * Only on the day of the appointment, in the clinic's own calendar.
+     *
+     * Tomorrow's appointment could be checked in today (bug report 12 Oct,
+     * finding 31). It was given today's token, then appeared in neither today's
+     * queue nor tomorrow's — lost in between, holding a number.
+     */
+    const appointmentDay = localDay(appointment.startsAt, timezone)
+    if (appointmentDay !== localDay(checkedInAt, timezone)) {
+      return NextResponse.json(
+        {
+          error: `This appointment is on ${formatCalendarDay(appointment.startsAt, timezone)}. A patient can only be checked in on the day of their appointment.`,
+        },
+        { status: 400 }
+      )
+    }
 
     const include = {
       patient: {
@@ -87,7 +96,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           data: {
             status: 'CHECKED_IN',
             checkedInAt,
-            waitTime,
+            // The wait has only just begun. It is written when the patient is
+            // called in (PUT, status IN_PROGRESS) as check-in until then; this
+            // used to store how late they were, which is not a wait (finding 32).
+            waitTime: null,
             tokenNumber,
             tokenIssuedAt: appointment.tokenNumber ? undefined : checkedInAt,
           },
@@ -110,6 +122,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 503 }
     )
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error checking in appointment:', error)
     return NextResponse.json({ error: 'Failed to check in' }, { status: 500 })
   }

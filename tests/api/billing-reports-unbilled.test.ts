@@ -278,6 +278,12 @@ describe('Billing Reports & Unbilled Treatments API', () => {
       expect(body.treatments[1].unitPrice).toBe(5000) // falls back to basePrice
       expect(body.summary.totalTreatments).toBe(2)
       expect(body.summary.totalUnbilled).toBe(8000)
+
+      // Findings 13 and 17: billed means on an invoice that is not cancelled,
+      // the same rule the invoice routes refuse a second billing by.
+      expect(vi.mocked(prisma.treatment.findMany).mock.calls[0][0]).toMatchObject({
+        where: { invoiceItems: { none: { invoice: { status: { not: 'CANCELLED' } } } } },
+      })
     })
 
     it('returns 400 when patientId missing', async () => {

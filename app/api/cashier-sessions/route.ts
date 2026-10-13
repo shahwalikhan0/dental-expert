@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { computeExpectedTotals, generateSessionNo, getOpenSession } from '@/lib/cashier'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 /**
  * Cashier sessions — the till behind FR-015's daily closing.
@@ -43,6 +44,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: sessions, count: sessions.length })
   } catch (err) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('List cashier sessions error:', err)
     return NextResponse.json({ error: 'Failed to list cashier sessions' }, { status: 500 })
   }
@@ -72,16 +75,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const session = await prisma.cashierSession.create({
-      data: {
-        hospitalId,
-        sessionNo: await generateSessionNo(hospitalId),
-        openingFloat: data.openingFloat ?? 0,
-        openingNotes: data.openingNotes || null,
-        openedById: user.id,
-      },
-      include: { openedBy: { select: { id: true, name: true } } },
-    })
+    // The number is drawn in the same transaction as the row it names, so a
+    // failed insert gives it back rather than leaving a gap (finding 68).
+    const session = await prisma.$transaction(async (tx) =>
+      tx.cashierSession.create({
+        data: {
+          hospitalId,
+          sessionNo: await generateSessionNo(hospitalId, tx),
+          openingFloat: data.openingFloat ?? 0,
+          openingNotes: data.openingNotes || null,
+          openedById: user.id,
+        },
+        include: { openedBy: { select: { id: true, name: true } } },
+      })
+    )
 
     return NextResponse.json(
       { success: true, data: { ...session, totals: await computeExpectedTotals(session) } },
@@ -94,6 +101,8 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Open cashier session error:', err)
     return NextResponse.json({ error: 'Failed to open cashier session' }, { status: 500 })
   }

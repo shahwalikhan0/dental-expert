@@ -2,163 +2,48 @@
 
 import prisma from '@/lib/prisma'
 import type { CommunicationChannel, TemplateCategory } from '@prisma/client'
+import { DEFAULT_TEMPLATES } from '@/lib/default-templates'
+import {
+  TEMPLATE_VARIABLES,
+  TEMPLATE_VARIABLE_KEYS,
+  listPlaceholders,
+  placeholdersIn,
+  unknownPlaceholders,
+  type TemplateVariable,
+} from '@/lib/template-variables'
 
-export interface TemplateVariable {
-  key: string
-  label: string
-  description: string
-  example: string
-}
+export type { TemplateVariable }
+
+/** Channels whose messages are SMS-sized: the 500-character check applies. */
+const SHORT_CHANNELS: readonly CommunicationChannel[] = ['SMS', 'WHATSAPP']
 
 class TemplateService {
-  // Standard template variables
-  private readonly standardVariables: TemplateVariable[] = [
-    {
-      key: 'patientName',
-      label: 'Patient Name',
-      description: 'Full name of the patient',
-      example: 'John Doe',
-    },
-    { key: 'firstName', label: 'First Name', description: "Patient's first name", example: 'John' },
-    { key: 'lastName', label: 'Last Name', description: "Patient's last name", example: 'Doe' },
-    {
-      key: 'patientId',
-      label: 'Patient ID',
-      description: 'Unique patient identifier',
-      example: 'P001234',
-    },
-    {
-      key: 'phone',
-      label: 'Phone Number',
-      description: "Patient's phone number",
-      example: '9876543210',
-    },
-    {
-      key: 'email',
-      label: 'Email Address',
-      description: "Patient's email",
-      example: 'john@example.com',
-    },
-
-    {
-      key: 'appointmentDate',
-      label: 'Appointment Date',
-      description: 'Date of appointment',
-      example: '25-Jan-2026',
-    },
-    {
-      key: 'appointmentTime',
-      label: 'Appointment Time',
-      description: 'Time of appointment',
-      example: '10:00 AM',
-    },
-    {
-      key: 'appointmentNo',
-      label: 'Appointment Number',
-      description: 'Appointment reference number',
-      example: 'APT001234',
-    },
-    {
-      key: 'doctorName',
-      label: 'Doctor Name',
-      description: 'Name of the doctor',
-      example: 'Dr. Smith',
-    },
-    {
-      key: 'tokenNumber',
-      label: 'Token Number',
-      description: 'The queue token, once the patient has checked in',
-      example: '200926004',
-    },
-
-    {
-      key: 'treatmentName',
-      label: 'Treatment Name',
-      description: 'Name of the treatment/procedure',
-      example: 'Root Canal',
-    },
-    {
-      key: 'treatmentCost',
-      label: 'Treatment Cost',
-      description: 'Cost of treatment',
-      example: 'Rs 5,000',
-    },
-
-    {
-      key: 'invoiceNo',
-      label: 'Invoice Number',
-      description: 'Invoice reference number',
-      example: 'INV001234',
-    },
-    {
-      key: 'invoiceAmount',
-      label: 'Invoice Amount',
-      description: 'Total invoice amount',
-      example: 'Rs 5,000',
-    },
-    { key: 'paidAmount', label: 'Paid Amount', description: 'Amount paid', example: 'Rs 3,000' },
-    {
-      key: 'balanceAmount',
-      label: 'Balance Amount',
-      description: 'Remaining balance',
-      example: 'Rs 2,000',
-    },
-    { key: 'dueDate', label: 'Due Date', description: 'Payment due date', example: '31-Jan-2026' },
-
-    {
-      key: 'clinicName',
-      label: 'Clinic Name',
-      description: 'Name of the clinic',
-      example: 'Smile Dental Clinic',
-    },
-    {
-      key: 'clinicPhone',
-      label: 'Clinic Phone',
-      description: 'Clinic contact number',
-      example: '044-12345678',
-    },
-    {
-      key: 'clinicEmail',
-      label: 'Clinic Email',
-      description: 'Clinic email address',
-      example: 'info@yourclinic.com',
-    },
-    {
-      key: 'clinicAddress',
-      label: 'Clinic Address',
-      description: 'Clinic full address',
-      example: '123 Main St, Chennai',
-    },
-
-    {
-      key: 'labOrderNo',
-      label: 'Lab Order Number',
-      description: 'Lab work order number',
-      example: 'LAB001234',
-    },
-    {
-      key: 'labWorkType',
-      label: 'Lab Work Type',
-      description: 'Type of lab work',
-      example: 'Crown',
-    },
-
-    {
-      key: 'nextVisitDate',
-      label: 'Next Visit Date',
-      description: 'Date of next visit',
-      example: '5-Feb-2026',
-    },
-    {
-      key: 'prescriptionNo',
-      label: 'Prescription Number',
-      description: 'Prescription reference',
-      example: 'RX001234',
-    },
-  ]
-
+  /**
+   * The variables a template may use: the ones a message is actually built
+   * with. See lib/template-variables.ts.
+   */
   getStandardVariables(): TemplateVariable[] {
-    return this.standardVariables
+    return [...TEMPLATE_VARIABLES]
+  }
+
+  /**
+   * Another of this clinic's templates already called `name`, ignoring case.
+   *
+   * Names are how the list is read and how a template is picked, and two
+   * "Post-op care (SMS)" were accepted (finding 62). Prescription templates
+   * already refused this; communication templates now do too. The column has
+   * no unique index, so this is the check — `exceptId` leaves out the
+   * template being renamed.
+   */
+  async findByName(hospitalId: string, name: string, exceptId?: string) {
+    return prisma.communicationTemplate.findFirst({
+      where: {
+        hospitalId,
+        name: { equals: name.trim(), mode: 'insensitive' },
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true, name: true },
+    })
   }
 
   async createTemplate(data: {
@@ -285,37 +170,43 @@ class TemplateService {
   }
 
   extractVariables(content: string): string[] {
-    const regex = /{{\\s*([a-zA-Z0-9_]+)\\s*}}/g
-    const variables: string[] = []
-    let match
-
-    while ((match = regex.exec(content)) !== null) {
-      if (!variables.includes(match[1])) {
-        variables.push(match[1])
-      }
-    }
-
-    return variables
+    return placeholdersIn(content)
   }
 
-  validateTemplate(content: string): {
+  /**
+   * Whether a template can be saved: every placeholder in its body and
+   * subject is one a message fills in, and an SMS fits.
+   *
+   * The length check is for SMS and WhatsApp only. It used to apply to every
+   * channel, so an email template of any substance was refused as "too long
+   * for SMS".
+   */
+  validateTemplate(
+    content: string,
+    options: { channel?: CommunicationChannel; subject?: string | null } = {}
+  ): {
     isValid: boolean
     errors: string[]
     unknownVariables: string[]
   } {
     const errors: string[] = []
-    const extractedVars = this.extractVariables(content)
-    const knownVars = this.standardVariables.map((v) => v.key)
-    const unknownVariables = extractedVars.filter((v) => !knownVars.includes(v))
+    const unknownVariables = unknownPlaceholders(content, options.subject)
 
     if (unknownVariables.length > 0) {
-      errors.push(`Unknown variables found: ${unknownVariables.join(', ')}`)
+      errors.push(
+        `Unknown placeholder${unknownVariables.length === 1 ? '' : 's'} ` +
+          `${listPlaceholders(unknownVariables)}. ` +
+          `Use one of: ${listPlaceholders(TEMPLATE_VARIABLE_KEYS)}.`
+      )
     }
 
-    // Check for SMS length (if applicable)
-    const contentWithoutVars = content.replace(/{{[^}]+}}/g, 'X'.repeat(20))
-    if (contentWithoutVars.length > 500) {
-      errors.push('Content may be too long for SMS (estimated > 500 characters)')
+    // Each placeholder counted at 20 characters, a fair guess at a filled-in
+    // name or date.
+    if (!options.channel || SHORT_CHANNELS.includes(options.channel)) {
+      const estimated = content.replace(/{{[^}]+}}/g, 'X'.repeat(20))
+      if (estimated.length > 500) {
+        errors.push('Content may be too long for SMS (estimated > 500 characters)')
+      }
     }
 
     return {
@@ -325,140 +216,21 @@ class TemplateService {
     }
   }
 
+  /**
+   * Add the starter templates in lib/default-templates.ts that this clinic
+   * does not have. A template with the same name is left alone — it is either
+   * the starter or somebody's rewrite of it, and names are unique per clinic.
+   *
+   * This used to carry a list of its own, different from the one signup
+   * seeds, using placeholders nothing fills in (`paidAmount`,
+   * `nextVisitDate`, `prescriptionNo`).
+   */
   async seedDefaultTemplates(hospitalId: string) {
-    const defaultTemplates = [
-      {
-        name: 'Appointment Confirmation SMS',
-        category: 'APPOINTMENT' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, your appointment is confirmed for {{appointmentDate}} at {{appointmentTime}} with {{doctorName}}. - {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Appointment Reminder SMS',
-        category: 'APPOINTMENT' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Reminder: {{patientName}}, you have an appointment tomorrow at {{appointmentTime}} with {{doctorName}}. Please arrive 10 mins early. Call {{clinicPhone}} to reschedule. - {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Birthday Wishes SMS',
-        category: 'BIRTHDAY' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Happy Birthday {{firstName}}! 🎂 Wishing you a healthy & joyful year ahead. - Team {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Payment Reminder SMS',
-        category: 'PAYMENT' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, this is a reminder that payment of Rs {{balanceAmount}} for Invoice {{invoiceNo}} is pending. Due date: {{dueDate}}. Pay at {{clinicName}} or call {{clinicPhone}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Payment Received SMS',
-        category: 'PAYMENT' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, we have received your payment of Rs {{paidAmount}} for Invoice {{invoiceNo}}. Thank you! - {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Lab Work Ready SMS',
-        category: 'LAB_WORK' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, your {{labWorkType}} lab work is ready (Order: {{labOrderNo}}). Please schedule an appointment with {{doctorName}}. Call {{clinicPhone}} - {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Follow-up Reminder SMS',
-        category: 'FOLLOW_UP' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, you have a follow-up scheduled for {{nextVisitDate}}. Please call {{clinicPhone}} to confirm or reschedule. - {{clinicName}}',
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Prescription Ready SMS',
-        category: 'PRESCRIPTION' as TemplateCategory,
-        channel: 'SMS' as CommunicationChannel,
-        content:
-          'Dear {{patientName}}, your prescription ({{prescriptionNo}}) is ready for collection at {{clinicName}}. Available during working hours.',
-        language: 'en',
-        isDefault: true,
-      },
-      // Email Templates
-      {
-        name: 'Appointment Confirmation Email',
-        category: 'APPOINTMENT' as TemplateCategory,
-        channel: 'EMAIL' as CommunicationChannel,
-        subject: 'Appointment Confirmation - {{appointmentNo}}',
-        content: `
-          <h2>Appointment Confirmed</h2>
-          <p>Dear {{patientName}},</p>
-          <p>Your appointment has been successfully scheduled.</p>
-          <h3>Appointment Details:</h3>
-          <ul>
-            <li><strong>Date:</strong> {{appointmentDate}}</li>
-            <li><strong>Time:</strong> {{appointmentTime}}</li>
-            <li><strong>Doctor:</strong> {{doctorName}}</li>
-            <li><strong>Appointment No:</strong> {{appointmentNo}}</li>
-          </ul>
-          <p>Please arrive 10 minutes before your scheduled time.</p>
-          <p>If you need to reschedule, please contact us at {{clinicPhone}}</p>
-        `,
-        language: 'en',
-        isDefault: true,
-      },
-      {
-        name: 'Invoice Email',
-        category: 'PAYMENT' as TemplateCategory,
-        channel: 'EMAIL' as CommunicationChannel,
-        subject: 'Invoice {{invoiceNo}} - {{clinicName}}',
-        content: `
-          <h2>Invoice</h2>
-          <p>Dear {{patientName}},</p>
-          <p>Please find your invoice details below:</p>
-          <h3>Invoice Details:</h3>
-          <ul>
-            <li><strong>Invoice No:</strong> {{invoiceNo}}</li>
-            <li><strong>Total Amount:</strong> Rs {{invoiceAmount}}</li>
-            <li><strong>Paid Amount:</strong> Rs {{paidAmount}}</li>
-            <li><strong>Balance:</strong> Rs {{balanceAmount}}</li>
-            <li><strong>Due Date:</strong> {{dueDate}}</li>
-          </ul>
-          <p>The detailed invoice is attached to this email.</p>
-          <p>Thank you for choosing {{clinicName}}!</p>
-        `,
-        language: 'en',
-        isDefault: true,
-      },
-    ]
-
-    for (const template of defaultTemplates) {
-      const existing = await prisma.communicationTemplate.findFirst({
-        where: {
-          hospitalId,
-          name: template.name,
-          category: template.category,
-          channel: template.channel,
-        },
-      })
+    for (const template of DEFAULT_TEMPLATES) {
+      const existing = await this.findByName(hospitalId, template.name)
 
       if (!existing) {
-        await this.createTemplate({ hospitalId, ...template })
+        await this.createTemplate({ hospitalId, ...template, isDefault: true })
       }
     }
   }

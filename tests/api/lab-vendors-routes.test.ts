@@ -7,6 +7,10 @@ import { LabOrderStatus, VendorStatus } from '@prisma/client'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
+// The lab module is a paid feature (lib/plan-gate.ts). These tests are about
+// what the routes do once it is included; the refusal has its own test.
+vi.mock('@/lib/plan-gate', () => ({ requireFeature: vi.fn().mockResolvedValue(null) }))
+
 vi.mock('@/lib/api-helpers', async () => {
   const { can } = await import('@/lib/rbac')
   const { NextResponse } = await import('next/server')
@@ -56,6 +60,7 @@ import {
 } from '@/app/api/lab-orders/[id]/route'
 import { requireAuthAndRole } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { requireFeature } from '@/lib/plan-gate'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -238,6 +243,58 @@ describe('POST /api/lab-vendors', () => {
     expect(res.status).toBe(201)
     expect(body.success).toBe(true)
     expect(body.data.name).toBe('Lab A')
+  })
+
+  // Finding 20: the form sent `rating: 0`, the route stored `0 || null`, and
+  // the page called `.toFixed` on the null.
+  it('stores a rating of 0, or none, as null', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.create).mockResolvedValue({ id: 'v1' } as any)
+
+    await vendorsPOST(makeReq('/api/lab-vendors', 'POST', { name: 'Lab A', phone: '1', rating: 0 }))
+    await vendorsPOST(makeReq('/api/lab-vendors', 'POST', { name: 'Lab B', phone: '2' }))
+
+    expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.rating).toBeNull()
+    expect(vi.mocked(prisma.vendor.create).mock.calls[1][0].data.rating).toBeNull()
+  })
+
+  it('refuses a rating outside 1 to 5', async () => {
+    mockAuth()
+
+    const res = await vendorsPOST(
+      makeReq('/api/lab-vendors', 'POST', { name: 'Lab A', phone: '1', rating: 4.5 })
+    )
+
+    expect(res.status).toBe(400)
+    expect(prisma.vendor.create).not.toHaveBeenCalled()
+  })
+
+  it('maps the form status onto the enum rather than failing on it', async () => {
+    mockAuth()
+    vi.mocked(prisma.vendor.create).mockResolvedValue({ id: 'v1' } as any)
+
+    await vendorsPOST(
+      makeReq('/api/lab-vendors', 'POST', { name: 'Lab A', phone: '1', status: 'active' })
+    )
+
+    expect(vi.mocked(prisma.vendor.create).mock.calls[0][0].data.status).toBe(VendorStatus.ACTIVE)
+  })
+
+  // Finding 26: a Free clinic created a lab vendor (201).
+  it('refuses on a plan without the lab module, with a message for the toast', async () => {
+    mockAuth()
+    vi.mocked(requireFeature).mockResolvedValueOnce(
+      NextResponse.json(
+        { error: 'The lab module is not included in the Free plan. Upgrade to use it.' },
+        { status: 403 }
+      )
+    )
+
+    const res = await vendorsPOST(makeReq('/api/lab-vendors', 'POST', { name: 'L', phone: '1' }))
+
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toContain('Upgrade')
+    expect(prisma.vendor.create).not.toHaveBeenCalled()
   })
 })
 
@@ -475,7 +532,24 @@ describe('PUT /api/lab-orders/[id]', () => {
     vi.mocked(prisma.$transaction).mockImplementation((arg: any) =>
       typeof arg === 'function' ? arg(prisma) : Promise.all(arg)
     )
+    // The laboratory named on the case, in this clinic.
+    vi.mocked(prisma.vendor.findFirst).mockResolvedValue({ id: 'v1' } as any)
+    vi.mocked(prisma.labOrder.update).mockResolvedValue({ id: 'lo1' } as any)
   })
+
+  /** The case as the route reads it before changing it. */
+  function existingCase(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'lo1',
+      status: LabOrderStatus.CREATED,
+      patientId: 'p1',
+      labVendorId: 'v1',
+      sentDate: null,
+      receivedDate: null,
+      deliveredDate: null,
+      ...overrides,
+    }
+  }
 
   const validBody = {
     patientId: 'p1',
@@ -522,7 +596,7 @@ describe('PUT /api/lab-orders/[id]', () => {
     const res = await labOrderDetailPUT(
       makeReq('/api/lab-orders/lo1', 'PUT', {
         ...validBody,
-        status: LabOrderStatus.IN_PROGRESS,
+        status: LabOrderStatus.SENT_TO_LAB,
       }),
       makeParams('lo1')
     )
@@ -537,8 +611,10 @@ describe('PUT /api/lab-orders/[id]', () => {
     })
     expect(JSON.parse(entry.oldValues as string)).toEqual({ status: LabOrderStatus.CREATED })
     expect(JSON.parse(entry.newValues as string)).toMatchObject({
-      status: LabOrderStatus.IN_PROGRESS,
+      status: LabOrderStatus.SENT_TO_LAB,
     })
+    // The milestone is stamped the same way the status route stamps it.
+    expect(vi.mocked(prisma.labOrder.update).mock.calls[0][0].data.sentDate).toBeInstanceOf(Date)
   })
 
   it('records nothing when the status is unchanged', async () => {
@@ -555,6 +631,113 @@ describe('PUT /api/lab-orders/[id]', () => {
     )
     expect(res.status).toBe(200)
     expect(prisma.auditLog.create).not.toHaveBeenCalled()
+  })
+  // Finding 45: the same rules as the status route.
+  it('refuses a status jump through the edit route too', async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, status: LabOrderStatus.FITTED }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(400)
+    expect(prisma.labOrder.update).not.toHaveBeenCalled()
+  })
+
+  it('does not take milestone dates from the body', async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+
+    await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, deliveredDate: '2026-01-02' }),
+      makeParams('lo1')
+    )
+
+    expect(vi.mocked(prisma.labOrder.update).mock.calls[0][0].data).not.toHaveProperty(
+      'deliveredDate'
+    )
+  })
+
+  // Finding 59.
+  it('refuses an expected date before the order date', async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', {
+        ...validBody,
+        orderDate: '2026-10-12',
+        expectedDate: '2026-10-01',
+      }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('before the order date')
+  })
+
+  it('refuses a negative cost', async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, actualCost: -100 }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('negative')
+  })
+
+  // Finding 60.
+  it("links the case to this patient's treatment", async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+    vi.mocked(prisma.treatment.findFirst).mockResolvedValue({ id: 't1', patientId: 'p1' } as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, treatmentId: 't1' }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(prisma.treatment.findFirst).mock.calls[0][0].where).toMatchObject({
+      id: 't1',
+      hospitalId: 'h1',
+    })
+    expect(vi.mocked(prisma.labOrder.update).mock.calls[0][0].data.treatmentId).toBe('t1')
+  })
+
+  it("refuses another patient's treatment", async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+    vi.mocked(prisma.treatment.findFirst).mockResolvedValue({
+      id: 't9',
+      patientId: 'someone-else',
+    } as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, treatmentId: 't9' }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(400)
+    expect(prisma.labOrder.update).not.toHaveBeenCalled()
+  })
+
+  it('refuses a priority the column does not have', async () => {
+    mockAuth()
+    vi.mocked(prisma.labOrder.findFirst).mockResolvedValue(existingCase() as any)
+
+    const res = await labOrderDetailPUT(
+      makeReq('/api/lab-orders/lo1', 'PUT', { ...validBody, priority: 'HIGH' }),
+      makeParams('lo1')
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('priority')
   })
 })
 

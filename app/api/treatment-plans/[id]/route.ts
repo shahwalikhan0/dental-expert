@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { TreatmentPlanItemStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { can } from '@/lib/rbac'
-import { normalisePhaseNames, phaseOf } from '@/lib/treatment-phases'
+import { normalisePhaseNames } from '@/lib/treatment-phases'
+import { readPlanItems } from '@/lib/treatment-plan-items'
+import { planTransitionRefusal } from '@/lib/treatment-plan-status'
 
 // GET - Get single treatment plan with all details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,6 +49,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 postInstructions: true,
               },
             },
+            // The treatment carrying the step out, once one has been started.
+            treatment: { select: { id: true, treatmentNo: true, status: true } },
           },
           orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
         },
@@ -101,7 +107,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Update basic fields
     if (body.title !== undefined) updateData.title = body.title
     if (body.notes !== undefined) updateData.notes = body.notes
-    if (body.status !== undefined) updateData.status = body.status
     if (body.startDate !== undefined)
       updateData.startDate = body.startDate ? new Date(body.startDate) : null
     if (body.expectedEndDate !== undefined)
@@ -120,96 +125,165 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Handle completion
-    if (body.status === 'COMPLETED' && !existingPlan.completedDate) {
-      updateData.completedDate = new Date()
+    // The items, if sent, are matched to the stored ones by id rather than
+    // deleted and written back. Wholesale replacement threw away each item's
+    // link to the treatment carrying it out (bug report 12 Oct, finding 11),
+    // and with it the step's progress.
+    type ItemWrite = Awaited<ReturnType<typeof readPlanItems>>
+    let checked: Extract<ItemWrite, { ok: true }> | null = null
+    let removed: string[] = []
+    const existingItems = existingPlan.items ?? []
+    const stored = new Map(existingItems.map((item) => [item.id, item]))
+
+    if (body.items !== undefined) {
+      // A procedure already on the plan may stay though it has since been
+      // deactivated; a new line may not use one (finding 48).
+      const result = await readPlanItems(
+        prisma,
+        hospitalId,
+        body.items,
+        new Set(existingItems.map((item) => item.procedureId))
+      )
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status })
+      }
+      checked = result
+
+      const kept = new Set(result.items.map((item) => item.id).filter(Boolean))
+      const dropped = existingItems.filter((item) => !kept.has(item.id))
+
+      // A step that has been started or done is a record of work, and goes
+      // only by cancelling the treatment that carries it.
+      const started = dropped.find(
+        (item) => item.treatmentId || item.status === 'IN_PROGRESS' || item.status === 'COMPLETED'
+      )
+      if (started) {
+        return NextResponse.json(
+          { error: 'A step that has been started or completed cannot be removed from the plan' },
+          { status: 400 }
+        )
+      }
+      removed = dropped.map((item) => item.id)
+
+      for (const item of result.items) {
+        const before = item.id ? stored.get(item.id) : undefined
+        if (!before) continue
+        // A step being carried out by a treatment keeps its procedure, and its
+        // status is the treatment's to move, not the form's.
+        if (before.treatmentId && before.procedureId !== item.procedureId) {
+          return NextResponse.json(
+            { error: 'A step that has been started cannot be changed to another procedure' },
+            { status: 400 }
+          )
+        }
+      }
+
+      updateData.estimatedCost = result.estimatedCost
+      updateData.estimatedDuration = result.estimatedDuration
     }
 
-    // Update items if provided
-    if (body.items !== undefined) {
-      // Delete existing items
-      await prisma.treatmentPlanItem.deleteMany({
-        where: { treatmentPlanId: id },
-      })
+    // The status, against the plan's items as they will be after this save
+    // (finding 34). See PLAN_TRANSITIONS for the rule.
+    if (body.status !== undefined) {
+      const itemsAfter = checked
+        ? checked.items.map((item) => {
+            const before = item.id ? stored.get(item.id) : undefined
+            return { status: statusToStore(item.status, before) }
+          })
+        : existingItems
+      const refusal = planTransitionRefusal(existingPlan.status, body.status, itemsAfter)
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
 
-      // Calculate new estimated cost and duration
-      let estimatedCost = 0
-      let estimatedDuration = 0
+      updateData.status = body.status
+      if (body.status === 'COMPLETED' && !existingPlan.completedDate) {
+        updateData.completedDate = new Date()
+      }
+    }
 
-      if (body.items.length > 0) {
-        const procedures = await prisma.procedure.findMany({
-          where: {
-            id: { in: body.items.map((item: any) => item.procedureId) },
-            hospitalId,
-          },
-        })
-
-        const procedureMap = new Map(procedures.map((p) => [p.id, p]))
-
-        // Settle each line's price once, so the line and the total cannot
-        // disagree — see the same fix in the create route.
-        body.items.forEach((item: any) => {
-          const proc = procedureMap.get(item.procedureId)
-          if (proc) {
-            item.estimatedCost = Number(item.estimatedCost ?? 0) || Number(proc.basePrice)
-            estimatedCost += item.estimatedCost
-            estimatedDuration += proc.defaultDuration
-          }
+    // The items and the plan's total and status land together.
+    const treatmentPlan = await prisma.$transaction(async (tx) => {
+      if (checked && removed.length > 0) {
+        await tx.treatmentPlanItem.deleteMany({
+          where: { id: { in: removed }, treatmentPlanId: id },
         })
       }
 
-      updateData.estimatedCost = estimatedCost
-      updateData.estimatedDuration = estimatedDuration
-
-      // Create new items
-      await prisma.treatmentPlanItem.createMany({
-        data: body.items.map((item: any, index: number) => ({
-          treatmentPlanId: id,
+      for (const item of checked?.items ?? []) {
+        const before = item.id ? stored.get(item.id) : undefined
+        const data = {
           procedureId: item.procedureId,
-          toothNumbers: item.toothNumbers || null,
-          phase: phaseOf(item),
-          priority: item.priority || index + 1,
-          estimatedCost: item.estimatedCost ?? 0,
-          notes: item.notes || null,
-          status: item.status || 'PENDING',
-        })),
-      })
-    }
+          toothNumbers: item.toothNumbers,
+          phase: item.phase,
+          priority: item.priority,
+          estimatedCost: item.estimatedCost,
+          notes: item.notes,
+          status: statusToStore(item.status, before),
+        }
+        if (before) {
+          await tx.treatmentPlanItem.update({ where: { id: before.id }, data })
+        } else {
+          await tx.treatmentPlanItem.create({ data: { ...data, treatmentPlanId: id } })
+        }
+      }
 
-    const treatmentPlan = await prisma.treatmentPlan.update({
-      where: { id },
-      data: updateData,
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        items: {
-          include: {
-            procedure: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                category: true,
-                basePrice: true,
-              },
+      return tx.treatmentPlan.update({
+        where: { id },
+        data: updateData,
+        include: {
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              lastName: true,
             },
           },
-          orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
+          items: {
+            include: {
+              procedure: {
+                select: {
+                  id: true,
+                  code: true,
+                  name: true,
+                  category: true,
+                  basePrice: true,
+                },
+              },
+            },
+            orderBy: [{ phase: 'asc' }, { priority: 'asc' }],
+          },
         },
-      },
+      })
     })
 
     return NextResponse.json(treatmentPlan)
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating treatment plan:', error)
     return NextResponse.json({ error: 'Failed to update treatment plan' }, { status: 500 })
   }
+}
+
+/**
+ * The status a line is stored with.
+ *
+ * A step carried out by a treatment, or already in progress or done, keeps the
+ * status it has: that is moved by the treatment, and a form resending what it
+ * loaded must not wind it back. Otherwise the form's PENDING, SCHEDULED or
+ * CANCELLED stands.
+ */
+function statusToStore(
+  requested: TreatmentPlanItemStatus,
+  before: { status: TreatmentPlanItemStatus; treatmentId: string | null } | undefined
+): TreatmentPlanItemStatus {
+  if (
+    before &&
+    (before.treatmentId || before.status === 'IN_PROGRESS' || before.status === 'COMPLETED')
+  ) {
+    return before.status
+  }
+  return requested
 }
 
 // DELETE - Delete treatment plan

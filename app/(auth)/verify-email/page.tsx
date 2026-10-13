@@ -17,6 +17,14 @@ function VerifyEmailContent() {
 
   const token = searchParams.get('token')
   const email = searchParams.get('email')
+  /**
+   * Whether the signup route actually sent the email: `sent=0` when the
+   * clinic's mail is not configured yet. This page used to say "We've sent a
+   * verification email" either way (bug report 12 Oct, finding 27). Signing in
+   * does not wait for verification, so the honest message is also the useful
+   * one: go ahead.
+   */
+  const sent = searchParams.get('sent') !== '0'
 
   useEffect(() => {
     if (token) {
@@ -24,13 +32,15 @@ function VerifyEmailContent() {
     } else if (email) {
       setStatus('pending')
       setMessage(
-        `We've sent a verification email to ${email}. Please check your inbox and click the verification link.`
+        sent
+          ? `We've sent a verification email to ${email}. Please check your inbox and click the verification link. You can sign in meanwhile — verification is not required to start.`
+          : `Your clinic is ready. We could not send a verification email to ${email} because outgoing email is not set up yet — you can sign in now without it, and set up email later in Settings.`
       )
     } else {
       setStatus('error')
       setMessage('No verification token or email provided.')
     }
-  }, [token, email])
+  }, [token, email, sent])
 
   const verifyEmail = async (verificationToken: string) => {
     try {
@@ -57,15 +67,6 @@ function VerifyEmailContent() {
       setStatus('error')
       setMessage('An error occurred during verification. Please try again.')
     }
-  }
-
-  const resendVerification = async () => {
-    if (!email) return
-
-    toast({
-      title: 'Verification email sent',
-      description: 'Please check your inbox for the verification link.',
-    })
   }
 
   return (
@@ -97,7 +98,7 @@ function VerifyEmailContent() {
           {status === 'loading' && 'Verifying...'}
           {status === 'success' && 'Email Verified!'}
           {status === 'error' && 'Verification Failed'}
-          {status === 'pending' && 'Check Your Email'}
+          {status === 'pending' && (sent ? 'Check Your Email' : 'Account Created')}
         </CardTitle>
         <CardDescription className="text-base">{message}</CardDescription>
       </CardHeader>
@@ -119,17 +120,18 @@ function VerifyEmailContent() {
           </div>
         )}
 
+        {/* There used to be a "Resend Verification Email" button here that
+            showed a toast saying it had sent one, and sent nothing. There is
+            no resend endpoint, so there is no button. */}
         {status === 'pending' && (
           <div className="space-y-4">
-            <div className="text-center text-sm text-muted-foreground">
-              <p>Didn&apos;t receive the email?</p>
-              <p>Check your spam folder or click below to resend.</p>
-            </div>
-            <Button variant="outline" className="w-full" onClick={resendVerification}>
-              Resend Verification Email
-            </Button>
-            <Button asChild variant="ghost" className="w-full">
-              <Link href="/login">Back to Login</Link>
+            {sent && (
+              <p className="text-center text-sm text-muted-foreground">
+                Didn&apos;t receive it? Check your spam folder.
+              </p>
+            )}
+            <Button asChild className="w-full">
+              <Link href="/login">Continue to Sign in</Link>
             </Button>
           </div>
         )}

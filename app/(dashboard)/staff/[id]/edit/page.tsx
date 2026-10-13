@@ -22,9 +22,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ArrowLeft, Loader2, Eye, EyeOff, Clock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { validatePassword } from '@/lib/password-policy'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
 import { useCan } from '@/hooks/use-can'
 import { isoDay } from '@/lib/dates'
+import { ToastAction } from '@/components/ui/toast'
+import { isValidEmail } from '@/lib/email-address'
+import { PHONE_PLACEHOLDER, STAFF_HR_FIELDS, phoneProblem } from '@/lib/staff-rules'
+import {
+  OpenAppointmentsDialog,
+  type OpenAppointment,
+} from '@/app/(dashboard)/staff/_components/open-appointments-dialog'
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -38,11 +46,21 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  /**
+   * Whether the private fields came back. They go only to `staff:hr` (finding
+   * 42); without them the Personal Details card is not shown, and they are
+   * not sent back — a blank field would otherwise overwrite what is on file.
+   */
+  const [hasHrFields, setHasHrFields] = useState(true)
+  // Appointments still booked with this person, when switching them off was
+  // refused until confirmed (finding 21).
+  const [openDiary, setOpenDiary] = useState<OpenAppointment[] | null>(null)
 
   const [formData, setFormData] = useState({
     // Basic Info
     firstName: '',
     lastName: '',
+    email: '',
     phone: '',
     alternatePhone: '',
     role: '',
@@ -65,6 +83,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     qualification: '',
     specialization: '',
     licenseNumber: '',
+    joiningDate: '',
 
     // Financial
 
@@ -108,9 +127,11 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
 
       const data = await response.json()
 
+      setHasHrFields('cnic' in data)
       setFormData({
         firstName: data.firstName || '',
         lastName: data.lastName || '',
+        email: data.user?.email || data.email || '',
         phone: data.phone || '',
         alternatePhone: data.alternatePhone || '',
         role: data.user.role || '',
@@ -127,6 +148,8 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         qualification: data.qualification || '',
         specialization: data.specialization || '',
         licenseNumber: data.licenseNumber || '',
+        // The stored value is UTC midnight of the day chosen; read as that day.
+        joiningDate: data.joiningDate ? String(data.joiningDate).slice(0, 10) : '',
         emergencyContact: data.emergencyContact || '',
         emergencyPhone: data.emergencyPhone || '',
         isActive: data.isActive,
@@ -169,8 +192,18 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    await save(false)
+  }
 
-    if (!formData.firstName || !formData.lastName || !formData.phone) {
+  /**
+   * Save the profile, then the shifts.
+   *
+   * `confirm` is sent only from the dialog that lists the appointments still
+   * booked with somebody being switched off — the server refuses the change
+   * with 409 and that list until it has been seen.
+   */
+  const save = async (confirm: boolean) => {
+    if (!formData.firstName || !formData.lastName || !formData.phone || !formData.email) {
       toast({
         variant: 'destructive',
         title: 'Validation Error',
@@ -178,6 +211,34 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
       })
       return
     }
+
+    // The same rules the API applies (finding 28).
+    if (!isValidEmail(formData.email)) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Please enter a valid email address',
+      })
+      return
+    }
+    const badPhone =
+      phoneProblem(formData.phone, 'Phone', { required: true }) ??
+      phoneProblem(formData.alternatePhone, 'Alternate phone') ??
+      (hasHrFields ? phoneProblem(formData.emergencyPhone, 'Emergency phone') : null)
+    if (badPhone) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: badPhone })
+      return
+    }
+
+    const weak = formData.newPassword ? validatePassword(formData.newPassword) : null
+    if (weak) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: weak })
+      return
+    }
+
+    // Leave out what this person was never shown — see `hasHrFields`.
+    const payload: Record<string, unknown> = { ...formData, confirm }
+    if (!hasHrFields) for (const field of STAFF_HR_FIELDS) delete payload[field]
 
     try {
       setSaving(true)
@@ -188,13 +249,31 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({}))
+        if (response.status === 409 && Array.isArray(error.appointments)) {
+          setOpenDiary(error.appointments)
+          return
+        }
+        if (error.code === 'STAFF_LIMIT') {
+          toast({
+            variant: 'destructive',
+            title: 'Staff limit reached',
+            description: error.error,
+            action: (
+              <ToastAction altText="See plans" onClick={() => router.push('/pricing')}>
+                See plans
+              </ToastAction>
+            ),
+          })
+          return
+        }
         throw new Error(error.error || 'Failed to update staff member')
       }
+      setOpenDiary(null)
 
       // Update shifts
       const activeShifts = shifts.filter((s) => s.isActive)
@@ -300,6 +379,20 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  required
+                />
+                <p className="text-muted-foreground text-xs">
+                  Also their sign-in. Letters are stored in lower case.
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="role">Role *</Label>
                 <Select
                   value={formData.role}
@@ -360,7 +453,7 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                     type={showPassword ? 'text' : 'password'}
                     value={formData.newPassword}
                     onChange={(e) => handleChange('newPassword', e.target.value)}
-                    placeholder="Enter new password"
+                    placeholder="8 to 32 characters"
                   />
                   <Button
                     type="button"
@@ -402,8 +495,10 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   <Label htmlFor="phone">Phone Number *</Label>
                   <Input
                     id="phone"
+                    type="tel"
                     value={formData.phone}
                     onChange={(e) => handleChange('phone', e.target.value)}
+                    placeholder={PHONE_PLACEHOLDER}
                     required
                   />
                 </div>
@@ -411,127 +506,138 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                   <Label htmlFor="alternatePhone">Alternate Phone</Label>
                   <Input
                     id="alternatePhone"
+                    type="tel"
                     value={formData.alternatePhone}
                     onChange={(e) => handleChange('alternatePhone', e.target.value)}
+                    placeholder={PHONE_PLACEHOLDER}
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Textarea
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => handleChange('address', e.target.value)}
-                  rows={2}
-                />
-              </div>
+              {hasHrFields && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Textarea
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => handleChange('address', e.target.value)}
+                      rows={2}
+                    />
+                  </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => handleChange('city', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    value={formData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal Code</Label>
-                  <Input
-                    id="postalCode"
-                    value={formData.postalCode}
-                    onChange={(e) => handleChange('postalCode', e.target.value)}
-                  />
-                </div>
-              </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        value={formData.city}
+                        onChange={(e) => handleChange('city', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State</Label>
+                      <Input
+                        id="state"
+                        value={formData.state}
+                        onChange={(e) => handleChange('state', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="postalCode">Postal Code</Label>
+                      <Input
+                        id="postalCode"
+                        value={formData.postalCode}
+                        onChange={(e) => handleChange('postalCode', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
-          {/* Personal Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Personal Details</CardTitle>
-              <CardDescription>Personal and identification information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                  />
+          {/* Personal Details — CNIC, date of birth, NTN and emergency
+              contact. Present only for `staff:hr` (finding 42). */}
+          {hasHrFields && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Personal Details</CardTitle>
+                <CardDescription>Personal and identification information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                    <Input
+                      id="dateOfBirth"
+                      type="date"
+                      value={formData.dateOfBirth}
+                      onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gender">Gender</Label>
+                    <Select
+                      value={formData.gender}
+                      onValueChange={(value) => handleChange('gender', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MALE">Male</SelectItem>
+                        <SelectItem value="FEMALE">Female</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select
-                    value={formData.gender}
-                    onValueChange={(value) => handleChange('gender', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MALE">Male</SelectItem>
-                      <SelectItem value="FEMALE">Female</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="cnic">CNIC</Label>
-                  <Input
-                    id="cnic"
-                    value={formData.cnic}
-                    onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="cnic">CNIC</Label>
+                    <Input
+                      id="cnic"
+                      value={formData.cnic}
+                      onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
+                    <Input
+                      id="nationalTaxNo"
+                      value={formData.nationalTaxNo}
+                      onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
-                  <Input
-                    id="nationalTaxNo"
-                    value={formData.nationalTaxNo}
-                    onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
-                  />
-                </div>
-              </div>
 
-              <Separator />
+                <Separator />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyContact">Emergency Contact</Label>
-                  <Input
-                    id="emergencyContact"
-                    value={formData.emergencyContact}
-                    onChange={(e) => handleChange('emergencyContact', e.target.value)}
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                    <Input
+                      id="emergencyContact"
+                      value={formData.emergencyContact}
+                      onChange={(e) => handleChange('emergencyContact', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="emergencyPhone">Emergency Phone</Label>
+                    <Input
+                      id="emergencyPhone"
+                      type="tel"
+                      value={formData.emergencyPhone}
+                      onChange={(e) => handleChange('emergencyPhone', e.target.value)}
+                      placeholder={PHONE_PLACEHOLDER}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyPhone">Emergency Phone</Label>
-                  <Input
-                    id="emergencyPhone"
-                    value={formData.emergencyPhone}
-                    onChange={(e) => handleChange('emergencyPhone', e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Professional Details */}
           <Card>
@@ -559,13 +665,29 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="licenseNumber">License Number</Label>
-                <Input
-                  id="licenseNumber"
-                  value={formData.licenseNumber}
-                  onChange={(e) => handleChange('licenseNumber', e.target.value)}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="licenseNumber">License Number</Label>
+                  <Input
+                    id="licenseNumber"
+                    value={formData.licenseNumber}
+                    onChange={(e) => handleChange('licenseNumber', e.target.value)}
+                  />
+                </div>
+                {/* Correctable now (finding 47): the attendance register
+                    refuses every day before it, so a wrong one blocked
+                    back-filling. Moving it later is refused by the server
+                    while attendance is recorded before the new date. */}
+                <div className="space-y-2">
+                  <Label htmlFor="joiningDate">Joining Date</Label>
+                  <Input
+                    id="joiningDate"
+                    type="date"
+                    max={isoDay(new Date())}
+                    value={formData.joiningDate}
+                    onChange={(e) => handleChange('joiningDate', e.target.value)}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -641,6 +763,17 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
           </Button>
         </div>
       </form>
+
+      <OpenAppointmentsDialog
+        open={openDiary !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenDiary(null)
+        }}
+        name={`${formData.firstName} ${formData.lastName}`.trim()}
+        appointments={openDiary ?? []}
+        busy={saving}
+        onConfirm={() => save(true)}
+      />
     </div>
   )
 }

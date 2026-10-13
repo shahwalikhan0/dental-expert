@@ -525,15 +525,12 @@ const setupSections: SetupSection[] = [
       {
         title: 'Configure Security Policies',
         description:
-          'Set password strength rules, auto-logout timers, and enable 2FA for extra security.',
+          'Set auto-logout timers and the sign-in lockout. Passwords are always 8 to 32 characters.',
         steps: [
           'Go to Settings → Security Settings',
-          'Set "Minimum Password Length" (recommended: 8 or more characters)',
-          'Enable password complexity requirements (uppercase, lowercase, numbers, special characters)',
           'Set "Session Timeout" — users are auto-logged out after this many minutes of inactivity (recommended: 30-60 min)',
           'Set "Maximum Login Attempts" (recommended: 5) — locks account after too many failed attempts',
           'Set "Lockout Duration" (recommended: 30 minutes)',
-          'Toggle "Require Two-Factor Authentication" ON for extra security (recommended for admin accounts)',
           'Click "Save Settings"',
         ],
         tips: [

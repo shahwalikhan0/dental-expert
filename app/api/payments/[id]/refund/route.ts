@@ -4,6 +4,13 @@ import { requirePermission } from '@/lib/api-helpers'
 import { PAYMENT_METHODS, generateRefundNo, getOpenSession, round2 } from '@/lib/cashier'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { knownErrorResponse } from '@/lib/api-errors'
+import {
+  BillingRefusal,
+  billingRefusalResponse,
+  lockInvoice,
+  settleInvoice,
+} from '@/lib/invoice-settlement'
 
 /**
  * POST /api/payments/[id]/refund — FR-014.
@@ -20,7 +27,8 @@ import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
  *
  * A refund is now its own row linked to the payment. The legacy fields on
  * Payment are kept up to date as the running total so existing reads still
- * work.
+ * work. The invoice's paid amount and status are recounted from its payments
+ * by `settleInvoice`, the same arithmetic every other money route uses.
  */
 
 const refundSchema = z.object({
@@ -48,64 +56,66 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
     const body = refundSchema.parse(await request.json())
 
-    const payment = await prisma.payment.findFirst({
+    // Found outside the transaction only to learn which invoice to lock. Every
+    // figure the refund depends on is read again once the lock is held.
+    const located = await prisma.payment.findFirst({
       where: { id, hospitalId },
-      include: { invoice: true, refunds: { select: { amount: true } } },
+      select: { id: true, invoiceId: true },
     })
-
-    if (!payment) {
+    if (!located) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    if (payment.status === 'PENDING' || payment.status === 'FAILED') {
-      return NextResponse.json({ error: 'Only a settled payment can be refunded' }, { status: 400 })
-    }
-    if (payment.status === 'CANCELLED') {
-      return NextResponse.json({ error: 'This payment was cancelled' }, { status: 400 })
-    }
+    const outcome = await prisma.$transaction(async (tx) => {
+      // The invoice row is the lock every movement of money on the invoice
+      // takes, so two refunds of the same payment cannot both see it as
+      // refundable, and a payment cannot land between this refund and the
+      // recount below.
+      await lockInvoice(tx, located.invoiceId, hospitalId)
 
-    const alreadyRefunded = payment.refunds.reduce((sum, r) => sum + Number(r.amount), 0)
-    const paymentAmount = Number(payment.amount)
-    const remaining = round2(paymentAmount - alreadyRefunded)
-    const refundAmount = round2(body.refundAmount)
+      const payment = await tx.payment.findFirst({
+        where: { id, hospitalId },
+        include: { invoice: true, refunds: { select: { amount: true } } },
+      })
 
-    if (remaining <= 0) {
-      return NextResponse.json(
-        { error: `${payment.paymentNo} has already been refunded in full` },
-        { status: 400 }
-      )
-    }
-    if (refundAmount > remaining) {
-      return NextResponse.json(
-        {
-          error: `Refund of ${refundAmount} exceeds the ${remaining} still refundable on ${payment.paymentNo}`,
-        },
-        { status: 400 }
-      )
-    }
+      if (!payment) throw new BillingRefusal(404, 'Payment not found')
 
-    // Money going out belongs to whichever till is open, so the closing count
-    // sees the outflow. Refunds outside an open session are still recorded —
-    // they simply do not land in anyone's drawer count.
-    const openSession = await getOpenSession(hospitalId)
+      if (payment.status === 'PENDING' || payment.status === 'FAILED') {
+        throw new BillingRefusal(400, 'Only a settled payment can be refunded')
+      }
+      if (payment.status === 'CANCELLED') {
+        throw new BillingRefusal(400, 'This payment was cancelled')
+      }
 
-    const refundedTotal = round2(alreadyRefunded + refundAmount)
-    const fullyRefunded = refundedTotal >= paymentAmount
+      const alreadyRefunded = payment.refunds.reduce((sum, r) => sum + Number(r.amount), 0)
+      const paymentAmount = Number(payment.amount)
+      const remaining = round2(paymentAmount - alreadyRefunded)
+      const refundAmount = round2(body.refundAmount)
 
-    const newPaidAmount = round2(Number(payment.invoice.paidAmount) - refundAmount)
-    const newBalanceAmount = round2(Number(payment.invoice.totalAmount) - newPaidAmount)
-    let invoiceStatus = payment.invoice.status
-    if (newPaidAmount <= 0) {
-      invoiceStatus = 'REFUNDED'
-    } else if (newBalanceAmount > 0) {
-      invoiceStatus = 'PARTIALLY_PAID'
-    }
+      if (remaining <= 0) {
+        throw new BillingRefusal(400, `${payment.paymentNo} has already been refunded in full`)
+      }
+      if (refundAmount > remaining) {
+        throw new BillingRefusal(
+          400,
+          `Refund of ${refundAmount} exceeds the ${remaining} still refundable on ${payment.paymentNo}`
+        )
+      }
 
-    const [refund] = await prisma.$transaction([
-      prisma.refund.create({
+      // Money going out belongs to whichever till is open, so the closing
+      // count sees the outflow. Refunds outside an open session are still
+      // recorded — they simply do not land in anyone's drawer count.
+      const openSession = await getOpenSession(hospitalId, { db: tx, userId: user.id })
+
+      const refundedTotal = round2(alreadyRefunded + refundAmount)
+      const fullyRefunded = refundedTotal >= paymentAmount
+
+      const refund = await tx.refund.create({
         data: {
           hospitalId,
-          refundNo: await generateRefundNo(hospitalId),
+          // Drawn inside the transaction, so a refund that fails after this
+          // point gives its number back.
+          refundNo: await generateRefundNo(hospitalId, tx),
           paymentId: payment.id,
           amount: refundAmount,
           // Defaults to however the money came in, which is the common case.
@@ -119,8 +129,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           authorisedBy: { select: { id: true, name: true } },
           payment: { select: { id: true, paymentNo: true, amount: true } },
         },
-      }),
-      prisma.payment.update({
+      })
+
+      await tx.payment.update({
         where: { id: payment.id },
         data: {
           status: fullyRefunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
@@ -129,16 +140,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           refundDate: new Date(),
           refundReason: body.refundReason,
         },
-      }),
-      prisma.invoice.update({
-        where: { id: payment.invoiceId },
-        data: {
-          paidAmount: newPaidAmount,
-          balanceAmount: newBalanceAmount,
-          status: invoiceStatus,
-        },
-      }),
-    ])
+      })
+
+      // Finding 39: the invoice's paid amount is recounted from its payments
+      // less their refunds. It used to be the invoice's running total less
+      // this refund, and after a duplicate payment was refunded the invoice
+      // read REFUNDED with Rs 0 paid while the other payment stood.
+      const settlement = await settleInvoice(tx, payment.invoice)
+
+      return {
+        payment,
+        refund,
+        refundAmount,
+        refundedTotal,
+        fullyRefunded,
+        paymentAmount,
+        openSession,
+        settlement,
+      }
+    })
+
+    const { payment, refund, refundAmount, refundedTotal, fullyRefunded, paymentAmount } = outcome
 
     // §10 asks for refunds in the audit history by name. The Refund row carries
     // the detail; this is what makes it show up alongside every other change to
@@ -157,6 +179,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         method: refund.refundMethod,
         reason: body.refundReason,
         invoiceId: payment.invoiceId,
+        invoiceStatus: outcome.settlement.status,
       },
       ...requestContext(request.headers),
     })
@@ -169,17 +192,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : `Refund processed; ${round2(paymentAmount - refundedTotal)} remains refundable`,
         refund,
         remainingRefundable: round2(paymentAmount - refundedTotal),
-        cashierSessionNo: openSession?.sessionNo ?? null,
+        cashierSessionNo: outcome.openSession?.sessionNo ?? null,
       },
       { status: 201 }
     )
   } catch (err) {
+    // The schema's own messages are written for the desk; zod's field prefix
+    // would only get in the way of them.
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         { error: err.issues[0]?.message || 'Invalid refund' },
         { status: 400 }
       )
     }
+    const known = billingRefusalResponse(err) ?? knownErrorResponse(err)
+    if (known) return known
     console.error('Error processing refund:', err)
     return NextResponse.json({ error: 'Failed to process refund' }, { status: 500 })
   }

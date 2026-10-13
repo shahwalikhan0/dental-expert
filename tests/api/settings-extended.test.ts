@@ -180,6 +180,7 @@ describe('POST /api/settings/holidays', () => {
 
   it('creates a holiday', async () => {
     mockAuth()
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
     const mockHoliday = {
       id: 'h1',
       name: 'Republic Day',
@@ -201,15 +202,70 @@ describe('POST /api/settings/holidays', () => {
     expect(body.data.name).toBe('Republic Day')
   })
 
-  it('returns 500 for invalid data (zod validation)', async () => {
+  it('returns 400 with a readable message for invalid data (finding 25)', async () => {
     mockAuth()
     const res = await holidaysPOST(
       makeReq('/api/settings/holidays', 'POST', {
-        name: '',
+        name: 'Founders Day',
         date: 'not-a-date',
       })
     )
-    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/YYYY-MM-DD/)
+    expect(body.error).not.toMatch(/\[|\{/)
+  })
+
+  it('accepts a plain calendar date and stores that day', async () => {
+    mockAuth()
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([])
+    vi.mocked(prisma.availability.create).mockResolvedValue({ id: 'h9' } as any)
+
+    const res = await holidaysPOST(
+      makeReq('/api/settings/holidays', 'POST', { name: 'Iqbal Day', date: '2026-10-21' })
+    )
+
+    expect(res.status).toBe(200)
+    const data = vi.mocked(prisma.availability.create).mock.calls[0][0].data
+    expect(data.date.toISOString()).toBe('2026-10-21T00:00:00.000Z')
+  })
+
+  it('refuses a day that is not on the calendar', async () => {
+    mockAuth()
+    const res = await holidaysPOST(
+      makeReq('/api/settings/holidays', 'POST', { name: 'Nope', date: '2026-02-30' })
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses a second holiday on the same date, naming the first (finding 51)', async () => {
+    mockAuth()
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([
+      { name: 'Diwali', date: new Date('2026-10-20T00:00:00.000Z'), isRecurring: false },
+    ] as any)
+
+    const res = await holidaysPOST(
+      makeReq('/api/settings/holidays', 'POST', { name: 'Another', date: '2026-10-20' })
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.error).toContain('Diwali')
+    expect(prisma.availability.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a date a yearly holiday already falls on', async () => {
+    mockAuth()
+    vi.mocked(prisma.availability.findMany).mockResolvedValue([
+      { name: 'Independence Day', date: new Date('2025-08-14T00:00:00.000Z'), isRecurring: true },
+    ] as any)
+
+    const res = await holidaysPOST(
+      makeReq('/api/settings/holidays', 'POST', { name: 'Flag day', date: '2027-08-14' })
+    )
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('Independence Day')
   })
 })
 
@@ -344,7 +400,9 @@ describe('POST /api/settings/procedures', () => {
     expect(body.error).toContain('already exists')
   })
 
-  it('returns 500 for invalid category', async () => {
+  // A request that is simply wrong is a 400 that says what, not a 500 with
+  // zod's issue list for the toast (bug report 12 Oct, finding 25).
+  it('returns 400 for invalid category', async () => {
     mockAuth()
     const res = await proceduresPOST(
       makeReq('/api/settings/procedures', 'POST', {
@@ -354,7 +412,35 @@ describe('POST /api/settings/procedures', () => {
         basePrice: 500,
       })
     )
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('category')
+  })
+
+  // A free consultation or a warranty redo is a price of nothing (finding 50).
+  it('accepts a price of 0 and refuses a negative one', async () => {
+    mockAuth()
+    vi.mocked(prisma.procedure.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.procedure.create).mockResolvedValue({ id: 'p1', basePrice: 0 } as any)
+
+    const free = await proceduresPOST(
+      makeReq('/api/settings/procedures', 'POST', {
+        code: 'CONS0',
+        name: 'Free consultation',
+        category: 'DIAGNOSTIC',
+        basePrice: 0,
+      })
+    )
+    expect(free.status).toBe(200)
+
+    const negative = await proceduresPOST(
+      makeReq('/api/settings/procedures', 'POST', {
+        code: 'NEG1',
+        name: 'Negative',
+        category: 'DIAGNOSTIC',
+        basePrice: -1,
+      })
+    )
+    expect(negative.status).toBe(400)
   })
 })
 
@@ -493,6 +579,27 @@ describe('DELETE /api/settings/procedures/[id]', () => {
     expect(prisma.procedure.update).toHaveBeenCalledWith({
       where: { id: 'p1', hospitalId: 'h1' },
       data: { isActive: false },
+    })
+  })
+
+  it('records the deactivation on the audit trail (finding 24)', async () => {
+    mockAuth()
+    vi.mocked(prisma.procedure.findUnique).mockResolvedValue({
+      id: 'p1',
+      code: 'FIL01',
+      name: 'Composite filling',
+      isActive: true,
+    } as any)
+    vi.mocked(prisma.procedure.update).mockResolvedValue({ id: 'p1', isActive: false } as any)
+
+    await procedureDetailDELETE(
+      makeReq('/api/settings/procedures/p1', 'DELETE'),
+      makeParams('p1') as any
+    )
+
+    expect(vi.mocked(prisma.auditLog.create).mock.calls[0][0].data).toMatchObject({
+      action: 'procedure.deactivated',
+      entityId: 'p1',
     })
   })
 })

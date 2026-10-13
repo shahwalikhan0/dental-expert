@@ -14,6 +14,9 @@ import {
   groupTeeth,
   quadrantOf,
   isTooth,
+  isPermanentTooth,
+  isPrimaryTooth,
+  readTeeth,
 } from '@/lib/teeth'
 
 describe('parseTeeth', () => {
@@ -35,16 +38,18 @@ describe('parseTeeth', () => {
     expect(parseTeeth(undefined)).toEqual([])
   })
 
-  it('discards anything that is not a permanent FDI tooth', () => {
-    // 19 and 49 are not teeth in FDI; 99 and "abc" are not numbers of teeth at
-    // all. Rendering any of them would print "Teeth: NaN" on a prescription.
-    expect(parseTeeth('46,19,49,99,abc,0')).toEqual([46])
+  it('discards anything that is not an FDI tooth', () => {
+    // 19, 49, 56 and 86 are not teeth in FDI; 99 and "abc" are not numbers of
+    // teeth at all. Rendering any of them would print "Teeth: NaN" on a
+    // prescription.
+    expect(parseTeeth('46,19,49,56,86,99,abc,0')).toEqual([46])
   })
 
-  it('does not accept deciduous numbering as permanent', () => {
-    // 51–85 are primary teeth. This column is permanent dentition only, and
-    // silently accepting a 55 would put a child's tooth in an adult's chart.
-    expect(parseTeeth('55,75')).toEqual([])
+  it('reads primary teeth as well as permanent ones', () => {
+    // 51–85 are primary teeth (bug report 12 Oct, findings 54 and 55). A
+    // child's extraction on 75 dropped from the column would read as an
+    // extraction of no tooth at all.
+    expect(parseTeeth('75,55,16')).toEqual([16, 55, 75])
   })
 })
 
@@ -74,8 +79,16 @@ describe('quadrantOf', () => {
     expect(quadrantOf(41)).toBe('lowerRight')
   })
 
+  it('places primary teeth in the quadrant they share with the permanent ones', () => {
+    expect(quadrantOf(55)).toBe('upperRight')
+    expect(quadrantOf(65)).toBe('upperLeft')
+    expect(quadrantOf(75)).toBe('lowerLeft')
+    expect(quadrantOf(85)).toBe('lowerRight')
+  })
+
   it('refuses a non-tooth', () => {
     expect(quadrantOf(99)).toBeNull()
+    expect(quadrantOf(56)).toBeNull()
   })
 })
 
@@ -115,6 +128,37 @@ describe('isTooth', () => {
     expect(isTooth(46.5)).toBe(false)
     expect(isTooth('46' as unknown as number)).toBe(false)
   })
+
+  it('accepts both dentitions and tells them apart', () => {
+    expect(isTooth(46)).toBe(true)
+    expect(isTooth(75)).toBe(true)
+    expect(isPermanentTooth(46)).toBe(true)
+    expect(isPermanentTooth(75)).toBe(false)
+    expect(isPrimaryTooth(75)).toBe(true)
+    expect(isPrimaryTooth(46)).toBe(false)
+  })
+})
+
+describe('readTeeth', () => {
+  it('reads what the forms send, tidied into a column', () => {
+    expect(readTeeth('47, 46,')).toEqual({ ok: true, column: '46,47', teeth: [46, 47] })
+    expect(readTeeth([75, 16])).toEqual({ ok: true, column: '16,75', teeth: [16, 75] })
+  })
+
+  it('treats nothing as no teeth', () => {
+    expect(readTeeth(null)).toEqual({ ok: true, column: null, teeth: [] })
+    expect(readTeeth('')).toEqual({ ok: true, column: null, teeth: [] })
+    expect(readTeeth(undefined)).toEqual({ ok: true, column: null, teeth: [] })
+  })
+
+  it('refuses anything that is not a tooth, naming it', () => {
+    // The value a treatment was saved with in the 12 October pass (finding 54).
+    const result = readTeeth('99,ABC')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('"99"')
+    expect(readTeeth('46.5').ok).toBe(false)
+    expect(readTeeth('19').ok).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -153,7 +197,7 @@ describe('groupTeeth()', () => {
     })
   })
 
-  it('drops anything that is not a permanent tooth', () => {
+  it('drops anything that is not a tooth', () => {
     expect(groupTeeth([11, 0, 99, NaN])).toEqual([
       { key: 'upperRight', short: 'UR', label: 'Upper right', teeth: [11], description: '11' },
     ])

@@ -130,6 +130,11 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
       amount: 10000,
     } as any)
     vi.mocked(prisma.invoice.update).mockResolvedValue({} as any)
+    // The invoice's money is counted from its payments: none before this one,
+    // this one after it.
+    vi.mocked(prisma.payment.findMany)
+      .mockResolvedValueOnce([] as any)
+      .mockResolvedValueOnce([{ amount: 10000, status: 'COMPLETED', refunds: [] }] as any)
 
     const req = makeRequest('http://localhost/api/invoices/inv1/payments', {
       method: 'POST',
@@ -142,7 +147,22 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
     expect(data.payment.paymentNo).toBe('PAY001')
     expect(prisma.invoice.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'PAID' }),
+        data: expect.objectContaining({ status: 'PAID', paidAmount: 10000, balanceAmount: 0 }),
+      })
+    )
+    // Finding 16: read, write and recount happen in one transaction, behind a
+    // row lock on the invoice.
+    expect(prisma.$transaction).toHaveBeenCalled()
+    const lock = vi
+      .mocked(prisma.$queryRaw)
+      .mock.calls.find((call: any[]) =>
+        String(call[0]?.join?.('') ?? call[0]).includes('FOR UPDATE')
+      )
+    expect(lock).toBeDefined()
+    // Finding 24.
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'payment.recorded', entityId: 'pay1' }),
       })
     )
   })
@@ -164,10 +184,13 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
     mockGeneratePaymentNo.mockResolvedValue('PAY002')
     vi.mocked(prisma.payment.create).mockResolvedValue({ id: 'pay2' } as any)
     vi.mocked(prisma.invoice.update).mockResolvedValue({} as any)
+    vi.mocked(prisma.payment.findMany)
+      .mockResolvedValueOnce([] as any)
+      .mockResolvedValueOnce([{ amount: 3000, status: 'COMPLETED', refunds: [] }] as any)
 
     const req = makeRequest('http://localhost/api/invoices/inv2/payments', {
       method: 'POST',
-      body: { amount: 3000, paymentMethod: 'UPI' },
+      body: { amount: 3000, paymentMethod: 'WALLET' },
     })
     const res = await POST(req, { params: Promise.resolve({ id: 'inv2' }) })
 
@@ -190,6 +213,9 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
       paidAmount: 8000,
       balanceAmount: 2000,
     } as any)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([
+      { amount: 8000, status: 'COMPLETED', refunds: [] },
+    ] as any)
 
     const req = makeRequest('http://localhost/api/invoices/inv3/payments', {
       method: 'POST',
@@ -213,6 +239,9 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
       paidAmount: 10000,
       balanceAmount: 0,
     } as any)
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([
+      { amount: 10000, status: 'COMPLETED', refunds: [] },
+    ] as any)
 
     const req = makeRequest('http://localhost/api/invoices/inv4/payments', {
       method: 'POST',
@@ -241,6 +270,70 @@ describe('GET/POST /api/invoices/[id]/payments', () => {
     const res = await POST(req, { params: Promise.resolve({ id: 'inv5' }) })
 
     expect(res.status).toBe(400)
+  })
+
+  // Finding 18: a draft has not been issued, and issuing is where a discount
+  // is approved. A payment on one was accepted and made it PARTIALLY_PAID.
+  it('POST refuses a payment on a DRAFT invoice', async () => {
+    const { POST } = await import('@/app/api/invoices/[id]/payments/route')
+
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({
+      id: 'inv6',
+      hospitalId: 'h1',
+      status: 'DRAFT',
+      discountApprovalStatus: 'NOT_REQUIRED',
+      totalAmount: 25000,
+    } as any)
+
+    const req = makeRequest('http://localhost/api/invoices/inv6/payments', {
+      method: 'POST',
+      body: { amount: 1000, paymentMethod: 'CASH' },
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'inv6' }) })
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/draft/i)
+    expect(prisma.payment.create).not.toHaveBeenCalled()
+    expect(mockGeneratePaymentNo).not.toHaveBeenCalled()
+  })
+
+  it('POST refuses a payment while the discount awaits approval', async () => {
+    const { POST } = await import('@/app/api/invoices/[id]/payments/route')
+
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({
+      id: 'inv7',
+      hospitalId: 'h1',
+      status: 'PENDING',
+      discountApprovalStatus: 'PENDING',
+      totalAmount: 15000,
+    } as any)
+
+    const req = makeRequest('http://localhost/api/invoices/inv7/payments', {
+      method: 'POST',
+      body: { amount: 1000, paymentMethod: 'CASH' },
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'inv7' }) })
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/approval/i)
+    expect(prisma.payment.create).not.toHaveBeenCalled()
+  })
+
+  // Finding 49.
+  it('POST names the valid methods for an unknown payment method', async () => {
+    const { POST } = await import('@/app/api/invoices/[id]/payments/route')
+
+    const req = makeRequest('http://localhost/api/invoices/inv1/payments', {
+      method: 'POST',
+      body: { amount: 1000, paymentMethod: 'BITCOIN' },
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'inv1' }) })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('BITCOIN')
+    expect(data.error).toContain('CASH')
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
   it('POST returns 400 if amount missing or zero', async () => {

@@ -21,7 +21,7 @@
  */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
-import { FDI_QUADRANTS, QUADRANTS } from '@/lib/teeth'
+import { quadrantsOf, QUADRANTS, type Dentition } from '@/lib/teeth'
 import { ToothGlyph } from '@/components/dental-chart/tooth-glyph'
 
 /**
@@ -49,6 +49,9 @@ export function archOffset(tooth: number): number {
 /** Wider for molars, narrow for incisors — a mouth is not eight equal squares. */
 export function toothWidth(tooth: number): string {
   const position = tooth % 10
+  // Primary molars sit at positions 4 and 5, and are a little smaller than
+  // the permanent molars that replace them.
+  if (tooth >= 50 && position >= 4) return 'w-7'
   if (position >= 6) return 'w-8'
   if (position >= 4) return 'w-7'
   if (position === 3) return 'w-6'
@@ -137,12 +140,24 @@ export interface ToothArchProps {
   onQuadrant?: (teeth: readonly number[]) => void
   disabled?: boolean
   className?: string
+  /**
+   * Which teeth to draw: the thirty-two permanent ones (the default), or a
+   * child's twenty primary ones, numbered 51–85.
+   */
+  dentition?: Dentition
 }
 
-export function ToothArch({ tooth, onQuadrant, disabled, className }: ToothArchProps) {
+export function ToothArch({
+  tooth,
+  onQuadrant,
+  disabled,
+  className,
+  dentition = 'permanent',
+}: ToothArchProps) {
+  const rows = quadrantsOf(dentition)
   const heading = (key: 'upperRight' | 'upperLeft' | 'lowerLeft' | 'lowerRight') => {
     const quadrant = QUADRANTS.find((q) => q.key === key)!
-    const teeth = FDI_QUADRANTS[key]
+    const teeth = rows[key]
     const text = `${quadrant.label} · ${quadrant.short}`
 
     if (!onQuadrant) {
@@ -174,28 +189,26 @@ export function ToothArch({ tooth, onQuadrant, disabled, className }: ToothArchP
         </div>
         <div className="flex items-end justify-center gap-1 pb-8">
           <div className="flex items-end gap-1">
-            {FDI_QUADRANTS.upperRight.map((t) => tooth(t, 'upper'))}
+            {rows.upperRight.map((t) => tooth(t, 'upper'))}
           </div>
           <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
-          <div className="flex items-end gap-1">
-            {FDI_QUADRANTS.upperLeft.map((t) => tooth(t, 'upper'))}
-          </div>
+          <div className="flex items-end gap-1">{rows.upperLeft.map((t) => tooth(t, 'upper'))}</div>
         </div>
 
         <div className="flex items-start justify-center gap-1 pt-8">
           {/*
             Each lower row has to run *towards* the midline it meets at, and
-            `FDI_QUADRANTS` stores both of them running away from it. Reversing
-            each puts 41 and 31 either side of the centre line, the way they sit
-            in a mouth. Reversed here rather than in `FDI_QUADRANTS`, which is
-            shared and is in FDI's own order.
+            `FDI_QUADRANTS` (and `PRIMARY_QUADRANTS`) store both of them running
+            away from it. Reversing each puts 41 and 31 either side of the
+            centre line, the way they sit in a mouth. Reversed here rather than
+            in lib/teeth.ts, which is shared and is in FDI's own order.
           */}
           <div className="flex items-start gap-1">
-            {[...FDI_QUADRANTS.lowerRight].reverse().map((t) => tooth(t, 'lower'))}
+            {[...rows.lowerRight].reverse().map((t) => tooth(t, 'lower'))}
           </div>
           <div className="mx-1 h-10 w-px self-center bg-border" aria-hidden />
           <div className="flex items-start gap-1">
-            {[...FDI_QUADRANTS.lowerLeft].reverse().map((t) => tooth(t, 'lower'))}
+            {[...rows.lowerLeft].reverse().map((t) => tooth(t, 'lower'))}
           </div>
         </div>
         <div className="flex items-start justify-center gap-6 pt-1">

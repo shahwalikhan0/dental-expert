@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { generateInvoiceNo, calculateInvoiceTotals, resolveTaxRate } from '@/lib/billing-utils'
-import { DiscountApprovalStatus, DiscountType, InvoiceStatus } from '@prisma/client'
+import {
+  generateInvoiceNo,
+  calculateInvoiceTotals,
+  discountProblem,
+  resolveTaxRate,
+} from '@/lib/billing-utils'
+import { DiscountApprovalStatus, DiscountType, InvoiceStatus, PaymentMethod } from '@prisma/client'
 import { discountNeedsApproval, getDiscountApprovalThreshold } from '@/lib/cashier'
 import { holderCan } from '@/lib/rbac'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import {
+  BillingRefusal,
+  billingRefusalResponse,
+  lockTreatments,
+  treatmentBillingProblem,
+} from '@/lib/invoice-settlement'
 
 // GET - List invoices with filters
 export async function GET(request: NextRequest) {
@@ -41,6 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
+      if (!isEnumMember(InvoiceStatus, status)) return enumRefusal('status', status, InvoiceStatus)
       where.status = status
     }
 
@@ -69,6 +83,9 @@ export async function GET(request: NextRequest) {
 
     // If filtering by payment method, we need to join with payments
     if (paymentMethod) {
+      if (!isEnumMember(PaymentMethod, paymentMethod)) {
+        return enumRefusal('paymentMethod', paymentMethod, PaymentMethod)
+      }
       where.payments = {
         some: {
           paymentMethod: paymentMethod,
@@ -145,6 +162,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching invoices:', error)
     return NextResponse.json({ error: 'Failed to fetch invoices' }, { status: 500 })
   }
@@ -159,18 +178,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // `taxRate` and `status` are deliberately not read from the body (bug
+    // report 12 Oct, findings 14 and 15). A negative rate cut any bill without
+    // reaching discount approval, and an invoice could be created PAID with
+    // nothing paid. The rate is the clinic's; a new invoice is a DRAFT, and
+    // issuing it is the PUT that checks the discount approval on the way.
     const {
       patientId,
       items,
       discountType = 'FIXED',
       discountValue = 0,
-      taxRate: requestedTaxRate,
       discountReason,
       dueDate,
       notes,
       termsAndConditions,
       paymentTermDays = 0,
-      status = 'DRAFT',
     } = body
 
     // Validate required fields
@@ -178,8 +200,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient is required' }, { status: 400 })
     }
 
-    if (!items || items.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'At least one item is required' }, { status: 400 })
+    }
+
+    if (!isEnumMember(DiscountType, discountType)) {
+      return enumRefusal('discountType', discountType, DiscountType)
     }
 
     // Check if patient exists
@@ -189,20 +215,34 @@ export async function POST(request: NextRequest) {
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
+    // Finding 22: a deactivated patient was still invoiced (201). Their record
+    // is closed; a bill raised against it lands on nobody's list.
+    if (patient.isActive === false) {
+      return NextResponse.json(
+        { error: 'This patient is inactive. Reactivate them before raising an invoice.' },
+        { status: 409 }
+      )
+    }
 
-    // The rate comes from the clinic's own settings unless the caller names
-    // one explicitly. Whatever is used is stamped onto the invoice below, so a
-    // later change to the clinic's rate cannot alter an invoice already issued.
+    // The clinic's rate, stamped onto the invoice below so that a later change
+    // to the clinic's rate cannot alter an invoice already issued.
     const clinic = await prisma.hospital.findUnique({
       where: { id: hospitalId },
       select: { taxEnabled: true, taxRate: true },
     })
-    const taxRate =
-      requestedTaxRate !== undefined ? Number(requestedTaxRate) : resolveTaxRate(clinic)
+    const taxRate = resolveTaxRate(clinic)
 
     // Validate items
     for (const item of items) {
-      if (!item.description || item.quantity <= 0 || item.unitPrice < 0) {
+      const quantity = Number(item?.quantity)
+      const unitPrice = Number(item?.unitPrice)
+      if (
+        !item?.description ||
+        !Number.isInteger(quantity) ||
+        quantity <= 0 ||
+        !Number.isFinite(unitPrice) ||
+        unitPrice < 0
+      ) {
         return NextResponse.json(
           {
             error:
@@ -213,15 +253,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const subtotal = items.reduce(
+      (sum: number, item: any) => sum + Number(item.quantity) * Number(item.unitPrice),
+      0
+    )
+    const discountRefusal = discountProblem(subtotal, discountType, discountValue)
+    if (discountRefusal) {
+      return NextResponse.json({ error: discountRefusal }, { status: 400 })
+    }
+
     // Calculate totals
     const calculatedTotals = calculateInvoiceTotals(
       items.map((item: any) => ({
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
         taxable: item.taxable !== false,
       })),
       discountType as DiscountType,
-      discountValue,
+      Number(discountValue),
       taxRate
     )
 
@@ -238,7 +287,6 @@ export async function POST(request: NextRequest) {
     let discountApprovedById: string | null = null
     let discountRequestedById: string | null = null
     let discountDecidedAt: Date | null = null
-    let requestedStatus = status as InvoiceStatus
 
     if (needsApproval) {
       if (!discountReason || String(discountReason).trim().length < 3) {
@@ -258,93 +306,132 @@ export async function POST(request: NextRequest) {
         discountDecidedAt = new Date()
       } else {
         discountApprovalStatus = 'PENDING'
-        // Issuing it now would put an unapproved discount in front of the
-        // patient, so the invoice is held as a draft until someone decides.
-        requestedStatus = 'DRAFT'
       }
     }
-
-    // Generate invoice number
-    const invoiceNo = await generateInvoiceNo(prisma, hospitalId)
 
     // Calculate due date
     const invoiceDate = new Date()
     let calculatedDueDate: Date | null = null
     if (dueDate) {
       calculatedDueDate = new Date(dueDate)
-    } else if (paymentTermDays > 0) {
+      if (Number.isNaN(calculatedDueDate.getTime())) {
+        return NextResponse.json({ error: 'The due date is not a valid date' }, { status: 400 })
+      }
+    } else if (Number(paymentTermDays) > 0) {
       calculatedDueDate = new Date(invoiceDate)
-      calculatedDueDate.setDate(calculatedDueDate.getDate() + paymentTermDays)
+      calculatedDueDate.setDate(calculatedDueDate.getDate() + Number(paymentTermDays))
     }
 
-    // Create invoice with items
-    const invoice = await prisma.invoice.create({
-      data: {
+    const treatmentIds: string[] = items
+      .map((item: any) => item.treatmentId)
+      .filter((treatmentId: unknown): treatmentId is string => !!treatmentId)
+
+    // One transaction from the treatment check to the insert. The treatments
+    // are locked so two desks cannot both bill the same visit (finding 13),
+    // and the invoice number is drawn inside it, so a request refused here
+    // rolls its number back rather than leaving a gap (finding 68).
+    const invoice = await prisma.$transaction(async (tx) => {
+      await lockTreatments(tx, treatmentIds)
+      const treatmentRefusal = await treatmentBillingProblem(tx, {
         hospitalId,
-        invoiceNo,
         patientId,
-        dueDate: calculatedDueDate,
-        subtotal: calculatedTotals.subtotal,
-        discountType: discountType as DiscountType,
-        discountValue,
-        discountAmount: calculatedTotals.discountAmount,
-        taxableAmount: calculatedTotals.taxableAmount,
-        taxRate,
-        taxAmount: calculatedTotals.taxAmount,
-        totalAmount: calculatedTotals.totalAmount,
-        paidAmount: 0,
-        balanceAmount: calculatedTotals.totalAmount,
-        status: requestedStatus,
-        discountReason: discountReason || null,
-        discountApprovalStatus,
-        discountRequestedById,
-        discountApprovedById,
-        discountDecidedAt,
-        notes,
-        termsAndConditions,
-        items: {
-          create: items.map((item: any) => ({
-            treatmentId: item.treatmentId || null,
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            amount: item.quantity * item.unitPrice,
-            taxable: item.taxable !== false,
-          })),
-        },
-      },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            email: true,
+        treatmentIds,
+      })
+      if (treatmentRefusal) throw new BillingRefusal(409, treatmentRefusal)
+
+      const invoiceNo = await generateInvoiceNo(tx, hospitalId)
+
+      return tx.invoice.create({
+        data: {
+          hospitalId,
+          invoiceNo,
+          patientId,
+          dueDate: calculatedDueDate,
+          subtotal: calculatedTotals.subtotal,
+          discountType: discountType as DiscountType,
+          discountValue: Number(discountValue),
+          discountAmount: calculatedTotals.discountAmount,
+          taxableAmount: calculatedTotals.taxableAmount,
+          taxRate,
+          taxAmount: calculatedTotals.taxAmount,
+          totalAmount: calculatedTotals.totalAmount,
+          paidAmount: 0,
+          balanceAmount: calculatedTotals.totalAmount,
+          status: 'DRAFT',
+          discountReason: discountReason || null,
+          discountApprovalStatus,
+          discountRequestedById,
+          discountApprovedById,
+          discountDecidedAt,
+          notes,
+          termsAndConditions,
+          items: {
+            create: items.map((item: any) => ({
+              treatmentId: item.treatmentId || null,
+              description: item.description,
+              quantity: Number(item.quantity),
+              unitPrice: Number(item.unitPrice),
+              amount: Number(item.quantity) * Number(item.unitPrice),
+              taxable: item.taxable !== false,
+            })),
           },
         },
-        items: {
-          include: {
-            treatment: {
-              select: {
-                id: true,
-                treatmentNo: true,
-                procedure: {
-                  select: {
-                    name: true,
-                    code: true,
+        include: {
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              email: true,
+            },
+          },
+          items: {
+            include: {
+              treatment: {
+                select: {
+                  id: true,
+                  treatmentNo: true,
+                  procedure: {
+                    select: {
+                      name: true,
+                      code: true,
+                    },
                   },
                 },
               },
             },
           },
         },
+      })
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.INVOICE_CREATED,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      newValues: {
+        invoiceNo: invoice.invoiceNo,
+        patientId,
+        subtotal: calculatedTotals.subtotal,
+        discountType,
+        discountValue: Number(discountValue),
+        discountAmount: calculatedTotals.discountAmount,
+        discountApprovalStatus,
+        taxRate,
+        totalAmount: calculatedTotals.totalAmount,
+        items: items.length,
       },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json(invoice, { status: 201 })
   } catch (error) {
+    const known = billingRefusalResponse(error) ?? knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating invoice:', error)
     return NextResponse.json({ error: 'Failed to create invoice' }, { status: 500 })
   }

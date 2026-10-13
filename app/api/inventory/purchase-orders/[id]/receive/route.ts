@@ -2,10 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { PurchaseOrderStatus, StockTransactionType } from '@prisma/client'
-import { canReceive, checkReceipt, receiptStatusFor } from '@/lib/purchase-orders'
+import { canReceive, checkReceipt, isExpired, receiptStatusFor } from '@/lib/purchase-orders'
 import type { ReceiptLine } from '@/lib/purchase-orders'
-import { reconcileStockAlerts } from '@/lib/stock-alerts'
+import { reconcileBatchExpiry, reconcileStockAlerts } from '@/lib/stock-alerts'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+
+/**
+ * A refusal found part-way through the lines. Thrown rather than returned so
+ * the transaction rolls back: returning from the callback commits whatever
+ * the earlier lines already wrote, and half a delivery on the books is the
+ * discrepancy this route exists to prevent.
+ */
+class ReceiptRefusal extends Error {
+  readonly status: 400 | 404
+
+  constructor(status: 400 | 404, message: string) {
+    super(message)
+    this.status = status
+  }
+}
 
 /**
  * POST — book a delivery in against an order.
@@ -96,6 +111,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       const lineById = new Map(order.items.map((line) => [line.id, line]))
       const received: { itemId: string; name: string; quantity: number; newStock: number }[] = []
+      const touchedBatches: string[] = []
 
       for (const receipt of receipts) {
         const line = lineById.get(receipt.lineId)!
@@ -115,7 +131,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
 
         if (!item) {
-          return { status: 404 as const, error: `${line.item.name} is no longer in the catalogue` }
+          throw new ReceiptRefusal(404, `${line.item.name} is no longer in the catalogue`)
         }
 
         const previousStock = item.currentStock
@@ -124,6 +140,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         let batchId: string | null = null
 
         if (batchNumber) {
+          // A batch that is already on the books keeps its own expiry date —
+          // the upsert below only adds to it — so that is the date to check.
+          // LIG-OLD, expired since January 2025, took fifty more cartridges
+          // because nobody looked (finding 43).
+          const known = await tx.inventoryBatch.findUnique({
+            where: {
+              hospitalId_itemId_batchNumber: { hospitalId, itemId: line.itemId, batchNumber },
+            },
+            select: { expiryDate: true },
+          })
+
+          if (known && isExpired(known.expiryDate)) {
+            throw new ReceiptRefusal(
+              400,
+              `${line.item.name}: batch ${batchNumber} expired on ${known.expiryDate!.toISOString().slice(0, 10)} and cannot receive more stock`
+            )
+          }
+
           // A second delivery of the same batch adds to it. The unique index
           // makes a batch number one batch per item, and the outstanding-
           // quantity check above is what stops a receipt being entered twice.
@@ -152,6 +186,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             select: { id: true },
           })
           batchId = batch.id
+          touchedBatches.push(batch.id)
         }
 
         await tx.stockTransaction.create({
@@ -199,6 +234,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           newStock,
         })
       }
+
+      // A delivery close to its date is flagged now, not by tomorrow's sweep
+      // (finding 43).
+      await reconcileBatchExpiry(tx, hospitalId, touchedBatches)
 
       // Recomputed from the lines as they now stand, rather than inferred from
       // this receipt alone: a delivery completing the last outstanding line
@@ -248,6 +287,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : 'Goods received',
     })
   } catch (err: any) {
+    if (err instanceof ReceiptRefusal) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
     console.error('Error receiving goods:', err)
     return NextResponse.json({ error: 'Failed to receive goods' }, { status: 500 })
   }

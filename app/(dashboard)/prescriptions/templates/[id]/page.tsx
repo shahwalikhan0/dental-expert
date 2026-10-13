@@ -50,6 +50,9 @@ export default function EditPrescriptionTemplatePage({
                 timing: item.timing ?? '',
                 quantity: item.quantity == null ? '' : String(item.quantity),
                 instructions: item.instructions ?? '',
+                // The drug was retired from the catalogue after this line was
+                // saved. The form marks the row; saving it unchanged is refused.
+                inactive: item.medication?.isActive === false,
               }))
             : [blankItem()],
         })

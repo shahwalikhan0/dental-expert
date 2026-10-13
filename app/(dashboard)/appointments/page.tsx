@@ -26,6 +26,8 @@ import {
   useSort,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { useToast } from '@/hooks/use-toast'
+import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
 import {
   Calendar,
   Plus,
@@ -100,6 +102,8 @@ interface Appointment {
   appointmentNo: string
   scheduledDate: string
   scheduledTime: string
+  /** The instant it starts — what "has it started yet" is measured against. */
+  startsAt: string
   duration: number
   tokenNumber: string | null
   appointmentType: string
@@ -137,6 +141,7 @@ export default function AppointmentsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Appointments')
   const router = useRouter()
+  const { toast } = useToast()
   const searchParams = useSearchParams()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
@@ -353,43 +358,40 @@ export default function AppointmentsPage() {
     }
   }, [viewMode, bookDay])
 
-  const handleCheckIn = async (id: string) => {
+  /**
+   * Check in, check out or change status, with the API's reason as a toast
+   * when it refuses. These used to log the failure to the console, so a
+   * refused action looked like a menu item that did nothing.
+   */
+  const act = async (request: Promise<Response>, failure: string) => {
     try {
-      const response = await fetch(`/api/appointments/${id}/check-in`, {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to check in')
+      const response = await request
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        toast({ variant: 'destructive', title: failure, description: data.error })
+        return
+      }
       fetchAppointments()
-    } catch (error) {
-      console.error('Error checking in:', error)
+    } catch {
+      toast({ variant: 'destructive', title: failure })
     }
   }
 
-  const handleCheckOut = async (id: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}/check-out`, {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to check out')
-      fetchAppointments()
-    } catch (error) {
-      console.error('Error checking out:', error)
-    }
-  }
+  const handleCheckIn = (id: string) =>
+    act(fetch(`/api/appointments/${id}/check-in`, { method: 'POST' }), 'Could not check in')
 
-  const handleStatusChange = async (id: string, status: string) => {
-    try {
-      const response = await fetch(`/api/appointments/${id}`, {
+  const handleCheckOut = (id: string) =>
+    act(fetch(`/api/appointments/${id}/check-out`, { method: 'POST' }), 'Could not check out')
+
+  const handleStatusChange = (id: string, status: string) =>
+    act(
+      fetch(`/api/appointments/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
-      })
-      if (!response.ok) throw new Error('Failed to update status')
-      fetchAppointments()
-    } catch (error) {
-      console.error('Error updating status:', error)
-    }
-  }
+      }),
+      'Could not update the appointment'
+    )
 
   const getStatusBadge = (status: string) => {
     const config = appointmentStatusConfig[status] || {
@@ -841,27 +843,35 @@ export default function AppointmentsPage() {
                                 Confirm
                               </DropdownMenuItem>
                             )}
-                            {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(
-                              appointment.status
-                            ) && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(appointment.id, 'NO_SHOW')}
-                                  className="text-amber-600 dark:text-amber-400"
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Mark No Show
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
-                                  className="text-red-600 dark:text-red-400"
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Cancel
-                                </DropdownMenuItem>
-                              </>
-                            )}
+                            {/* Only what the appointment can still become — see
+                                lib/appointment-status.ts. A no-show waits until
+                                the appointment has started. */}
+                            {appointment.status !== 'CANCELLED' &&
+                              canMoveTo(appointment.status, 'CANCELLED') && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  {appointment.status !== 'NO_SHOW' &&
+                                    canMoveTo(appointment.status, 'NO_SHOW') &&
+                                    !noShowTooEarly(appointment.startsAt) && (
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          handleStatusChange(appointment.id, 'NO_SHOW')
+                                        }
+                                        className="text-amber-600 dark:text-amber-400"
+                                      >
+                                        <XCircle className="h-4 w-4 mr-2" />
+                                        Mark No Show
+                                      </DropdownMenuItem>
+                                    )}
+                                  <DropdownMenuItem
+                                    onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
+                                    className="text-red-600 dark:text-red-400"
+                                  >
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                    Cancel
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </GridActionsCell>

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { Prisma, TreatmentStatus } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { readTeeth } from '@/lib/teeth'
+import { releasePlanItemFor } from '@/lib/treatment-plan-status'
+import { BILLED_ON_LIVE_INVOICE } from '@/lib/invoice-settlement'
+import { afterTreatmentCompleted } from '@/lib/treatment-completion'
 import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
 import { can, holderCan } from '@/lib/rbac'
 import {
@@ -77,6 +83,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 totalAmount: true,
               },
             },
+          },
+        },
+        // The plan step this treatment carries out, when it was started from
+        // one — so the page can link back to the plan.
+        planItem: {
+          select: {
+            id: true,
+            status: true,
+            treatmentPlan: { select: { id: true, planNumber: true, title: true } },
           },
         },
         // FR-007: the note is not complete without who signed it and what has
@@ -179,7 +194,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const updateData: any = {}
 
     // Only update fields that are provided
-    if (body.toothNumbers !== undefined) updateData.toothNumbers = body.toothNumbers
+    if (body.toothNumbers !== undefined) {
+      // Checked the same way as on create (bug report 12 Oct, finding 54).
+      const teeth = readTeeth(body.toothNumbers)
+      if (!teeth.ok) return NextResponse.json({ error: teeth.error }, { status: 400 })
+      updateData.toothNumbers = teeth.column
+    }
     if (body.chiefComplaint !== undefined) updateData.chiefComplaint = body.chiefComplaint
     if (body.diagnosis !== undefined) updateData.diagnosis = body.diagnosis
     if (body.findings !== undefined) updateData.findings = body.findings
@@ -189,10 +209,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.followUpRequired !== undefined) updateData.followUpRequired = body.followUpRequired
     if (body.followUpDate !== undefined)
       updateData.followUpDate = body.followUpDate ? new Date(body.followUpDate) : null
-    if (body.cost !== undefined) updateData.cost = body.cost
+    if (body.cost !== undefined) {
+      // Zero is a price; a negative one is not (finding 33).
+      const cost = Number(body.cost)
+      if (body.cost === null || body.cost === '' || !Number.isFinite(cost) || cost < 0) {
+        return NextResponse.json(
+          { error: 'The cost must be a number of zero or more' },
+          { status: 400 }
+        )
+      }
+      updateData.cost = cost
+    }
 
     // Handle status changes
     if (body.status !== undefined) {
+      if (!isEnumMember(TreatmentStatus, body.status)) {
+        return enumRefusal('Status', body.status, TreatmentStatus)
+      }
       updateData.status = body.status
 
       // Set start time when treatment begins
@@ -237,29 +270,56 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       signedBy: { select: { id: true, name: true } },
     }
 
+    // A status change moves the plan step this treatment carries out, if it
+    // has one: completed completes it, cancelled hands it back to be started
+    // again (bug report 12 Oct, finding 11). Only on an actual change, so a
+    // save that resends the current status does nothing to the plan.
+    const statusChanged = body.status !== undefined && body.status !== existingTreatment.status
+
     // The correction and the update go together: a note changed without the
     // record of what it used to say is the failure this whole requirement is
-    // about, so neither lands without the other.
-    const [treatment] = amendsClinicalContent
-      ? await prisma.$transaction([
-          prisma.treatment.update({ where: { id, hospitalId }, data: updateData, include }),
-          prisma.treatmentAmendment.create({
-            data: {
-              hospitalId,
-              treatmentId: id,
-              kind: 'CORRECTION',
-              body: String(body.amendmentReason).trim(),
-              // Prisma's Json input type does not accept a plain index
-              // signature; the shape is `{ field: { from, to } }`.
-              changes: clinicalChanges as unknown as Prisma.InputJsonValue,
-              authorId: user!.id,
-            },
-          }),
-        ])
-      : [await prisma.treatment.update({ where: { id, hospitalId }, data: updateData, include })]
+    // about, so neither lands without the other. The plan step goes with them.
+    const treatment = await prisma.$transaction(async (tx) => {
+      const updated = await tx.treatment.update({
+        where: { id, hospitalId },
+        data: updateData,
+        include,
+      })
+
+      if (amendsClinicalContent) {
+        await tx.treatmentAmendment.create({
+          data: {
+            hospitalId,
+            treatmentId: id,
+            kind: 'CORRECTION',
+            body: String(body.amendmentReason).trim(),
+            // Prisma's Json input type does not accept a plain index
+            // signature; the shape is `{ field: { from, to } }`.
+            changes: clinicalChanges as unknown as Prisma.InputJsonValue,
+            authorId: user!.id,
+          },
+        })
+      }
+
+      if (statusChanged && body.status === 'COMPLETED') {
+        // The plan step, and the recalls this procedure is the visit for —
+        // the same as the Complete button's own route.
+        await afterTreatmentCompleted(
+          tx,
+          { id, hospitalId, patientId: existingTreatment.patientId, procedure: updated.procedure },
+          updateData.endTime ?? existingTreatment.endTime ?? new Date()
+        )
+      } else if (statusChanged && body.status === 'CANCELLED') {
+        await releasePlanItemFor(tx, id)
+      }
+
+      return updated
+    })
 
     return NextResponse.json(treatment)
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating treatment:', error)
     return NextResponse.json({ error: 'Failed to update treatment' }, { status: 500 })
   }
@@ -282,7 +342,9 @@ export async function DELETE(
     const treatment = await prisma.treatment.findUnique({
       where: { id, hospitalId },
       include: {
-        invoiceItems: true,
+        // Only lines on an invoice that still stands. A cancelled invoice has
+        // given its treatments back, so it does not hold this one in place.
+        invoiceItems: { where: BILLED_ON_LIVE_INVOICE, select: { id: true } },
       },
     })
 
@@ -306,22 +368,47 @@ export async function DELETE(
     }
 
     // Check if treatment has invoices
-    if (treatment.invoiceItems.length > 0) {
+    if ((treatment.invoiceItems ?? []).length > 0) {
       return NextResponse.json(
         { error: 'Cannot delete treatment with linked invoices' },
         { status: 400 }
       )
     }
 
-    // Delete treatment
-    await prisma.treatment.delete({
-      where: { id, hospitalId },
+    // The plan step it was carrying out goes back to pending: the work it
+    // recorded no longer stands. The schema would clear the link on its own,
+    // but would leave the step saying it was in progress.
+    await prisma.$transaction(async (tx) => {
+      await releasePlanItemFor(tx, id)
+      await tx.treatment.delete({
+        where: { id, hospitalId },
+      })
+    })
+
+    // A clinical record removed is recorded with what it was (finding 24).
+    void recordAudit({
+      hospitalId,
+      userId: session?.user?.id ?? null,
+      action: AUDIT_ACTIONS.TREATMENT_DELETED,
+      entityType: 'Treatment',
+      entityId: id,
+      oldValues: {
+        treatmentNo: treatment.treatmentNo,
+        patientId: treatment.patientId,
+        procedureId: treatment.procedureId,
+        doctorId: treatment.doctorId,
+        status: treatment.status,
+        cost: Number(treatment.cost),
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json({
       message: 'Treatment deleted successfully',
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error deleting treatment:', error)
     return NextResponse.json({ error: 'Failed to delete treatment' }, { status: 500 })
   }

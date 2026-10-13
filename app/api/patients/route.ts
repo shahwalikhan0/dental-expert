@@ -5,11 +5,15 @@ import { checkPatientLimit, requirePermission } from '@/lib/api-helpers'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import { everyTermMatches, like } from '@/lib/search-terms'
 import { ageInYears } from '@/lib/age'
-import { startDefaultRecare } from '@/lib/recare'
+import { startRegistrationRecare } from '@/lib/registration-recall'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 import { mayBeScoped, patientScopeFilter } from '@/lib/patient-scope'
 import { readSecuritySettings } from '@/lib/security-settings'
 import { isBlankMedicalHistory, medicalHistoryInput } from '@/lib/medical-history'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { patientContactProblem } from '@/lib/patient-validation'
+import { withoutAiSummary } from '@/lib/patient-record'
+import { BLOOD_GROUP_LABELS, GENDER_LABELS } from '@/lib/labels'
 
 /**
  * The columns the patient list can be sorted by.
@@ -44,10 +48,34 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
-    const where: any = {
-      hospitalId,
-      isActive: true,
+    /**
+     * Which part of the register. Active by default, as it always was; the
+     * other two are how a deactivated patient is found again so that they can
+     * be reactivated (bug report 12 Oct, finding 22) — before, a deactivated
+     * record could be reached only by somebody who already had its URL.
+     *
+     * A record merged away as a duplicate is inactive too, but it is not a
+     * patient anybody should bring back, so it is left out of both.
+     */
+    const status = searchParams.get('status') || 'active'
+    const where: any = { hospitalId }
+    if (status === 'inactive') {
+      where.isActive = false
+      where.mergedIntoId = null
+    } else if (status === 'all') {
+      where.mergedIntoId = null
+    } else {
+      where.isActive = true
     }
+
+    // The list screen has offered these two filters all along and the route
+    // ignored them, so choosing "Female" changed nothing. Unknown values are
+    // ignored rather than refused: they come from a dropdown, not a person.
+    const gender = searchParams.get('gender')
+    if (gender && Object.prototype.hasOwnProperty.call(GENDER_LABELS, gender)) where.gender = gender
+    const bloodGroup = searchParams.get('bloodGroup')
+    if (bloodGroup && Object.prototype.hasOwnProperty.call(BLOOD_GROUP_LABELS, bloodGroup))
+      where.bloodGroup = bloodGroup
 
     if (search) {
       /**
@@ -116,6 +144,7 @@ export async function GET(request: NextRequest) {
           dateOfBirth: true,
           bloodGroup: true,
           city: true,
+          isActive: true,
           // Carried on the list, not only on the full record, because every
           // screen that picks a patient out of a search box is a screen where
           // somebody is about to prescribe, treat or anaesthetise them. The
@@ -149,6 +178,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching patients:', error)
     return NextResponse.json({ error: 'Failed to fetch patients' }, { status: 500 })
   }
@@ -206,6 +237,20 @@ export async function POST(request: NextRequest) {
         { error: 'First name, last name, and phone are required' },
         { status: 400 }
       )
+    }
+
+    // A date of birth in 2030, `xyz` as a phone number and `nope` as an email
+    // address were all registered (bug report 12 Oct, finding 30). See
+    // lib/patient-validation.ts for what each has to look like.
+    const contactProblem = patientContactProblem({
+      phone,
+      alternatePhone,
+      emergencyContactPhone,
+      email,
+      dateOfBirth,
+    })
+    if (contactProblem) {
+      return NextResponse.json({ error: contactProblem }, { status: 400 })
     }
 
     /**
@@ -312,11 +357,11 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // A newly registered patient joins the recall list straight away, on the
-      // clinic's default interval. A practice that has set no default gets
-      // nothing — see lib/recare.ts; that is a policy decision, not an
-      // oversight.
-      await startDefaultRecare(tx, hospitalId, created.id)
+      // A newly registered patient joins the recall list straight away: a
+      // child on the clinic's child check-up, anybody else on its default
+      // interval. A practice that has set no default gets nothing — see
+      // lib/recare.ts; that is a policy decision, not an oversight.
+      await startRegistrationRecare(tx, hospitalId, created.id, created.dateOfBirth)
 
       return created
     })
@@ -324,20 +369,23 @@ export async function POST(request: NextRequest) {
     // Registered. If the number is shared with somebody already on the books,
     // the desk is told who — after the fact, because it is a thing worth
     // knowing and not a reason to have refused.
+    const body201 = withoutAiSummary(patient)
     return NextResponse.json(
       sharesPhoneWith
         ? {
-            ...patient,
+            ...body201,
             sharedPhoneWith: {
               id: sharesPhoneWith.id,
               patientId: sharesPhoneWith.patientId,
               name: `${sharesPhoneWith.firstName} ${sharesPhoneWith.lastName}`,
             },
           }
-        : patient,
+        : body201,
       { status: 201 }
     )
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating patient:', error)
     return NextResponse.json({ error: 'Failed to create patient' }, { status: 500 })
   }

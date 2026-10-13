@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
 import { StockTransactionType, VendorStatus } from '@prisma/client'
 
 /**
@@ -64,12 +65,11 @@ export async function GET(request: NextRequest) {
       default:
         return NextResponse.json({ error: 'Invalid report type' }, { status: 400 })
     }
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error generating inventory report:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate inventory report', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to generate inventory report' }, { status: 500 })
   }
 }
 

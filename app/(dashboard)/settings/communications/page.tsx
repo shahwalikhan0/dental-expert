@@ -447,7 +447,7 @@ export default function CommunicationSettingsPage() {
                     <Label htmlFor="test-phone">Test Phone Number</Label>
                     <Input
                       id="test-phone"
-                      placeholder="9876543210"
+                      placeholder="0300 1234567"
                       value={testPhone}
                       onChange={(e) => setTestPhone(e.target.value)}
                     />

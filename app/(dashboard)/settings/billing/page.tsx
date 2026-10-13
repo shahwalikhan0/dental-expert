@@ -119,7 +119,10 @@ export default function BillingSettingsPage() {
           description: 'Billing settings saved successfully',
         })
       } else {
-        throw new Error('Failed to save settings')
+        // Whichever half failed says why — a tax rate out of range, say.
+        const failed = response.ok ? taxResponse : response
+        const result = await failed.json().catch(() => null)
+        throw new Error(result?.error || 'Failed to save settings')
       }
     } catch (error: any) {
       toast({

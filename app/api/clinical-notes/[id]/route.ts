@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
 import { holderCan } from '@/lib/rbac'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { readTeeth } from '@/lib/teeth'
 import {
   diffClinicalFields,
   isSigned,
@@ -111,7 +113,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (data.kind !== undefined) updateData.kind = data.kind
     if (data.summary !== undefined) updateData.summary = data.summary
     if (data.body !== undefined) updateData.body = data.body
-    if (data.toothNumbers !== undefined) updateData.toothNumbers = data.toothNumbers || null
+    if (data.toothNumbers !== undefined) {
+      // FDI numbers, permanent or primary, as on a treatment (bug report
+      // 12 Oct, finding 54).
+      const teeth = readTeeth(data.toothNumbers)
+      if (!teeth.ok) return NextResponse.json({ error: teeth.error }, { status: 400 })
+      updateData.toothNumbers = teeth.column
+    }
     if (amends) updateData.amendedAt = new Date()
 
     // The correction and the record of it are one write, or neither happens.
@@ -138,9 +146,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(note)
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: err.issues[0]?.message || 'Invalid note' }, { status: 400 })
-    }
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Update clinical note error:', err)
     return NextResponse.json({ error: 'Failed to save the note' }, { status: 500 })
   }

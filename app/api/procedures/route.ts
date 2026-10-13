@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { ProcedureCategory } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 
 // Generate unique procedure code
 async function generateProcedureCode(category: string, hospitalId: string): Promise<string> {
@@ -65,6 +67,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (category) {
+      if (!isEnumMember(ProcedureCategory, category)) {
+        return enumRefusal('Category', category, ProcedureCategory)
+      }
       where.category = category
     }
 
@@ -96,6 +101,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching procedures:', error)
     return NextResponse.json({ error: 'Failed to fetch procedures' }, { status: 500 })
   }
@@ -103,7 +110,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new procedure
 export async function POST(request: NextRequest) {
-  const { error, hospitalId, session } = await requirePermission('settings:write')
+  const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -125,10 +132,22 @@ export async function POST(request: NextRequest) {
       defaultFollowUpDays,
     } = body
 
-    // Validate required fields
-    if (!name || !category || !basePrice) {
+    // Validate required fields. The price is checked for being there, not for
+    // being truthy: `!basePrice` refused Rs 0, so a free consultation could
+    // not be in the catalogue (bug report 12 Oct, finding 50).
+    if (!name || !category || basePrice === undefined || basePrice === null || basePrice === '') {
       return NextResponse.json(
         { error: 'Name, category, and base price are required' },
+        { status: 400 }
+      )
+    }
+    if (!isEnumMember(ProcedureCategory, category)) {
+      return enumRefusal('Category', category, ProcedureCategory)
+    }
+    const price = Number(basePrice)
+    if (!Number.isFinite(price) || price < 0) {
+      return NextResponse.json(
+        { error: 'The base price must be a number of zero or more' },
         { status: 400 }
       )
     }
@@ -162,7 +181,7 @@ export async function POST(request: NextRequest) {
         category,
         description,
         defaultDuration,
-        basePrice,
+        basePrice: price,
         materials,
         preInstructions,
         postInstructions,
@@ -184,6 +203,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(procedure, { status: 201 })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating procedure:', error)
     return NextResponse.json({ error: 'Failed to create procedure' }, { status: 500 })
   }

@@ -236,3 +236,116 @@ export async function completeRecare(
     },
   })
 }
+
+/**
+ * Which recalls a completed treatment carries out.
+ *
+ * There is no column linking a recare type to a procedure: a type is a name
+ * and an interval the clinic sets, and a procedure is a catalogue entry it
+ * names itself. So completing a scale and polish left the patient's "Scale and
+ * polish" recall due on the old date, with no last-done date, until somebody
+ * remembered to press Mark as done as well (bug report 12 Oct, finding 46).
+ *
+ * The link is made here from the two things both sides do carry — what they
+ * are called, and the procedure's category — and it is deliberately narrow.
+ * Each family needs the recare type's name *and* the procedure's name to say
+ * the same kind of visit, and the procedure to be in a category that kind of
+ * visit belongs to. A filling, a crown or an extraction matches nothing, so the
+ * worry the complete route used to give for not guessing — a hygiene recall
+ * pushed six months out because a filling was done — cannot happen. A clinic
+ * that names its types or procedures in some other way loses only the
+ * automation, and Mark as done is still there.
+ *
+ * A schema link (a procedure list on the recare type) would be better and
+ * would replace this; it needs a migration, which this change does not make.
+ */
+export const RECARE_PROCEDURE_FAMILIES = [
+  {
+    // "Scale and polish", "Hygiene visit" — done by a scaling, a polish or a
+    // cleaning, preventive or periodontal.
+    family: 'hygiene',
+    type: /scal(e|ing)|polish|hygien|clean|prophy/i,
+    procedure: /scal(e|ing)|polish|clean|prophy|hygien/i,
+    categories: ['PREVENTIVE', 'PERIODONTIC'],
+  },
+  {
+    // "Periodontal maintenance" — done by periodontal scaling, root planing or
+    // supportive periodontal therapy. A routine scale and polish is not
+    // periodontal care and does not move it.
+    family: 'periodontal',
+    type: /perio/i,
+    procedure: /perio|root planing|debridement/i,
+    categories: ['PERIODONTIC', 'PREVENTIVE'],
+  },
+  {
+    // "Child check-up", "Recall examination" — done by an examination or a
+    // check-up, not by a consultation about something specific.
+    family: 'examination',
+    type: /check[\s-]?up|exam/i,
+    procedure: /check[\s-]?up|exam/i,
+    categories: ['DIAGNOSTIC', 'PREVENTIVE'],
+  },
+] as const
+
+export interface RecareProcedureLike {
+  name: string
+  category: string
+}
+
+/** Does completing this procedure count as a visit of this recare type? */
+export function recareTypeMatchesProcedure(
+  type: { name: string },
+  procedure: RecareProcedureLike
+): boolean {
+  return RECARE_PROCEDURE_FAMILIES.some(
+    (family) =>
+      family.type.test(type.name) &&
+      family.procedure.test(procedure.name) &&
+      (family.categories as readonly string[]).includes(procedure.category)
+  )
+}
+
+export interface RecallMoved {
+  id: string
+  name: string
+  dueDate: Date
+}
+
+/**
+ * Move on every recall of this patient's that the procedure carries out, the
+ * same way Mark as done does — `completeRecare`, measured from the visit.
+ *
+ * Only the patient's own recalls are touched; a type they are not on is not
+ * started here. Returns what moved, so the screen can say so.
+ */
+export async function completeRecaresForProcedure(
+  db: RecareClient,
+  args: {
+    hospitalId: string
+    patientId: string
+    procedure: RecareProcedureLike
+    completedAt?: Date
+    /** Already moved by the caller, by id. */
+    except?: string[]
+  }
+): Promise<RecallMoved[]> {
+  const completedAt = args.completedAt ?? new Date()
+  const recares =
+    (await db.recare.findMany({
+      where: { hospitalId: args.hospitalId, patientId: args.patientId },
+      select: { id: true, recareType: { select: { name: true, intervalMonths: true } } },
+    })) ?? []
+
+  const moved: RecallMoved[] = []
+  for (const recare of recares) {
+    if (args.except?.includes(recare.id)) continue
+    if (!recareTypeMatchesProcedure(recare.recareType, args.procedure)) continue
+    await completeRecare(db, recare.id, completedAt)
+    moved.push({
+      id: recare.id,
+      name: recare.recareType.name,
+      dueDate: nextDueDate(completedAt, recare.recareType.intervalMonths),
+    })
+  }
+  return moved
+}

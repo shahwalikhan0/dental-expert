@@ -88,7 +88,7 @@ describe('KeyboardShortcutHelp', () => {
     })
     expect(screen.getByText('General')).toBeInTheDocument()
     expect(screen.getByText('Close dialog / modal')).toBeInTheDocument()
-    expect(screen.getByText('Open AI command bar')).toBeInTheDocument()
+    expect(screen.getByText('Open search')).toBeInTheDocument()
   })
 
   it('renders kbd elements for keys', () => {

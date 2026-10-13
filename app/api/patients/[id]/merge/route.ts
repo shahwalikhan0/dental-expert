@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
-import { fillableFrom, mergeMedicalHistory, mergeRefusal } from '@/lib/patient-merge'
+import { knownErrorResponse } from '@/lib/api-errors'
+import {
+  fillableFrom,
+  mergeMedicalHistory,
+  mergeRefusal,
+  resolveRecallCollisions,
+} from '@/lib/patient-merge'
 
 /**
  * POST /api/patients/[id]/merge — fold a duplicate record into this one.
@@ -72,6 +78,58 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         data: { patientId: keepId },
       }
 
+      /**
+       * Recalls first, because they are the one thing here with a unique index
+       * on the patient: one standing recall of each kind. Both records almost
+       * always have the default recall from registration, and moving the
+       * retired one across broke that index and failed every merge (bug report
+       * 12 Oct, finding 23). Where both have one, the surviving row is kept and
+       * takes whatever the retired one knew that it did not — see
+       * `resolveRecallCollisions`.
+       */
+      const recallFields = {
+        id: true,
+        recareTypeId: true,
+        dueDate: true,
+        lastDoneAt: true,
+        snoozedUntil: true,
+        snoozeReason: true,
+        status: true,
+        notes: true,
+        lastContactedAt: true,
+        contactAttempts: true,
+      } as const
+      const [keptRecalls, retiredRecalls] = await Promise.all([
+        tx.recare.findMany({ where: { patientId: keepId, hospitalId }, select: recallFields }),
+        tx.recare.findMany({ where: { patientId: mergeId, hospitalId }, select: recallFields }),
+      ])
+      const collisions = resolveRecallCollisions(keptRecalls, retiredRecalls)
+      for (const { id, data } of collisions.update) {
+        await tx.recare.update({ where: { id }, data })
+      }
+      if (collisions.drop.length > 0) {
+        await tx.recare.deleteMany({ where: { id: { in: collisions.drop }, hospitalId } })
+      }
+
+      /**
+       * Who pays for whom. Family links are on the patient row itself, so the
+       * `reassign` above does not reach them.
+       *
+       * Anybody the retired record paid for is now paid for by the surviving
+       * one — the same person settling the same bills. The surviving record
+       * itself is the exception: if the retired record was its guarantor, that
+       * link would become the record paying for itself, which the database
+       * refuses (`Patient_guarantor_not_self`) and the ledger would count
+       * twice. It pays for itself again instead.
+       */
+      if (keep.guarantorId === mergeId) {
+        await tx.patient.update({ where: { id: keepId }, data: { guarantorId: null } })
+      }
+      const dependants = await tx.patient.updateMany({
+        where: { hospitalId, guarantorId: mergeId, id: { not: keepId } },
+        data: { guarantorId: keepId },
+      })
+
       // Everything the retired record owns, moved. Counted as it goes so the
       // desk can be told what happened rather than just "done".
       const [
@@ -85,6 +143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         dentalChart,
         perioExams,
         recares,
+        clinicalNotes,
         messages,
         formSubmissions,
         waitlist,
@@ -98,7 +157,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         tx.labOrder.updateMany(reassign),
         tx.dentalChartEntry.updateMany(reassign),
         tx.perioExam.updateMany(reassign),
+        // Only the recalls the surviving record did not already have of the
+        // same kind; the colliding ones were settled above.
         tx.recare.updateMany(reassign),
+        // Free-standing clinical notes — telephone calls, declined treatment.
+        // They were left behind on the retired record, which nobody opens
+        // again once it says "merged".
+        tx.clinicalNote.updateMany(reassign),
         tx.messageLog.updateMany(reassign),
         tx.formSubmission.updateMany(reassign),
         tx.waitlist.updateMany(reassign),
@@ -152,6 +217,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         data: { isActive: false, mergedIntoId: keepId, mergedAt: new Date() },
       })
 
+      // A portal sign-in is one per patient (unique on `patientId`), so the
+      // retired record's is not moved: it signs in with a patient number that
+      // has just been retired, and could collide with one the surviving record
+      // already has. It is switched off where it is; the desk issues access on
+      // the surviving record if the patient asks for it.
+      await tx.patientPortalAccount.updateMany({
+        where: { patientId: mergeId, hospitalId },
+        data: { isActive: false },
+      })
+
       return {
         filled: Object.keys(patch),
         counts: {
@@ -165,6 +240,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           dentalChart: dentalChart.count,
           perioExams: perioExams.count,
           recares: recares.count,
+          recallsCombined: collisions.drop.length,
+          clinicalNotes: clinicalNotes.count,
+          dependants: dependants.count,
           messages: messages.count,
           formSubmissions: formSubmissions.count,
           waitlist: waitlist.count,
@@ -189,6 +267,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ success: true, ...moved })
   } catch (err: unknown) {
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Patient merge error:', err)
     return NextResponse.json({ error: 'Those records could not be merged' }, { status: 500 })
   }

@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { reconcileStockAlerts } from '@/lib/stock-alerts'
-import { Prisma, StockAlertType, StockTransactionType } from '@prisma/client'
+import { Prisma, StockTransactionType } from '@prisma/client'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import {
+  ITEM_NUMBER_FIELDS,
+  negativeField,
+  normaliseSku,
+  OPEN_ORDER_STATUSES,
+} from '@/lib/inventory-items'
 
 function stockStatus(currentStock: number, minimumStock: number, reorderLevel: number) {
   if (currentStock <= 0) return 'out_of_stock'
@@ -105,12 +113,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         })),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching inventory item:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch inventory item', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch inventory item' }, { status: 500 })
   }
 }
 
@@ -134,14 +141,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Inventory item not found' }, { status: 404 })
     }
 
-    if (body.sku && body.sku !== existing.sku) {
-      const duplicate = await prisma.inventoryItem.findFirst({
-        where: { sku: body.sku, hospitalId, id: { not: id }, deletedAt: null },
-        select: { id: true },
-      })
+    // Negative prices and levels (finding 57). Opening stock is not edited
+    // here — stock moves through transactions — so it is not checked.
+    const invalid = negativeField(
+      body,
+      ITEM_NUMBER_FIELDS.filter((f) => f.name !== 'currentStock')
+    )
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
-      if (duplicate) {
-        return NextResponse.json({ error: 'Item code already exists' }, { status: 409 })
+    // One spelling, compared case-insensitively, deleted items included —
+    // the unique index covers them too (finding 57).
+    let sku: string | undefined
+    if (body.sku != null) {
+      const normalised = normaliseSku(body.sku)
+      if (!normalised) {
+        return NextResponse.json({ error: 'The SKU cannot be blank' }, { status: 400 })
+      }
+      sku = normalised
+
+      if (normalised !== existing.sku) {
+        const duplicate = await prisma.inventoryItem.findFirst({
+          where: {
+            sku: { equals: normalised, mode: 'insensitive' },
+            hospitalId,
+            id: { not: id },
+          },
+          select: { id: true },
+        })
+
+        if (duplicate) {
+          return NextResponse.json({ error: 'Item code already exists' }, { status: 409 })
+        }
       }
     }
 
@@ -156,7 +186,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       notes: body.notes ?? null,
     }
 
-    if (body.sku != null) data.sku = body.sku
+    if (sku) data.sku = sku
     if (body.name != null) data.name = body.name
     if (body.itemType != null) data.itemType = body.itemType
     if (body.unit != null) data.unit = body.unit
@@ -196,21 +226,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     })
 
     return NextResponse.json({ success: true, message: 'Inventory item updated successfully' })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating inventory item:', error)
-    return NextResponse.json(
-      { error: 'Failed to update inventory item', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update inventory item' }, { status: 500 })
   }
 }
 
-// DELETE - Soft delete when the item has transaction history, hard delete otherwise
+// DELETE - Soft delete when the item has any history, hard delete otherwise
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId } = await requirePermission('inventory:write')
+  const { error, hospitalId, session } = await requirePermission('inventory:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -220,34 +249,72 @@ export async function DELETE(
 
     const existing = await prisma.inventoryItem.findFirst({
       where: { id, hospitalId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, sku: true, name: true, currentStock: true },
     })
 
     if (!existing) {
       return NextResponse.json({ error: 'Inventory item not found' }, { status: 404 })
     }
 
-    const transactionCount = await prisma.stockTransaction.count({ where: { itemId: id } })
+    // Not while it is on a live order (finding 44). GIC restorative was
+    // deleted while on draft order PO20260002, and the draft was then sent
+    // for a deleted item. Cancel the order, or take the line off it, first.
+    const openOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        hospitalId,
+        deletedAt: null,
+        status: { in: OPEN_ORDER_STATUSES },
+        items: { some: { itemId: id } },
+      },
+      select: { orderNumber: true },
+      take: 3,
+    })
 
-    if (transactionCount > 0) {
+    if (openOrders && openOrders.length > 0) {
+      return NextResponse.json(
+        {
+          error: `${existing.name} is on open purchase order ${openOrders
+            .map((o) => o.orderNumber)
+            .join(', ')}. Cancel the order or remove the item from it first.`,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Anything that refers to the item keeps it: movements, batches and order
+    // lines are its history, and the batch and order-line foreign keys would
+    // refuse a hard delete anyway.
+    const [transactionCount, batchCount, orderLineCount] = await Promise.all([
+      prisma.stockTransaction.count({ where: { itemId: id } }),
+      prisma.inventoryBatch.count({ where: { itemId: id } }),
+      prisma.purchaseOrder.count({ where: { hospitalId, items: { some: { itemId: id } } } }),
+    ])
+
+    if (transactionCount > 0 || batchCount > 0 || orderLineCount > 0) {
       await prisma.inventoryItem.update({
         where: { id },
         data: { deletedAt: new Date(), isActive: false },
       })
     } else {
-      // Alerts cascade; batches would block the delete, so clear them first.
-      await prisma.$transaction([
-        prisma.inventoryBatch.deleteMany({ where: { itemId: id } }),
-        prisma.inventoryItem.delete({ where: { id } }),
-      ])
+      await prisma.inventoryItem.delete({ where: { id } })
     }
 
+    // Finding 24: items were deleted with nothing in the audit log.
+    await recordAudit({
+      hospitalId,
+      userId: session?.user?.id,
+      action: AUDIT_ACTIONS.INVENTORY_ITEM_DELETED,
+      entityType: 'InventoryItem',
+      entityId: id,
+      oldValues: { sku: existing.sku, name: existing.name, currentStock: existing.currentStock },
+      ...requestContext(request.headers),
+    })
+
     return NextResponse.json({ success: true, message: 'Inventory item deleted successfully' })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error deleting inventory item:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete inventory item', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to delete inventory item' }, { status: 500 })
   }
 }

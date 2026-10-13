@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { WORK_TYPES } from '@/lib/lab-orders'
+import { checkLabOrderValues, WORK_TYPES } from '@/lib/lab-orders'
+import { LabTreatmentPicker } from '@/components/lab/treatment-picker'
 import { ArrowLeft, Search, User, FlaskConical, Save, Loader2 } from 'lucide-react'
 import { isoDay } from '@/lib/dates'
 import { usePatientSearch } from '@/hooks/use-patient-search'
@@ -64,6 +65,7 @@ export default function NewLabOrderPage() {
     expectedDate: '',
     estimatedCost: '',
     notes: '',
+    treatmentId: '',
   })
 
   useEffect(() => {
@@ -96,7 +98,8 @@ export default function NewLabOrderPage() {
 
   const handlePatientSelect = (patient: Patient) => {
     setSelectedPatient(patient)
-    setForm((prev) => ({ ...prev, patientId: patient.id }))
+    // A treatment belongs to one patient; choosing another clears it.
+    setForm((prev) => ({ ...prev, patientId: patient.id, treatmentId: '' }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -123,6 +126,17 @@ export default function NewLabOrderPage() {
       return
     }
 
+    // The same rules the API applies (finding 59), said before the round trip.
+    const invalid = checkLabOrderValues({
+      orderDate: form.orderDate,
+      expectedDate: form.expectedDate,
+      estimatedCost: form.estimatedCost,
+    })
+    if (invalid) {
+      toast({ variant: 'destructive', title: 'Error', description: invalid })
+      return
+    }
+
     setSubmitting(true)
     try {
       const payload = {
@@ -136,6 +150,7 @@ export default function NewLabOrderPage() {
         expectedDate: form.expectedDate || undefined,
         estimatedCost: parseFloat(form.estimatedCost),
         notes: form.notes || undefined,
+        treatmentId: form.treatmentId || undefined,
       }
 
       const response = await fetch('/api/lab-orders', {
@@ -214,7 +229,7 @@ export default function NewLabOrderPage() {
                   variant="outline"
                   onClick={() => {
                     setSelectedPatient(null)
-                    setForm((prev) => ({ ...prev, patientId: '' }))
+                    setForm((prev) => ({ ...prev, patientId: '', treatmentId: '' }))
                   }}
                 >
                   Change
@@ -344,6 +359,12 @@ export default function NewLabOrderPage() {
               </div>
             </div>
 
+            <LabTreatmentPicker
+              patientId={form.patientId}
+              value={form.treatmentId}
+              onChange={(treatmentId) => setForm((prev) => ({ ...prev, treatmentId }))}
+            />
+
             <div className="space-y-2">
               <Label>Description</Label>
               <Textarea
@@ -378,6 +399,7 @@ export default function NewLabOrderPage() {
                 <Label>Expected Delivery Date</Label>
                 <Input
                   type="date"
+                  min={form.orderDate || undefined}
                   value={form.expectedDate}
                   onChange={(e) => setForm((prev) => ({ ...prev, expectedDate: e.target.value }))}
                 />

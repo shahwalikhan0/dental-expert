@@ -86,8 +86,16 @@ const SHAPES: Record<ToothType, Shape> = {
   },
 }
 
-/** Which archetype a tooth is drawn from, by its FDI position. */
+/**
+ * Which archetype a tooth is drawn from, by its FDI position.
+ *
+ * A primary dentition (quadrants 5–8) has no premolars: its positions 4 and 5
+ * are the first and second primary molars, drawn as molars.
+ */
 export function toothType(tooth: number, arch: 'upper' | 'lower'): ToothType {
+  if (tooth >= 50 && tooth % 10 >= 4) {
+    return arch === 'upper' ? 'upperMolar' : 'lowerMolar'
+  }
   switch (tooth % 10) {
     case 1:
     case 2:

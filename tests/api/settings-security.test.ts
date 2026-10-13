@@ -63,7 +63,6 @@ describe('Settings Security & Subscription API', () => {
   describe('GET /api/settings/security', () => {
     it('returns what is stored, merged over the defaults', async () => {
       ;(prisma.setting.findMany as any).mockResolvedValue([
-        { key: 'passwordMinLength', value: '12', category: 'security' },
         { key: 'sessionTimeoutMinutes', value: '30', category: 'security' },
         { key: 'maxLoginAttempts', value: '3', category: 'security' },
       ])
@@ -72,7 +71,6 @@ describe('Settings Security & Subscription API', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.success).toBe(true)
-      expect(body.data.passwordMinLength).toBe(12)
       expect(body.data.sessionTimeoutMinutes).toBe(30)
       expect(body.data.maxLoginAttempts).toBe(3)
       // Not stored, so the default — and the screen renders what is enforced
@@ -91,7 +89,6 @@ describe('Settings Security & Subscription API', () => {
       // An empty object would leave the page free to invent its own defaults,
       // which is how it came to display a 60-minute session timeout for an
       // application that issued 8-hour ones.
-      expect(body.data.passwordMinLength).toBe(8)
       expect(body.data.sessionTimeoutMinutes).toBe(480)
       expect(body.data.restrictToOwnPatients).toBe(false)
     })
@@ -108,6 +105,18 @@ describe('Settings Security & Subscription API', () => {
       // The switch never did anything. Reporting it would go on telling a
       // clinic it has a second factor that does not exist.
       expect(body.data.requireTwoFactor).toBeUndefined()
+    })
+
+    it('does not offer password rules — the 8-to-32 rule is fixed', async () => {
+      ;(prisma.setting.findMany as any).mockResolvedValue([
+        // Rows left behind by an older version, which the migration deletes.
+        { key: 'passwordMinLength', value: '12', category: 'security' },
+        { key: 'passwordRequireUppercase', value: 'true', category: 'security' },
+      ])
+
+      const body = await (await securityModule.GET(makeSecurityRequest('GET'))).json()
+      expect(body.data.passwordMinLength).toBeUndefined()
+      expect(body.data.passwordRequireUppercase).toBeUndefined()
     })
 
     it('returns 403 when the role may not read settings', async () => {
@@ -129,7 +138,7 @@ describe('Settings Security & Subscription API', () => {
 
       const res = await securityModule.POST(
         makeSecurityRequest('POST', {
-          passwordMinLength: 10,
+          passwordExpiryDays: 90,
           sessionTimeoutMinutes: 60,
           maxLoginAttempts: 3,
           restrictToOwnPatients: true,
@@ -141,13 +150,15 @@ describe('Settings Security & Subscription API', () => {
       expect(prisma.setting.upsert).toHaveBeenCalledTimes(4)
     })
 
-    it('refuses a password minimum below the platform floor', async () => {
-      const res = await securityModule.POST(makeSecurityRequest('POST', { passwordMinLength: 6 }))
+    it('will not store a password rule', async () => {
+      ;(prisma.setting.upsert as any).mockResolvedValue({})
+      ;(prisma.setting.findMany as any).mockResolvedValue([])
 
-      // 400 with the reason, not a 500 from an uncaught Zod throw: this is a
-      // number a person typed and can correct.
-      expect(res.status).toBe(400)
-      expect((await res.json()).error).toMatch(/8/)
+      const res = await securityModule.POST(
+        makeSecurityRequest('POST', { passwordMinLength: 12, passwordRequireUppercase: true })
+      )
+      expect(res.status).toBe(200)
+      expect(prisma.setting.upsert).not.toHaveBeenCalled()
     })
 
     it('refuses a session timeout under five minutes', async () => {

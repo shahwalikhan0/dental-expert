@@ -11,11 +11,16 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { everyTermMatches, like } from '@/lib/search-terms'
 import { templateRefusal } from '@/lib/prescription-templates'
+import { itemRows, templateMedicationRefusal } from '@/lib/prescription-template-lines'
 
 const ITEM_INCLUDE = {
   items: {
     orderBy: { sortOrder: 'asc' as const },
-    include: { medication: { select: { id: true, name: true, genericName: true } } },
+    // `isActive` so the screens can mark a line whose drug has since been
+    // retired from the catalogue (bug report 12 Oct, finding 48).
+    include: {
+      medication: { select: { id: true, name: true, genericName: true, isActive: true } },
+    },
   },
 }
 
@@ -74,6 +79,9 @@ export async function POST(request: NextRequest) {
     const refusal = templateRefusal({ name, items })
     if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
 
+    const medicineRefusal = await templateMedicationRefusal(hospitalId, items)
+    if (medicineRefusal) return NextResponse.json({ error: medicineRefusal }, { status: 400 })
+
     // Two templates called "Post-extraction" in one clinic is a mistake rather
     // than a choice: whichever one you picked from the list would be a coin
     // toss. Checked here as well as by the unique index so the answer is a
@@ -114,23 +122,4 @@ export async function POST(request: NextRequest) {
     console.error('Error creating prescription template:', err)
     return NextResponse.json({ error: 'Failed to create template' }, { status: 500 })
   }
-}
-
-/** The lines somebody actually typed, in the order they typed them. */
-export function itemRows(items: any[]) {
-  return (items ?? [])
-    .filter((item: any) => item?.medicationName?.trim())
-    .map((item: any, index: number) => ({
-      medicationId: item.medicationId || null,
-      medicationName: String(item.medicationName).trim(),
-      dosage: String(item.dosage ?? '').trim(),
-      frequency: String(item.frequency ?? '').trim(),
-      duration: String(item.duration ?? '').trim(),
-      route: item.route || 'Oral',
-      timing: item.timing?.trim() || null,
-      // An empty quantity box is "not specified", not zero.
-      quantity: item.quantity === '' || item.quantity == null ? null : Number(item.quantity),
-      instructions: item.instructions?.trim() || null,
-      sortOrder: index,
-    }))
 }

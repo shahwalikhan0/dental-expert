@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ProcedureCategory } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
+import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -20,7 +22,9 @@ const procedureSchema = z.object({
   ]),
   description: z.string().optional(),
   defaultDuration: z.number().int().positive().default(30),
-  basePrice: z.number().positive(),
+  // Zero is a price — a free consultation, a warranty redo (bug report 12 Oct,
+  // finding 50). Negative is not.
+  basePrice: z.number().min(0, 'The base price cannot be negative'),
   materials: z.string().optional(),
   preInstructions: z.string().optional(),
   postInstructions: z.string().optional(),
@@ -49,7 +53,12 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
 
     const where: any = { hospitalId }
-    if (category) where.category = category
+    if (category) {
+      if (!isEnumMember(ProcedureCategory, category)) {
+        return enumRefusal('Category', category, ProcedureCategory)
+      }
+      where.category = category
+    }
 
     const [procedures, total] = await Promise.all([
       prisma.procedure.findMany({
@@ -71,12 +80,11 @@ export async function GET(req: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get procedures error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get procedures' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get procedures' }, { status: 500 })
   }
 }
 
@@ -112,11 +120,12 @@ export async function POST(req: NextRequest) {
       data: procedure,
       message: 'Procedure created successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    // A price of -1, a category the catalogue does not have: a 400 that says
+    // which, not a 500 with zod's issue list for the toast (finding 25).
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Create procedure error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to create procedure' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create procedure' }, { status: 500 })
   }
 }

@@ -279,7 +279,9 @@ describe('Forms API', () => {
       const res = await settingsListModule.POST(req)
       expect(res.status).toBe(400)
       const body = await res.json()
-      expect(body.error).toContain('Invalid')
+      // The first problem, naming its field, rather than a heading over zod's
+      // issue list (finding 25).
+      expect(body.error).toMatch(/^name:/)
     })
 
     it('returns 400 when fields array is empty', async () => {

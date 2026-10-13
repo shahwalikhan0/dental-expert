@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { sendInviteEmail } from '@/lib/email-helpers'
 import { invitationStatus, inviteeName, inviteExpiry, isInvitation } from '@/lib/invitations'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 /**
  * An invitation is a `User` row with no password — see lib/invitations.ts. Both
@@ -55,6 +56,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       message: 'Invite cancelled successfully',
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Cancel invite error:', error)
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }
@@ -109,6 +112,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       emailSent,
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Resend invite error:', error)
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }

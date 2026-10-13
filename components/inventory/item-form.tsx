@@ -335,7 +335,8 @@ export function ItemForm({
               name="currentStock"
               value={formData.currentStock}
               onChange={handleChange}
-              step="0.01"
+              step="1"
+              min="0"
               className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -349,7 +350,8 @@ export function ItemForm({
             name="minimumStock"
             value={formData.minimumStock}
             onChange={handleChange}
-            step="0.01"
+            step="1"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -362,7 +364,8 @@ export function ItemForm({
             name="reorderLevel"
             value={formData.reorderLevel}
             onChange={handleChange}
-            step="0.01"
+            step="1"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -375,7 +378,8 @@ export function ItemForm({
             name="maximumStock"
             value={formData.maximumStock}
             onChange={handleChange}
-            step="0.01"
+            step="1"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -389,6 +393,7 @@ export function ItemForm({
             value={formData.purchasePrice}
             onChange={handleChange}
             step="0.01"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -404,6 +409,7 @@ export function ItemForm({
             value={formData.sellingPrice}
             onChange={handleChange}
             step="0.01"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -431,6 +437,7 @@ export function ItemForm({
             value={formData.taxPercentage}
             onChange={handleChange}
             step="0.01"
+            min="0"
             className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

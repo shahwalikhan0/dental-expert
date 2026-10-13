@@ -1,3 +1,4 @@
+import type { RecareStatus } from '@prisma/client'
 import { normalizeList } from './medical-history'
 
 /**
@@ -13,7 +14,8 @@ import { normalizeList } from './medical-history'
  * Two decisions worth stating.
  *
  * **Nothing clinical is thrown away.** Every appointment, treatment, invoice,
- * prescription, chart entry, document and lab order moves across. The medical
+ * prescription, chart entry, clinical note, document and lab order moves
+ * across. The medical
  * histories are unioned rather than overwritten, because an allergy recorded on
  * only one of the two records is still an allergy — losing it to a tidy-up is
  * the one outcome this must never produce.
@@ -135,4 +137,85 @@ export function mergeRefusal(
     return 'The record you are merging into has itself been merged into another'
   }
   return null
+}
+
+/** The parts of a recall a merge has to weigh up. */
+export interface MergeableRecall {
+  id: string
+  recareTypeId: string
+  dueDate: Date
+  lastDoneAt: Date | null
+  snoozedUntil: Date | null
+  snoozeReason: string | null
+  status: RecareStatus
+  notes: string | null
+  lastContactedAt: Date | null
+  contactAttempts: number
+}
+
+export interface RecallCollisions {
+  /** Recalls on the retired record to delete rather than move. */
+  drop: string[]
+  /** Changes to the surviving record's recalls, where the retired one knew more. */
+  update: { id: string; data: Partial<Omit<MergeableRecall, 'id' | 'recareTypeId'>> }[]
+}
+
+/**
+ * Two recalls of the same kind, one per record — which survives?
+ *
+ * The merge used to move every recall across and fail on the unique
+ * `(patientId, recareTypeId)` index (bug report 12 Oct, finding 23). Every
+ * patient is put on the default recall at registration, so *every* pair of
+ * records collided and no merge could ever succeed.
+ *
+ * The surviving record's row is kept — it is the one any message already sent
+ * is linked to — and the retired record's row is dropped. But the retired one
+ * may be the better-informed of the two: the patient was seen for a scale and
+ * polish under their other record last month. So where the retired recall was
+ * done more recently, its schedule (last done, next due, snooze, status) is
+ * copied onto the surviving row; otherwise the surviving row's schedule stands.
+ * Contact history is combined either way, so the desk is not told a patient was
+ * never contacted when they were rung twice under the other name.
+ */
+export function resolveRecallCollisions(
+  keep: MergeableRecall[],
+  retire: MergeableRecall[]
+): RecallCollisions {
+  const byType = new Map(keep.map((recall) => [recall.recareTypeId, recall]))
+  const result: RecallCollisions = { drop: [], update: [] }
+
+  for (const theirs of retire) {
+    const ours = byType.get(theirs.recareTypeId)
+    if (!ours) continue
+
+    result.drop.push(theirs.id)
+
+    const data: RecallCollisions['update'][number]['data'] = {}
+
+    const theirsIsNewer =
+      theirs.lastDoneAt !== null &&
+      (ours.lastDoneAt === null || theirs.lastDoneAt.getTime() > ours.lastDoneAt.getTime())
+    if (theirsIsNewer) {
+      data.lastDoneAt = theirs.lastDoneAt
+      data.dueDate = theirs.dueDate
+      data.snoozedUntil = theirs.snoozedUntil
+      data.snoozeReason = theirs.snoozeReason
+      data.status = theirs.status
+    }
+
+    if (
+      theirs.lastContactedAt &&
+      (!ours.lastContactedAt || theirs.lastContactedAt.getTime() > ours.lastContactedAt.getTime())
+    ) {
+      data.lastContactedAt = theirs.lastContactedAt
+    }
+    if (theirs.contactAttempts > 0) {
+      data.contactAttempts = ours.contactAttempts + theirs.contactAttempts
+    }
+    if (!ours.notes && theirs.notes) data.notes = theirs.notes
+
+    if (Object.keys(data).length > 0) result.update.push({ id: ours.id, data })
+  }
+
+  return result
 }

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { toothType } from '@/components/dental-chart/tooth-glyph'
-import { ALL_TEETH } from '@/lib/teeth'
+import { ALL_PRIMARY_TEETH, ALL_TEETH } from '@/lib/teeth'
 
 describe('toothType()', () => {
   it('draws the incisors, canines and premolars by position', () => {
@@ -39,6 +39,21 @@ describe('toothType()', () => {
       const lower = [30 + position, 40 + position]
       expect(new Set(upper.map((t) => toothType(t, 'upper'))).size).toBe(1)
       expect(new Set(lower.map((t) => toothType(t, 'lower'))).size).toBe(1)
+    }
+  })
+
+  it('draws the primary molars as molars — a child has no premolars', () => {
+    expect(toothType(54, 'upper')).toBe('upperMolar')
+    expect(toothType(55, 'upper')).toBe('upperMolar')
+    expect(toothType(75, 'lower')).toBe('lowerMolar')
+    expect(toothType(53, 'upper')).toBe('canine')
+    expect(toothType(81, 'lower')).toBe('incisor')
+  })
+
+  it('has a crown for every primary tooth', () => {
+    for (const tooth of ALL_PRIMARY_TEETH) {
+      const arch = tooth < 70 ? 'upper' : 'lower'
+      expect(toothType(tooth, arch)).toBeTruthy()
     }
   })
 

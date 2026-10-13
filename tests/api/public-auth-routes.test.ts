@@ -119,7 +119,7 @@ describe('POST /api/public/signup', () => {
   // account somewhere on the platform may still register their own practice —
   // and must not be told about a clinic they cannot see.
   it('returns 409 when a clinic is already registered on that address', async () => {
-    vi.mocked(prisma.hospital.findUnique).mockResolvedValue({
+    vi.mocked(prisma.hospital.findFirst).mockResolvedValue({
       id: 'h-existing',
       email: 'admin@testdental.com',
     } as any)
@@ -131,8 +131,23 @@ describe('POST /api/public/signup', () => {
     expect(body.error).toContain('already registered')
   })
 
+  // Looked up without regard to case, and stored lower-cased (finding 29).
+  it('matches an existing clinic address in any case', async () => {
+    vi.mocked(prisma.hospital.findFirst).mockResolvedValue(null)
+    vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error('stop here'))
+
+    await signupPOST(
+      makeReq('/api/public/signup', 'POST', { ...validSignup, email: ' Admin@TestDental.com ' })
+    )
+    expect(prisma.hospital.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: 'admin@testdental.com', mode: 'insensitive' } },
+      })
+    )
+  })
+
   it('creates hospital, user, and staff in transaction', async () => {
-    vi.mocked(prisma.hospital.findUnique).mockResolvedValue(null)
+    vi.mocked(prisma.hospital.findFirst).mockResolvedValue(null)
 
     const mockTx = {
       hospital: {
@@ -187,7 +202,7 @@ describe('POST /api/public/signup', () => {
   })
 
   it('handles email sending failure gracefully', async () => {
-    vi.mocked(prisma.hospital.findUnique).mockResolvedValue(null)
+    vi.mocked(prisma.hospital.findFirst).mockResolvedValue(null)
     vi.mocked(sendVerificationEmail).mockResolvedValue(false)
 
     const mockTx = {
@@ -210,7 +225,7 @@ describe('POST /api/public/signup', () => {
   })
 
   it('returns 500 on unexpected error', async () => {
-    vi.mocked(prisma.hospital.findUnique).mockRejectedValue(new Error('DB down'))
+    vi.mocked(prisma.hospital.findFirst).mockRejectedValue(new Error('DB down'))
 
     const res = await signupPOST(makeReq('/api/public/signup', 'POST', validSignup))
     const body = await res.json()

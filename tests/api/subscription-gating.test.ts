@@ -203,12 +203,9 @@ describe('the read-only list', () => {
     }
   })
 
-  /**
-   * `ai:use` reads nothing but costs the platform money on every call, so a
-   * lapsed tenant does not get it. That is a deliberate choice, not an
-   * oversight, and this is where it is written down.
-   */
-  it('treats AI assistance as a write', () => {
-    expect(isReadOnlyPermission('ai:use')).toBe(false)
+  // `ai:use` went with the AI layer (finding 52); no permission is left that
+  // nothing checks.
+  it('has no AI permission left', () => {
+    expect(PERMISSIONS as readonly string[]).not.toContain('ai:use')
   })
 })

@@ -4,6 +4,7 @@ import {
   resolveTaxRate,
   calculateDiscount,
   calculateInvoiceTotals,
+  discountProblem,
   formatCurrency,
   formatDate,
   formatDateTime,
@@ -408,5 +409,33 @@ describe('Billing Utils - taxConfig', () => {
     expect(taxConfig.rate).toBe(0)
     expect(taxConfig.label).toBe('Sales Tax')
     expect(taxConfig.defaultTaxable).toBe(true)
+  })
+})
+
+// Finding 37: a 150% discount, and Rs 5,000 off a Rs 1,500 bill, were both
+// accepted and billed at zero. The server refuses them instead.
+describe('Billing Utils - discountProblem', () => {
+  it('accepts a discount within the bill', () => {
+    expect(discountProblem(1500, 'PERCENTAGE', 100)).toBeNull()
+    expect(discountProblem(1500, 'PERCENTAGE', 0)).toBeNull()
+    expect(discountProblem(1500, 'FIXED', 1500)).toBeNull()
+    expect(discountProblem(1500, 'FIXED', undefined)).toBeNull()
+  })
+
+  it('refuses a percentage above 100', () => {
+    expect(discountProblem(1500, 'PERCENTAGE', 150)).toContain('between 0 and 100')
+  })
+
+  it('refuses a fixed discount larger than the bill', () => {
+    expect(discountProblem(1500, 'FIXED', 5000)).toContain('more than')
+  })
+
+  it('refuses a negative or non-numeric discount', () => {
+    expect(discountProblem(1500, 'FIXED', -10)).toBeTruthy()
+    expect(discountProblem(1500, 'PERCENTAGE', 'lots')).toBeTruthy()
+  })
+
+  it('refuses an unknown discount type', () => {
+    expect(discountProblem(1500, 'BOGOF', 10)).toBeTruthy()
   })
 })

@@ -53,6 +53,11 @@ vi.mock('@/lib/prisma', () => {
     hospital: {
       findUnique: vi.fn().mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' }),
     },
+    // Clinic holidays and the dentist's shifts and leave, read on every
+    // booking (lib/appointment-availability.ts). Empty: none.
+    availability: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   }
 
   client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
@@ -100,6 +105,8 @@ import { requireAuthAndRole } from '@/lib/api-helpers'
 import { GET, POST } from '@/app/api/appointments/route'
 
 import { instantAt } from '@/lib/appointment-time'
+import { STATUS_TRANSITIONS, canMoveTo } from '@/lib/appointment-status'
+import { NOT_A_DENTIST } from '@/lib/clinicians'
 
 const mockPrisma = vi.mocked(prisma)
 const mockRequireAuth = vi.mocked(requireAuthAndRole)
@@ -314,6 +321,7 @@ describe('Appointments API - Comprehensive Tests', () => {
       mockPrisma.patient.findFirst.mockResolvedValue({
         id: mockPatientId,
         hospitalId: mockHospitalId,
+        isActive: true,
       })
       mockPrisma.staff.findFirst.mockResolvedValue({
         id: mockDoctorId,
@@ -386,6 +394,8 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(data.error).toBe('Patient not found')
     })
 
+    // Not found and not a dentist are one answer: findDentist asks for an
+    // active dentist at this clinic, and anybody else is refused alike.
     it('should reject appointment for non-existent doctor', async () => {
       mockPrisma.staff.findFirst.mockResolvedValue(null)
 
@@ -400,9 +410,9 @@ describe('Appointments API - Comprehensive Tests', () => {
       })
       const response = await POST(request)
 
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data.error).toBe('Doctor not found')
+      expect(data.error).toBe(NOT_A_DENTIST)
     })
 
     it('should detect and reject conflicting appointments', async () => {
@@ -629,7 +639,7 @@ describe('Appointments API - Comprehensive Tests', () => {
           scheduledDate: '2030-06-15',
           scheduledTime: '10:00',
           duration: 45,
-          appointmentType: 'TREATMENT',
+          appointmentType: 'PROCEDURE',
           priority: 'HIGH',
           chiefComplaint: 'Tooth pain',
           notes: 'Patient requested early morning slot',
@@ -649,33 +659,34 @@ describe('Appointments API - Comprehensive Tests', () => {
   })
 
   describe('Appointment Status Transitions', () => {
-    it('should only allow valid status transitions', () => {
-      const validTransitions = {
-        SCHEDULED: ['CONFIRMED', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED'],
-        CONFIRMED: ['CHECKED_IN', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED'],
-        CHECKED_IN: ['IN_PROGRESS', 'CANCELLED'],
-        IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
-        COMPLETED: [], // Terminal state
-        CANCELLED: [], // Terminal state
-        NO_SHOW: ['RESCHEDULED'], // Can only reschedule
-        RESCHEDULED: [], // Terminal state (new appointment created)
-      }
+    it('defines a transition list for every status', () => {
+      expect(Object.keys(STATUS_TRANSITIONS)).toHaveLength(8)
+    })
 
-      // Verify all statuses have defined transitions
-      expect(Object.keys(validTransitions)).toHaveLength(8)
+    // Checking in issues the token and checking out stamps the time; the edit
+    // route sets neither status (bug report 12 Oct, finding 8).
+    it('reaches CHECKED_IN and COMPLETED only through their own routes', () => {
+      for (const from of Object.keys(STATUS_TRANSITIONS)) {
+        if (from !== 'CHECKED_IN') expect(canMoveTo(from, 'CHECKED_IN')).toBe(false)
+        if (from !== 'COMPLETED') expect(canMoveTo(from, 'COMPLETED')).toBe(false)
+      }
+    })
+
+    it('never reopens a finished appointment', () => {
+      for (const ended of ['COMPLETED', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED']) {
+        expect(STATUS_TRANSITIONS[ended]).toEqual([])
+        expect(canMoveTo(ended, 'SCHEDULED')).toBe(false)
+      }
+    })
+
+    it('calls in only a checked-in patient', () => {
+      expect(canMoveTo('CHECKED_IN', 'IN_PROGRESS')).toBe(true)
+      expect(canMoveTo('SCHEDULED', 'IN_PROGRESS')).toBe(false)
     })
   })
 
   describe('Appointment Types', () => {
-    const validTypes = [
-      'CONSULTATION',
-      'TREATMENT',
-      'FOLLOW_UP',
-      'EMERGENCY',
-      'CHECKUP',
-      'CLEANING',
-      'SURGERY',
-    ]
+    const validTypes = ['CONSULTATION', 'PROCEDURE', 'FOLLOW_UP', 'EMERGENCY', 'CHECK_UP']
 
     it.each(validTypes)('should accept %s appointment type', async (type) => {
       mockPrisma.appointment.create.mockResolvedValue({ id: 'apt-1', appointmentType: type })
@@ -694,6 +705,29 @@ describe('Appointments API - Comprehensive Tests', () => {
 
       expect(response.status).toBe(201)
     })
+
+    // These went to Prisma and came back as a 500 (bug report 12 Oct, finding 49).
+    it.each(['TREATMENT', 'CHECKUP', 'CLEANING', 'SURGERY'])(
+      'refuses %s with a 400 naming the valid types',
+      async (type) => {
+        const request = new NextRequest('http://localhost/api/appointments', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            doctorId: mockDoctorId,
+            scheduledDate: '2030-06-15',
+            scheduledTime: '10:00',
+            appointmentType: type,
+          }),
+        })
+        const response = await POST(request)
+        const data = await response.json()
+
+        expect(response.status).toBe(400)
+        expect(data.error).toContain('CONSULTATION')
+        expect(mockPrisma.appointment.create).not.toHaveBeenCalled()
+      }
+    )
   })
 
   describe('Priority Levels', () => {
@@ -738,6 +772,7 @@ describe('Appointments API - Comprehensive Tests', () => {
     })
 
     it('should not allow booking with doctor from different hospital', async () => {
+      mockPrisma.patient.findFirst.mockResolvedValue({ id: mockPatientId, isActive: true })
       mockPrisma.staff.findFirst.mockResolvedValue(null) // Doctor not found in current hospital
 
       const request = new NextRequest('http://localhost/api/appointments', {
@@ -751,7 +786,12 @@ describe('Appointments API - Comprehensive Tests', () => {
       })
       const response = await POST(request)
 
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(400)
+      expect(mockPrisma.staff.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ hospitalId: mockHospitalId }),
+        })
+      )
     })
   })
 
@@ -808,10 +848,18 @@ describe('Appointments API - Comprehensive Tests', () => {
       expect(data.error).toContain('Duration must be between')
     })
 
+    // Eight hours fits only a day with no lunch break and long enough hours,
+    // now that booking keeps to them (finding 6). 29 Jan 2030 is a Tuesday.
     it('should accept max valid duration of 480 minutes', async () => {
+      mockPrisma.hospital.findUnique.mockResolvedValue({
+        id: 'h1',
+        timezone: 'Asia/Karachi',
+        workingHours: JSON.stringify({ tuesday: { open: '09:00', close: '18:00' } }),
+      })
       mockPrisma.patient.findFirst.mockResolvedValue({
         id: mockPatientId,
         hospitalId: mockHospitalId,
+        isActive: true,
       })
       mockPrisma.staff.findFirst.mockResolvedValue({ id: mockDoctorId, hospitalId: mockHospitalId })
       mockPrisma.appointment.findFirst.mockResolvedValue(null)
@@ -830,6 +878,7 @@ describe('Appointments API - Comprehensive Tests', () => {
       const response = await POST(request)
 
       expect(response.status).toBe(201)
+      mockPrisma.hospital.findUnique.mockResolvedValue({ id: 'h1', timezone: 'Asia/Karachi' })
     })
   })
 })

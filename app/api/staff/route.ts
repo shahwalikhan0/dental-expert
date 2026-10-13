@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { checkStaffLimit, requirePermission } from '@/lib/api-helpers'
-import { SECONDARY_ROLES, isAssignableSecondaryRole, isRole, staffChangeRefusal } from '@/lib/rbac'
+import {
+  SECONDARY_ROLES,
+  holderCan,
+  isAssignableSecondaryRole,
+  isRole,
+  staffChangeRefusal,
+} from '@/lib/rbac'
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 import { validatePassword } from '@/lib/password-policy'
-import { passwordPolicyFor } from '@/lib/security-settings'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { emailEquals, isValidEmail, normaliseEmail } from '@/lib/email-address'
+import { planName } from '@/lib/plans'
+import { getTenant } from '@/lib/tenant'
+import {
+  clinicToday,
+  generateEmployeeId,
+  parseJoiningDate,
+  phoneProblem,
+  withoutHrFields,
+} from '@/lib/staff'
 
 // GET - List staff members
 export async function GET(request: NextRequest) {
@@ -71,8 +87,13 @@ export async function GET(request: NextRequest) {
       prisma.staff.count({ where }),
     ])
 
+    // CNIC, date of birth, home address and emergency contact are for
+    // `staff:hr` — see STAFF_HR_FIELDS in lib/staff-rules.ts. Everybody else
+    // reading the directory gets the record without them.
+    const seesHr = holderCan(session?.user, 'staff:hr')
+
     return NextResponse.json({
-      staff,
+      staff: seesHr ? staff : staff.map((member) => withoutHrFields(member)),
       pagination: {
         page,
         limit,
@@ -81,28 +102,11 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching staff:', error)
     return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 })
   }
-}
-
-// Helper to generate employee ID
-async function generateEmployeeId(hospitalId: string): Promise<string> {
-  const prefix = `EMP${new Date().getFullYear().toString().slice(-2)}`
-
-  return nextInSeries(prisma, {
-    hospitalId,
-    prefix,
-    width: 4,
-    currentMax: async () => {
-      const last = await prisma.staff.findFirst({
-        where: { hospitalId, employeeId: { startsWith: prefix } },
-        orderBy: { employeeId: 'desc' },
-        select: { employeeId: true },
-      })
-      return trailingNumber(last?.employeeId, 4)
-    },
-  })
 }
 
 // POST - Create new staff member
@@ -116,9 +120,16 @@ export async function POST(request: NextRequest) {
     // Check staff limit
     const limitCheck = await checkStaffLimit(hospitalId)
     if (!limitCheck.allowed) {
+      // `upgradeUrl` so the form can link to the plans rather than leave the
+      // administrator to find them (finding 53).
+      const tenant = await getTenant(hospitalId).catch(() => null)
       return NextResponse.json(
         {
-          error: `Staff limit reached. Your plan allows ${limitCheck.max} staff members. Current: ${limitCheck.current}.`,
+          error: `Staff limit reached. The ${planName(tenant?.plan)} plan allows ${limitCheck.max} active staff accounts, and ${limitCheck.current} are in use. Upgrade to add more, or deactivate somebody who has left.`,
+          code: 'STAFF_LIMIT',
+          current: limitCheck.current,
+          max: limitCheck.max,
+          upgradeUrl: '/pricing',
         },
         { status: 403 }
       )
@@ -128,7 +139,7 @@ export async function POST(request: NextRequest) {
     const {
       firstName,
       lastName,
-      email,
+      email: rawEmail,
       phone,
       role,
       clinicalRole,
@@ -151,11 +162,32 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !phone || !role || !password) {
+    if (!firstName || !lastName || !rawEmail || !phone || !role || !password) {
       return NextResponse.json(
         { error: 'Missing required fields: firstName, lastName, email, phone, role, password' },
         { status: 400 }
       )
+    }
+
+    // `not-an-email` and the phone `abc` were both accepted, and the first
+    // became somebody's sign-in (finding 28). Lower-cased so the same address
+    // typed with a capital is the same person (finding 29).
+    if (!isValidEmail(rawEmail)) {
+      return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 })
+    }
+    const email = normaliseEmail(rawEmail)
+
+    const badPhone =
+      phoneProblem(phone, 'Phone', { required: true }) ??
+      phoneProblem(alternatePhone, 'Alternate phone') ??
+      phoneProblem(emergencyPhone, 'Emergency phone')
+    if (badPhone) return NextResponse.json({ error: badPhone }, { status: 400 })
+
+    let joinedOn: Date = new Date()
+    if (joiningDate) {
+      const parsed = parseJoiningDate(joiningDate, await clinicToday(hospitalId))
+      if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
+      joinedOn = parsed.date
     }
 
     if (!isRole(role)) {
@@ -184,9 +216,12 @@ export async function POST(request: NextRequest) {
 
     // Within this clinic. The same address may hold an account at another
     // clinic on the platform — a locum, or a dentist with sessions at two
-    // practices — and that is none of this clinic's business.
-    const existingUser = await prisma.user.findUnique({
-      where: { hospitalId_email: { hospitalId, email } },
+    // practices — and that is none of this clinic's business. Matched without
+    // regard to case, because rows written before addresses were lower-cased
+    // may still carry a capital.
+    const existingUser = await prisma.user.findFirst({
+      where: { hospitalId, email: emailEquals(email) },
+      select: { id: true },
     })
 
     if (existingUser) {
@@ -215,15 +250,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // The clinic's own password rules (Settings → Security). This screen used
-    // to accept any six characters while signup demanded eight and the policy
-    // screen claimed whatever it had been set to — three answers to one
-    // question.
-    const weak = validatePassword(password, await passwordPolicyFor(prisma, hospitalId))
+    // The one password rule: 8 to 32 characters (lib/password-policy.ts). This
+    // screen used to accept any six characters while signup demanded eight —
+    // two answers to one question.
+    const weak = validatePassword(password)
     if (weak) return NextResponse.json({ error: weak }, { status: 400 })
 
     // Generate employee ID
-    const employeeId = await generateEmployeeId(hospitalId)
+    const employeeId = await generateEmployeeId(prisma, hospitalId)
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
@@ -237,7 +271,7 @@ export async function POST(request: NextRequest) {
           password: hashedPassword,
           passwordChangedAt: new Date(),
           name: `${firstName} ${lastName}`,
-          phone,
+          phone: phone.trim(),
           role,
           clinicalRole: clinicalRole || null,
           isActive: true,
@@ -254,7 +288,7 @@ export async function POST(request: NextRequest) {
           firstName,
           lastName,
           email,
-          phone,
+          phone: phone.trim(),
           alternatePhone,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
           gender,
@@ -267,7 +301,7 @@ export async function POST(request: NextRequest) {
           qualification,
           specialization,
           licenseNumber,
-          joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
+          joiningDate: joinedOn,
           emergencyContact,
           emergencyPhone,
           isActive: true,
@@ -288,8 +322,28 @@ export async function POST(request: NextRequest) {
       return staff
     })
 
+    // Who added whom, as what. Never the password — `recordAudit` redacts
+    // anything named like one, and it is not passed in the first place.
+    await recordAudit({
+      hospitalId,
+      userId: session?.user?.id,
+      action: AUDIT_ACTIONS.STAFF_CREATED,
+      entityType: 'Staff',
+      entityId: result.id,
+      newValues: {
+        employeeId: result.employeeId,
+        name: `${firstName} ${lastName}`,
+        email,
+        role,
+        clinicalRole: clinicalRole || null,
+      },
+      ...requestContext(request.headers),
+    })
+
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating staff:', error)
     return NextResponse.json({ error: 'Failed to create staff member' }, { status: 500 })
   }

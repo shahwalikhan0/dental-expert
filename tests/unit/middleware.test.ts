@@ -217,6 +217,32 @@ describe('middleware', () => {
     expect(mockNext).toHaveBeenCalled()
   })
 
+  // Bug report 12 Oct, finding 3: a sign-in form submitted before hydration.
+  it('answers a native POST to /login with a 303 back to the page', () => {
+    const req = { ...makeRequest('/login?callbackUrl=%2Fpatients', null), method: 'POST' }
+    middleware(req)
+    expect(mockRedirect).toHaveBeenCalledTimes(1)
+    const [url, status] = mockRedirect.mock.calls[0]
+    expect(status).toBe(303)
+    expect(url.pathname).toBe('/login')
+    expect(url.searchParams.get('callbackUrl')).toBe('/patients')
+  })
+
+  it('strips a password that arrived in the query string', () => {
+    middleware(makeRequest('/login?email=a%40b.com&password=hunter22&clinic=smile', null))
+    const [url, status] = mockRedirect.mock.calls[0]
+    expect(status).toBe(303)
+    expect(url.searchParams.has('password')).toBe(false)
+    expect(url.searchParams.has('email')).toBe(false)
+    expect(url.searchParams.get('clinic')).toBe('smile')
+  })
+
+  it('leaves an ordinary GET of /login alone', () => {
+    middleware(makeRequest('/login?clinic=smile', null))
+    expect(mockRedirect).not.toHaveBeenCalled()
+    expect(mockNext).toHaveBeenCalled()
+  })
+
   // Onboarding
   it('allows authenticated user to access /onboarding', () => {
     middleware(makeRequest('/onboarding', { user: { role: 'ADMIN' } }))

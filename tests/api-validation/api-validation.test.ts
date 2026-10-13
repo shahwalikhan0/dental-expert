@@ -108,8 +108,17 @@ vi.mock('@/lib/prisma', () => {
       count: vi.fn(),
     },
     hospital: { findUnique: vi.fn(), findFirst: vi.fn() },
+    // Holidays, shifts and leave, read on every booking. Empty: none.
+    availability: { findMany: vi.fn().mockResolvedValue([]) },
     videoConsultation: { create: vi.fn() },
     stockTransaction: { create: vi.fn() },
+    // Creating an item at or below its minimum raises the stock alert there
+    // and then (app/api/inventory/items/route.ts). Nothing open by default.
+    stockAlert: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'alert-1' }),
+    },
     $transaction: vi.fn((fn: any) => fn(prismaMock)),
   }
   return { prisma: prismaMock, default: prismaMock }
@@ -133,10 +142,25 @@ vi.mock('@/lib/billing-utils', () => ({
   gstConfig: { cgstRate: 9, sgstRate: 9 },
 }))
 
-vi.mock('@prisma/client', () => ({
-  DiscountType: { FIXED: 'FIXED', PERCENTAGE: 'PERCENTAGE' },
-  InvoiceStatus: { DRAFT: 'DRAFT', PENDING: 'PENDING', PAID: 'PAID' },
-}))
+vi.mock('@prisma/client', async (importOriginal) => {
+  // The real `Prisma` namespace: routes hand a caught error to
+  // `knownErrorResponse` (lib/api-errors.ts), which checks it against Prisma's
+  // error classes, and a mock without them throws inside the catch block.
+  const actual: any = await importOriginal()
+  return {
+    Prisma: actual.Prisma,
+    DiscountType: { FIXED: 'FIXED', PERCENTAGE: 'PERCENTAGE' },
+    InvoiceStatus: { DRAFT: 'DRAFT', PENDING: 'PENDING', PAID: 'PAID' },
+    // The invoice list refuses an unknown payment-method filter against the
+    // real enum (finding 49).
+    PaymentMethod: actual.PaymentMethod,
+    // The appointment routes refuse an unknown type, priority or status
+    // against the real enums before anything reaches Prisma.
+    AppointmentType: actual.AppointmentType,
+    AppointmentStatus: actual.AppointmentStatus,
+    Priority: actual.Priority,
+  }
+})
 
 // ── Imports (after mocks) ──────────────────────────────────────────────────────
 import { prisma } from '@/lib/prisma'
@@ -632,7 +656,11 @@ describe('5.4 Edge Cases', () => {
     tomorrow.setDate(tomorrow.getDate() + 1)
     const dateStr = tomorrow.toISOString().split('T')[0]
 
-    prisma.patient.findFirst.mockResolvedValue({ id: 'p-1', hospitalId: 'hospital-1' })
+    prisma.patient.findFirst.mockResolvedValue({
+      id: 'p-1',
+      hospitalId: 'hospital-1',
+      isActive: true,
+    })
     prisma.staff.findFirst.mockResolvedValue({ id: 'd-1', hospitalId: 'hospital-1' })
     prisma.appointment.findFirst.mockResolvedValue(null) // no conflict, no last appointment
     prisma.appointment.create.mockResolvedValue({

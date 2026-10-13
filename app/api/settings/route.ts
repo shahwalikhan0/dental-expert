@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 const updateSettingSchema = z.object({
   key: z.string(),
@@ -47,9 +48,9 @@ export async function GET(req: NextRequest) {
       data: settings,
       grouped,
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get settings error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to get settings' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to get settings' }, { status: 500 })
   }
 }
 
@@ -85,12 +86,11 @@ export async function POST(req: NextRequest) {
       success: true,
       data: setting,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Update setting error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update setting' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update setting' }, { status: 500 })
   }
 }
 
@@ -103,26 +103,28 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { settings } = body
 
-    if (!Array.isArray(settings)) {
+    if (!Array.isArray(body?.settings)) {
       return NextResponse.json({ error: 'Settings must be an array' }, { status: 400 })
     }
+    // Each entry has the shape POST takes. Without this a missing key reached
+    // Prisma and came back as a 500.
+    const settings = z.array(updateSettingSchema).parse(body.settings)
 
     // Spec §10 wants configuration changes recorded. Read the current values
     // first so the entry can say what moved rather than just that something
     // did — one query for the keys being written, not the whole table.
-    const keys = settings.map((s: any) => s.key).filter(Boolean)
+    const keys = settings.map((s) => s.key)
     const existing = await prisma.setting.findMany({
       where: { hospitalId, key: { in: keys } },
       select: { key: true, value: true },
     })
     const before = Object.fromEntries(existing.map((s) => [s.key, s.value]))
-    const after = Object.fromEntries(settings.map((s: any) => [s.key, s.value]))
+    const after = Object.fromEntries(settings.map((s) => [s.key, s.value]))
 
     // Bulk upsert
     const results = await Promise.all(
-      settings.map((setting: any) =>
+      settings.map((setting) =>
         prisma.setting.upsert({
           where: { hospitalId_key: { key: setting.key, hospitalId } },
           create: {
@@ -160,11 +162,10 @@ export async function PUT(req: NextRequest) {
       data: results,
       count: results.length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Bulk update settings error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update settings' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 })
   }
 }

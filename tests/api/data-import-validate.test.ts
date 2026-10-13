@@ -46,6 +46,13 @@ const mockStorage = vi.hoisted(() => ({
 
 const mockParsers = vi.hoisted(() => ({
   parseFile: vi.fn(),
+  FileParseError: class FileParseError extends Error {},
+}))
+
+// Data import is a paid feature (finding 26). The clinic here is on a plan
+// that includes it unless a test says otherwise.
+const mockPlanGate = vi.hoisted(() => ({
+  requireFeature: vi.fn(),
 }))
 
 vi.mock('@/lib/api-helpers', () => mockAuth)
@@ -55,6 +62,7 @@ vi.mock('@/lib/storage', async (importOriginal) => {
   return { ...actual, getStorage: () => mockStorage }
 })
 vi.mock('@/lib/import/parsers', () => mockParsers)
+vi.mock('@/lib/plan-gate', () => mockPlanGate)
 
 const mod = await import('@/app/api/data-import/validate/route')
 

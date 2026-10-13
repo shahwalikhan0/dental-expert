@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { BILLED_ON_LIVE_INVOICE } from '@/lib/invoice-settlement'
 
 // GET - Get unbilled treatments for a patient
 export async function GET(request: NextRequest) {
@@ -32,14 +34,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
     }
 
-    // Find treatments that are not linked to any invoice item
+    // Treatments not on any invoice that is still live. The rule is shared
+    // with the invoice routes, which refuse a treatment already billed, so a
+    // treatment listed here is one they will accept — and one whose invoice
+    // was cancelled comes back here to be billed again (findings 13 and 17).
     const treatments = await prisma.treatment.findMany({
       where: {
         hospitalId,
         patientId,
         status: { in: ['COMPLETED', 'IN_PROGRESS'] },
         invoiceItems: {
-          none: {},
+          none: BILLED_ON_LIVE_INVOICE,
         },
       },
       include: {
@@ -95,6 +100,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching unbilled treatments:', error)
     return NextResponse.json({ error: 'Failed to fetch unbilled treatments' }, { status: 500 })
   }

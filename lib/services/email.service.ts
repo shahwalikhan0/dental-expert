@@ -2,6 +2,7 @@
 // Supports: Hostinger, Gmail SMTP, Custom SMTP
 
 import prisma from '@/lib/prisma'
+import { SendRefusal } from '@/lib/services/send-refusal'
 import {
   communicationPreferences,
   mayContact,
@@ -71,7 +72,7 @@ class EmailService {
     })
 
     if (settings.length === 0) {
-      throw new Error('Email not configured')
+      throw new SendRefusal('Email not configured')
     }
 
     const config: EmailConfig = {
@@ -90,7 +91,7 @@ class EmailService {
     }
 
     if (!config.host || !config.auth.user || !config.auth.pass) {
-      throw new Error('Email SMTP configuration incomplete')
+      throw new SendRefusal('Email SMTP configuration incomplete')
     }
 
     const transporter = nodemailer.createTransport({
@@ -106,7 +107,7 @@ class EmailService {
     try {
       await transporter.verify()
     } catch {
-      throw new Error('Failed to connect to SMTP server')
+      throw new SendRefusal('Failed to connect to SMTP server')
     }
 
     return { config, transporter }
@@ -115,7 +116,7 @@ class EmailService {
   async sendEmail(payload: EmailPayload): Promise<string> {
     // Validate email address
     if (!this.isValidEmail(payload.to)) {
-      throw new Error('Invalid email address')
+      throw new SendRefusal('Invalid email address')
     }
 
     // Check patient preferences if patient is provided.
@@ -136,7 +137,7 @@ class EmailService {
         'EMAIL',
         payload.kind
       )
-      if (!decision.allowed) throw new Error(decision.reason)
+      if (!decision.allowed) throw new SendRefusal(decision.reason)
     }
 
     const emailLog = await prisma.messageLog.create({
@@ -220,7 +221,7 @@ class EmailService {
     ctx: { config: EmailConfig; transporter: Transporter }
   ): Promise<{ messageId: string }> {
     if (!this.isValidEmail(to)) {
-      throw new Error('Invalid email address')
+      throw new SendRefusal('Invalid email address')
     }
 
     const result = await ctx.transporter.sendMail({
@@ -245,18 +246,22 @@ class EmailService {
     templateId: string,
     variables: Record<string, string>,
     attachments?: EmailAttachment[],
-    patientId?: string
+    patientId?: string,
+    hospitalId?: string
   ): Promise<string> {
     const template = await prisma.communicationTemplate.findUnique({
       where: { id: templateId },
     })
 
-    if (!template || !template.isActive) {
-      throw new Error('Template not found or inactive')
+    // A request on behalf of one clinic may only use that clinic's template.
+    // The send goes out over the template's clinic's SMTP account, so without
+    // this a template id from another clinic sent mail as that clinic.
+    if (!template || !template.isActive || (hospitalId && template.hospitalId !== hospitalId)) {
+      throw new SendRefusal('Template not found or inactive')
     }
 
     if (template.channel !== 'EMAIL') {
-      throw new Error('Template is not for email channel')
+      throw new SendRefusal('Template is not for email channel')
     }
 
     let subject = template.subject || 'Notification from Your Dental Clinic'

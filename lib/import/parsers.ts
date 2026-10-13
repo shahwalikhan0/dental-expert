@@ -5,6 +5,19 @@
 import ExcelJS from 'exceljs'
 import { Readable } from 'stream'
 
+/**
+ * A file the importer cannot read, with a reason written for whoever uploaded
+ * it. The upload route repeats these and nothing else: an error from the CSV
+ * or Excel library itself is not something to show (bug report 12 Oct,
+ * finding 25).
+ */
+export class FileParseError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'FileParseError'
+  }
+}
+
 export interface ParseResult {
   columns: string[]
   rows: Record<string, string>[]
@@ -24,7 +37,7 @@ export async function parseFile(buffer: Buffer, fileType: string): Promise<Parse
     case 'pdf':
       return parsePDF(buffer)
     default:
-      throw new Error(`Unsupported file type: ${fileType}`)
+      throw new FileParseError(`Unsupported file type: ${fileType}`)
   }
 }
 
@@ -38,7 +51,9 @@ async function parseCSV(buffer: Buffer): Promise<ParseResult> {
 
   const worksheet = workbook.worksheets[0]
   if (!worksheet || worksheet.rowCount < 2) {
-    throw new Error('CSV file has no data rows. Ensure the first row contains column headers.')
+    throw new FileParseError(
+      'CSV file has no data rows. Ensure the first row contains column headers.'
+    )
   }
 
   return extractFromWorksheet(worksheet)
@@ -53,7 +68,9 @@ async function parseExcel(buffer: Buffer): Promise<ParseResult> {
 
   const worksheet = workbook.worksheets[0]
   if (!worksheet || worksheet.rowCount < 2) {
-    throw new Error('Excel file has no data rows. Ensure the first row contains column headers.')
+    throw new FileParseError(
+      'Excel file has no data rows. Ensure the first row contains column headers.'
+    )
   }
 
   return extractFromWorksheet(worksheet)
@@ -74,7 +91,7 @@ function extractFromWorksheet(worksheet: ExcelJS.Worksheet): ParseResult {
   })
 
   if (columns.length === 0) {
-    throw new Error('No column headers found in the first row.')
+    throw new FileParseError('No column headers found in the first row.')
   }
 
   // Data rows (2 onwards)
@@ -122,7 +139,7 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
   const text = data.text
 
   if (!text || text.trim().length < 10) {
-    throw new Error(
+    throw new FileParseError(
       'Could not extract text from PDF. The file may be image-based. Please use CSV or Excel instead.'
     )
   }
@@ -133,7 +150,9 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
     .filter((l: string) => l.length > 0)
 
   if (lines.length < 2) {
-    throw new Error('PDF contains too few lines to detect tabular data. Please use CSV or Excel.')
+    throw new FileParseError(
+      'PDF contains too few lines to detect tabular data. Please use CSV or Excel.'
+    )
   }
 
   // Detect delimiter: try tab, then pipe, then multiple spaces
@@ -149,7 +168,7 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
   } else if (firstLine.includes(',')) {
     delimiter = ','
   } else {
-    throw new Error(
+    throw new FileParseError(
       'Could not detect a table structure in this PDF. Column delimiters (tab, pipe, comma) not found. Please convert to CSV or Excel for reliable import.'
     )
   }
@@ -164,7 +183,7 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
   // Headers from first line
   const columns = splitLine(firstLine).filter(Boolean)
   if (columns.length < 2) {
-    throw new Error('Could not detect enough columns in the PDF. Please use CSV or Excel.')
+    throw new FileParseError('Could not detect enough columns in the PDF. Please use CSV or Excel.')
   }
 
   // Data rows
@@ -184,7 +203,7 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
   }
 
   if (rows.length === 0) {
-    throw new Error('PDF table detected but no data rows found. Please use CSV or Excel.')
+    throw new FileParseError('PDF table detected but no data rows found. Please use CSV or Excel.')
   }
 
   return { columns, rows, totalRows: rows.length }

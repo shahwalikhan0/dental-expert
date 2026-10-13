@@ -12,6 +12,7 @@
  * `SMSGateway`. That is deliberately the whole extension point.
  */
 import prisma from '@/lib/prisma'
+import { SendRefusal } from '@/lib/services/send-refusal'
 import {
   communicationPreferences,
   mayContact,
@@ -80,7 +81,7 @@ class SMSService {
     })
 
     if (settings.length === 0) {
-      throw new Error('SMS gateway not configured')
+      throw new SendRefusal('SMS gateway not configured')
     }
 
     const config: SMSConfig = {
@@ -91,7 +92,7 @@ class SMSService {
     }
 
     if (!config.apiKey) {
-      throw new Error('SMS API key not configured')
+      throw new SendRefusal('SMS API key not configured')
     }
 
     return config
@@ -100,7 +101,7 @@ class SMSService {
   async sendSMS(payload: SMSPayload): Promise<string> {
     // Validate phone number (Indian format)
     if (!this.isValidPakistanPhoneNumber(payload.phone)) {
-      throw new Error('Invalid phone number format')
+      throw new SendRefusal('Invalid phone number format')
     }
 
     // Check the patient's preferences, with defaults for the patients who have
@@ -119,7 +120,7 @@ class SMSService {
         'SMS',
         payload.kind
       )
-      if (!decision.allowed) throw new Error(decision.reason)
+      if (!decision.allowed) throw new SendRefusal(decision.reason)
     }
 
     // Not at an hour that would wake the patient up. The window is the
@@ -132,7 +133,7 @@ class SMSService {
     if (!payload.scheduledFor) {
       const window = await this.sendWindowFor(payload.hospitalId)
       if (!isWithinSendWindow(window.timezone, window, new Date())) {
-        throw new Error(
+        throw new SendRefusal(
           `SMS can only be sent between ${describeSendWindow(window)} (${window.timezone})`
         )
       }
@@ -205,7 +206,7 @@ class SMSService {
     config: SMSConfig
   ): Promise<{ messageId: string; cost?: number }> {
     if (!this.isValidPakistanPhoneNumber(phone)) {
-      throw new Error('Invalid phone number format')
+      throw new SendRefusal('Invalid phone number format')
     }
 
     return this.sendViaGateway({ hospitalId: '', phone, message }, config)
@@ -230,7 +231,7 @@ class SMSService {
       case 'TWILIO':
         return this.sendViaTwilio(payload, config)
       default:
-        throw new Error(`Unsupported SMS gateway: ${config.gateway}`)
+        throw new SendRefusal(`Unsupported SMS gateway: ${config.gateway}`)
     }
   }
 
@@ -286,7 +287,13 @@ class SMSService {
     const data = await response.json()
 
     if (data.error_code) {
-      throw new Error(data.error_message || 'Failed to send SMS via Twilio')
+      // Twilio's own explanation ("The 'To' number is not a valid phone
+      // number") is written for whoever sent the message, so it is repeated.
+      throw new SendRefusal(
+        data.error_message
+          ? `The SMS gateway refused the message: ${data.error_message}`
+          : 'The SMS gateway refused the message'
+      )
     }
 
     return {
@@ -313,7 +320,7 @@ class SMSService {
     })
 
     if (!template || !template.isActive) {
-      throw new Error('Template not found or inactive')
+      throw new SendRefusal('Template not found or inactive')
     }
 
     let content = template.content

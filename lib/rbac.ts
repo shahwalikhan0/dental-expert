@@ -99,9 +99,6 @@ export const PERMISSIONS = [
   // Patient communication (§5.9)
   'communications:read',
   'communications:write',
-
-  // AI assistance
-  'ai:use',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
@@ -116,9 +113,8 @@ export type Permission = (typeof PERMISSIONS)[number]
  * unlawful one. They can still read, report and export; they cannot write.
  *
  * Listed rather than derived from the `:read` suffix, because three of them do
- * not carry it and one that does is not read-only in the sense that matters:
- * `reports:export` takes data *out*, which a lapsed tenant must keep being able
- * to do, and `ai:use` reads nothing but costs the platform money on every call.
+ * not carry it: the two report capabilities only look, and `reports:export`
+ * takes data *out*, which a lapsed tenant must keep being able to do.
  * A test asserts this list stays exhaustive over PERMISSIONS.
  */
 export const READ_ONLY_PERMISSIONS = [
@@ -199,7 +195,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'users:manage',
     'communications:read',
     'communications:write',
-    'ai:use',
   ],
 
   /**
@@ -243,7 +238,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'audit:read',
     'communications:read',
     'communications:write',
-    'ai:use',
   ],
 
   /**
@@ -270,7 +264,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'staff:read',
     'masters:read',
     'communications:read',
-    'ai:use',
   ],
 
   /**
@@ -295,7 +288,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports:operational',
     'masters:read',
     'communications:read',
-    'ai:use',
   ],
 
   /**
@@ -320,7 +312,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'masters:read',
     'communications:read',
     'communications:write',
-    'ai:use',
   ],
 
   /**
@@ -344,7 +335,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports:export',
     'masters:read',
     'communications:read',
-    'ai:use',
   ],
 
   /**
@@ -354,7 +344,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
    * The narrowest role. No patient access of any kind: stock movements
    * reference procedures and batches, never a named patient.
    */
-  INVENTORY_STAFF: ['inventory:read', 'inventory:write', 'masters:read', 'ai:use'],
+  INVENTORY_STAFF: ['inventory:read', 'inventory:write', 'masters:read'],
 
   /**
    * Dental laboratory coordination (§5.8). Not one of the seven roles in §4 —
@@ -364,7 +354,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
    * `patients:read` because a lab case is identified by the patient it belongs
    * to. No clinical or billing access.
    */
-  LAB_TECH: ['patients:read', 'lab:read', 'lab:write', 'masters:read', 'ai:use'],
+  LAB_TECH: ['patients:read', 'lab:read', 'lab:write', 'masters:read'],
 }
 
 /**
@@ -452,7 +442,6 @@ export function permissionsFor(role: string | undefined | null): Permission[] {
  */
 export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ['/dashboard', 'reports:operational'],
-  ['/chat', 'ai:use'],
   ['/video', 'appointments:read'],
   ['/devices', 'settings:read'],
   ['/settings/audit', 'audit:read'],

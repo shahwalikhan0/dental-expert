@@ -9,20 +9,21 @@ import { sendVerificationEmail } from '@/lib/email-helpers'
 import { defaultTemplatesFor } from '@/lib/default-templates'
 import { defaultRecareTypesFor } from '@/lib/recare'
 import { validatePassword } from '@/lib/password-policy'
-import { DEFAULT_SECURITY, passwordPolicyOf } from '@/lib/security-settings'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { emailEquals, emailField } from '@/lib/email-address'
+import { PHONE_RULE, isValidPhone } from '@/lib/staff-rules'
+import { planFor } from '@/lib/plans'
 
 const signupSchema = z.object({
   hospitalName: z.string().min(2, 'Hospital name must be at least 2 characters'),
   adminName: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Please enter a valid email address'),
-  phone: z.string().min(10, 'Phone number must be at least 10 digits'),
-  /**
-   * Checked properly below, against the platform defaults.
-   *
-   * There is no clinic yet, so there is no clinic policy to read — this is the
-   * request that creates the clinic. The defaults are the floor every clinic
-   * starts on and may then tighten; see lib/security-settings.ts.
-   */
+  // Lower-cased, so the owner can sign in however they type it (finding 29).
+  email: emailField(),
+  phone: z
+    .string()
+    .trim()
+    .refine((value) => isValidPhone(value), PHONE_RULE),
+  /** Checked properly below — 8 to 32 characters, see lib/password-policy.ts. */
   password: z.string().min(1, 'A password is required'),
 })
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
     const { hospitalName, adminName, email, phone, password } = validated.data
 
-    const weak = validatePassword(password, passwordPolicyOf(DEFAULT_SECURITY))
+    const weak = validatePassword(password)
     if (weak) return NextResponse.json({ error: weak }, { status: 400 })
 
     // A clinic signing up must not collide with an existing *clinic*. The
@@ -48,8 +49,12 @@ export async function POST(request: Request) {
     // account at one practice and register their own practice later, and the
     // old global-unique check on User.email refused the second with a message
     // about an account they could not see.
-    const existingClinic = await prisma.hospital.findUnique({
-      where: { email },
+    //
+    // Without regard to case: clinics registered before addresses were
+    // lower-cased may hold one with a capital.
+    const existingClinic = await prisma.hospital.findFirst({
+      where: { email: emailEquals(email) },
+      select: { id: true },
     })
 
     if (existingClinic) {
@@ -135,8 +140,13 @@ export async function POST(request: Request) {
       token: verificationToken,
     })
 
+    // Which plan, and what it allows, said at the start rather than discovered
+    // on the third member of staff (finding 53).
+    const plan = planFor('FREE')
+
     return NextResponse.json({
       success: true,
+      plan: { name: plan.name, entitlements: plan.entitlements },
       message: emailSent
         ? 'Account created successfully. Please check your email to verify your account.'
         : 'Account created successfully. Email verification pending — please configure SMTP settings.',
@@ -146,6 +156,8 @@ export async function POST(request: Request) {
       ...(process.env.NODE_ENV === 'development' && { verificationToken }),
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Signup error:', error)
     return NextResponse.json(
       { error: 'An error occurred during signup. Please try again.' },

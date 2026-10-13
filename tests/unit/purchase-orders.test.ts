@@ -10,6 +10,7 @@ import {
   canReceive,
   checkReceipt,
   isEditable,
+  isExpired,
   orderTotals,
   receiptStatusFor,
 } from '@/lib/purchase-orders'
@@ -230,5 +231,57 @@ describe('checkReceipt', () => {
       [{ lineId: 'line-1', quantity: 10 }]
     )
     if (!result.ok) expect(result.error).toContain('Latex gloves')
+  })
+})
+
+/**
+ * Finding 43: fifty lignocaine cartridges were received into a batch that had
+ * expired on 1 January 2025.
+ */
+describe('receiving expired stock', () => {
+  const AT = new Date('2026-10-12T10:00:00Z')
+  const tracked = line({ batchTracking: true, expiryTracking: true })
+
+  it('refuses an expiry date that has passed', () => {
+    const result = checkReceipt(
+      [tracked],
+      [{ lineId: 'line-1', quantity: 10, batchNumber: 'LIG-OLD', expiryDate: '2025-01-01' }],
+      AT
+    )
+    expect(result).toMatchObject({ ok: false })
+    if (!result.ok) expect(result.error).toContain('LIG-OLD expired')
+  })
+
+  it('refuses an expiry date of today', () => {
+    const result = checkReceipt(
+      [tracked],
+      [{ lineId: 'line-1', quantity: 10, batchNumber: 'B-1', expiryDate: '2026-10-12' }],
+      AT
+    )
+    expect(result).toMatchObject({ ok: false })
+  })
+
+  it('refuses an expiry date that is not a date', () => {
+    const result = checkReceipt(
+      [tracked],
+      [{ lineId: 'line-1', quantity: 10, batchNumber: 'B-1', expiryDate: 'soon' }],
+      AT
+    )
+    expect(result).toMatchObject({ ok: false })
+  })
+
+  it('accepts a date still ahead', () => {
+    expect(
+      checkReceipt(
+        [tracked],
+        [{ lineId: 'line-1', quantity: 10, batchNumber: 'B-1', expiryDate: '2027-01-01' }],
+        AT
+      )
+    ).toEqual({ ok: true })
+  })
+
+  it('isExpired treats no date as not expired', () => {
+    expect(isExpired(null, AT)).toBe(false)
+    expect(isExpired(new Date('2025-01-01'), AT)).toBe(true)
   })
 })

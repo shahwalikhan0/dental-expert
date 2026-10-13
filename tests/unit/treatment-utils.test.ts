@@ -252,6 +252,19 @@ describe('calculatePlanProgress()', () => {
     expect(calculatePlanProgress([{ status: 'COMPLETED' }, { status: 'PENDING' }])).toBe(50)
   })
 
+  it('leaves cancelled steps out of the count', () => {
+    // One step dropped and the other three done is a finished plan.
+    expect(
+      calculatePlanProgress([
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+        { status: 'CANCELLED' },
+      ])
+    ).toBe(100)
+    expect(calculatePlanProgress([{ status: 'CANCELLED' }])).toBe(0)
+  })
+
   it('returns 0 when none completed', () => {
     expect(calculatePlanProgress([{ status: 'PENDING' }, { status: 'IN_PROGRESS' }])).toBe(0)
   })

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { ageInYears, birthDateForAge } from '@/lib/age'
+import { patientContactProblem, todayIso } from '@/lib/patient-validation'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { DuplicateDetector } from '@/components/patients/duplicate-detector'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
@@ -101,6 +102,24 @@ export default function NewPatientPage() {
         title: 'Validation Error',
         description: 'First name, last name, and phone are required.',
       })
+      return
+    }
+
+    // The same checks the server makes (lib/patient-validation.ts), asked
+    // here so the desk is told before the request rather than after it.
+    const problem = patientContactProblem(
+      {
+        phone: form.phone,
+        alternatePhone: form.alternatePhone,
+        emergencyContactPhone: form.emergencyContactPhone,
+        email: form.email,
+        dateOfBirth: form.dateOfBirth,
+      },
+      new Date(),
+      { today: todayIso() }
+    )
+    if (problem) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: problem })
       return
     }
 
@@ -276,6 +295,7 @@ export default function NewPatientPage() {
               <Label htmlFor="phone">Phone *</Label>
               <Input
                 id="phone"
+                type="tel"
                 value={form.phone}
                 onChange={(e) => updateField('phone', e.target.value)}
                 placeholder="Enter phone number"
@@ -286,6 +306,7 @@ export default function NewPatientPage() {
               <Label htmlFor="alternatePhone">Alternate Phone</Label>
               <Input
                 id="alternatePhone"
+                type="tel"
                 value={form.alternatePhone}
                 onChange={(e) => updateField('alternatePhone', e.target.value)}
                 placeholder="Alternate phone number"
@@ -411,6 +432,7 @@ export default function NewPatientPage() {
               <Label htmlFor="emergencyContactPhone">Contact Phone</Label>
               <Input
                 id="emergencyContactPhone"
+                type="tel"
                 value={form.emergencyContactPhone}
                 onChange={(e) => updateField('emergencyContactPhone', e.target.value)}
                 placeholder="Emergency contact phone"

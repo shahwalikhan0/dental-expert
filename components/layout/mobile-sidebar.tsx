@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { X, ChevronDown } from 'lucide-react'
+import { X, ChevronDown, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { activeHref, childrenOf, getNavigationForRole } from '@/config/nav'
 import { useNavBadges } from '@/hooks/use-nav-badges'
@@ -67,7 +67,7 @@ export function MobileSidebar({
       />
 
       {/* Sidebar panel */}
-      <div className="glass glass-raised animate-in slide-in-from-left fixed inset-y-0 left-0 w-[min(288px,80vw)] rounded-r-2xl duration-200">
+      <div className="glass glass-raised animate-in slide-in-from-left fixed inset-y-0 left-0 flex w-[min(288px,80vw)] flex-col rounded-r-2xl duration-200">
         {/* Header */}
         <div className="flex h-14 items-center justify-between border-b border-[hsl(var(--glass-ring)/0.08)] px-4">
           <Link
@@ -101,7 +101,7 @@ export function MobileSidebar({
         </div>
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 h-[calc(100vh-3.5rem)]">
+        <ScrollArea className="min-h-0 flex-1">
           <nav className="flex flex-col gap-1 p-3">
             {navigation.map((section, sectionIndex) => (
               <div key={section.title} className={sectionIndex > 0 ? 'mt-4' : ''}>
@@ -194,6 +194,18 @@ export function MobileSidebar({
             ))}
           </nav>
         </ScrollArea>
+
+        {/* The user guide, below the menu as on the desktop sidebar. */}
+        <div className="border-t border-[hsl(var(--glass-ring)/0.08)] p-3">
+          <Link
+            href="/docs"
+            onClick={() => setMobileOpen(false)}
+            className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          >
+            <BookOpen className="h-4 w-4 shrink-0" />
+            <span>Docs</span>
+          </Link>
+        </div>
       </div>
     </div>
   )

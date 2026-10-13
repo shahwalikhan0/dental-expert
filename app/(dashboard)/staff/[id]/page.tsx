@@ -33,23 +33,25 @@ interface StaffDetail {
   employeeId: string
   firstName: string
   lastName: string
-  dateOfBirth: string | null
+  // The fields from here marked `?` are sent only to `staff:hr` — see
+  // STAFF_HR_FIELDS in lib/staff-rules.ts (bug report 12 Oct, finding 42).
+  dateOfBirth?: string | null
   gender: string | null
   phone: string
   alternatePhone: string | null
   email: string
-  address: string | null
-  city: string | null
-  state: string | null
-  postalCode: string | null
-  cnic: string | null
-  nationalTaxNo: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
+  cnic?: string | null
+  nationalTaxNo?: string | null
   qualification: string | null
   specialization: string | null
   licenseNumber: string | null
   joiningDate: string
-  emergencyContact: string | null
-  emergencyPhone: string | null
+  emergencyContact?: string | null
+  emergencyPhone?: string | null
   isActive: boolean
   createdAt: string
   user: {
@@ -139,7 +141,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  const formatDate = (dateString: string | null) => {
+  const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString('en-PK', {
       day: 'numeric',
@@ -185,6 +187,11 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
       </div>
     )
   }
+
+  // Withheld, not empty: the server leaves these out for anybody without
+  // `staff:hr`, and the screen says so rather than show a row of dashes.
+  const hasHrFields = 'cnic' in staff
+  const WITHHELD = 'Visible to administrators and managers'
 
   return (
     <div className="space-y-6">
@@ -264,8 +271,10 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     <MapPin className="h-3 w-3" />
                     Address
                   </p>
-                  <p className="font-medium">
-                    {staff.address ? (
+                  <p className={hasHrFields ? 'font-medium' : 'text-sm text-muted-foreground'}>
+                    {!hasHrFields ? (
+                      WITHHELD
+                    ) : staff.address ? (
                       <>
                         {staff.address}
                         {staff.city && `, ${staff.city}`}
@@ -292,33 +301,47 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Date of Birth</p>
-                    <p className="font-medium">{formatDate(staff.dateOfBirth)}</p>
+                    <p className="font-medium">
+                      {hasHrFields ? formatDate(staff.dateOfBirth) : '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Gender</p>
                     <p className="font-medium">{staff.gender || '-'}</p>
                   </div>
                 </div>
-                <Separator />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">CNIC</p>
-                    <p className="font-medium">{formatCNIC(staff.cnic) || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">National Tax Number (NTN)</p>
-                    <p className="font-medium">{staff.nationalTaxNo || '-'}</p>
-                  </div>
-                </div>
-                <Separator />
-                <div>
-                  <p className="text-sm text-muted-foreground">Emergency Contact</p>
-                  <p className="font-medium">
-                    {staff.emergencyContact
-                      ? `${staff.emergencyContact} (${staff.emergencyPhone || 'No phone'})`
-                      : '-'}
-                  </p>
-                </div>
+                {!hasHrFields && (
+                  <>
+                    <Separator />
+                    <p className="text-sm text-muted-foreground">
+                      CNIC, NTN, date of birth and emergency contact are {WITHHELD.toLowerCase()}.
+                    </p>
+                  </>
+                )}
+                {hasHrFields && (
+                  <>
+                    <Separator />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">CNIC</p>
+                        <p className="font-medium">{formatCNIC(staff.cnic) || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">National Tax Number (NTN)</p>
+                        <p className="font-medium">{staff.nationalTaxNo || '-'}</p>
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Emergency Contact</p>
+                      <p className="font-medium">
+                        {staff.emergencyContact
+                          ? `${staff.emergencyContact} (${staff.emergencyPhone || 'No phone'})`
+                          : '-'}
+                      </p>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 

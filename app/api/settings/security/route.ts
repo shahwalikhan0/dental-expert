@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import prisma from '@/lib/prisma'
-import { MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
 import { readSecuritySettings, SECURITY_CATEGORY } from '@/lib/security-settings'
 import { z } from 'zod'
 
@@ -18,25 +17,13 @@ import { z } from 'zod'
  * sign-in are. Its stored rows are deleted by the migration that accompanied
  * this change, so no clinic is left holding a `true` for a protection it does
  * not have.
+ *
+ * The password rules went the same way: a password is 8 to 32 characters for
+ * every clinic (lib/password-policy.ts), so the minimum length and the four
+ * composition switches are no longer settings.
  */
 
 const securitySettingsSchema = z.object({
-  // The floor is the platform's, not the clinic's. Records behind an account
-  // with a six-character password are not something a settings form should be
-  // able to arrange.
-  passwordMinLength: z
-    .number()
-    .int()
-    .min(
-      MINIMUM_PASSWORD_LENGTH,
-      `A password minimum below ${MINIMUM_PASSWORD_LENGTH} is not allowed — these accounts open medical records`
-    )
-    .max(64, 'A password minimum above 64 characters is not allowed')
-    .optional(),
-  passwordRequireUppercase: z.boolean().optional(),
-  passwordRequireLowercase: z.boolean().optional(),
-  passwordRequireNumbers: z.boolean().optional(),
-  passwordRequireSpecialChars: z.boolean().optional(),
   /** 0 is never, and is the default. */
   passwordExpiryDays: z
     .number()

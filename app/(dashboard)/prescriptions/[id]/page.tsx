@@ -12,6 +12,7 @@ import { ArrowLeft, Printer, Loader2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { groupTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { prescriberName } from '@/lib/prescribing'
 
 interface PrescriptionDetail {
   id: string
@@ -46,7 +47,16 @@ interface PrescriptionDetail {
         the line it printed was never once reached. */
     medicalHistory: { allergies: string[] } | null
   }
-  doctor: { id: string; name: string; specialization: string | null; registrationNo: string | null }
+  /** As `GET /api/prescriptions/[id]` returns it: the staff record's own
+      columns. This read `name` and `registrationNo`, neither of which exists,
+      so the signature line on the printed prescription was blank. */
+  doctor: {
+    id: string
+    firstName: string
+    lastName: string
+    specialization: string | null
+    licenseNumber: string | null
+  } | null
   medications: {
     id: string
     medicationName: string
@@ -380,15 +390,17 @@ export default function PrescriptionDetailPage() {
             <div className="flex justify-end mt-8">
               <div className="text-right">
                 <div className="border-b border-foreground w-48 mb-1" />
-                <p className="font-medium">{prescription.doctor.name}</p>
-                {prescription.doctor.specialization && (
+                {/* "Dr." only when the name does not already carry it —
+                    see `prescriberName` (finding 66). */}
+                <p className="font-medium">{prescriberName(prescription.doctor)}</p>
+                {prescription.doctor?.specialization && (
                   <p className="text-xs text-muted-foreground">
                     {prescription.doctor.specialization}
                   </p>
                 )}
-                {prescription.doctor.registrationNo && (
+                {prescription.doctor?.licenseNumber && (
                   <p className="text-xs text-muted-foreground">
-                    Reg. No: {prescription.doctor.registrationNo}
+                    Reg. No: {prescription.doctor.licenseNumber}
                   </p>
                 )}
               </div>

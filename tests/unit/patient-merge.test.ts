@@ -7,7 +7,13 @@
  * checked without a database.
  */
 import { describe, it, expect } from 'vitest'
-import { fillableFrom, mergeMedicalHistory, mergeRefusal } from '@/lib/patient-merge'
+import {
+  fillableFrom,
+  mergeMedicalHistory,
+  mergeRefusal,
+  resolveRecallCollisions,
+  type MergeableRecall,
+} from '@/lib/patient-merge'
 
 describe('fillableFrom', () => {
   it('fills the surviving record’s blanks', () => {
@@ -112,5 +118,75 @@ describe('mergeRefusal', () => {
   it('says so when a record is missing', () => {
     expect(mergeRefusal(null, patient({ id: 'b' }))).toMatch(/could not be found/)
     expect(mergeRefusal(patient({ id: 'a' }), null)).toMatch(/could not be found/)
+  })
+})
+
+describe('resolveRecallCollisions', () => {
+  const recall = (overrides: Partial<MergeableRecall>): MergeableRecall => ({
+    id: 'r',
+    recareTypeId: 'scale',
+    dueDate: new Date('2027-01-01'),
+    lastDoneAt: null,
+    snoozedUntil: null,
+    snoozeReason: null,
+    status: 'ACTIVE',
+    notes: null,
+    lastContactedAt: null,
+    contactAttempts: 0,
+    ...overrides,
+  })
+
+  // Bug report 12 Oct, finding 23: both records had the default recall from
+  // registration, the merge moved the retired one across, and the unique
+  // (patientId, recareTypeId) index refused it — every merge failed.
+  it('drops the retired record’s recall of a kind the surviving one already has', () => {
+    const result = resolveRecallCollisions(
+      [recall({ id: 'keep-scale' })],
+      [recall({ id: 'retire-scale' }), recall({ id: 'retire-child', recareTypeId: 'child' })]
+    )
+    expect(result.drop).toEqual(['retire-scale'])
+    expect(result.update).toEqual([])
+  })
+
+  it('takes the retired recall’s schedule when it was done more recently', () => {
+    const result = resolveRecallCollisions(
+      [recall({ id: 'keep', lastDoneAt: new Date('2026-01-10'), dueDate: new Date('2026-07-10') })],
+      [
+        recall({
+          id: 'retire',
+          lastDoneAt: new Date('2026-09-01'),
+          dueDate: new Date('2027-03-01'),
+        }),
+      ]
+    )
+    expect(result.drop).toEqual(['retire'])
+    expect(result.update).toEqual([
+      {
+        id: 'keep',
+        data: expect.objectContaining({
+          lastDoneAt: new Date('2026-09-01'),
+          dueDate: new Date('2027-03-01'),
+        }),
+      },
+    ])
+  })
+
+  it('keeps the surviving recall’s schedule when it is the more recent', () => {
+    const result = resolveRecallCollisions(
+      [recall({ id: 'keep', lastDoneAt: new Date('2026-09-01') })],
+      [recall({ id: 'retire', lastDoneAt: new Date('2026-01-10') })]
+    )
+    expect(result.update).toEqual([])
+  })
+
+  it('adds up the contact history, so nobody is rung as if for the first time', () => {
+    const result = resolveRecallCollisions(
+      [recall({ id: 'keep', contactAttempts: 1, lastContactedAt: new Date('2026-08-01') })],
+      [recall({ id: 'retire', contactAttempts: 2, lastContactedAt: new Date('2026-09-01') })]
+    )
+    expect(result.update[0].data).toEqual({
+      contactAttempts: 3,
+      lastContactedAt: new Date('2026-09-01'),
+    })
   })
 })

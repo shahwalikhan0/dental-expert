@@ -331,7 +331,6 @@ export default function NewInvoicePage() {
           paymentTermDays,
           notes,
           termsAndConditions,
-          status,
         }),
       })
 
@@ -341,6 +340,27 @@ export default function NewInvoicePage() {
       }
 
       const invoice = await response.json()
+
+      // Every invoice is created as a draft; the server does not take a status
+      // from the form. Issuing is a second step, and the one where a discount
+      // awaiting approval is caught — in which case the draft is kept and the
+      // toast says why it was not issued.
+      if (status === 'PENDING') {
+        const issued = await fetch(`/api/invoices/${invoice.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'PENDING' }),
+        })
+        if (!issued.ok) {
+          const data = await issued.json().catch(() => ({}))
+          toast({
+            variant: 'destructive',
+            title: `${invoice.invoiceNo} was saved as a draft, not issued`,
+            description: data.error || 'The invoice could not be issued',
+          })
+        }
+      }
+
       router.push(`/billing/invoices/${invoice.id}`)
     } catch (error: any) {
       toast({
@@ -666,6 +686,7 @@ export default function NewInvoicePage() {
                   <Input
                     type="number"
                     min="0"
+                    max={discountType === 'PERCENTAGE' ? 100 : undefined}
                     value={discountValue}
                     onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                   />

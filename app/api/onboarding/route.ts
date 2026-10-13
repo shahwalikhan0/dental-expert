@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAuthAndRole } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 const onboardingSchema = z.object({
   // Step 1: Clinic Details
@@ -89,6 +90,8 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Onboarding error:', error)
     return NextResponse.json(
       { error: 'An error occurred during onboarding. Please try again.' },
@@ -99,7 +102,7 @@ export async function POST(request: Request) {
 
 // GET current onboarding status
 export async function GET() {
-  const { error, hospitalId } = await requireAuthAndRole()
+  const { error, hospitalId, user } = await requireAuthAndRole()
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -138,8 +141,17 @@ export async function GET() {
       return NextResponse.json({ error: 'Hospital not found' }, { status: 404 })
     }
 
-    return NextResponse.json(hospital)
+    // Whether this person can finish setup. Every member of a clinic that has
+    // not finished it is sent to /onboarding, and only the clinic's own
+    // administrator can complete it (POST above) — so the page tells everybody
+    // else to wait rather than offer them a form that will refuse them.
+    return NextResponse.json({
+      ...hospital,
+      canComplete: user?.role === 'ADMIN' && !!user?.isHospitalAdmin,
+    })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get onboarding status error:', error)
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }

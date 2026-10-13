@@ -4,9 +4,16 @@ import { authConfig } from './auth.config'
 import { z } from 'zod'
 import { requestContext } from './audit'
 import { resolveLogin } from './login'
+import { emailField } from './email-address'
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  /**
+   * Trimmed and lower-cased before anything else. `QA.ADMIN@clinic.test` is
+   * the same person as `qa.admin@clinic.test`, and used to be refused (bug
+   * report 12 Oct, finding 29). lib/login.ts matches without regard to case
+   * as well, for accounts stored before addresses were normalised.
+   */
+  email: emailField(),
   /**
    * No minimum here. This schema describes what a sign-in *request* looks
    * like, not what a password must be — that is the clinic's policy, checked

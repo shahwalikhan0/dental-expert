@@ -179,7 +179,7 @@ describe('NewStaffPage', () => {
       expect(screen.getByPlaceholderText('staff@yourclinic.com')).toBeInTheDocument()
       expect(screen.getByLabelText('Password *')).toBeInTheDocument()
       // Phone placeholder appears 3 times (phone, alternatePhone, emergencyPhone)
-      expect(screen.getAllByPlaceholderText('+92 300 1234567').length).toBe(3)
+      expect(screen.getAllByPlaceholderText('0300 1234567').length).toBe(3)
     })
 
     it('renders optional professional fields', () => {
@@ -296,7 +296,7 @@ describe('NewStaffPage', () => {
       // Select role
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       // Fill phone
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
@@ -305,7 +305,7 @@ describe('NewStaffPage', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            description: 'Password must be at least 6 characters',
+            description: 'Password must be at least 8 characters',
           })
         )
       })
@@ -343,7 +343,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
@@ -390,7 +390,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getByTestId('select-item-ADMIN'))
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       // Optional fields
@@ -427,7 +427,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
@@ -457,7 +457,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
@@ -489,7 +489,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)
@@ -517,7 +517,7 @@ describe('NewStaffPage', () => {
       })
       fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
-      const phoneInputs = screen.getAllByPlaceholderText('+92 300 1234567')
+      const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
 
       fireEvent.submit(container.querySelector('form')!)

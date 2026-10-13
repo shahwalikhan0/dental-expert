@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { duplicateMedicationMessage, findDuplicateMedication } from '@/lib/medication-catalogue'
 
 // GET — list medications with search, category filter, pagination
 export async function GET(request: NextRequest) {
@@ -68,9 +70,11 @@ export async function GET(request: NextRequest) {
     })
   } catch (err: any) {
     console.error('Error fetching medications:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to fetch medications' },
-      { status: 500 }
+    // Never `err.message`: a Prisma error names the server's paths and the
+    // query (bug report 12 Oct, finding 4).
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to fetch medications' }, { status: 500 })
     )
   }
 }
@@ -102,6 +106,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Medication name is required' }, { status: 400 })
     }
 
+    // The same drug twice splits its stock, templates and search results
+    // between two rows nobody can tell apart (finding 56).
+    const duplicate = await findDuplicateMedication(hospitalId, {
+      name,
+      genericName,
+      strength,
+      form,
+    })
+    if (duplicate) {
+      return NextResponse.json(
+        { error: duplicateMedicationMessage(duplicate), duplicateOf: duplicate.id },
+        { status: 409 }
+      )
+    }
+
     const medication = await prisma.medication.create({
       data: {
         hospitalId,
@@ -122,9 +141,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: medication }, { status: 201 })
   } catch (err: any) {
     console.error('Error creating medication:', err)
-    return NextResponse.json(
-      { error: err.message || 'Failed to create medication' },
-      { status: 500 }
+    return (
+      knownErrorResponse(err) ??
+      NextResponse.json({ error: 'Failed to create medication' }, { status: 500 })
     )
   }
 }

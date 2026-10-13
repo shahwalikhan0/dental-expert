@@ -25,6 +25,7 @@ import {
 import { ArrowLeft, Search, User, Stethoscope, Save, Loader2 } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
+import { parseTeeth } from '@/lib/teeth'
 import { VoiceInput } from '@/components/clinical/voice-input'
 
 interface Patient {
@@ -134,6 +135,13 @@ export default function NewTreatmentPage() {
   // the patient. It was read by nobody, so the one field that made the link
   // worth clicking arrived empty.
   const preselectedProcedureId = searchParams.get('procedureId')
+  // And from a plan step, the step itself, its teeth and its quoted price. The
+  // step id is what links the treatment to the plan so the plan moves as the
+  // work does (bug report 12 Oct, finding 11); the teeth and price are what
+  // the patient agreed to, and retyping them was the only way to get them.
+  const planItemId = searchParams.get('planItemId')
+  const planTeeth = useMemo(() => parseTeeth(searchParams.get('teeth')), [searchParams])
+  const planCost = searchParams.get('cost')
 
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
@@ -147,7 +155,7 @@ export default function NewTreatmentPage() {
     doctorId: '',
     procedureId: preselectedProcedureId || '',
     appointmentId: preselectedAppointmentId || '',
-    toothNumbers: [] as number[],
+    toothNumbers: planTeeth,
     chiefComplaint: '',
     diagnosis: '',
     findings: '',
@@ -155,7 +163,7 @@ export default function NewTreatmentPage() {
     materialsUsed: '',
     followUpRequired: false,
     followUpDate: '',
-    cost: '',
+    cost: planCost ?? '',
   })
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
@@ -206,7 +214,9 @@ export default function NewTreatmentPage() {
                   {
                     ...prev,
                     procedureId: procedure.id,
-                    cost: prev.cost || procedure.basePrice.toString(),
+                    // A plan's quoted price, when the step brought one, even if
+                    // it is 0.
+                    cost: prev.cost !== '' ? prev.cost : procedure.basePrice.toString(),
                   },
                   procedure
                 )
@@ -289,7 +299,10 @@ export default function NewTreatmentPage() {
         body: JSON.stringify({
           ...formData,
           toothNumbers: formData.toothNumbers.length > 0 ? formData.toothNumbers.join(',') : null,
-          cost: formData.cost ? parseFloat(formData.cost) : null,
+          // '' is "not given", and the route uses the plan's or the list
+          // price; "0" is a price of nothing and is sent as 0.
+          cost: formData.cost === '' ? null : parseFloat(formData.cost),
+          treatmentPlanItemId: planItemId || undefined,
         }),
       })
 
@@ -423,7 +436,11 @@ export default function NewTreatmentPage() {
               <Stethoscope className="h-5 w-5" />
               Treatment Details
             </CardTitle>
-            <CardDescription>Select the doctor and procedure</CardDescription>
+            <CardDescription>
+              {planItemId
+                ? 'A step of the patient’s treatment plan. Completing this treatment completes the step.'
+                : 'Select the doctor and procedure'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -499,6 +516,7 @@ export default function NewTreatmentPage() {
               <Input
                 id="cost"
                 type="number"
+                min={0}
                 step="0.01"
                 value={formData.cost}
                 onChange={(e) => setFormData({ ...formData, cost: e.target.value })}

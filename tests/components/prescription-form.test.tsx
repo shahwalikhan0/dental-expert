@@ -21,6 +21,13 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }))
 
+// Only a dentist prescribes (finding 36). Most of these tests are about the
+// form, so they run as somebody who may use it.
+const mockCan = vi.fn(() => true as boolean | null)
+vi.mock('@/hooks/use-can', () => ({
+  useCan: () => mockCan(),
+}))
+
 vi.mock('@/lib/utils', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }))
@@ -153,6 +160,7 @@ async function pickMedication() {
 describe('NewPrescriptionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCan.mockReturnValue(true)
     ;(global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({}),
@@ -584,6 +592,30 @@ describe('NewPrescriptionPage', () => {
           })
         )
       })
+    })
+  })
+
+  describe('Who may prescribe', () => {
+    it('tells a non-dentist rather than offering a form the server will refuse', () => {
+      mockCan.mockReturnValue(false)
+      render(<NewPrescriptionPage />)
+      expect(screen.getByText(/only a dentist can write a prescription/i)).toBeInTheDocument()
+      expect(screen.queryByText('Create Prescription')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Hydration (finding 67)', () => {
+    it('gives the medication field an id that does not depend on a module counter', () => {
+      // The id came from a counter that the server keeps incrementing across
+      // requests, so the server's id and the browser's never matched.
+      const first = render(<NewPrescriptionPage />)
+      const firstId = first.container.querySelector('label[for]')?.getAttribute('for')
+      first.unmount()
+      const second = render(<NewPrescriptionPage />)
+      const secondId = second.container.querySelector('label[for]')?.getAttribute('for')
+      expect(firstId).toBeTruthy()
+      expect(firstId).not.toMatch(/^medication-\d+$/)
+      expect(secondId).toBeTruthy()
     })
   })
 

@@ -11,7 +11,7 @@ import { Shield, Lock, Clock, UserX, AlertTriangle, Users } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_SECURITY, type SecuritySettings } from '@/lib/security-settings'
-import { MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
+import { MAXIMUM_PASSWORD_LENGTH, MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
 
 /**
  * Settings → Security.
@@ -128,85 +128,19 @@ export default function SecuritySettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5" />
-              Password policy
+              Passwords
             </CardTitle>
             <CardDescription>
-              Checked wherever a password is set — signing up, accepting an invitation, creating a
-              staff account, and changing your own.
+              The same rule everywhere a password is set — signing up, accepting an invitation,
+              creating a staff account, a reset, the patient portal and changing your own.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="passwordMinLength">Minimum length</Label>
-              <Input
-                id="passwordMinLength"
-                type="number"
-                value={settings.passwordMinLength}
-                onChange={(e) =>
-                  set('passwordMinLength', parseInt(e.target.value) || MINIMUM_PASSWORD_LENGTH)
-                }
-                min={MINIMUM_PASSWORD_LENGTH}
-                max={64}
-              />
-              <p className="text-muted-foreground text-sm">
-                {MINIMUM_PASSWORD_LENGTH} characters is the lowest this can be set to. These
-                accounts open medical records.
-              </p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="requireUppercase">Require a capital letter</Label>
-                  <p className="text-muted-foreground text-sm">At least one A–Z</p>
-                </div>
-                <Switch
-                  id="requireUppercase"
-                  checked={settings.passwordRequireUppercase}
-                  onCheckedChange={(v) => set('passwordRequireUppercase', v)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="requireLowercase">Require a small letter</Label>
-                  <p className="text-muted-foreground text-sm">At least one a–z</p>
-                </div>
-                <Switch
-                  id="requireLowercase"
-                  checked={settings.passwordRequireLowercase}
-                  onCheckedChange={(v) => set('passwordRequireLowercase', v)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="requireNumbers">Require a number</Label>
-                  <p className="text-muted-foreground text-sm">At least one 0–9</p>
-                </div>
-                <Switch
-                  id="requireNumbers"
-                  checked={settings.passwordRequireNumbers}
-                  onCheckedChange={(v) => set('passwordRequireNumbers', v)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="requireSpecial">Require a symbol</Label>
-                  <p className="text-muted-foreground text-sm">
-                    Anything that is not a letter, a number or a space
-                  </p>
-                </div>
-                <Switch
-                  id="requireSpecial"
-                  checked={settings.passwordRequireSpecialChars}
-                  onCheckedChange={(v) => set('passwordRequireSpecialChars', v)}
-                />
-              </div>
-            </div>
+            <p className="text-sm">
+              A password is {MINIMUM_PASSWORD_LENGTH} to {MAXIMUM_PASSWORD_LENGTH} characters. There
+              are no capital-letter, number or symbol requirements — length is what makes a password
+              hard to guess.
+            </p>
 
             <Separator />
 
@@ -387,10 +321,6 @@ export default function SecuritySettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-amber-800 dark:text-amber-300">
-            <p>
-              • A stricter password policy applies to the next password anybody sets, not to the
-              ones already in use.
-            </p>
             <p>
               • An allowed-address list that does not include you will lock you out at your next
               sign-in.

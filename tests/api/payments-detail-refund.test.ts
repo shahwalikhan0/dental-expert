@@ -157,10 +157,34 @@ describe('Payments Detail & Refund API', () => {
         status: 'COMPLETED',
         invoice: { id: 'inv-1', status: 'PAID' },
       })
+      // The invoice is recounted from its payments: nothing settled before,
+      // this one after.
+      ;(prisma.payment.findMany as any)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ amount: 2000, status: 'COMPLETED', refunds: [] }])
 
       const res = await detailModule.PUT(makeRequest('PUT', { status: 'COMPLETED' }), ctx)
       expect(res.status).toBe(200)
-      expect(prisma.invoice.update).toHaveBeenCalled()
+      expect(prisma.invoice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { paidAmount: 2000, balanceAmount: 0, status: 'PAID' },
+        })
+      )
+    })
+
+    it('refuses to complete a pending payment on a cancelled invoice', async () => {
+      ;(prisma.payment.findUnique as any).mockResolvedValue({
+        id: 'pay-1',
+        status: 'PENDING',
+        amount: 2000,
+        invoiceId: 'inv-1',
+        invoice: { paidAmount: 0, totalAmount: 2000, status: 'CANCELLED' },
+      })
+
+      const res = await detailModule.PUT(makeRequest('PUT', { status: 'COMPLETED' }), ctx)
+      expect(res.status).toBe(409)
+      expect(prisma.payment.update).not.toHaveBeenCalled()
+      expect(prisma.invoice.update).not.toHaveBeenCalled()
     })
 
     it('rejects changing status of completed payment', async () => {
@@ -281,6 +305,11 @@ describe('Payments Detail & Refund API', () => {
         invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
       })
 
+      // After the refund, the one payment on the invoice has gone back in full.
+      ;(prisma.payment.findMany as any).mockResolvedValue([
+        { amount: 1000, status: 'REFUNDED', refundAmount: 1000, refunds: [{ amount: 1000 }] },
+      ])
+
       const res = await refundModule.POST(
         makeRequest('POST', { refundAmount: 1000, refundReason: 'Patient request' }),
         ctx
@@ -305,6 +334,15 @@ describe('Payments Detail & Refund API', () => {
         invoice: { paidAmount: 1000, totalAmount: 1000, status: 'PAID' },
       })
 
+      ;(prisma.payment.findMany as any).mockResolvedValue([
+        {
+          amount: 1000,
+          status: 'PARTIALLY_REFUNDED',
+          refundAmount: 500,
+          refunds: [{ amount: 500 }],
+        },
+      ])
+
       const res = await refundModule.POST(
         makeRequest('POST', { refundAmount: 500, refundReason: 'Partial adjustment' }),
         ctx
@@ -312,7 +350,39 @@ describe('Payments Detail & Refund API', () => {
       expect(res.status).toBe(201)
       expect(prisma.invoice.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'PARTIALLY_PAID' }),
+          data: expect.objectContaining({ status: 'PARTIALLY_PAID', paidAmount: 500 }),
+        })
+      )
+    })
+
+    // Finding 39: the paid amount is counted from the invoice's payments. Two
+    // Rs 3,000 payments on a Rs 3,000 invoice, one of them refunded, leave it
+    // PAID with 3,000 paid — not REFUNDED with nothing paid, which is what
+    // subtracting from the invoice's own running total of 3,000 gave.
+    it('recounts the invoice from its payments after refunding a duplicate', async () => {
+      ;(prisma.payment.findFirst as any).mockResolvedValue({
+        id: 'pay-1',
+        paymentNo: 'PAY-6',
+        status: 'COMPLETED',
+        amount: 3000,
+        paymentMethod: 'CASH',
+        invoiceId: 'inv-1',
+        refunds: [],
+        invoice: { id: 'inv-1', paidAmount: 3000, totalAmount: 3000, status: 'PAID' },
+      })
+      ;(prisma.payment.findMany as any).mockResolvedValue([
+        { amount: 3000, status: 'COMPLETED', refunds: [] },
+        { amount: 3000, status: 'REFUNDED', refundAmount: 3000, refunds: [{ amount: 3000 }] },
+      ])
+
+      const res = await refundModule.POST(
+        makeRequest('POST', { refundAmount: 3000, refundReason: 'Duplicate payment' }),
+        ctx
+      )
+      expect(res.status).toBe(201)
+      expect(prisma.invoice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { paidAmount: 3000, balanceAmount: 0, status: 'PAID' },
         })
       )
     })

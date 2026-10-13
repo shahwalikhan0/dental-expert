@@ -82,9 +82,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ success: true, logo: logoPath })
-  } catch (err: any) {
+  } catch (err) {
     console.error('Logo upload error:', err)
-    return NextResponse.json({ error: err.message || 'Failed to upload logo' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to upload logo' }, { status: 500 })
   }
 }
 
@@ -105,8 +105,8 @@ export async function DELETE() {
     })
 
     return NextResponse.json({ success: true })
-  } catch (err: any) {
+  } catch (err) {
     console.error('Logo delete error:', err)
-    return NextResponse.json({ error: err.message || 'Failed to delete logo' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to delete logo' }, { status: 500 })
   }
 }

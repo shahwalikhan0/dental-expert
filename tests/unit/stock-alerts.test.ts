@@ -353,3 +353,74 @@ describe('reconcileExpiryAlerts', () => {
     expect(where.alertType.in).toEqual([StockAlertType.EXPIRING_SOON, StockAlertType.EXPIRED])
   })
 })
+
+/**
+ * Finding 43: an expired receipt waited for the overnight sweep, and the
+ * alerts page said 0 in the meantime. Routes that touch a batch reconcile just
+ * that batch, at once.
+ */
+describe('reconcileExpiryAlerts for named batches', () => {
+  const AT = new Date('2026-09-15T00:00:00Z')
+
+  function db(batches: any[], open: any[] = []) {
+    return {
+      inventoryBatch: { findMany: vi.fn().mockResolvedValue(batches) },
+      stockAlert: {
+        findMany: vi.fn().mockResolvedValue(open),
+        create: vi.fn().mockResolvedValue({}),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    } as any
+  }
+
+  it('reads only the named batches and their alerts', async () => {
+    const client = db([])
+
+    await reconcileExpiryAlerts(client, { hospitalId: 'h1', at: AT, batchIds: ['b1'] })
+
+    expect(client.inventoryBatch.findMany.mock.calls[0][0].where).toMatchObject({
+      id: { in: ['b1'] },
+    })
+    expect(client.stockAlert.findMany.mock.calls[0][0].where).toMatchObject({
+      batchId: { in: ['b1'] },
+    })
+  })
+
+  it('raises the alert for a named batch', async () => {
+    const client = db([
+      { id: 'b1', itemId: 'i1', expiryDate: new Date('2026-09-20'), remainingQty: 10 },
+    ])
+
+    const sweep = await reconcileExpiryAlerts(client, {
+      hospitalId: 'h1',
+      at: AT,
+      batchIds: ['b1'],
+    })
+
+    expect(sweep.raised).toBe(1)
+    expect(client.stockAlert.create.mock.calls[0][0].data).toMatchObject({
+      batchId: 'b1',
+      alertType: StockAlertType.EXPIRING_SOON,
+    })
+  })
+
+  it('leaves legacy alerts with no batch to the full sweep', async () => {
+    const client = db(
+      [],
+      [{ id: 'legacy', batchId: null, alertType: StockAlertType.EXPIRED, isAcknowledged: false }]
+    )
+
+    await reconcileExpiryAlerts(client, { hospitalId: 'h1', at: AT, batchIds: ['b1'] })
+
+    expect(client.stockAlert.deleteMany).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for no batches', async () => {
+    const client = db([])
+
+    const sweep = await reconcileExpiryAlerts(client, { hospitalId: 'h1', at: AT, batchIds: [] })
+
+    expect(sweep).toEqual({ raised: 0, cleared: 0, checked: 0 })
+    expect(client.inventoryBatch.findMany).not.toHaveBeenCalled()
+  })
+})

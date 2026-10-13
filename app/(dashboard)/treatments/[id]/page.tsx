@@ -2,6 +2,8 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { useCan } from '@/hooks/use-can'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -131,6 +133,12 @@ interface Treatment {
     id: string
     invoice: { id: string; invoiceNo: string; status: string; totalAmount: string | number } | null
   }>
+  /** The plan step this treatment carries out, when it was started from one. */
+  planItem: {
+    id: string
+    status: string
+    treatmentPlan: { id: string; planNumber: string; title: string }
+  } | null
 }
 
 export default function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -146,6 +154,12 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const [addendumOpen, setAddendumOpen] = useState(false)
   const [addendumText, setAddendumText] = useState('')
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  // Only the treating dentist may sign (bug report 12 Oct, finding 12), so the
+  // button is offered to them alone. The route enforces it either way.
+  const { data: session } = useSession()
+  const myStaffId = session?.user?.staffId
+  // Prescribing is a dentist's act, the same capability as signing.
+  const canPrescribe = useCan('clinical:sign') === true
   const [actionLoading, setActionLoading] = useState(false)
 
   // Complete form state
@@ -209,12 +223,27 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(completeFormData),
       })
-      if (!response.ok) throw new Error('Failed to complete treatment')
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Failed to complete treatment')
       setCompleteDialogOpen(false)
+      // A recall this procedure is the visit for has moved on with it; say
+      // where to, so the desk does not press Mark as done a second time.
+      const moved: { name: string; dueDate: string }[] = result.recallsMoved ?? []
+      if (moved.length > 0) {
+        toast({
+          title: 'Treatment completed',
+          description: moved
+            .map((recall) => `${recall.name} recall now due ${formatDate(recall.dueDate)}`)
+            .join('. '),
+        })
+      }
       fetchTreatment()
-    } catch (error) {
-      console.error('Error completing treatment:', error)
-      toast({ variant: 'destructive', title: 'Could not complete the treatment' })
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not complete the treatment',
+        description: error.message,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -346,12 +375,14 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               Complete Treatment
             </Button>
           )}
-          {treatment.status === 'COMPLETED' && !treatment.signedAt && (
-            <Button onClick={() => setSignDialogOpen(true)}>
-              <PenLine className="h-4 w-4 mr-2" />
-              Sign Note
-            </Button>
-          )}
+          {treatment.status === 'COMPLETED' &&
+            !treatment.signedAt &&
+            (!myStaffId || myStaffId === treatment.doctor.id) && (
+              <Button onClick={() => setSignDialogOpen(true)}>
+                <PenLine className="h-4 w-4 mr-2" />
+                Sign Note
+              </Button>
+            )}
           {treatment.signedAt && (
             <Button variant="outline" onClick={() => setAddendumOpen(true)}>
               <FileText className="h-4 w-4 mr-2" />
@@ -385,12 +416,15 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             the tooth. The form reads the patient, the diagnosis and the teeth
             from this treatment.
           */}
-          <Button variant="outline" asChild>
-            <Link href={`/prescriptions/new?treatmentId=${treatment.id}`}>
-              <ClipboardList className="h-4 w-4 mr-2" />
-              Prescribe
-            </Link>
-          </Button>
+          {/* Only a dentist prescribes, so only a dentist is offered it. */}
+          {canPrescribe && (
+            <Button variant="outline" asChild>
+              <Link href={`/prescriptions/new?treatmentId=${treatment.id}`}>
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Prescribe
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-2" />
             Print
@@ -738,6 +772,29 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               )}
             </CardContent>
           </Card>
+
+          {/* The plan this treatment is a step of */}
+          {treatment.planItem && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Treatment Plan
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="font-medium">{treatment.planItem.treatmentPlan.planNumber}</div>
+                <div className="text-sm text-muted-foreground">
+                  {treatment.planItem.treatmentPlan.title}
+                </div>
+                <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                  <Link href={trail.to(`/treatments/plans/${treatment.planItem.treatmentPlan.id}`)}>
+                    View Plan
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Appointment Info */}
           {treatment.appointment && (

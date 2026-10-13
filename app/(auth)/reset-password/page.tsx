@@ -174,7 +174,7 @@ function ResetPasswordForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submit} className="space-y-4">
+        <form method="post" onSubmit={submit} className="space-y-4">
           {rules.length > 0 && (
             <ul className="list-disc space-y-1 rounded-md bg-muted/50 p-3 pl-7 text-sm text-muted-foreground">
               {rules.map((rule, i) => (

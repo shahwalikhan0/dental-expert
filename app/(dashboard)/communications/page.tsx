@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { MessageSquare, Mail, FileText, Send } from 'lucide-react'
+import { TemplatesTab } from './templates-tab'
 
 export default function CommunicationsPage() {
   const { toast } = useToast()
@@ -263,37 +263,7 @@ export default function CommunicationsPage() {
 
         {/* Templates Tab */}
         <TabsContent value="templates">
-          <Card>
-            <CardHeader>
-              <CardTitle>Communication Templates</CardTitle>
-              <CardDescription>
-                Manage SMS and Email templates for automated communications
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">Available Templates</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Create and manage reusable message templates
-                    </p>
-                  </div>
-                  {/* Templates are edited in clinic settings; this button had
-                      no handler and no screen of its own. */}
-                  <Button asChild>
-                    <Link href="/settings/communications">Manage Templates</Link>
-                  </Button>
-                </div>
-
-                <div className="border rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">
-                    Template list will be displayed here
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <TemplatesTab />
         </TabsContent>
       </Tabs>
     </div>

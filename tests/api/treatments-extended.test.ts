@@ -538,3 +538,176 @@ describe('GET/PUT/DELETE /api/treatment-plans/[id]', () => {
     expect(res.status).toBe(403)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Bug report 12 Oct: plans hold repeated procedures (10), refuse deactivated
+// ones (48), keep to a status table (34), and a completed treatment moves its
+// plan step and its recall (11, 46).
+// ---------------------------------------------------------------------------
+describe('treatment plans and the treatments that carry them out', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth.requireAuthAndRole.mockResolvedValue({
+      error: null,
+      hospitalId: 'h1',
+      session: { user: { role: 'DOCTOR' } },
+    })
+  })
+
+  it('accepts the same procedure twice in one plan', async () => {
+    const { POST } = await import('@/app/api/treatment-plans/route')
+
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
+    vi.mocked(prisma.procedure.findMany).mockResolvedValue([
+      {
+        id: 'fil',
+        name: 'Composite filling',
+        basePrice: 2000,
+        defaultDuration: 30,
+        isActive: true,
+      },
+    ] as any)
+    vi.mocked(prisma.treatmentPlan.create).mockResolvedValue({ id: 'tp1' } as any)
+
+    const res = await POST(
+      makeRequest('http://localhost/api/treatment-plans', {
+        method: 'POST',
+        body: {
+          patientId: 'p1',
+          title: 'Two fillings',
+          items: [
+            { procedureId: 'fil', toothNumbers: '16' },
+            { procedureId: 'fil', toothNumbers: '26', estimatedCost: 0 },
+          ],
+        },
+      })
+    )
+
+    expect(res.status).toBe(201)
+    const data = vi.mocked(prisma.treatmentPlan.create).mock.calls[0][0].data as any
+    // List price where none was given, and 0 kept as 0.
+    expect(data.items.create.map((i: any) => i.estimatedCost)).toEqual([2000, 0])
+    expect(data.estimatedCost).toBe(2000)
+  })
+
+  it('refuses a deactivated procedure on a new plan', async () => {
+    const { POST } = await import('@/app/api/treatment-plans/route')
+
+    vi.mocked(prisma.patient.findFirst).mockResolvedValue({ id: 'p1' } as any)
+    vi.mocked(prisma.procedure.findMany).mockResolvedValue([
+      { id: 'fil', name: 'FIL01', basePrice: 2000, defaultDuration: 30, isActive: false },
+    ] as any)
+
+    const res = await POST(
+      makeRequest('http://localhost/api/treatment-plans', {
+        method: 'POST',
+        body: { patientId: 'p1', title: 'Plan', items: [{ procedureId: 'fil' }] },
+      })
+    )
+
+    expect(res.status).toBe(400)
+    expect(prisma.treatmentPlan.create).not.toHaveBeenCalled()
+  })
+
+  it('will not complete a plan with steps still to do', async () => {
+    const { PUT } = await import('@/app/api/treatment-plans/[id]/route')
+
+    vi.mocked(prisma.treatmentPlan.findFirst).mockResolvedValue({
+      id: 'tp1',
+      status: 'IN_PROGRESS',
+      items: [{ id: 'i1', status: 'PENDING', treatmentId: null }],
+    } as any)
+
+    const res = await PUT(
+      makeRequest('http://localhost/api/treatment-plans/tp1', {
+        method: 'PUT',
+        body: { status: 'COMPLETED' },
+      }),
+      { params: Promise.resolve({ id: 'tp1' }) }
+    )
+
+    expect(res.status).toBe(400)
+    expect(prisma.treatmentPlan.update).not.toHaveBeenCalled()
+  })
+
+  it('will not reopen a completed plan, even for an administrator', async () => {
+    const { PUT } = await import('@/app/api/treatment-plans/[id]/route')
+
+    mockAuth.requireAuthAndRole.mockResolvedValue({
+      error: null,
+      hospitalId: 'h1',
+      session: { user: { role: 'ADMIN' } },
+    })
+    vi.mocked(prisma.treatmentPlan.findFirst).mockResolvedValue({
+      id: 'tp1',
+      status: 'COMPLETED',
+      items: [{ id: 'i1', status: 'COMPLETED', treatmentId: 't1' }],
+    } as any)
+
+    const res = await PUT(
+      makeRequest('http://localhost/api/treatment-plans/tp1', {
+        method: 'PUT',
+        body: { status: 'IN_PROGRESS' },
+      }),
+      { params: Promise.resolve({ id: 'tp1' }) }
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('cannot be reopened')
+  })
+
+  it('completing a treatment completes its plan step and moves the matching recall', async () => {
+    const { POST } = await import('@/app/api/treatments/[id]/complete/route')
+
+    vi.mocked(prisma.treatment.findUnique).mockResolvedValue({
+      id: 't1',
+      hospitalId: 'h1',
+      patientId: 'p1',
+      status: 'IN_PROGRESS',
+      startTime: new Date(),
+    } as any)
+    vi.mocked(prisma.treatment.update).mockResolvedValue({
+      id: 't1',
+      status: 'COMPLETED',
+      procedure: { id: 'sc', name: 'Dental Cleaning (Scaling)', category: 'PREVENTIVE' },
+    } as any)
+    vi.mocked(prisma.treatmentPlanItem.findFirst).mockResolvedValue({
+      id: 'i1',
+      treatmentPlanId: 'tp1',
+    } as any)
+    vi.mocked(prisma.treatmentPlan.findFirst).mockResolvedValue({
+      id: 'tp1',
+      status: 'IN_PROGRESS',
+      completedDate: null,
+      items: [{ status: 'COMPLETED' }],
+    } as any)
+    vi.mocked(prisma.recare.findMany).mockResolvedValue([
+      { id: 'r-hyg', recareType: { name: 'Scale and polish', intervalMonths: 6 } },
+      { id: 'r-perio', recareType: { name: 'Periodontal maintenance', intervalMonths: 3 } },
+    ] as any)
+    vi.mocked(prisma.recare.findUnique).mockResolvedValue({
+      id: 'r-hyg',
+      recareType: { intervalMonths: 6 },
+    } as any)
+
+    const res = await POST(
+      makeRequest('http://localhost/api/treatments/t1/complete', { method: 'POST', body: {} }),
+      { params: Promise.resolve({ id: 't1' }) }
+    )
+    const data = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(prisma.treatmentPlanItem.update).toHaveBeenCalledWith({
+      where: { id: 'i1' },
+      data: { status: 'COMPLETED' },
+    })
+    // Its last open step, so the plan is complete too.
+    expect(prisma.treatmentPlan.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) })
+    )
+    // The hygiene recall moved; the periodontal one did not — a routine scale
+    // and polish is not periodontal care.
+    expect(data.recallsMoved.map((r: any) => r.id)).toEqual(['r-hyg'])
+    expect(prisma.recare.update).toHaveBeenCalledTimes(1)
+  })
+})

@@ -60,7 +60,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/login')
   }
 
-  // Redirect to onboarding if not complete (except if already on onboarding page)
+  // A clinic that has not finished setup is sent to it. Safe to do on every
+  // request because /onboarding is not under this layout — it has its own route
+  // group, app/(onboarding). It used to live here, and this redirect sent it
+  // to itself forever (bug report 12 Oct, finding 1).
   if (hospital && !hospital.onboardingCompleted) {
     redirect('/onboarding')
   }

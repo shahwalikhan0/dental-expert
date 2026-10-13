@@ -83,7 +83,7 @@ describe('GET /api/reports/export', () => {
     expect(res.headers.get('Content-Disposition')).toContain('patient_analytics')
   })
 
-  it('returns HTML for PDF format export', async () => {
+  it('returns the HTML print view, named as HTML (finding 49)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -97,10 +97,13 @@ describe('GET /api/reports/export', () => {
         }),
     })
 
-    const req = makeRequest({ type: 'clinical', format: 'pdf', preset: 'this_month' })
+    const req = makeRequest({ type: 'clinical', format: 'html', preset: 'this_month' })
     const res = await mod.GET(req)
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('text/html')
+    // Nothing about it claims to be a PDF.
+    expect(res.headers.get('Content-Disposition')).toMatch(/\.html"$/)
+    expect(res.headers.get('Content-Disposition')).not.toContain('pdf')
     const body = await res.text()
     expect(body).toContain('Clinical Analytics Report')
     expect(body).toContain('Total Treatments')
@@ -122,7 +125,7 @@ describe('GET /api/reports/export', () => {
         }),
     })
 
-    const req = makeRequest({ type: 'financial', format: 'pdf' })
+    const req = makeRequest({ type: 'financial', format: 'html' })
     const res = await mod.GET(req)
     expect(res.status).toBe(200)
     const body = await res.text()
@@ -148,7 +151,7 @@ describe('GET /api/reports/export', () => {
         }),
     })
 
-    const req = makeRequest({ type: 'operational', format: 'pdf' })
+    const req = makeRequest({ type: 'operational', format: 'html' })
     const res = await mod.GET(req)
     expect(res.status).toBe(200)
     const body = await res.text()
@@ -173,6 +176,65 @@ describe('GET /api/reports/export', () => {
     const req = makeRequest({ type: 'patient', format: 'csv' })
     const res = await mod.GET(req)
     expect(res.status).toBe(400)
+  })
+
+  it('escapes names from the database in the print view', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          totalTreatments: 1,
+          completedTreatments: 1,
+          inProgressTreatments: 0,
+          completionRate: 100,
+          avgTreatmentDuration: 30,
+          commonProcedures: [
+            { name: '<img src=x onerror=alert(1)>', code: 'X1', count: 1, successRate: 100 },
+          ],
+        }),
+    })
+
+    const res = await mod.GET(makeRequest({ type: 'clinical', format: 'html' }))
+    const body = await res.text()
+    expect(body).not.toContain('<img src=x')
+    expect(body).toContain('&lt;img src=x')
+  })
+
+  it('refuses format=pdf, saying what to use instead', async () => {
+    const res = await mod.GET(makeRequest({ type: 'patient', format: 'pdf' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('format=html')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 naming the valid types for an unknown report type (finding 49)', async () => {
+    const res = await mod.GET(makeRequest({ type: 'inventory', format: 'excel' }))
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toContain('inventory')
+    expect(body.error).toContain('patient, clinical, financial, operational')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('accepts the plural "patients" for the patient report', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          newPatients: 0,
+          returningPatients: 0,
+          totalPatients: 0,
+          retentionRate: 0,
+          demographics: { male: 0, female: 0, other: 0 },
+          acquisitionSources: [],
+        }),
+    })
+
+    const res = await mod.GET(makeRequest({ type: 'patients', format: 'excel' }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toContain('patient_analytics')
+    const analyticsUrl = new URL(mockFetch.mock.calls[0][0])
+    expect(analyticsUrl.searchParams.get('type')).toBe('patient')
   })
 
   it('returns 500 when analytics fetch fails', async () => {

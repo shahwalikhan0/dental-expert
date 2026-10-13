@@ -91,8 +91,8 @@ function getPlaceholder(field: string): string {
     hospitalName: "Dr. Smith's Dental Clinic",
     adminName: 'Dr. John Smith',
     email: 'doctor@clinic.com',
-    phone: '9876543210',
-    password: 'At least 8 characters',
+    phone: '0300 1234567',
+    password: '8 to 32 characters',
     confirmPassword: 'Confirm your password',
   }
   return map[field] || ''
@@ -115,8 +115,8 @@ describe('SignupPage', () => {
       expect(screen.getByPlaceholderText("Dr. Smith's Dental Clinic")).toBeInTheDocument()
       expect(screen.getByPlaceholderText('Dr. John Smith')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('doctor@clinic.com')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('9876543210')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('At least 8 characters')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('0300 1234567')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('8 to 32 characters')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('Confirm your password')).toBeInTheDocument()
     })
 
@@ -189,10 +189,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'not-an-email' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -223,10 +223,12 @@ describe('SignupPage', () => {
   describe('Validation — Phone', () => {
     it('shows error when phone is too short', async () => {
       render(<SignupPage />)
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), { target: { value: '123' } })
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), { target: { value: '123' } })
       fireEvent.click(screen.getByText('Create Account'))
       await waitFor(() => {
-        expect(screen.getByText('Phone number must be at least 10 digits')).toBeInTheDocument()
+        expect(
+          screen.getByText('Enter a phone number of 7 to 15 digits, like 0300 1234567')
+        ).toBeInTheDocument()
       })
     })
   })
@@ -234,7 +236,7 @@ describe('SignupPage', () => {
   describe('Validation — Password', () => {
     it('shows error when password is too short', async () => {
       render(<SignupPage />)
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: '1234567' },
       })
       fireEvent.click(screen.getByText('Create Account'))
@@ -255,10 +257,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'test@test.com' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -290,10 +292,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'test@test.com' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -321,7 +323,9 @@ describe('SignupPage', () => {
         )
       })
 
-      expect(mockPush).toHaveBeenCalledWith('/verify-email?email=test%40test.com')
+      // The route did not say the email went, so the next page must not claim
+      // it did (finding 27).
+      expect(mockPush).toHaveBeenCalledWith('/verify-email?email=test%40test.com&sent=0')
     })
 
     it('shows error toast when API returns error', async () => {
@@ -341,10 +345,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'test@test.com' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -380,10 +384,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'test@test.com' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -430,10 +434,10 @@ describe('SignupPage', () => {
       fireEvent.change(screen.getByPlaceholderText('doctor@clinic.com'), {
         target: { value: 'test@test.com' },
       })
-      fireEvent.change(screen.getByPlaceholderText('9876543210'), {
+      fireEvent.change(screen.getByPlaceholderText('0300 1234567'), {
         target: { value: '9876543210' },
       })
-      fireEvent.change(screen.getByPlaceholderText('At least 8 characters'), {
+      fireEvent.change(screen.getByPlaceholderText('8 to 32 characters'), {
         target: { value: 'password123' },
       })
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
@@ -466,7 +470,9 @@ describe('SignupPage', () => {
         expect(screen.getByText('Hospital name must be at least 2 characters')).toBeInTheDocument()
         expect(screen.getByText('Your name must be at least 2 characters')).toBeInTheDocument()
         expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument()
-        expect(screen.getByText('Phone number must be at least 10 digits')).toBeInTheDocument()
+        expect(
+          screen.getByText('Enter a phone number of 7 to 15 digits, like 0300 1234567')
+        ).toBeInTheDocument()
         expect(screen.getByText('Password must be at least 8 characters')).toBeInTheDocument()
       })
     })

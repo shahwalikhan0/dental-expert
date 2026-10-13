@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
+import { PanelLeftClose, PanelLeft, ChevronDown, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { activeHref, childrenOf, getNavigationForRole } from '@/config/nav'
 import { useNavBadges } from '@/hooks/use-nav-badges'
@@ -302,6 +302,33 @@ export function Sidebar({
             ))}
           </nav>
         </ScrollArea>
+
+        {/* The user guide, for every role: it sits below the menu rather than
+            in it, because it is not a part of the clinic's work. */}
+        <div className={cn('border-t p-3', RULE)}>
+          {isCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/docs"
+                  aria-label="Docs"
+                  className="flex h-10 w-full items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+                >
+                  <BookOpen className="h-5 w-5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Docs</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Link
+              href="/docs"
+              className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            >
+              <BookOpen className="h-4 w-4 shrink-0" />
+              <span>Docs</span>
+            </Link>
+          )}
+        </div>
 
         {/* Footer */}
         <div className={cn('border-t py-3 text-center', RULE, isCollapsed ? 'px-2' : 'px-4')}>

@@ -7,7 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock billing-utils
-vi.mock('@/lib/billing-utils', () => ({
+vi.mock('@/lib/billing-utils', async (importOriginal) => ({
+  // The discount rule is the real one (finding 37): it is pure, and a stub
+  // that always said yes would let these tests pass a 150% discount.
+  discountProblem: (await importOriginal()).discountProblem,
   generateInvoiceNo: vi.fn().mockResolvedValue('INV202501290001'),
   calculateInvoiceTotals: vi.fn().mockReturnValue({
     subtotal: 10000,
@@ -22,10 +25,11 @@ vi.mock('@/lib/billing-utils', () => ({
 }))
 
 // Mock Prisma
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const client: any = {
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
+    // It also answers the treatment row locks taken while billing them.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
     invoice: {
       findFirst: vi.fn(),
@@ -55,8 +59,20 @@ vi.mock('@/lib/prisma', () => ({
     setting: {
       findUnique: vi.fn(),
     },
-  },
-}))
+    // Finding 13: a treatment already on a live invoice is refused.
+    invoiceItem: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    // Finding 24: invoices are audited.
+    auditLog: {
+      create: vi.fn(),
+    },
+  }
+  // The invoice is created inside a transaction, so the number it draws is
+  // rolled back with a refused request (finding 68).
+  client.$transaction = vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(client)))
+  return { prisma: client }
+})
 
 // Mock auth
 vi.mock('@/lib/api-helpers', async () => {
@@ -470,6 +486,10 @@ describe('Invoices API - Comprehensive Tests', () => {
     it('should create invoice items with treatment links', async () => {
       const mockTreatmentId = 'treatment-123'
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
+      mockPrisma.treatment.findMany.mockResolvedValue([
+        { id: mockTreatmentId, patientId: mockPatientId, treatmentNo: 'TRT-1' },
+      ])
+      mockPrisma.invoiceItem.findFirst.mockResolvedValue(null)
 
       const request = new NextRequest('http://localhost/api/invoices', {
         method: 'POST',
@@ -500,6 +520,162 @@ describe('Invoices API - Comprehensive Tests', () => {
           }),
         })
       )
+    })
+
+    // Finding 13: Fatima's scaling went on Hina's invoice.
+    it("should refuse another patient's treatment", async () => {
+      mockPrisma.treatment.findMany.mockResolvedValue([
+        { id: 'treatment-9', patientId: 'someone-else', treatmentNo: 'TRT-9' },
+      ])
+
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [
+              { description: 'Scaling', quantity: 1, unitPrice: 3000, treatmentId: 'treatment-9' },
+            ],
+          }),
+        })
+      )
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toContain('another patient')
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+      expect(mockGenerateInvoiceNo).not.toHaveBeenCalled()
+    })
+
+    // Finding 13: Ahmed's filling went on two invoices.
+    it('should refuse a treatment already on a live invoice', async () => {
+      mockPrisma.treatment.findMany.mockResolvedValue([
+        { id: 'treatment-1', patientId: mockPatientId, treatmentNo: 'TRT-1' },
+      ])
+      mockPrisma.invoiceItem.findFirst.mockResolvedValueOnce({
+        treatment: { treatmentNo: 'TRT-1' },
+        invoice: { invoiceNo: 'INV-202610-0001' },
+      })
+
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [
+              { description: 'Filling', quantity: 1, unitPrice: 5800, treatmentId: 'treatment-1' },
+            ],
+          }),
+        })
+      )
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toContain('INV-202610-0001')
+      // A cancelled invoice does not count as billing it.
+      expect(mockPrisma.invoiceItem.findFirst.mock.calls[0][0].where).toMatchObject({
+        invoice: { status: { not: 'CANCELLED' } },
+      })
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    it('should refuse the same treatment on two lines', async () => {
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [
+              { description: 'Filling', quantity: 1, unitPrice: 5800, treatmentId: 't1' },
+              { description: 'Filling', quantity: 1, unitPrice: 5800, treatmentId: 't1' },
+            ],
+          }),
+        })
+      )
+
+      expect(response.status).toBe(409)
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    // Finding 22.
+    it('should refuse an invoice for an inactive patient', async () => {
+      mockPrisma.patient.findUnique.mockResolvedValue({
+        id: mockPatientId,
+        hospitalId: mockHospitalId,
+        isActive: false,
+      })
+
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Service', quantity: 1, unitPrice: 100 }],
+          }),
+        })
+      )
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toContain('inactive')
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    // Finding 37: both were accepted and billed at zero.
+    it('should refuse a percentage discount above 100', async () => {
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Consultation', quantity: 1, unitPrice: 1500 }],
+            discountType: 'PERCENTAGE',
+            discountValue: 150,
+          }),
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('between 0 and 100')
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    it('should refuse a fixed discount larger than the bill', async () => {
+      const response = await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Consultation', quantity: 1, unitPrice: 1500 }],
+            discountType: 'FIXED',
+            discountValue: 5000,
+          }),
+        })
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockPrisma.invoice.create).not.toHaveBeenCalled()
+    })
+
+    // Finding 24.
+    it('should audit the invoice with its total and discount', async () => {
+      mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1', invoiceNo: 'INV202501290001' })
+
+      await POST(
+        new NextRequest('http://localhost/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: mockPatientId,
+            items: [{ description: 'Service', quantity: 1, unitPrice: 10000 }],
+            discountType: 'FIXED',
+            discountValue: 500,
+          }),
+        })
+      )
+
+      const entry = mockPrisma.auditLog.create.mock.calls[0][0].data
+      expect(entry).toMatchObject({ action: 'invoice.created', entityId: 'inv-1' })
+      expect(JSON.parse(entry.newValues)).toMatchObject({
+        totalAmount: 9500,
+        discountAmount: 500,
+      })
     })
 
     it('should handle taxable and non-taxable items', async () => {
@@ -689,7 +865,10 @@ describe('Invoices API - Comprehensive Tests', () => {
       )
     })
 
-    it('should allow custom initial status', async () => {
+    // Finding 15: INV-202610-0008 was created PAID with nothing paid. A new
+    // invoice is a draft whatever the request says; issuing it is a separate
+    // step, and PAID comes only from payments.
+    it('should ignore a status in the request', async () => {
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
 
       const request = new NextRequest('http://localhost/api/invoices', {
@@ -697,7 +876,7 @@ describe('Invoices API - Comprehensive Tests', () => {
         body: JSON.stringify({
           patientId: mockPatientId,
           items: [{ description: 'Service', quantity: 1, unitPrice: 100 }],
-          status: 'PENDING',
+          status: 'PAID',
         }),
       })
       await POST(request)
@@ -705,7 +884,7 @@ describe('Invoices API - Comprehensive Tests', () => {
       expect(mockPrisma.invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            status: 'PENDING',
+            status: 'DRAFT',
           }),
         })
       )
@@ -736,7 +915,8 @@ describe('Invoices API - Comprehensive Tests', () => {
       )
     })
 
-    it('allows an explicit rate to override the clinic default', async () => {
+    // Finding 14: `taxRate: -50` billed a Rs 1,500 consultation at Rs 750.
+    it('ignores a tax rate in the request', async () => {
       mockPrisma.invoice.create.mockResolvedValue({ id: 'inv-1' })
 
       const request = new NextRequest('http://localhost/api/invoices', {
@@ -744,13 +924,20 @@ describe('Invoices API - Comprehensive Tests', () => {
         body: JSON.stringify({
           patientId: mockPatientId,
           items: [{ description: 'Service', quantity: 1, unitPrice: 1000 }],
+          taxRate: -50,
         }),
       })
       await POST(request)
 
+      expect(mockCalculateTotals).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        0
+      )
       expect(mockPrisma.invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({}),
+          data: expect.objectContaining({ taxRate: 0 }),
         })
       )
     })

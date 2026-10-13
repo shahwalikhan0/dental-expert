@@ -180,6 +180,31 @@ describe('GET /api/dashboard/stats', () => {
     expect(body.data.overview.patientGrowth).toBe(0) // 0 when prev month is 0
     expect(body.data.overview.revenueGrowth).toBe(0)
   })
+
+  // Bug report 12 Oct, finding 41.
+  it('leaves revenue and money owed out for a role without billing access', async () => {
+    mockAuth({ user: { id: 'u5', role: 'DENTAL_ASSISTANT' } })
+    vi.mocked(prisma.patient.count).mockResolvedValue(10)
+    vi.mocked(prisma.appointment.count).mockResolvedValue(3)
+    vi.mocked(prisma.payment.aggregate).mockResolvedValue({ _sum: { amount: 13950 } } as any)
+    vi.mocked(prisma.invoice.aggregate).mockResolvedValue({ _sum: { totalAmount: 30150 } } as any)
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ name: 'Filling', count: 2, revenue: 5000 }])
+    vi.mocked(prisma.appointment.groupBy).mockResolvedValue([] as any)
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
+
+    const res = await dashboardGET(makeReq('/api/dashboard/stats'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.showsMoney).toBe(false)
+    expect(body.data.overview.totalPatients).toBe(10)
+    expect(body.data.overview).not.toHaveProperty('thisMonthRevenue')
+    expect(body.data.overview).not.toHaveProperty('pendingPayments')
+    expect(body.data.overview).not.toHaveProperty('totalRevenue')
+    expect(body.data.charts.last7DaysRevenue).toEqual([])
+    expect(body.data.charts.last6MonthsRevenue).toEqual([])
+    expect(body.data.charts.topProcedures[0]).not.toHaveProperty('revenue')
+  })
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -190,13 +215,13 @@ describe('GET /api/search', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns 401 when unauthenticated', async () => {
-    mockAuthError()
+    mockHospitalAuthError()
     const res = await searchGET(makeReq('/api/search?q=john'))
     expect(res.status).toBe(401)
   })
 
   it('returns empty results for short query (< 2 chars)', async () => {
-    mockAuth()
+    mockHospitalAuth()
     const res = await searchGET(makeReq('/api/search?q=j'))
     const body = await res.json()
 
@@ -209,7 +234,7 @@ describe('GET /api/search', () => {
   })
 
   it('returns empty results when q is missing', async () => {
-    mockAuth()
+    mockHospitalAuth()
     const res = await searchGET(makeReq('/api/search'))
     const body = await res.json()
 
@@ -217,7 +242,7 @@ describe('GET /api/search', () => {
   })
 
   it('searches across all entity types', async () => {
-    mockAuth()
+    mockHospitalAuth()
     vi.mocked(prisma.patient.findMany).mockResolvedValue([
       { id: 'p1', patientId: 'PT001', firstName: 'John', lastName: 'Doe', phone: '9876543210' },
     ] as any)
@@ -247,7 +272,7 @@ describe('GET /api/search', () => {
   })
 
   it('maps staff results correctly', async () => {
-    mockAuth()
+    mockHospitalAuth()
     vi.mocked(prisma.patient.findMany).mockResolvedValue([])
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([])
@@ -273,7 +298,7 @@ describe('GET /api/search', () => {
   })
 
   it('maps invoice results with currency formatting', async () => {
-    mockAuth()
+    mockHospitalAuth()
     vi.mocked(prisma.patient.findMany).mockResolvedValue([])
     vi.mocked(prisma.appointment.findMany).mockResolvedValue([])
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([
@@ -296,9 +321,76 @@ describe('GET /api/search', () => {
     expect(body.invoices[0].sublabel).toContain('15,000')
     expect(body.invoices[0].href).toBe('/billing/invoices/inv1')
   })
+
+  // Bug report 12 Oct, finding 40: each kind of result is behind the
+  // permission that reads it on its own screen.
+  function everythingMatches() {
+    vi.mocked(prisma.patient.findMany).mockResolvedValue([
+      { id: 'p1', patientId: 'PT001', firstName: 'John', lastName: 'Doe', phone: '9876543210' },
+    ] as any)
+    vi.mocked(prisma.appointment.findMany).mockResolvedValue([
+      {
+        id: 'a1',
+        appointmentNo: 'APT001',
+        startsAt: new Date('2026-02-20T05:00:00Z'),
+        status: 'SCHEDULED',
+        patient: { firstName: 'John', lastName: 'Doe' },
+        doctor: { firstName: 'Dr', lastName: 'Smith' },
+      },
+    ] as any)
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([
+      {
+        id: 'inv1',
+        invoiceNo: 'INV001',
+        totalAmount: 15000,
+        status: 'PENDING',
+        patient: { firstName: 'John', lastName: 'Doe' },
+      },
+    ] as any)
+    vi.mocked(prisma.staff.findMany).mockResolvedValue([])
+    vi.mocked(prisma.treatment.findMany).mockResolvedValue([])
+  }
+
+  it('gives the lab technician no appointments or invoices', async () => {
+    mockHospitalAuth({ user: { id: 'u2', role: 'LAB_TECH' } })
+    everythingMatches()
+
+    const res = await searchGET(makeReq('/api/search?q=John'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.patients).toHaveLength(1)
+    expect(body.appointments).toEqual([])
+    expect(body.invoices).toEqual([])
+    expect(prisma.appointment.findMany).not.toHaveBeenCalled()
+    expect(prisma.invoice.findMany).not.toHaveBeenCalled()
+  })
+
+  it('gives the dental assistant appointments but no invoices', async () => {
+    mockHospitalAuth({ user: { id: 'u3', role: 'DENTAL_ASSISTANT' } })
+    everythingMatches()
+
+    const res = await searchGET(makeReq('/api/search?q=John'))
+    const body = await res.json()
+
+    expect(body.appointments).toHaveLength(1)
+    expect(body.invoices).toEqual([])
+    expect(prisma.invoice.findMany).not.toHaveBeenCalled()
+  })
+
+  it('answers a role with no patient access with nothing, not a refusal', async () => {
+    mockHospitalAuth({ user: { id: 'u4', role: 'INVENTORY_STAFF' } })
+    everythingMatches()
+
+    const res = await searchGET(makeReq('/api/search?q=John'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.patients).toEqual([])
+    expect(prisma.patient.findMany).not.toHaveBeenCalled()
+  })
 })
 
-// ═════════════════════════════════════════════════════════════════════════════
 // Notifications were section 3. The table, the route and the tray are gone:
 // nothing ever created a notification, so the bell showed zero from the fork
 // onwards. See the 20260915210000_drop_unwritten_tables migration.

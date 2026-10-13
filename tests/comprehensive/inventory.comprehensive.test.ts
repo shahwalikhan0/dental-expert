@@ -7,11 +7,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock Prisma
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma: any = {
     // Reference numbers come from a counter row via one INSERT … ON CONFLICT
     // … RETURNING, so anything that numbers a document needs this to answer.
     $queryRaw: vi.fn().mockResolvedValue([{ seq: 1 }]),
+    // Creating an item writes the item, its opening stock and its alert in
+    // one transaction.
+    $transaction: vi.fn((fn: any) => fn(prisma)),
     inventoryItem: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -20,6 +23,9 @@ vi.mock('@/lib/prisma', () => ({
       update: vi.fn(),
       count: vi.fn(),
       delete: vi.fn(),
+    },
+    inventoryBatch: {
+      create: vi.fn().mockResolvedValue({ id: 'batch-1', batchNumber: 'OPENING' }),
     },
     inventoryCategory: {
       findMany: vi.fn(),
@@ -33,8 +39,15 @@ vi.mock('@/lib/prisma', () => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
-  },
-}))
+    // An item created at or below its minimum raises its alert at once.
+    stockAlert: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'alert-1' }),
+    },
+  }
+  return { prisma }
+})
 
 // Mock auth
 vi.mock('@/lib/api-helpers', async () => {
@@ -307,7 +320,7 @@ describe('Inventory API - Comprehensive Tests', () => {
 
   describe('POST /api/inventory/items', () => {
     it('should create a new inventory item', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null) // SKU doesn't exist
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null) // SKU doesn't exist
       mockPrisma.inventoryItem.create.mockResolvedValue({
         id: 'item-1',
         sku: 'NEW-ITEM-001',
@@ -350,7 +363,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should reject duplicate SKU', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue({
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue({
         id: 'existing-item',
         sku: 'EXISTING-SKU',
       })
@@ -372,7 +385,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should create opening stock transaction when stock > 0', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({
         id: 'item-1',
         sku: 'NEW-ITEM',
@@ -405,7 +418,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should not create stock transaction when stock is 0', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -424,7 +437,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle batch tracking items', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -449,7 +462,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle expiry tracking items', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -474,7 +487,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should set storage location and conditions', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -554,7 +567,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should calculate total price in stock transaction', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
       mockPrisma.stockTransaction.create.mockResolvedValue({ id: 'txn-1' })
 
@@ -585,7 +598,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     const validUnits = ['PCS', 'BOX', 'PACK', 'ML', 'L', 'G', 'KG', 'UNIT', 'SET', 'PAIR']
 
     it.each(validUnits)('should accept %s as a valid unit', async (unit) => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -627,7 +640,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle very large stock quantities', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
       mockPrisma.stockTransaction.create.mockResolvedValue({ id: 'txn-1' })
 
@@ -647,7 +660,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle decimal purchase prices', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -665,7 +678,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle special characters in item name', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {
@@ -683,7 +696,7 @@ describe('Inventory API - Comprehensive Tests', () => {
     })
 
     it('should handle zero minimum stock', async () => {
-      mockPrisma.inventoryItem.findUnique.mockResolvedValue(null)
+      mockPrisma.inventoryItem.findFirst.mockResolvedValue(null)
       mockPrisma.inventoryItem.create.mockResolvedValue({ id: 'item-1' })
 
       const request = new NextRequest('http://localhost/api/inventory/items', {

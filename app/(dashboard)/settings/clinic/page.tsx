@@ -406,7 +406,7 @@ export default function ClinicSettingsPage() {
                   id="alternatePhone"
                   value={formData.alternatePhone}
                   onChange={(e) => handleChange('alternatePhone', e.target.value)}
-                  placeholder="9876543210"
+                  placeholder="0300 1234567"
                 />
               </div>
 

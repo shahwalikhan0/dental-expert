@@ -6,6 +6,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
+// The lab module is a paid feature (lib/plan-gate.ts). These tests are about
+// what the routes do once it is included; the refusal has its own test.
+vi.mock('@/lib/plan-gate', () => ({ requireFeature: vi.fn().mockResolvedValue(null) }))
+
 vi.mock('@/lib/api-helpers', async () => {
   const { can } = await import('@/lib/rbac')
   const { NextResponse } = await import('next/server')

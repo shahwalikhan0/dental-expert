@@ -1,4 +1,4 @@
-import { LabWorkType } from '@prisma/client'
+import type { LabOrderStatus, LabWorkType } from '@prisma/client'
 
 /**
  * The kinds of work a dental laboratory is asked for — one list, in one
@@ -65,4 +65,187 @@ export function workTypeLabel(value: string): string {
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Status (bug report 12 Oct, finding 45)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The road a case travels, in order.
+ *
+ * The status route used to accept any status from any status: LAB20260001
+ * went CREATED → FITTED → CREATED and both answered 200, and the delivered
+ * date stamped on the way through stayed on an order that said it had not
+ * been sent. A case moves forward one stage at a time now, and the only ways
+ * back are the rework steps a laboratory actually takes.
+ */
+export const STATUS_PATH: LabOrderStatus[] = [
+  'CREATED',
+  'SENT_TO_LAB',
+  'IN_PROGRESS',
+  'QUALITY_CHECK',
+  'READY',
+  'DELIVERED',
+  'FITTED',
+]
+
+/**
+ * Where a case may go from where it is.
+ *
+ * - Forward one stage along STATUS_PATH.
+ * - Quality check back to in progress: the work failed the check and goes
+ *   back on the bench.
+ * - Remake required, from the quality check onwards — the work came back
+ *   wrong, or did not fit in the mouth. A remake goes back to the laboratory.
+ * - Cancelled, from anything before the work is in the patient's mouth.
+ *
+ * FITTED and CANCELLED are the end. A crown that fails after fitting is a new
+ * case, not this one rewound.
+ */
+export const STATUS_TRANSITIONS: Record<LabOrderStatus, LabOrderStatus[]> = {
+  CREATED: ['SENT_TO_LAB', 'CANCELLED'],
+  SENT_TO_LAB: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['QUALITY_CHECK', 'CANCELLED'],
+  QUALITY_CHECK: ['READY', 'IN_PROGRESS', 'REMAKE_REQUIRED', 'CANCELLED'],
+  READY: ['DELIVERED', 'REMAKE_REQUIRED', 'CANCELLED'],
+  DELIVERED: ['FITTED', 'REMAKE_REQUIRED', 'CANCELLED'],
+  FITTED: [],
+  REMAKE_REQUIRED: ['SENT_TO_LAB', 'CANCELLED'],
+  CANCELLED: [],
+}
+
+/** The statuses a case can move to from `from`, for the picker on the case screen. */
+export function nextStatuses(from: LabOrderStatus): LabOrderStatus[] {
+  return STATUS_TRANSITIONS[from] ?? []
+}
+
+export function canMoveStatus(from: LabOrderStatus, to: LabOrderStatus): boolean {
+  return nextStatuses(from).includes(to)
+}
+
+/** `QUALITY_CHECK` → "Quality check", for refusals a toast can show. */
+export function statusLabel(status: string): string {
+  return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ')
+}
+
+export interface MilestoneDates {
+  sentDate: Date | null
+  receivedDate: Date | null
+  deliveredDate: Date | null
+}
+
+/**
+ * The milestone dates a move to `to` should leave on the case.
+ *
+ * Each date belongs to a stage: sent to SENT_TO_LAB, received (back from the
+ * laboratory) to READY, delivered to DELIVERED. A date is stamped the first
+ * time its stage is reached and kept while the case is at or beyond it.
+ *
+ * A move back — a remake going to the laboratory again — clears the dates of
+ * every stage the case is now short of, so a remake does not still say it was
+ * delivered last week. The sent date is the exception on a remake: the case
+ * is being sent again, so it is stamped afresh.
+ *
+ * Returns only the fields that change, ready to spread into an update.
+ */
+export function milestoneUpdate(
+  current: MilestoneDates,
+  from: LabOrderStatus,
+  to: LabOrderStatus,
+  now: Date = new Date()
+): Partial<MilestoneDates> {
+  const data: Partial<MilestoneDates> = {}
+
+  // Cancelling records where the case stopped; it does not rewrite it.
+  if (to === 'CANCELLED') return data
+
+  const stage = STATUS_PATH.indexOf(to)
+  const reached = (milestone: LabOrderStatus) =>
+    stage >= 0 && stage >= STATUS_PATH.indexOf(milestone)
+
+  if (to === 'REMAKE_REQUIRED') {
+    // The work is going back. Nothing has been received or delivered of the
+    // remake yet; the sent date stays until it is sent again.
+    if (current.receivedDate) data.receivedDate = null
+    if (current.deliveredDate) data.deliveredDate = null
+    return data
+  }
+
+  const fields: [keyof MilestoneDates, LabOrderStatus][] = [
+    ['sentDate', 'SENT_TO_LAB'],
+    ['receivedDate', 'READY'],
+    ['deliveredDate', 'DELIVERED'],
+  ]
+
+  for (const [field, milestone] of fields) {
+    if (reached(milestone)) {
+      if (!current[field]) data[field] = now
+    } else if (current[field]) {
+      data[field] = null
+    }
+  }
+
+  // Sent again after a remake: the date that matters is this sending.
+  if (from === 'REMAKE_REQUIRED' && to === 'SENT_TO_LAB') data.sentDate = now
+
+  return data
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Dates and money (finding 59)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** A date from a form or a request, or null when it is blank or not a date. */
+export function parseDay(value: unknown): Date | null {
+  if (value == null || value === '') return null
+  if (typeof value !== 'string' && !(value instanceof Date)) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export interface LabOrderValues {
+  orderDate: unknown
+  expectedDate?: unknown
+  estimatedCost: unknown
+  actualCost?: unknown
+}
+
+/**
+ * What is wrong with a case's dates and costs, in words a toast can show, or
+ * null when nothing is.
+ *
+ * A case was accepted ordered on 12 October and due on 1 October, with an
+ * estimate of −100. Neither is a typing slip the screen can explain later: a
+ * due date before the order date puts the case on the overdue list the day it
+ * is raised, and a negative cost is money the laboratory owes the clinic.
+ *
+ * Blank expected date and blank actual cost are allowed — the laboratory may
+ * not have said yet, and has not billed yet.
+ */
+export function checkLabOrderValues(values: LabOrderValues): string | null {
+  const orderDate = parseDay(values.orderDate)
+  if (!orderDate) return 'The order date is not a date'
+
+  if (values.expectedDate != null && values.expectedDate !== '') {
+    const expected = parseDay(values.expectedDate)
+    if (!expected) return 'The expected date is not a date'
+    if (expected.getTime() < orderDate.getTime()) {
+      return 'The expected date cannot be before the order date'
+    }
+  }
+
+  const estimate = Number(values.estimatedCost)
+  if (values.estimatedCost === '' || values.estimatedCost == null || !Number.isFinite(estimate)) {
+    return 'The estimated cost must be a number'
+  }
+  if (estimate < 0) return 'The estimated cost cannot be negative'
+
+  if (values.actualCost != null && values.actualCost !== '') {
+    const actual = Number(values.actualCost)
+    if (!Number.isFinite(actual)) return 'The actual cost must be a number'
+    if (actual < 0) return 'The actual cost cannot be negative'
+  }
+
+  return null
 }

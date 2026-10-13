@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 const optionalString = z.preprocess(
   (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
@@ -96,12 +97,9 @@ export async function GET(req: NextRequest) {
       success: true,
       data: clinicInfo,
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get clinic info error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get clinic information' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to get clinic information' }, { status: 500 })
   }
 }
 
@@ -159,11 +157,10 @@ export async function POST(req: NextRequest) {
       data: clinicInfo,
       message: 'Clinic information saved successfully',
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Update clinic info error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update clinic information' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update clinic information' }, { status: 500 })
   }
 }

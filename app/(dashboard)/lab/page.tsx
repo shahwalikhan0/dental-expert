@@ -52,6 +52,7 @@ import { ExportMenu } from '@/components/ui/export-menu'
 import { WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
 import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
+import { useToast } from '@/hooks/use-toast'
 
 interface LabOrder {
   id: string
@@ -109,6 +110,7 @@ export default function LabWorkPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Lab Orders')
   const router = useRouter()
+  const { toast } = useToast()
   const [orders, setOrders] = useState<LabOrder[]>([])
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [loading, setLoading] = useState(true)
@@ -173,9 +175,9 @@ export default function LabWorkPage() {
       if (priorityFilter && priorityFilter !== 'all') params.append('priority', priorityFilter)
 
       const response = await fetch(`/api/lab-orders?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch lab orders')
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch lab orders')
 
-      const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setOrders(data.data)
@@ -185,6 +187,13 @@ export default function LabWorkPage() {
       calculateStats(data.data)
     } catch (error) {
       console.error('Error fetching lab orders:', error)
+      if (requestId === latestRequest.current) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to fetch lab orders',
+        })
+      }
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }

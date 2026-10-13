@@ -10,123 +10,58 @@
  * eight characters, an invitation demanded eight, the staff screen demanded
  * six, and the import path generated its own.
  *
- * So the policy lives here, it is read from the clinic's own settings, and
- * every path that sets a password checks it. One function, one message, one
- * list of rules — and the rules are the ones the screen says they are.
+ * So the rule lives here and every path that sets a password checks it. One
+ * function, one message, one rule — and it is the one the screen says it is.
  */
 
 /**
- * The clinic's password rules.
+ * The password rule: a length, and nothing else.
  *
- * Deliberately a plain value rather than a class: the caller reads it once from
- * `lib/security-settings.ts` and passes it in, so this file can be tested
- * without a database and a route cannot accidentally check against defaults
- * when the clinic has configured something stricter.
- */
-export interface PasswordPolicy {
-  minLength: number
-  requireUppercase: boolean
-  requireLowercase: boolean
-  requireNumbers: boolean
-  requireSpecialChars: boolean
-}
-
-/**
- * The floor, below which no clinic may configure.
- *
- * Eight characters. A clinic that wants six is a clinic that has misunderstood
- * what it is protecting: these accounts open medical records, and the settings
- * form should not be able to make the platform less safe than the platform is
- * prepared to be. The upper bound is the clinic's business, the lower bound is
- * ours.
+ * Between 8 and 32 characters, the same everywhere a password is set — signup,
+ * an invitation, the staff screen, a reset, the portal. There are no
+ * capital-letter, number or symbol requirements, and no clinic can add any:
+ * composition rules push people towards `Password1!` and a sticky note, which
+ * NIST SP 800-63B stopped recommending for that reason. Length is the part
+ * that actually makes a password hard to guess.
  */
 export const MINIMUM_PASSWORD_LENGTH = 8
 
-/** No practical limit, but bcrypt silently truncates past 72 bytes. */
-export const MAXIMUM_PASSWORD_LENGTH = 72
+export const MAXIMUM_PASSWORD_LENGTH = 32
 
 /**
- * Anything that is not a letter, a digit or whitespace.
- *
- * Defined as a complement rather than a list of symbols. A list always
- * excludes somebody's keyboard — the previous attempts at this elsewhere in
- * the codebase named `!@#$%^&*` and nothing else, which rejects `£`, `€` and
- * every character a non-Latin keyboard produces.
+ * bcrypt silently truncates past 72 bytes. Thirty-two characters is under that
+ * for any ordinary keyboard, but not for thirty-two emoji, and the part past
+ * the limit would be ignored at both hashing and checking.
  */
-const SPECIAL = /[^\p{L}\p{N}\s]/u
-
-export function hasUppercase(password: string): boolean {
-  return /\p{Lu}/u.test(password)
-}
-
-export function hasLowercase(password: string): boolean {
-  return /\p{Ll}/u.test(password)
-}
-
-export function hasNumber(password: string): boolean {
-  return /\p{N}/u.test(password)
-}
-
-export function hasSpecial(password: string): boolean {
-  return SPECIAL.test(password)
-}
+const BCRYPT_MAX_BYTES = 72
 
 /**
- * Every rule this policy imposes, written the way a person would say it.
+ * The rule, written the way a person would say it.
  *
  * Shown beside the field *before* anybody types, not only in the error
  * afterwards. A rule you are told about after failing it is a rule the
  * interface kept to itself.
  */
-export function describePolicy(policy: PasswordPolicy): string[] {
-  const rules = [`At least ${policy.minLength} characters`]
-  if (policy.requireUppercase) rules.push('One capital letter')
-  if (policy.requireLowercase) rules.push('One small letter')
-  if (policy.requireNumbers) rules.push('One number')
-  if (policy.requireSpecialChars) rules.push('One symbol, such as ! or @')
-  return rules
-}
+export const PASSWORD_RULES = [
+  `Between ${MINIMUM_PASSWORD_LENGTH} and ${MAXIMUM_PASSWORD_LENGTH} characters`,
+]
 
-/**
- * Why this password is not acceptable, or null if it is.
- *
- * Returns one reason rather than a list. A form that reports every unmet rule
- * at once reads as a wall of refusal; the rules are all on screen anyway, so
- * naming the first unmet one is enough to act on.
- */
-export function validatePassword(password: unknown, policy: PasswordPolicy): string | null {
+/** Why this password is not acceptable, or null if it is. */
+export function validatePassword(password: unknown): string | null {
   if (typeof password !== 'string' || password.length === 0) {
     return 'A password is required'
   }
 
-  const minLength = Math.max(policy.minLength, MINIMUM_PASSWORD_LENGTH)
-
-  if (password.length < minLength) {
-    return `Password must be at least ${minLength} characters`
+  if (password.length < MINIMUM_PASSWORD_LENGTH) {
+    return `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`
   }
 
-  // Counted in bytes, because that is what bcrypt truncates on. A password of
-  // 70 emoji is well under 72 characters and well over 72 bytes, and the part
-  // past the limit would be silently ignored at both hashing and checking —
-  // which is not a failure anyone would notice until it mattered.
-  if (new TextEncoder().encode(password).length > MAXIMUM_PASSWORD_LENGTH) {
-    return `Password must be ${MAXIMUM_PASSWORD_LENGTH} bytes or fewer`
+  if (password.length > MAXIMUM_PASSWORD_LENGTH) {
+    return `Password must be ${MAXIMUM_PASSWORD_LENGTH} characters or fewer`
   }
 
-  if (policy.requireUppercase && !hasUppercase(password)) {
-    return 'Password must contain a capital letter'
-  }
-
-  if (policy.requireLowercase && !hasLowercase(password)) {
-    return 'Password must contain a small letter'
-  }
-
-  if (policy.requireNumbers && !hasNumber(password)) {
-    return 'Password must contain a number'
-  }
-
-  if (policy.requireSpecialChars && !hasSpecial(password)) {
-    return 'Password must contain a symbol, such as ! or @'
+  if (new TextEncoder().encode(password).length > BCRYPT_MAX_BYTES) {
+    return 'Password has too many special characters — use fewer emoji or symbols'
   }
 
   return null

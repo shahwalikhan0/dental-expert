@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { templateService } from '@/lib/services/template.service'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { TEMPLATE_VARIABLE_KEYS } from '@/lib/template-variables'
 
 const createTemplateSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1, 'Enter a name for the template.'),
   category: z.enum([
     'APPOINTMENT',
     'PAYMENT',
@@ -22,15 +24,6 @@ const createTemplateSchema = z.object({
   isDefault: z.boolean().optional(),
 })
 
-const updateTemplateSchema = z.object({
-  name: z.string().optional(),
-  subject: z.string().optional(),
-  content: z.string().optional(),
-  language: z.string().optional(),
-  isActive: z.boolean().optional(),
-  isDefault: z.boolean().optional(),
-})
-
 // POST /api/communications/templates - Create template
 export async function POST(req: NextRequest) {
   const { error, hospitalId } = await requirePermission('communications:write')
@@ -42,17 +35,31 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createTemplateSchema.parse(body)
 
-    // Validate template
-    const validation = templateService.validateTemplate(data.content)
+    // Every placeholder must be one a message fills in, or it is sent to the
+    // patient as typed (finding 62). The error names the unknown ones and
+    // lists the valid ones, so the toast says what to change.
+    const validation = templateService.validateTemplate(data.content, {
+      channel: data.channel,
+      subject: data.subject,
+    })
 
     if (!validation.isValid) {
       return NextResponse.json(
         {
-          error: 'Template validation failed',
+          error: validation.errors.join(' '),
           validationErrors: validation.errors,
           unknownVariables: validation.unknownVariables,
+          validVariables: TEMPLATE_VARIABLE_KEYS,
         },
         { status: 400 }
+      )
+    }
+
+    const taken = await templateService.findByName(hospitalId, data.name)
+    if (taken) {
+      return NextResponse.json(
+        { error: `A template named "${taken.name}" already exists.` },
+        { status: 409 }
       )
     }
 
@@ -62,12 +69,11 @@ export async function POST(req: NextRequest) {
       success: true,
       data: template,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Create template error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to create template' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create template' }, { status: 500 })
   }
 }
 
@@ -106,8 +112,10 @@ export async function GET(req: NextRequest) {
       data: templates,
       count: templates.length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Get templates error:', error)
-    return NextResponse.json({ error: error.message || 'Failed to get templates' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to get templates' }, { status: 500 })
   }
 }

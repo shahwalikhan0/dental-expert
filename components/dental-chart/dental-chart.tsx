@@ -13,6 +13,11 @@
  *
  * Clicking a tooth opens its findings rather than selecting it, which is the
  * only real difference from the picker.
+ *
+ * A switch above the arch moves between the permanent dentition and a child's
+ * primary one (51–85). Only permanent teeth could be charted before, so tooth
+ * 75 on an eleven-year-old had nowhere to go (bug report 12 Oct, finding 55).
+ * A mixed dentition is charted on both: each tooth keeps its own number.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -42,8 +47,15 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
-import { ALL_TEETH, quadrantOf, QUADRANTS } from '@/lib/teeth'
-import { toothConditionConfig, toothNames } from '@/lib/treatment-utils'
+import {
+  ALL_PRIMARY_TEETH,
+  ALL_TEETH,
+  isPrimaryTooth,
+  quadrantOf,
+  QUADRANTS,
+  type Dentition,
+} from '@/lib/teeth'
+import { primaryToothNames, toothConditionConfig, toothNames } from '@/lib/treatment-utils'
 import { ToothArch, ToothButton } from '@/components/dental-chart/tooth-arch'
 
 interface DentalChartEntry {
@@ -96,8 +108,13 @@ function conditionLabel(condition: string): string {
 
 /** The name of a tooth, with the quadrant spelled out rather than implied. */
 function toothLabel(tooth: number): string {
-  return toothNames[tooth] ?? 'Tooth'
+  return toothNames[tooth] ?? primaryToothNames[tooth] ?? 'Tooth'
 }
+
+const DENTITIONS: { value: Dentition; label: string }[] = [
+  { value: 'permanent', label: 'Permanent' },
+  { value: 'primary', label: 'Primary' },
+]
 
 export function DentalChart({ patientId }: DentalChartProps) {
   const { toast } = useToast()
@@ -106,6 +123,9 @@ export function DentalChart({ patientId }: DentalChartProps) {
   const [chartData, setChartData] = useState<Record<number, DentalChartEntry[]>>({})
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Which teeth are drawn. `null` until somebody chooses, so the first load can
+  // open a child's chart on the primary teeth it has findings on.
+  const [chosenDentition, setChosenDentition] = useState<Dentition | null>(null)
 
   // Form state for new entry
   const [formCondition, setFormCondition] = useState('CARIES')
@@ -152,40 +172,54 @@ export function DentalChart({ patientId }: DentalChartProps) {
    */
   const current = useMemo(() => {
     const map: Record<number, DentalChartEntry> = {}
-    for (const tooth of ALL_TEETH) {
+    for (const tooth of [...ALL_TEETH, ...ALL_PRIMARY_TEETH]) {
       const active = (chartData[tooth] ?? []).find((entry) => !entry.resolvedDate)
       if (active) map[tooth] = active
     }
     return map
   }, [chartData])
 
+  /**
+   * The dentition on screen: the one chosen, or — before any choice — primary
+   * when every current finding is on a primary tooth, which is a child's
+   * chart; otherwise permanent.
+   */
+  const dentition: Dentition = useMemo(() => {
+    if (chosenDentition) return chosenDentition
+    const charted = Object.keys(current).map(Number)
+    return charted.length > 0 && charted.every(isPrimaryTooth) ? 'primary' : 'permanent'
+  }, [chosenDentition, current])
+  const shownTeeth = dentition === 'primary' ? ALL_PRIMARY_TEETH : ALL_TEETH
+
   const counts = useMemo(() => {
-    const teeth = Object.values(current)
+    const teeth = shownTeeth.map((tooth) => current[tooth]).filter(Boolean)
     const absent = teeth.filter((entry) => ABSENT.has(entry.condition)).length
     return {
-      present: ALL_TEETH.length - absent,
+      present: shownTeeth.length - absent,
       caries: teeth.filter((entry) => entry.condition === 'CARIES').length,
       filled: teeth.filter((entry) => entry.condition === 'FILLED').length,
       absent,
     }
-  }, [current])
+  }, [current, shownTeeth])
 
   /** Only the conditions this mouth actually has — a key, not a catalogue. */
   const presentConditions = useMemo(() => {
     const seen = new Set<string>()
-    for (const tooth of ALL_TEETH) {
+    for (const tooth of shownTeeth) {
       const condition = current[tooth]?.condition
       if (condition && condition !== 'HEALTHY') seen.add(condition)
     }
     return [...seen]
-  }, [current])
+  }, [current, shownTeeth])
 
   /** What is charted, by quadrant, under the arch. */
   const byQuadrant = useMemo(
     () =>
       QUADRANTS.map((quadrant) => ({
         ...quadrant,
-        teeth: ALL_TEETH.filter(
+        // Both dentitions, so a finding on a tooth not drawn just now is still
+        // listed — and a click on it opens it.
+        teeth: [...ALL_TEETH, ...ALL_PRIMARY_TEETH].filter(
           (tooth) =>
             quadrantOf(tooth) === quadrant.key &&
             current[tooth] &&
@@ -347,7 +381,29 @@ export function DentalChart({ patientId }: DentalChartProps) {
       <CardContent>
         <TooltipProvider delayDuration={200}>
           <div className="rounded-xl border border-border/60 bg-card/60 p-4">
-            <ToothArch tooth={renderTooth} />
+            <div
+              role="radiogroup"
+              aria-label="Dentition"
+              className="mb-3 flex w-fit gap-1 rounded-lg bg-foreground/[0.05] p-0.5"
+            >
+              {DENTITIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={dentition === option.value}
+                  onClick={() => setChosenDentition(option.value)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    dentition === option.value
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <ToothArch tooth={renderTooth} dentition={dentition} />
 
             {/* A key, only for what this mouth has */}
             {presentConditions.length > 0 && (

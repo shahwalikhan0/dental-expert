@@ -39,7 +39,37 @@ export interface TemplateItem {
   timing?: string | null
   quantity?: number | null
   instructions?: string | null
-  medication?: { genericName?: string | null } | null
+  medication?: { genericName?: string | null; isActive?: boolean | null } | null
+}
+
+/**
+ * Has this line's catalogue entry been deactivated since the template was saved?
+ *
+ * A template keeps its lines when a drug is retired from the catalogue — the
+ * template is the clinic's wording, and deleting lines from it behind the
+ * clinic's back would be worse. But a retired drug must not ride into a new
+ * prescription on a template (bug report 12 Oct, finding 48), so every screen
+ * that shows or applies a template asks this.
+ */
+export function isInactiveItem(item: Pick<TemplateItem, 'medication'>): boolean {
+  return item.medication?.isActive === false
+}
+
+/**
+ * A template's items split into what can still be prescribed and the names of
+ * what cannot. The prescribing screen applies the first and names the second
+ * in a toast, rather than adding a retired drug or dropping it in silence.
+ */
+export function usableTemplateItems<T extends TemplateItem>(
+  items: T[]
+): { usable: T[]; inactive: string[] } {
+  const usable: T[] = []
+  const inactive: string[] = []
+  for (const item of items) {
+    if (isInactiveItem(item)) inactive.push(item.medicationName)
+    else usable.push(item)
+  }
+  return { usable, inactive }
 }
 
 /** A row the dentist has not typed anything into yet. */

@@ -48,9 +48,19 @@ describe('TemplateService - getStandardVariables', () => {
     const keys = vars.map((v) => v.key)
     expect(keys).toContain('patientName')
     expect(keys).toContain('firstName')
-    expect(keys).toContain('lastName')
-    expect(keys).toContain('phone')
-    expect(keys).toContain('email')
+  })
+
+  it('offers only variables some message fills in (finding 62)', () => {
+    const keys = templateService.getStandardVariables().map((v) => v.key)
+    // Offered for years and set by nothing: a template using one went out
+    // with the braces still in it.
+    for (const neverFilled of ['lastName', 'clinicEmail', 'treatmentCost', 'prescriptionNo']) {
+      expect(keys).not.toContain(neverFilled)
+    }
+    // What the recall run and the payment trigger fill in.
+    expect(keys).toContain('recareType')
+    expect(keys).toContain('lastVisitClause')
+    expect(keys).toContain('amount')
   })
 
   it('includes appointment variables', () => {
@@ -75,7 +85,6 @@ describe('TemplateService - getStandardVariables', () => {
     const keys = vars.map((v) => v.key)
     expect(keys).toContain('clinicName')
     expect(keys).toContain('clinicPhone')
-    expect(keys).toContain('clinicEmail')
   })
 })
 
@@ -153,14 +162,14 @@ describe('TemplateService - replaceVariables', () => {
 // ---------------------------------------------------------------------------
 
 describe('TemplateService - extractVariables', () => {
-  // Note: extractVariables regex uses \\s in a regex literal, which matches
-  // literal backslash+s rather than whitespace. Tests verify actual behavior.
-
-  it('returns an array', () => {
+  // The pattern used to be written with `\\s` in a regex literal, which
+  // matches a backslash, so it found nothing and no placeholder was ever
+  // checked (finding 62).
+  it('finds each placeholder once, in order', () => {
     const vars = templateService.extractVariables(
-      'Hello {{patientName}}, your appointment is {{appointmentDate}}'
+      'Hello {{patientName}}, your appointment is {{ appointmentDate }}. Bye {{patientName}}'
     )
-    expect(Array.isArray(vars)).toBe(true)
+    expect(vars).toEqual(['patientName', 'appointmentDate'])
   })
 
   it('returns empty array for content with no variables', () => {
@@ -205,6 +214,38 @@ describe('TemplateService - validateTemplate', () => {
     const content = 'A'.repeat(100)
     const result = templateService.validateTemplate(content)
     expect(result.isValid).toBe(true)
+  })
+
+  it('does not hold an email template to the SMS length', () => {
+    const result = templateService.validateTemplate('A'.repeat(2000), { channel: 'EMAIL' })
+    expect(result.isValid).toBe(true)
+  })
+
+  it('refuses an unknown placeholder, naming it and the valid ones (finding 62)', () => {
+    const result = templateService.validateTemplate('Hi {{fistName}}, see you at {{clinicName}}')
+    expect(result.isValid).toBe(false)
+    expect(result.unknownVariables).toEqual(['fistName'])
+    expect(result.errors[0]).toContain('{{fistName}}')
+    expect(result.errors[0]).toContain('{{firstName}}')
+  })
+
+  it('checks the subject as well as the body', () => {
+    const result = templateService.validateTemplate('Hello', {
+      channel: 'EMAIL',
+      subject: 'Invoice {{invoiceNumber}}',
+    })
+    expect(result.unknownVariables).toEqual(['invoiceNumber'])
+  })
+
+  it('accepts every starter template', async () => {
+    const { DEFAULT_TEMPLATES } = await import('@/lib/default-templates')
+    for (const t of DEFAULT_TEMPLATES) {
+      const result = templateService.validateTemplate(t.content, {
+        channel: t.channel,
+        subject: t.subject,
+      })
+      expect(result.unknownVariables, t.name).toEqual([])
+    }
   })
 })
 
@@ -383,11 +424,11 @@ describe('TemplateService - seedDefaultTemplates', () => {
 
     await templateService.seedDefaultTemplates('hosp-1')
 
-    // Should check for existing templates and create missing ones
+    // Should check for existing templates and create missing ones — the same
+    // starter set signup seeds, from lib/default-templates.
+    const { DEFAULT_TEMPLATES } = await import('@/lib/default-templates')
     expect(prisma.communicationTemplate.findFirst).toHaveBeenCalled()
-    expect(prisma.communicationTemplate.create).toHaveBeenCalled()
-    // There are 10 default templates (8 SMS + 2 email)
-    expect(prisma.communicationTemplate.create).toHaveBeenCalledTimes(10)
+    expect(prisma.communicationTemplate.create).toHaveBeenCalledTimes(DEFAULT_TEMPLATES.length)
   })
 
   it('skips templates that already exist', async () => {

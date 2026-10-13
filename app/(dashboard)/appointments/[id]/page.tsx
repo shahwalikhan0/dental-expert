@@ -52,12 +52,16 @@ import {
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/hooks/use-toast'
+import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
 
 interface Appointment {
   id: string
   appointmentNo: string
   scheduledDate: string
   scheduledTime: string
+  /** The instant it starts — what "has it started yet" is measured against. */
+  startsAt: string
   duration: number
   tokenNumber: string | null
   visitor: {
@@ -129,6 +133,17 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const { toast } = useToast()
+
+  /**
+   * The API's own reason, as a toast. These handlers used to log a failure to
+   * the console and carry on, so a refused check-in or no-show looked like a
+   * button that did nothing.
+   */
+  const refused = async (response: Response, fallback: string) => {
+    const data = await response.json().catch(() => ({}))
+    toast({ variant: 'destructive', title: fallback, description: data.error })
+  }
 
   // Cancel dialog
   const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -158,10 +173,13 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
       const response = await fetch(`/api/appointments/${id}/check-in`, {
         method: 'POST',
       })
-      if (!response.ok) throw new Error('Failed to check in')
+      if (!response.ok) {
+        await refused(response, 'Could not check in')
+        return
+      }
       fetchAppointment()
-    } catch (error) {
-      console.error('Error:', error)
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not check in' })
     } finally {
       setActionLoading(false)
     }
@@ -173,10 +191,13 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
       const response = await fetch(`/api/appointments/${id}/check-out`, {
         method: 'POST',
       })
-      if (!response.ok) throw new Error('Failed to check out')
+      if (!response.ok) {
+        await refused(response, 'Could not check out')
+        return
+      }
       fetchAppointment()
-    } catch (error) {
-      console.error('Error:', error)
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not check out' })
     } finally {
       setActionLoading(false)
     }
@@ -214,12 +235,15 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error('Failed to update status')
+      if (!response.ok) {
+        await refused(response, 'Could not update the appointment')
+        return
+      }
       fetchAppointment()
       setShowCancelDialog(false)
       setCancellationReason('')
-    } catch (error) {
-      console.error('Error:', error)
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not update the appointment' })
     } finally {
       setActionLoading(false)
     }
@@ -323,6 +347,19 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               Check In
             </Button>
           )}
+          {/* Called in from the waiting room. This is when the patient's wait
+              ends and is recorded; checking out straight from the waiting room
+              leaves the wait unknown. */}
+          {appointment.status === 'CHECKED_IN' && (
+            <Button
+              variant="outline"
+              onClick={() => handleStatusChange('IN_PROGRESS')}
+              disabled={actionLoading}
+            >
+              <Stethoscope className="h-4 w-4 mr-2" />
+              Call In
+            </Button>
+          )}
           {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
             <Button onClick={handleCheckOut} disabled={actionLoading}>
               <LogOut className="h-4 w-4 mr-2" />
@@ -353,13 +390,17 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             this application uses to decide who gets an extra reminder is built
             from exactly this action.
           */}
-          {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
-            <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
-              <UserX className="h-4 w-4 mr-2" />
-              No-show
-            </Button>
-          )}
-          {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(appointment.status) && (
+          {/* Not before the appointment has started: nobody has failed to
+              attend something that has not begun. */}
+          {canMoveTo(appointment.status, 'NO_SHOW') &&
+            appointment.status !== 'NO_SHOW' &&
+            !noShowTooEarly(appointment.startsAt) && (
+              <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
+                <UserX className="h-4 w-4 mr-2" />
+                No-show
+              </Button>
+            )}
+          {appointment.status !== 'CANCELLED' && canMoveTo(appointment.status, 'CANCELLED') && (
             <Button
               variant="destructive"
               onClick={() => setShowCancelDialog(true)}

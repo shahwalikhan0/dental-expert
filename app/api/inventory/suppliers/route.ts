@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, VendorStatus } from '@prisma/client'
+import { knownErrorResponse } from '@/lib/api-errors'
+import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
 
@@ -94,12 +96,11 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error fetching suppliers:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch suppliers', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch suppliers' }, { status: 500 })
   }
 }
 
@@ -126,10 +127,7 @@ export async function POST(request: NextRequest) {
       postalCode,
       taxRegistrationNo,
       nationalTaxNo,
-      paymentTerms = 'Net 30',
-      creditLimit = 0,
       status = VendorStatus.ACTIVE,
-      rating = 0,
       notes,
     } = body
 
@@ -139,6 +137,19 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // `paymentTerms: 30` was a 500 (finding 49): the column is text. A number
+    // is read as days; anything else that is not text is a 400.
+    const paymentTerms = parsePaymentTerms(body.paymentTerms ?? 'Net 30')
+    if (!paymentTerms.ok) return NextResponse.json({ error: paymentTerms.error }, { status: 400 })
+
+    const creditLimit = parseCreditLimit(body.creditLimit ?? 0)
+    if (!creditLimit.ok) return NextResponse.json({ error: creditLimit.error }, { status: 400 })
+
+    // Zero and absent are "not rated", stored as null — the same rule as
+    // laboratories (finding 20).
+    const rating = parseRating(body.rating)
+    if (!rating.ok) return NextResponse.json({ error: rating.error }, { status: 400 })
 
     const existing = await prisma.vendor.findFirst({
       where: { hospitalId, kind: 'SUPPLIER', code, deletedAt: null },
@@ -165,10 +176,10 @@ export async function POST(request: NextRequest) {
         postalCode: postalCode || null,
         taxRegistrationNo: taxRegistrationNo || null,
         nationalTaxNo: nationalTaxNo || null,
-        paymentTerms,
-        creditLimit,
+        paymentTerms: paymentTerms.value ?? null,
+        creditLimit: creditLimit.value ?? null,
         status: parseStatus(String(status)) ?? VendorStatus.ACTIVE,
-        rating,
+        rating: rating.value ?? null,
         notes: notes || null,
       },
       select: { id: true },
@@ -182,11 +193,12 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     )
-  } catch (error: any) {
+  } catch (error) {
+    // A malformed value is a 400 that says what was wrong (findings 25 and
+    // 49), never Prisma's message.
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error creating supplier:', error)
-    return NextResponse.json(
-      { error: 'Failed to create supplier', details: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create supplier' }, { status: 500 })
   }
 }

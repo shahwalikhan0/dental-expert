@@ -4,8 +4,7 @@ import { z } from 'zod'
 import { getAuthenticatedHospital } from '@/lib/api-helpers'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import prisma from '@/lib/prisma'
-import { describePolicy, validatePassword } from '@/lib/password-policy'
-import { passwordPolicyFor } from '@/lib/security-settings'
+import { PASSWORD_RULES, validatePassword } from '@/lib/password-policy'
 
 /**
  * Changing your own password.
@@ -39,8 +38,7 @@ export async function GET(_req: NextRequest) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const policy = await passwordPolicyFor(prisma, hospitalId)
-  return NextResponse.json({ rules: describePolicy(policy) })
+  return NextResponse.json({ rules: PASSWORD_RULES })
 }
 
 export async function POST(req: NextRequest) {
@@ -75,7 +73,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'That is not your current password' }, { status: 400 })
     }
 
-    const weak = validatePassword(newPassword, await passwordPolicyFor(prisma, hospitalId))
+    const weak = validatePassword(newPassword)
     if (weak) return NextResponse.json({ error: weak }, { status: 400 })
 
     if (await bcrypt.compare(newPassword, account.password)) {

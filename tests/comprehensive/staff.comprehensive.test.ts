@@ -30,6 +30,7 @@ vi.mock('@/lib/prisma', () => ({
     },
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
@@ -242,7 +243,9 @@ describe('Staff API - Comprehensive Tests', () => {
 
   describe('POST /api/staff', () => {
     beforeEach(() => {
-      mockPrisma.user.findUnique.mockResolvedValue(null) // Email doesn't exist
+      // Duplicate addresses are looked up case-insensitively (finding 29), so
+      // the route asks `findFirst` rather than the unique index.
+      mockPrisma.user.findFirst.mockResolvedValue(null) // Email doesn't exist
       mockPrisma.$transaction.mockImplementation(async (callback) => {
         return callback({
           user: {
@@ -292,7 +295,7 @@ describe('Staff API - Comprehensive Tests', () => {
     })
 
     it('should reject duplicate email', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing-user' })
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'existing-user' })
 
       const request = new NextRequest('http://localhost/api/staff', {
         method: 'POST',
@@ -666,6 +669,65 @@ describe('Staff API - Comprehensive Tests', () => {
       const response = await POST(request)
 
       expect(response.status).toBe(201)
+    })
+  })
+  // Bug report 12 Oct, findings 28 and 29.
+  describe('Contact validation and email case', () => {
+    beforeEach(() => {
+      mockPrisma.user.findFirst.mockResolvedValue(null)
+    })
+
+    const base = {
+      firstName: 'Jane',
+      lastName: 'Smith',
+      email: 'jane@example.com',
+      phone: '0300 1234567',
+      role: 'RECEPTIONIST',
+      password: 'SecurePass123!',
+    }
+    const post = (body: any) =>
+      POST(
+        new NextRequest('http://localhost/api/staff', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        })
+      )
+
+    it('refuses an email that is not an address', async () => {
+      const response = await post({ ...base, email: 'not-an-email' })
+      expect(response.status).toBe(400)
+    })
+
+    it('refuses a phone that is not a number', async () => {
+      const response = await post({ ...base, phone: 'abc' })
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toMatch(/phone/i)
+    })
+
+    it('looks for an existing account without regard to case', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'existing-user' })
+      const response = await post({ ...base, email: '  Jane@Example.COM ' })
+      expect(response.status).toBe(400)
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            hospitalId: mockHospitalId,
+            email: { equals: 'jane@example.com', mode: 'insensitive' },
+          },
+        })
+      )
+    })
+
+    it('refuses a joining date in the future', async () => {
+      const response = await post({ ...base, joiningDate: '2999-01-01' })
+      expect(response.status).toBe(400)
+    })
+
+    it('points to the plans when the staff limit is reached', async () => {
+      mockCheckStaffLimit.mockResolvedValue({ allowed: false, current: 3, max: 3 })
+      const response = await post(base)
+      expect(response.status).toBe(403)
+      expect((await response.json()).upgradeUrl).toBe('/pricing')
     })
   })
 })

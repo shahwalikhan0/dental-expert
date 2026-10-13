@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
-import type { PaymentMethod, Prisma } from '@prisma/client'
+import type { PaymentMethod, Prisma, PrismaClient } from '@prisma/client'
+
+type Db = PrismaClient | Prisma.TransactionClient
 
 /**
  * Daily closing (FR-015) and the discount/refund controls (FR-013, FR-014).
@@ -73,25 +75,41 @@ export function discountNeedsApproval(discountAmount: number, threshold: number)
  * One open session per clinic: this is a single-site practice with one front
  * desk, and "daily closing" means one reconciliation at the end of the day.
  * Payments attach to whichever session is open when they are taken.
+ *
+ * With `userId`, a till that person opened is preferred. Opening is not yet
+ * atomic, so two can be open at once, and a payment belongs in the drawer of
+ * the person who took it (finding 38). `db` lets a caller read it inside the
+ * transaction that records the payment.
  */
-export async function getOpenSession(hospitalId: string) {
-  return prisma.cashierSession.findFirst({
+export async function getOpenSession(
+  hospitalId: string,
+  options: { db?: Db; userId?: string | null } = {}
+) {
+  const db = options.db ?? prisma
+  if (options.userId) {
+    const own = await db.cashierSession.findFirst({
+      where: { hospitalId, status: 'OPEN', openedById: options.userId },
+      orderBy: { openedAt: 'desc' },
+    })
+    if (own) return own
+  }
+  return db.cashierSession.findFirst({
     where: { hospitalId, status: 'OPEN' },
     orderBy: { openedAt: 'desc' },
   })
 }
 
 /** `CS-YYYYMM-0001`, matching the invoice and payment numbering. */
-export async function generateSessionNo(hospitalId: string): Promise<string> {
+export async function generateSessionNo(hospitalId: string, db: Db = prisma): Promise<string> {
   const now = new Date()
   const prefix = `CS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  return nextInSeries(prisma, {
+  return nextInSeries(db, {
     hospitalId,
     prefix,
     width: 4,
     currentMax: async () => {
-      const last = await prisma.cashierSession.findFirst({
+      const last = await db.cashierSession.findFirst({
         where: { hospitalId, sessionNo: { startsWith: prefix } },
         orderBy: { sessionNo: 'desc' },
         select: { sessionNo: true },
@@ -101,17 +119,22 @@ export async function generateSessionNo(hospitalId: string): Promise<string> {
   })
 }
 
-/** `REF-YYYYMM-0001`. */
-export async function generateRefundNo(hospitalId: string): Promise<string> {
+/**
+ * `REF-YYYYMM-0001`.
+ *
+ * Pass the transaction the refund is written in: the counter row is then
+ * rolled back with it, and a refused refund does not leave a gap.
+ */
+export async function generateRefundNo(hospitalId: string, db: Db = prisma): Promise<string> {
   const now = new Date()
   const prefix = `REF-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-`
 
-  return nextInSeries(prisma, {
+  return nextInSeries(db, {
     hospitalId,
     prefix,
     width: 4,
     currentMax: async () => {
-      const last = await prisma.refund.findFirst({
+      const last = await db.refund.findFirst({
         where: { hospitalId, refundNo: { startsWith: prefix } },
         orderBy: { refundNo: 'desc' },
         select: { refundNo: true },

@@ -23,9 +23,10 @@
  * that never opens this page. So each one is either what the application
  * already did, or a floor nobody could object to:
  *
- *  - **Password rules** are the ones the screen has always displayed, with the
- *    minimum at eight. They are what the five password-setting paths should
- *    have been agreeing on all along.
+ *  - **Password rules are not here.** A password is 8 to 32 characters with no
+ *    composition requirements, fixed for every clinic — see
+ *    `lib/password-policy.ts`. The minimum-length field and the four
+ *    capital/small/number/symbol switches were removed.
  *  - **Session timeout is eight hours**, which is what the JWT has always been
  *    issued with. The screen displayed sixty minutes; adopting that as the
  *    enforced default would have signed every clinic out seven hours early as
@@ -37,7 +38,6 @@
  *    their behalf, in the direction of more work and no more safety.
  */
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { MINIMUM_PASSWORD_LENGTH, type PasswordPolicy } from '@/lib/password-policy'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -45,11 +45,6 @@ type Db = PrismaClient | Prisma.TransactionClient
 export const SECURITY_CATEGORY = 'security'
 
 export interface SecuritySettings {
-  passwordMinLength: number
-  passwordRequireUppercase: boolean
-  passwordRequireLowercase: boolean
-  passwordRequireNumbers: boolean
-  passwordRequireSpecialChars: boolean
   /** Days before a password must be changed. 0 — the default — is never. */
   passwordExpiryDays: number
   /** How long a sign-in lasts. */
@@ -72,11 +67,6 @@ export interface SecuritySettings {
 }
 
 export const DEFAULT_SECURITY: SecuritySettings = {
-  passwordMinLength: MINIMUM_PASSWORD_LENGTH,
-  passwordRequireUppercase: true,
-  passwordRequireLowercase: true,
-  passwordRequireNumbers: true,
-  passwordRequireSpecialChars: true,
   passwordExpiryDays: 0,
   sessionTimeoutMinutes: 8 * 60,
   maxLoginAttempts: 5,
@@ -135,28 +125,6 @@ export function securityFrom(rows: { key: string; value: string }[]): SecuritySe
   const get = (key: keyof SecuritySettings) => stored.get(key)
 
   return {
-    passwordMinLength: asNumber(
-      get('passwordMinLength'),
-      DEFAULT_SECURITY.passwordMinLength,
-      MINIMUM_PASSWORD_LENGTH,
-      64
-    ),
-    passwordRequireUppercase: asBoolean(
-      get('passwordRequireUppercase'),
-      DEFAULT_SECURITY.passwordRequireUppercase
-    ),
-    passwordRequireLowercase: asBoolean(
-      get('passwordRequireLowercase'),
-      DEFAULT_SECURITY.passwordRequireLowercase
-    ),
-    passwordRequireNumbers: asBoolean(
-      get('passwordRequireNumbers'),
-      DEFAULT_SECURITY.passwordRequireNumbers
-    ),
-    passwordRequireSpecialChars: asBoolean(
-      get('passwordRequireSpecialChars'),
-      DEFAULT_SECURITY.passwordRequireSpecialChars
-    ),
     passwordExpiryDays: asNumber(
       get('passwordExpiryDays'),
       DEFAULT_SECURITY.passwordExpiryDays,
@@ -188,7 +156,7 @@ export function securityFrom(rows: { key: string; value: string }[]): SecuritySe
 /**
  * This clinic's security settings.
  *
- * One indexed query. Read at sign-in and wherever a password is set — not on
+ * One indexed query. Read at sign-in — not on
  * every request, which is why the session carries its own timeout rather than
  * looking it up again.
  */
@@ -199,25 +167,4 @@ export async function readSecuritySettings(db: Db, hospitalId: string): Promise<
   })
 
   return securityFrom(rows)
-}
-
-/** Just the password rules, for `validatePassword`. */
-export function passwordPolicyOf(settings: SecuritySettings): PasswordPolicy {
-  return {
-    minLength: settings.passwordMinLength,
-    requireUppercase: settings.passwordRequireUppercase,
-    requireLowercase: settings.passwordRequireLowercase,
-    requireNumbers: settings.passwordRequireNumbers,
-    requireSpecialChars: settings.passwordRequireSpecialChars,
-  }
-}
-
-/**
- * The password rules for a clinic, by id.
- *
- * The common case at every password-setting call site, which has a
- * `hospitalId` and wants to validate one string.
- */
-export async function passwordPolicyFor(db: Db, hospitalId: string): Promise<PasswordPolicy> {
-  return passwordPolicyOf(await readSecuritySettings(db, hospitalId))
 }

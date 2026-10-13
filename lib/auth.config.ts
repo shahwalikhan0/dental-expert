@@ -26,6 +26,9 @@ export const authConfig: NextAuthConfig = {
         // The patient portal. Patients hold their own cookie, checked in
         // app/portal/(secure)/layout.tsx — never the staff session.
         '/portal',
+        // The user guide, linked from the sign-in and signup cards — kept in
+        // step with the list in middleware.ts.
+        '/docs',
       ]
 
       const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))

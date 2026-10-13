@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 const fieldSchema = z.object({
   id: z.string(),
@@ -89,10 +90,10 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ template }, { status: 201 })
-  } catch (err: any) {
-    if (err.name === 'ZodError') {
-      return NextResponse.json({ error: 'Invalid form data', details: err.errors }, { status: 400 })
-    }
+  } catch (err) {
+    // A 400 naming the field, not a heading over an issue list (finding 25).
+    const known = knownErrorResponse(err)
+    if (known) return known
     console.error('Create form template error:', err)
     return NextResponse.json({ error: 'Failed to create template' }, { status: 500 })
   }

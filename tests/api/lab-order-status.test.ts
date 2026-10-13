@@ -38,7 +38,12 @@ const mockAuth = vi.hoisted(() => {
 vi.mock('@/lib/api-helpers', () => mockAuth)
 vi.mock('@/lib/prisma', () => import('../__mocks__/prisma'))
 
+// The lab module is a paid feature (lib/plan-gate.ts). These tests are about
+// what the routes do once it is included; the refusal has its own test.
+vi.mock('@/lib/plan-gate', () => ({ requireFeature: vi.fn().mockResolvedValue(null) }))
+
 const { prisma } = await import('../__mocks__/prisma')
+const { requireFeature } = await import('@/lib/plan-gate')
 const statusModule = await import('@/app/api/lab-orders/[id]/status/route')
 
 function makeRequest(body?: any) {
@@ -88,7 +93,9 @@ describe('Lab Order Status API', () => {
 
   describe('PATCH /api/lab-orders/[id]/status', () => {
     it('updates lab order status', async () => {
-      prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.SENT_TO_LAB, sentDate: new Date('2026-01-01') })
+      )
 
       const res = await statusModule.PATCH(makeRequest({ status: 'in_progress' }), ctx)
       expect(res.status).toBe(200)
@@ -108,7 +115,7 @@ describe('Lab Order Status API', () => {
 
     it('auto-sets receivedDate for ready status', async () => {
       prisma.labOrder.findFirst.mockResolvedValue(
-        existingOrder({ status: LabOrderStatus.IN_PROGRESS, sentDate: new Date('2026-01-01') })
+        existingOrder({ status: LabOrderStatus.QUALITY_CHECK, sentDate: new Date('2026-01-01') })
       )
 
       const res = await statusModule.PATCH(makeRequest({ status: 'ready' }), ctx)
@@ -116,10 +123,25 @@ describe('Lab Order Status API', () => {
       expect(updateData().receivedDate).toBeInstanceOf(Date)
     })
 
-    it('auto-sets deliveredDate for fitted status', async () => {
+    it('auto-sets deliveredDate for delivered status', async () => {
       prisma.labOrder.findFirst.mockResolvedValue(
         existingOrder({
           status: LabOrderStatus.READY,
+          sentDate: new Date('2026-01-01'),
+          receivedDate: new Date('2026-01-10'),
+        })
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'delivered' }), ctx)
+      expect(res.status).toBe(200)
+      expect(updateData().deliveredDate).toBeInstanceOf(Date)
+    })
+
+    it('fills in a missing delivered date when a case is fitted', async () => {
+      // A case delivered before the date was stamped at DELIVERED.
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({
+          status: LabOrderStatus.DELIVERED,
           sentDate: new Date('2026-01-01'),
           receivedDate: new Date('2026-01-10'),
         })
@@ -165,7 +187,9 @@ describe('Lab Order Status API', () => {
      * which is exactly what AuditLog records for every other kind of change.
      */
     it('records the change in the audit log with the supplied notes', async () => {
-      prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.SENT_TO_LAB, sentDate: new Date('2026-01-01') })
+      )
 
       await statusModule.PATCH(
         makeRequest({ status: 'in_progress', notes: 'Started work on crown' }),
@@ -180,7 +204,7 @@ describe('Lab Order Status API', () => {
         entityType: 'LabOrder',
         entityId: 'order-1',
       })
-      expect(JSON.parse(entry.oldValues)).toEqual({ status: LabOrderStatus.CREATED })
+      expect(JSON.parse(entry.oldValues)).toEqual({ status: LabOrderStatus.SENT_TO_LAB })
       expect(JSON.parse(entry.newValues)).toEqual({
         status: LabOrderStatus.IN_PROGRESS,
         notes: 'Started work on crown',
@@ -188,7 +212,9 @@ describe('Lab Order Status API', () => {
     })
 
     it('falls back to a generated note when none is supplied', async () => {
-      prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.SENT_TO_LAB, sentDate: new Date('2026-01-01') })
+      )
 
       await statusModule.PATCH(makeRequest({ status: 'in_progress' }), ctx)
 
@@ -207,8 +233,15 @@ describe('Lab Order Status API', () => {
       expect(res.status).toBe(401)
     })
 
-    it('accepts every LabOrderStatus, in legacy lowercase form', async () => {
+    it('accepts the legacy lowercase form of every status a case can move to', async () => {
+      const { STATUS_TRANSITIONS } = await import('@/lib/lab-orders')
       for (const status of Object.values(LabOrderStatus)) {
+        // CREATED is where a case starts; nothing moves back to it.
+        const from = (Object.keys(STATUS_TRANSITIONS) as LabOrderStatus[]).find((s) =>
+          STATUS_TRANSITIONS[s].includes(status)
+        )
+        if (!from) continue
+
         vi.clearAllMocks()
         mockAuth.requireAuthAndRole.mockResolvedValue({
           error: null,
@@ -218,13 +251,106 @@ describe('Lab Order Status API', () => {
         prisma.$transaction.mockImplementation((arg: any) =>
           typeof arg === 'function' ? arg(prisma) : Promise.all(arg)
         )
-        prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+        prisma.labOrder.findFirst.mockResolvedValue(existingOrder({ status: from }))
         prisma.labOrder.update.mockResolvedValue({ id: 'order-1' })
         prisma.auditLog.create.mockResolvedValue({ id: 'history-1' })
 
         const res = await statusModule.PATCH(makeRequest({ status: status.toLowerCase() }), ctx)
         expect(res.status).toBe(200)
       }
+    })
+
+    /**
+     * Finding 45: LAB20260001 went CREATED → FITTED → CREATED, both 200, and
+     * kept its delivered date while it said CREATED.
+     */
+    it('refuses a jump forward past the next stage', async () => {
+      prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'fitted' }), ctx)
+
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toContain('cannot move to fitted')
+      expect(body.error).toContain('sent to lab')
+      expect(prisma.labOrder.update).not.toHaveBeenCalled()
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+    })
+
+    it('refuses to move a fitted case back to created', async () => {
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.FITTED, deliveredDate: new Date('2026-01-20') })
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'created' }), ctx)
+
+      expect(res.status).toBe(400)
+      expect(prisma.labOrder.update).not.toHaveBeenCalled()
+    })
+
+    it('refuses a move to the status the case already has', async () => {
+      prisma.labOrder.findFirst.mockResolvedValue(existingOrder())
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'created' }), ctx)
+
+      expect(res.status).toBe(400)
+    })
+
+    it('allows quality check back to in progress, the rework step', async () => {
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.QUALITY_CHECK, sentDate: new Date('2026-01-01') })
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'in_progress' }), ctx)
+
+      expect(res.status).toBe(200)
+      expect(updateData().status).toBe(LabOrderStatus.IN_PROGRESS)
+    })
+
+    it('clears the received and delivered dates when a case needs a remake', async () => {
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({
+          status: LabOrderStatus.DELIVERED,
+          sentDate: new Date('2026-01-01'),
+          receivedDate: new Date('2026-01-10'),
+          deliveredDate: new Date('2026-01-12'),
+        })
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'remake_required' }), ctx)
+
+      expect(res.status).toBe(200)
+      expect(updateData()).toMatchObject({ receivedDate: null, deliveredDate: null })
+      expect(updateData().sentDate).toBeUndefined()
+    })
+
+    it('stamps a new sent date when a remake goes back to the laboratory', async () => {
+      const firstSent = new Date('2026-01-01')
+      prisma.labOrder.findFirst.mockResolvedValue(
+        existingOrder({ status: LabOrderStatus.REMAKE_REQUIRED, sentDate: firstSent })
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'sent_to_lab' }), ctx)
+
+      expect(res.status).toBe(200)
+      expect(updateData().sentDate).toBeInstanceOf(Date)
+      expect(updateData().sentDate).not.toEqual(firstSent)
+    })
+
+    // Finding 26: a Free clinic ran the lab module.
+    it('refuses the change on a plan without the lab module', async () => {
+      vi.mocked(requireFeature).mockResolvedValueOnce(
+        Response.json(
+          { error: 'The lab module is not included in the Free plan. Upgrade to use it.' },
+          { status: 403 }
+        ) as any
+      )
+
+      const res = await statusModule.PATCH(makeRequest({ status: 'sent_to_lab' }), ctx)
+
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toContain('Upgrade')
+      expect(prisma.labOrder.update).not.toHaveBeenCalled()
     })
   })
 })

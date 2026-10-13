@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { IconTooltip } from '@/components/ui/icon-action'
+import { isInactiveItem } from '@/lib/prescription-templates'
 
 interface Template {
   id: string
@@ -27,7 +28,13 @@ interface Template {
   category: string | null
   diagnosis: string | null
   isActive: boolean
-  items: Array<{ id: string; medicationName: string; dosage: string; frequency: string }>
+  items: Array<{
+    id: string
+    medicationName: string
+    dosage: string
+    frequency: string
+    medication?: { isActive: boolean } | null
+  }>
   _count?: { prescriptions: number }
 }
 
@@ -205,10 +212,29 @@ export default function PrescriptionTemplatesPage() {
                 <ul className="space-y-1.5 text-sm">
                   {template.items.map((item) => (
                     <li key={item.id} className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="font-medium">{item.medicationName}</span>
+                      <span
+                        className={
+                          isInactiveItem(item)
+                            ? 'text-muted-foreground font-medium line-through'
+                            : 'font-medium'
+                        }
+                      >
+                        {item.medicationName}
+                      </span>
                       <span className="text-muted-foreground text-xs">
                         {[item.dosage, item.frequency].filter(Boolean).join(' · ')}
                       </span>
+                      {/*
+                        Retired from the drug catalogue since this template was
+                        saved. Said here, where the clinic manages templates,
+                        because the prescribing screen will leave it out and
+                        should not be the first place anybody finds out.
+                      */}
+                      {isInactiveItem(item) && (
+                        <Badge variant="destructive" className="text-xs">
+                          Inactive — not prescribed
+                        </Badge>
+                      )}
                     </li>
                   ))}
                 </ul>

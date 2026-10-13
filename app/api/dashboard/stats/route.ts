@@ -5,6 +5,8 @@ import { subDays, subMonths } from 'date-fns'
 import { clinicTimezone, dayRangeIn, localDay, wallClockIn } from '@/lib/appointment-time'
 import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
 import { subjectName } from '@/lib/visitors'
+import { holderCan } from '@/lib/rbac'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // Helper function to convert BigInt to Number in query results
 function convertBigIntToNumber(obj: any): any {
@@ -24,11 +26,21 @@ function convertBigIntToNumber(obj: any): any {
 
 // GET /api/dashboard/stats - Get dashboard statistics
 export async function GET(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('reports:operational')
+  const { error, hospitalId, user } = await requirePermission('reports:operational')
 
-  if (error || !hospitalId) {
+  if (error || !hospitalId || !user) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  /**
+   * Revenue and money owed are billing figures, and the dashboard is opened by
+   * everybody with `reports:operational` — the dental assistant and the lab
+   * side included, who hold no billing permission and were shown this month's
+   * takings and the clinic's receivables on their front page (bug report
+   * 12 Oct, finding 41). For them the money is left out of the answer, not
+   * merely hidden by the page: the API is what a curious person reads.
+   */
+  const showsMoney = holderCan({ role: user.role, clinicalRole: user.clinicalRole }, 'billing:read')
 
   try {
     const now = new Date()
@@ -299,7 +311,8 @@ export async function GET(req: NextRequest) {
         stack: queryError.stack,
         code: queryError.code,
       })
-      throw new Error(`Database query failed: ${queryError.message}`)
+      // Rethrown as it was, so the handler below can still recognise it.
+      throw queryError
     }
 
     // Destructure results and convert BigInt values
@@ -409,6 +422,9 @@ export async function GET(req: NextRequest) {
 
     // Format response
     const stats = {
+      // Tells the page which cards it has figures for, so it can leave the
+      // money cards out rather than show "Rs 0" to somebody who may not see.
+      showsMoney,
       overview: {
         totalPatients,
         newPatientsThisMonth,
@@ -418,20 +434,26 @@ export async function GET(req: NextRequest) {
         appointmentGrowth: parseFloat(appointmentGrowth.toFixed(1)),
         pendingAppointments,
         completedAppointmentsToday,
-        thisMonthRevenue: thisMonthNet,
-        todayRevenue: netOf(todayRevenue, todayRefunds),
-        revenueGrowth: parseFloat(revenueGrowth.toFixed(1)),
-        pendingPayments: Number(pendingPayments._sum.totalAmount || 0),
-        totalRevenue: netOf(totalRevenue, allRefunds),
+        ...(showsMoney && {
+          thisMonthRevenue: thisMonthNet,
+          todayRevenue: netOf(todayRevenue, todayRefunds),
+          revenueGrowth: parseFloat(revenueGrowth.toFixed(1)),
+          pendingPayments: Number(pendingPayments._sum.totalAmount || 0),
+          totalRevenue: netOf(totalRevenue, allRefunds),
+        }),
       },
       charts: {
-        last7DaysRevenue,
-        last6MonthsRevenue,
+        last7DaysRevenue: showsMoney ? last7DaysRevenue : [],
+        last6MonthsRevenue: showsMoney ? last6MonthsRevenue : [],
         appointmentsByStatus: appointmentsByStatus.map((item: any) => ({
           status: item.status,
           count: item._count.status,
         })),
-        topProcedures,
+        // How often each procedure was done is operational; what it earned is
+        // not, so the count stays and the revenue column goes.
+        topProcedures: showsMoney
+          ? topProcedures
+          : topProcedures.map(({ revenue: _revenue, ...rest }: Record<string, unknown>) => rest),
       },
       recentActivity: {
         upcomingAppointments: recentAppointments.map((apt) => ({
@@ -454,18 +476,14 @@ export async function GET(req: NextRequest) {
       data: stats,
     })
   } catch (error: any) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Dashboard stats error details:', {
       message: error.message,
       stack: error.stack,
       code: error.code,
       meta: error.meta,
     })
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch dashboard statistics',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch dashboard statistics' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { knownErrorResponse } from '@/lib/api-errors'
 
 // GET - Get single dental chart entry
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -89,6 +90,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(entry)
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error updating dental chart entry:', error)
     return NextResponse.json({ error: 'Failed to update dental chart entry' }, { status: 500 })
   }
@@ -126,6 +129,8 @@ export async function DELETE(
       message: 'Dental chart entry deleted successfully',
     })
   } catch (error) {
+    const known = knownErrorResponse(error)
+    if (known) return known
     console.error('Error deleting dental chart entry:', error)
     return NextResponse.json({ error: 'Failed to delete dental chart entry' }, { status: 500 })
   }
