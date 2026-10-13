@@ -9,6 +9,7 @@ import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { formatCurrency } from '@/lib/billing-utils'
+import { calculateInvoiceTotals, formatCurrency } from '@/lib/billing-utils'
 import { Loader2, Plus, Save, Send, Trash2 } from 'lucide-react'
 
 /**
@@ -46,6 +47,9 @@ interface Item {
   description: string
   quantity: number
   unitPrice: number
+  /** Kept from the saved line. It was dropped here, so saving an edit made
+   *  every line taxable and taxed what the clinic had marked exempt. */
+  taxable: boolean
   treatmentId?: string | null
 }
 
@@ -100,6 +104,7 @@ export default function EditInvoicePage() {
             description: item.description ?? '',
             quantity: Number(item.quantity ?? 1),
             unitPrice: Number(item.unitPrice ?? 0),
+            taxable: item.taxable !== false,
             treatmentId: item.treatmentId ?? null,
           }))
         )
@@ -122,16 +127,21 @@ export default function EditInvoicePage() {
     load()
   }, [invoiceId, toast])
 
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
-    [items]
+  // The server's own arithmetic (lib/billing-utils.ts), so the preview is
+  // the invoice. This page summed it its own way — tax on the whole bill
+  // after discount, non-taxable lines included — and showed Rs 360 tax and
+  // Rs 2,609.99 on an invoice the server had at Rs 288 and Rs 2,537.99.
+  const totals = useMemo(
+    () =>
+      calculateInvoiceTotals(
+        items,
+        discountType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED',
+        Number(discountValue) || 0,
+        Number(taxRate) || 0
+      ),
+    [items, discountType, discountValue, taxRate]
   )
-  const discount = useMemo(() => {
-    const value = Number(discountValue) || 0
-    return discountType === 'PERCENTAGE' ? (subtotal * value) / 100 : value
-  }, [discountType, discountValue, subtotal])
-  const tax = ((subtotal - discount) * (Number(taxRate) || 0)) / 100
-  const total = subtotal - discount + tax
+  const { subtotal, discountAmount: discount, taxAmount: tax, totalAmount: total } = totals
 
   const setItem = (index: number, patch: Partial<Item>) => {
     const next = [...items]
@@ -264,6 +274,7 @@ export default function EditInvoicePage() {
                 <TableHead>Description</TableHead>
                 <TableHead className="w-24">Qty</TableHead>
                 <TableHead className="w-36">Unit price</TableHead>
+                <TableHead className="w-20 text-center">Taxable</TableHead>
                 <TableHead className="w-32 text-right">Amount</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
@@ -297,6 +308,13 @@ export default function EditInvoicePage() {
                       className="h-8"
                     />
                   </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={item.taxable}
+                      onCheckedChange={(checked) => setItem(index, { taxable: checked === true })}
+                      aria-label={`Taxable: ${item.description || 'line ' + (index + 1)}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(item.quantity * item.unitPrice)}
                   </TableCell>
@@ -322,7 +340,9 @@ export default function EditInvoicePage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => setItems([...items, { description: '', quantity: 1, unitPrice: 0 }])}
+            onClick={() =>
+              setItems([...items, { description: '', quantity: 1, unitPrice: 0, taxable: true }])
+            }
           >
             <Plus className="h-4 w-4 mr-2" />
             Add a line
@@ -377,14 +397,16 @@ export default function EditInvoicePage() {
                 onChange={(e) => setDiscountReason(e.target.value)}
               />
             </div>
+            {/* The rate is the clinic's, stamped on the invoice when it was
+                raised; the server does not take one from the form. Said in
+                words rather than shown as a greyed-out box that looks
+                editable. */}
+            <p className="text-sm text-muted-foreground">
+              {Number(taxRate) > 0
+                ? `Tax is charged at ${Number(taxRate)}% on the taxable lines, the rate in force when this invoice was raised.`
+                : 'No tax is charged on this invoice.'}
+            </p>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="taxRate">Tax rate (%)</Label>
-                {/* Read-only: the rate is the clinic's, stamped on the invoice
-                    when it was raised. The server does not take one from the
-                    form, so an editable box here would change nothing. */}
-                <Input id="taxRate" type="number" value={taxRate} readOnly disabled />
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="dueDate">Due date</Label>
                 <Input
@@ -412,7 +434,9 @@ export default function EditInvoicePage() {
               <span>−{formatCurrency(discount)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax</span>
+              <span className="text-muted-foreground">
+                Tax{Number(taxRate) > 0 ? ` (${Number(taxRate)}%)` : ''}
+              </span>
               <span>{formatCurrency(tax)}</span>
             </div>
             <div className="flex justify-between border-t pt-2 font-medium">
