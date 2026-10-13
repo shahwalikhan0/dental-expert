@@ -9,6 +9,7 @@ import { PurchaseOrderStatus } from '@prisma/client'
 import {
   canReceive,
   checkReceipt,
+  expectedDateRefusal,
   isEditable,
   isExpired,
   orderTotals,
@@ -283,5 +284,33 @@ describe('receiving expired stock', () => {
   it('isExpired treats no date as not expired', () => {
     expect(isExpired(null, AT)).toBe(false)
     expect(isExpired(new Date('2025-01-01'), AT)).toBe(true)
+  })
+})
+
+describe('expectedDateRefusal', () => {
+  const TODAY = '2026-10-13'
+  const TZ = 'Asia/Karachi'
+
+  it('allows a blank date, today and later', () => {
+    expect(expectedDateRefusal(null, TODAY, TZ)).toBeNull()
+    expect(expectedDateRefusal('', TODAY, TZ)).toBeNull()
+    expect(expectedDateRefusal('2026-10-13', TODAY, TZ)).toBeNull()
+    expect(expectedDateRefusal('2026-10-20', TODAY, TZ)).toBeNull()
+  })
+
+  it('refuses a date before the order date', () => {
+    expect(expectedDateRefusal('2020-01-01', TODAY, TZ)).toMatch(/before the order date/)
+    expect(expectedDateRefusal('2026-10-12', TODAY, TZ)).toMatch(/before the order date/)
+  })
+
+  it('reads a stored instant in the clinic calendar', () => {
+    // 19:30 UTC on the 12th is 00:30 on the 13th in Karachi.
+    expect(expectedDateRefusal(new Date('2026-10-12T19:30:00Z'), TODAY, TZ)).toBeNull()
+    expect(expectedDateRefusal(new Date('2026-10-12T18:30:00Z'), TODAY, TZ)).not.toBeNull()
+  })
+
+  it('refuses something that is not a date', () => {
+    expect(expectedDateRefusal('next week', TODAY, TZ)).toBe('The expected date is not a date')
+    expect(expectedDateRefusal(42, TODAY, TZ)).toBe('The expected date is not a date')
   })
 })

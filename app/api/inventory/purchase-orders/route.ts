@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, PurchaseOrderStatus } from '@prisma/client'
-import { checkOrderParties, nextOrderNumber, orderTotals } from '@/lib/purchase-orders'
+import {
+  checkOrderParties,
+  expectedDateRefusal,
+  nextOrderNumber,
+  orderTotals,
+} from '@/lib/purchase-orders'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { clinicTimezone, localDay } from '@/lib/appointment-time'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 const ORDER_STATUSES = Object.values(PurchaseOrderStatus) as string[]
@@ -126,6 +132,12 @@ export async function POST(request: NextRequest) {
       ) {
         return NextResponse.json({ error: 'A line price cannot be negative' }, { status: 400 })
       }
+    }
+
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    const dateRefusal = expectedDateRefusal(expectedDate, localDay(new Date(), timezone), timezone)
+    if (dateRefusal) {
+      return NextResponse.json({ error: dateRefusal }, { status: 400 })
     }
 
     // A live, active supplier — `kind` on the lookup, because suppliers and

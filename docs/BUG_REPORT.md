@@ -24,6 +24,11 @@ Schema and data changes that came with the fixes:
 - `TreatmentPlanItem.treatmentId` and `LabOrder.treatmentId` (migration `20261012120000_plan_item_and_lab_order_treatment`), for 11 and 60.
 - `Appointment.waitTime` cleared (migration `20261013090000_clear_wait_time`): the old values measured lateness, not waiting (32).
 
+Found and fixed during the retest on 13 October:
+
+- A purchase order accepted an expected delivery date before its order date, as finding 59 did for lab orders. Creating an order, editing a draft and placing a draft now refuse a date before the clinic's today, and the form's date picker starts at today.
+- The seed gave Composite Resin A2 a stock of 40 while its only batch, BATCH-2026-01, held 18. The seed now records 22 used, so the item, the batch and the movements all end at 18, and the movements name the batch. `test_db` was corrected to match.
+
 Not fixed in this pass, and noted for later:
 
 - The `aiSummary` and `aiSummaryAt` columns are still in the schema (52). The API no longer returns or writes them.

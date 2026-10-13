@@ -16,6 +16,7 @@
 import { PurchaseOrderStatus, VendorStatus } from '@prisma/client'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
+import { localDay } from '@/lib/appointment-time'
 
 /** Works against the client or a transaction — both are used by callers. */
 type Db = PrismaClient | Prisma.TransactionClient
@@ -230,6 +231,43 @@ export function checkReceipt(
  */
 export function isExpired(expiryDate: Date | null | undefined, at: Date = new Date()): boolean {
   return !!expiryDate && expiryDate.getTime() <= at.getTime()
+}
+
+/**
+ * Why an expected delivery date cannot go on an order, or null when it can.
+ *
+ * An order raised on 13 October was accepted as expected on 1 January 2020,
+ * so it sat on the overdue list from the moment it was saved — the purchase
+ * order version of a lab case due before it was ordered (finding 59). A draft
+ * is ordered on the day it is placed, so its date may not be before `today`,
+ * the clinic's calendar day. Blank is allowed: the supplier may not have said.
+ *
+ * `YYYY-MM-DD`, what the date field sends, is read as that calendar day;
+ * anything else is parsed as an instant and placed in the clinic's calendar.
+ */
+export function expectedDateRefusal(
+  value: unknown,
+  today: string,
+  timezone: string
+): string | null {
+  if (value == null || value === '') return null
+  if (typeof value !== 'string' && !(value instanceof Date)) {
+    return 'The expected date is not a date'
+  }
+
+  let day: string
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    day = value
+  } else {
+    const at = new Date(value)
+    if (Number.isNaN(at.getTime())) return 'The expected date is not a date'
+    day = localDay(at, timezone)
+  }
+
+  if (day < today) {
+    return 'The expected delivery date cannot be before the order date, which is today'
+  }
+  return null
 }
 
 // ────────────────────────────────────────────────────────────────────────────

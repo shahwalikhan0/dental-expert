@@ -1221,7 +1221,10 @@ async function main() {
       name: 'Composite Resin A2',
       itemType: InventoryItemType.DENTAL_MATERIAL,
       unit: 'syringe',
-      currentStock: 40,
+      // What is left of BATCH-2026-01 below: 40 received, 22 used. The item's
+      // count and its batches must agree — the transactions route refuses a
+      // movement that would split them.
+      currentStock: 18,
       minimumStock: 10,
       reorderLevel: 20,
       purchasePrice: 450,
@@ -1296,8 +1299,9 @@ async function main() {
     const existingBatch = await prisma.inventoryBatch.findFirst({
       where: { itemId: composite.id, batchNumber: 'BATCH-2026-01' },
     })
-    if (!existingBatch) {
-      await prisma.inventoryBatch.create({
+    const compositeBatch =
+      existingBatch ??
+      (await prisma.inventoryBatch.create({
         data: {
           hospitalId: hospital.id,
           itemId: composite.id,
@@ -1308,15 +1312,30 @@ async function main() {
           expiryDate: inTwentyDays,
           supplierId: primarySupplier?.id ?? null,
         },
-      })
-    }
+      }))
 
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
     const movements = [
-      { item: composite, type: StockTransactionType.PURCHASE, qty: 40, prev: 0, next: 40 },
-      { item: composite, type: StockTransactionType.CONSUMPTION, qty: 5, prev: 40, next: 35 },
+      // The composite movements name their batch, as the transactions route
+      // requires of a batch-tracked item, and end where the batch does.
+      {
+        item: composite,
+        type: StockTransactionType.PURCHASE,
+        qty: 40,
+        prev: 0,
+        next: 40,
+        batch: compositeBatch,
+      },
+      {
+        item: composite,
+        type: StockTransactionType.CONSUMPTION,
+        qty: 22,
+        prev: 40,
+        next: 18,
+        batch: compositeBatch,
+      },
       { item: gloves, type: StockTransactionType.PURCHASE, qty: 20, prev: 0, next: 20 },
       { item: gloves, type: StockTransactionType.CONSUMPTION, qty: 14, prev: 20, next: 6 },
       { item: anaesthetic, type: StockTransactionType.CONSUMPTION, qty: 30, prev: 30, next: 0 },
@@ -1339,6 +1358,8 @@ async function main() {
             quantity: m.qty,
             previousStock: m.prev,
             newStock: m.next,
+            batchId: m.batch?.id ?? null,
+            batchNumber: m.batch?.batchNumber ?? null,
             unitPrice: m.item.purchasePrice,
             totalPrice: Number(m.item.purchasePrice) * m.qty,
             transactionDate: when,

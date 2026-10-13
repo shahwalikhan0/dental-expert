@@ -37,10 +37,21 @@ export default function NewPurchaseOrderPage() {
   const [items, setItems] = useState<Item[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [expectedDate, setExpectedDate] = useState('')
+  // The earliest delivery date the picker offers. Set after mount: the
+  // server's today and the browser's can differ around midnight, and a
+  // differing `min` would be a hydration mismatch.
+  const [today, setToday] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
+
+  useEffect(() => {
+    const now = new Date()
+    setToday(
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    )
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -154,6 +165,7 @@ export default function NewPurchaseOrderPage() {
               id="expected"
               type="date"
               value={expectedDate}
+              min={today || undefined}
               onChange={(e) => setExpectedDate(e.target.value)}
               className="w-full px-4 py-2 border border-border rounded-lg"
             />

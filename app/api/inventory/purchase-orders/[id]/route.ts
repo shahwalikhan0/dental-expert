@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { PurchaseOrderStatus } from '@prisma/client'
-import { checkOrderParties, isEditable, orderTotals } from '@/lib/purchase-orders'
+import {
+  checkOrderParties,
+  expectedDateRefusal,
+  isEditable,
+  orderTotals,
+} from '@/lib/purchase-orders'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { clinicTimezone, localDay } from '@/lib/appointment-time'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 const ORDER_SELECT = {
@@ -119,6 +125,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         status: true,
         orderNumber: true,
         supplierId: true,
+        expectedDate: true,
         items: { select: { itemId: true } },
       },
     })
@@ -177,6 +184,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return NextResponse.json({ error: parties.error }, { status: parties.status })
       }
 
+      // Placing makes today the order date, so a draft saved last week for
+      // delivery yesterday would be overdue the moment it went out.
+      const timezone = await clinicTimezone(prisma, hospitalId)
+      const dateRefusal = expectedDateRefusal(
+        existing.expectedDate,
+        localDay(new Date(), timezone),
+        timezone
+      )
+      if (dateRefusal) {
+        return NextResponse.json(
+          { error: `${dateRefusal}. Change the expected date before placing the order.` },
+          { status: 400 }
+        )
+      }
+
       await prisma.purchaseOrder.update({
         where: { id },
         data: { status: PurchaseOrderStatus.ORDERED, orderDate: new Date() },
@@ -217,6 +239,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         (!Number.isFinite(Number(line.unitPrice)) || Number(line.unitPrice) < 0)
       ) {
         return NextResponse.json({ error: 'A line price cannot be negative' }, { status: 400 })
+      }
+    }
+
+    if (body.expectedDate) {
+      const timezone = await clinicTimezone(prisma, hospitalId)
+      const dateRefusal = expectedDateRefusal(
+        body.expectedDate,
+        localDay(new Date(), timezone),
+        timezone
+      )
+      if (dateRefusal) {
+        return NextResponse.json({ error: dateRefusal }, { status: 400 })
       }
     }
 
