@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -18,16 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  ArrowLeft,
-  User,
-  Phone,
-  Search,
-  Calculator,
-  CalendarDays,
-  FileText,
-  Loader2,
-} from 'lucide-react'
+import { ArrowLeft, Calculator, CalendarDays, FileText } from 'lucide-react'
+import { PatientPicker } from '@/components/patients/patient-picker'
+import { SubmitButton } from '@/components/ui/submit-button'
 import {
   formatCurrency,
   formatDate,
@@ -96,14 +88,7 @@ export default function NewInvoicePage() {
   const [showErrors, setShowErrors] = useState(false)
 
   // Patient selection
-  const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [patientSearch, setPatientSearch] = useState('')
-  const debouncedPatientSearch = useDebouncedValue(patientSearch)
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false)
-  // Whether a request is out, so "no such patient" can be told apart from
-  // "not answered yet". Without it the two look identical: nothing on screen.
-  const [searchingPatients, setSearchingPatients] = useState(false)
 
   // The visit this invoice is for, when it was opened from one.
   const [visit, setVisit] = useState<Visit | null>(null)
@@ -146,48 +131,6 @@ export default function NewInvoicePage() {
       })
   }, [])
 
-  /**
-   * Finding the patient this invoice is for.
-   *
-   * Three things were wrong with the previous version. It asked the server on
-   * every keystroke, so typing a name sent a request per letter. Nothing
-   * discarded a stale answer, so a slow reply for "Mu" could land after — and
-   * overwrite — the reply for "Muhammad". And the term went into the URL
-   * unencoded, so a name containing an ampersand silently truncated the search.
-   */
-  useEffect(() => {
-    const term = debouncedPatientSearch.trim()
-
-    if (term.length < 2) {
-      setPatients([])
-      setShowPatientDropdown(false)
-      return
-    }
-
-    let current = true
-    setShowPatientDropdown(true)
-    setSearchingPatients(true)
-    ;(async () => {
-      try {
-        const response = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=10`)
-        if (!current) return
-        if (!response.ok) throw new Error('Failed to fetch patients')
-        const data = await response.json()
-        if (!current) return
-        setPatients(data.patients ?? [])
-      } catch (error) {
-        console.error('Error fetching patients:', error)
-        if (current) setPatients([])
-      } finally {
-        if (current) setSearchingPatients(false)
-      }
-    })()
-
-    return () => {
-      current = false
-    }
-  }, [debouncedPatientSearch])
-
   // Opened from a visit: the visit names the patient. Asked of the billing
   // route rather than the appointment one, which the accountant cannot read.
   useEffect(() => {
@@ -218,27 +161,6 @@ export default function NewInvoicePage() {
       current = false
     }
   }, [preSelectedAppointmentId, toast])
-
-  // Fetch pre-selected patient if provided (and no visit names one)
-  useEffect(() => {
-    if (!preSelectedPatientId || preSelectedAppointmentId) return
-    const fetchPatient = async () => {
-      try {
-        // By id, not through search: search matches a name, a phone or the
-        // PAT number, never the database id, so this found nobody.
-        const response = await fetch(`/api/patients/${encodeURIComponent(preSelectedPatientId)}`)
-        if (!response.ok) throw new Error('Failed to fetch patient')
-        const data = await response.json()
-        if (data.patient) {
-          const { id, patientId, firstName, lastName, phone, email } = data.patient
-          setSelectedPatient({ id, patientId, firstName, lastName, phone, email: email ?? null })
-        }
-      } catch (error) {
-        console.error('Error fetching patient:', error)
-      }
-    }
-    fetchPatient()
-  }, [preSelectedPatientId, preSelectedAppointmentId])
 
   // Fetch unbilled treatments when patient is selected
   useEffect(() => {
@@ -302,11 +224,15 @@ export default function NewInvoicePage() {
   const needsReason =
     billing.discountApprovalThreshold != null && concession > billing.discountApprovalThreshold
 
-  const selectPatient = (patient: Patient) => {
+  /**
+   * A patient chosen, or "Change" pressed. Either way the lines go: they were
+   * the previous patient's treatments. The visit goes with a change too — it
+   * was that patient's.
+   */
+  const choosePatient = (patient: Patient | null) => {
     setSelectedPatient(patient)
-    setPatientSearch('')
-    setShowPatientDropdown(false)
-    setItems([]) // Clear items when patient changes
+    if (!patient) setVisit(null)
+    setItems([])
   }
 
   const addTreatmentToInvoice = (treatment: UnbilledTreatment) => {
@@ -423,84 +349,17 @@ export default function NewInvoicePage() {
               <CardDescription>Search and select a patient</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {selectedPatient ? (
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-950/30 dark:border-green-800/60">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/40">
-                      <User className="h-5 w-5 text-green-600 dark:text-green-400" />
-                    </div>
-                    <div>
-                      <div className="font-medium">
-                        {selectedPatient.firstName} {selectedPatient.lastName}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{selectedPatient.patientId}</span>
-                        <span>•</span>
-                        <Phone className="h-3 w-3" />
-                        {selectedPatient.phone}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedPatient(null)
-                      // The visit was this patient's; it does not follow a change.
-                      setVisit(null)
-                      setItems([])
-                    }}
-                  >
-                    Change
-                  </Button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name, ID, or phone..."
-                    data-form-guard="ignore"
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
-                    className="pl-9"
-                  />
-                  {showPatientDropdown && (
-                    <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
-                      {/*
-                        Real buttons, not clickable divs. A cashier types a name
-                        and then had to reach for the mouse, because this list
-                        could not be reached with Tab or chosen with Enter.
-                      */}
-                      {searchingPatients ? (
-                        <p className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Searching…
-                        </p>
-                      ) : patients.length === 0 ? (
-                        <p className="px-4 py-2 text-sm text-muted-foreground">
-                          No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
-                        </p>
-                      ) : (
-                        patients.map((patient) => (
-                          <button
-                            key={patient.id}
-                            type="button"
-                            className="block w-full px-4 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                            onClick={() => selectPatient(patient)}
-                          >
-                            <span className="block font-medium">
-                              {patient.firstName} {patient.lastName}
-                            </span>
-                            <span className="block text-sm text-muted-foreground">
-                              {patient.patientId} • {patient.phone}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/*
+                The shared picker: opens onto the newest patients, searches the
+                register from the second letter, and arrow keys work. A link
+                that names a patient (?patientId=) hands it over; one that
+                names a visit picks its patient instead.
+              */}
+              <PatientPicker<Patient>
+                value={selectedPatient}
+                onChange={choosePatient}
+                initialPatientId={preSelectedAppointmentId ? null : preSelectedPatientId}
+              />
               {visit && selectedPatient && (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CalendarDays className="h-4 w-4" />
@@ -704,13 +563,16 @@ export default function NewInvoicePage() {
 
               {/* Actions */}
               <div className="space-y-2 pt-4">
-                <Button
+                <SubmitButton
+                  type="button"
                   className="w-full"
                   onClick={() => handleSubmit('PENDING')}
-                  disabled={submitting || !selectedPatient || items.length === 0}
+                  busy={submitting}
+                  busyLabel="Creating…"
+                  disabled={!selectedPatient || items.length === 0}
                 >
-                  {submitting ? 'Creating...' : 'Create & issue invoice'}
-                </Button>
+                  Create & issue invoice
+                </SubmitButton>
                 <Button
                   variant="outline"
                   className="w-full"

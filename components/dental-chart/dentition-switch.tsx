@@ -14,8 +14,7 @@
  * buttons alone were two tab stops announced as radios that the arrow keys did
  * not move.
  */
-import * as React from 'react'
-import { cn } from '@/lib/utils'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import type { Dentition } from '@/lib/teeth'
 
 export const DENTITIONS: { value: Dentition; label: string }[] = [
@@ -43,69 +42,23 @@ export function DentitionSwitch({
   disabled,
   className,
 }: DentitionSwitchProps) {
-  const refs = React.useRef<(HTMLButtonElement | null)[]>([])
-
-  const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = DENTITIONS.length - 1
-    let next: number | null = null
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown')
-      next = index === last ? 0 : index + 1
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp')
-      next = index === 0 ? last : index - 1
-    else if (event.key === 'Home') next = 0
-    else if (event.key === 'End') next = last
-    if (next === null) return
-
-    event.preventDefault()
-    onChange(DENTITIONS[next].value)
-    refs.current[next]?.focus()
-  }
-
+  // The generic control (components/ui/segmented-control.tsx) was promoted
+  // from this one; this is now that, with the dentitions and their counts.
   return (
-    <div
-      role="radiogroup"
+    <SegmentedControl<Dentition>
       aria-label="Dentition"
-      className={cn('flex w-fit gap-1 rounded-lg bg-foreground/[0.05] p-0.5', className)}
-    >
-      {DENTITIONS.map((option, index) => {
-        const checked = value === option.value
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      className={className}
+      options={DENTITIONS.map((option) => {
         const count = selectedCounts?.[option.value] ?? 0
-        return (
-          <button
-            key={option.value}
-            ref={(element) => {
-              refs.current[index] = element
-            }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            aria-label={count > 0 ? `${option.label}, ${count} selected` : undefined}
-            // Roving tab stop: only the checked option is reached by Tab.
-            tabIndex={checked ? 0 : -1}
-            disabled={disabled}
-            onClick={() => onChange(option.value)}
-            onKeyDown={(event) => onKeyDown(event, index)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'disabled:cursor-not-allowed disabled:opacity-60',
-              checked
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {option.label}
-            {count > 0 && (
-              <span
-                aria-hidden
-                className="rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold tabular-nums text-primary"
-              >
-                {count}
-              </span>
-            )}
-          </button>
-        )
+        return {
+          ...option,
+          badge: count > 0 ? count : undefined,
+          'aria-label': count > 0 ? `${option.label}, ${count} selected` : undefined,
+        }
       })}
-    </div>
+    />
   )
 }

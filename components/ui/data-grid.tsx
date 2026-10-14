@@ -39,6 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/utils'
 import { GLASS_FIELD } from '@/lib/surface'
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '@/lib/list-params'
 
 /**
  * Elements that handle their own clicks and must not also open the row.
@@ -291,8 +292,9 @@ export interface GridPaginationProps {
   className?: string
 }
 
-export const DEFAULT_PAGE_SIZE = 20
-export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+// Defined beside the URL-state helpers so a list's default page size and its
+// pager's cannot drift; re-exported here, where every grid already looks.
+export { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS }
 
 /**
  * The pager, and the count that tells you what you are looking at.

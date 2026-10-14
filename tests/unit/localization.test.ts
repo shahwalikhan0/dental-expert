@@ -103,8 +103,8 @@ describe('Section 10.1 — Current Locale (Pakistan)', () => {
       expect(result).toMatch(/15.*Jan.*2026/)
     })
 
-    it('invalid date returns "-"', () => {
-      expect(formatDate('not-a-date')).toBe('-')
+    it('invalid date returns the em dash every screen writes for a blank', () => {
+      expect(formatDate('not-a-date')).toBe('—')
     })
 
     it('string date input works', () => {
@@ -124,14 +124,14 @@ describe('Section 10.1 — Current Locale (Pakistan)', () => {
   // ─── Phone Number Format ────────────────────────────────────────────
 
   describe('Phone Number Format', () => {
-    it('formatPhone adds the +92 prefix for a 10-digit subscriber number', () => {
+    it('formatPhone writes a 10-digit subscriber number in the national form', () => {
       const result = formatPhone('3001234567')
-      expect(result).toBe('+92 300 1234567')
+      expect(result).toBe('0300 1234567')
     })
 
     it('formatPhone handles a 12-digit number with the 92 prefix', () => {
       const result = formatPhone('923001234567')
-      expect(result).toBe('+92 300 1234567')
+      expect(result).toBe('0300 1234567')
     })
 
     it('validatePakistanPhone accepts a bare subscriber number', () => {

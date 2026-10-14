@@ -5,7 +5,13 @@ import {
 } from '@/lib/i18n/format'
 import { describeTeethByQuadrant } from '@/lib/teeth'
 
-// Treatment status colors and labels
+/**
+ * @deprecated Draw statuses with `<StatusBadge kind="treatment" status={…} />`
+ * (components/ui/status-badge.tsx), backed by lib/status.ts, where the colour
+ * comes from what the status *means* and is the same on every screen. Left in
+ * place, unchanged, so the screens still reading it keep working until they
+ * are migrated; do not add new readers.
+ */
 export const treatmentStatusConfig: Record<
   string,
   { label: string; color: string; bgColor: string }
@@ -32,7 +38,13 @@ export const treatmentStatusConfig: Record<
   },
 }
 
-// Treatment Plan status colors and labels
+/**
+ * @deprecated Draw statuses with `<StatusBadge kind="treatmentPlan" status={…} />`
+ * (components/ui/status-badge.tsx), backed by lib/status.ts, where the colour
+ * comes from what the status *means* and is the same on every screen. Left in
+ * place, unchanged, so the screens still reading it keep working until they
+ * are migrated; do not add new readers.
+ */
 export const treatmentPlanStatusConfig: Record<
   string,
   { label: string; color: string; bgColor: string }
@@ -69,7 +81,13 @@ export const treatmentPlanStatusConfig: Record<
   },
 }
 
-// Treatment Plan Item status colors and labels
+/**
+ * @deprecated Draw statuses with `<StatusBadge kind="treatmentPlanItem" status={…} />`
+ * (components/ui/status-badge.tsx), backed by lib/status.ts, where the colour
+ * comes from what the status *means* and is the same on every screen. Left in
+ * place, unchanged, so the screens still reading it keep working until they
+ * are migrated; do not add new readers.
+ */
 export const treatmentPlanItemStatusConfig: Record<
   string,
   { label: string; color: string; bgColor: string }

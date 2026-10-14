@@ -1,4 +1,12 @@
-// Appointment status colors and labels
+import { displayDate } from '@/lib/dates'
+
+/**
+ * @deprecated Draw statuses with `<StatusBadge kind="appointment" status={…} />`
+ * (components/ui/status-badge.tsx), backed by lib/status.ts, where the colour
+ * comes from what the status *means* and is the same on every screen. Left in
+ * place, unchanged, so the screens still reading it keep working until they
+ * are migrated; do not add new readers.
+ */
 export const appointmentStatusConfig: Record<
   string,
   { label: string; color: string; bgColor: string }
@@ -113,17 +121,12 @@ export function formatTime(time: string): string {
 // own calendar day — is read as that day and not as UTC midnight, which the
 // browser would otherwise render as the day before for anyone west of
 // Greenwich.
+/**
+ * @deprecated Use `displayDate` from lib/dates.ts, which this now is. It was a
+ * private copy of the same formatting, kept in step by hand.
+ */
 export function formatDate(date: Date | string): string {
-  const calendarDay =
-    typeof date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim()) : null
-  const d = calendarDay
-    ? new Date(Number(calendarDay[1]), Number(calendarDay[2]) - 1, Number(calendarDay[3]))
-    : new Date(date)
-  return d.toLocaleDateString('en-PK', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
+  return displayDate(date)
 }
 
 // Format date for API

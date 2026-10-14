@@ -6,6 +6,8 @@ import {
   formatDate,
   formatDateTime,
   formatPhone,
+  normalisePhone,
+  pakistanMobileSubscriber,
   generatePatientId,
   generateInvoiceNo,
   validatePakistanPhone,
@@ -93,23 +95,59 @@ describe('Utils - formatDateTime', () => {
 })
 
 describe('Utils - formatPhone', () => {
-  it('should format 10-digit Indian phone numbers', () => {
-    const result = formatPhone('3001234567')
-    expect(result).toBe('+92 300 1234567')
+  // The national form, as the placeholder on every phone field asks for it.
+  it('formats a bare subscriber number', () => {
+    expect(formatPhone('3001234567')).toBe('0300 1234567')
   })
 
-  it('should handle phone with existing formatting', () => {
-    const result = formatPhone('+92-300-1234567')
-    expect(result).toBe('+92 300 1234567')
+  it('formats every shape a Pakistani mobile is typed in', () => {
+    expect(formatPhone('03001234567')).toBe('0300 1234567')
+    expect(formatPhone('+92-300-1234567')).toBe('0300 1234567')
+    expect(formatPhone('+92 300 1234567')).toBe('0300 1234567')
+    expect(formatPhone('923001234567')).toBe('0300 1234567')
+    expect(formatPhone('0092 300 1234567')).toBe('0300 1234567')
+    expect(formatPhone('(0300) 123-4567')).toBe('0300 1234567')
   })
 
-  it('should return original for non-10-digit numbers', () => {
+  it('leaves anything that is not a Pakistani mobile as typed', () => {
     expect(formatPhone('12345')).toBe('12345')
     expect(formatPhone('12345678901234')).toBe('12345678901234')
+    // A Karachi landline: ten digits, but not a 3XX mobile.
+    expect(formatPhone('0213 4567890')).toBe('0213 4567890')
+    expect(formatPhone('  +44 20 7946 0958 ')).toBe('+44 20 7946 0958')
   })
 
-  it('should return empty string for empty input', () => {
+  it('returns an empty string for nothing', () => {
     expect(formatPhone('')).toBe('')
+    expect(formatPhone(null)).toBe('')
+    expect(formatPhone(undefined)).toBe('')
+  })
+})
+
+describe('Utils - normalisePhone', () => {
+  it('stores a Pakistani mobile as eleven digits with the trunk zero', () => {
+    expect(normalisePhone('0300 1234567')).toBe('03001234567')
+    expect(normalisePhone('+92 300 1234567')).toBe('03001234567')
+    expect(normalisePhone('3001234567')).toBe('03001234567')
+    expect(normalisePhone('0092-300-1234567')).toBe('03001234567')
+  })
+
+  it('only trims anything else', () => {
+    expect(normalisePhone(' 021 34567890 ')).toBe('021 34567890')
+    expect(normalisePhone('')).toBe('')
+    expect(normalisePhone(null)).toBe('')
+  })
+})
+
+describe('Utils - pakistanMobileSubscriber', () => {
+  it('finds the ten-digit subscriber part', () => {
+    expect(pakistanMobileSubscriber('0300-1234567')).toBe('3001234567')
+  })
+
+  it('is null for a number that is not a mobile', () => {
+    expect(pakistanMobileSubscriber('0213 4567890')).toBeNull()
+    expect(pakistanMobileSubscriber('abc')).toBeNull()
+    expect(pakistanMobileSubscriber(undefined)).toBeNull()
   })
 })
 

@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
+import { InventoryItemPicker } from '@/components/inventory/inventory-item-picker'
 import {
   Table,
   TableBody,
@@ -16,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { formatCurrency } from '@/lib/billing-utils'
 import {
   lineKey,
@@ -240,55 +238,22 @@ export function InvoiceLinesEditor({
  * "Add product": a search over the clinic's active products, priced at their
  * selling price, with what is on the shelf beside each (invoice review 4.5).
  * Picking one adds a line; stock leaves when the invoice is issued.
+ *
+ * The shared `InventoryItemPicker`, pointed at `/api/billing/products` rather
+ * than the stock list: the people raising invoices hold `billing:write`, not
+ * `inventory:read`, and a sale has no use for purchase prices.
  */
 export function ProductPicker({ onPick }: { onPick: (product: SellableProduct) => void }) {
-  const [term, setTerm] = useState('')
-  const debounced = useDebouncedValue(term)
-  const [products, setProducts] = useState<SellableProduct[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    let current = true
-    setLoading(true)
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `/api/billing/products?search=${encodeURIComponent(debounced.trim())}`
-        )
-        const data = res.ok ? await res.json() : { products: [] }
-        if (current) setProducts(data.products ?? [])
-      } catch {
-        if (current) setProducts([])
-      } finally {
-        if (current) setLoading(false)
-      }
-    })()
-    return () => {
-      current = false
-    }
-  }, [debounced])
-
-  const options: SearchOption[] = products.map((p) => ({
-    id: p.id,
-    label: p.name,
-    hint: p.sellingPrice != null ? formatCurrency(p.sellingPrice) : 'No selling price',
-    detail: `${p.sku} · ${p.currentStock} ${p.unit} in stock`,
-  }))
-
   return (
     <div className="w-full sm:w-72">
-      <SearchSelect
+      <InventoryItemPicker<SellableProduct>
+        endpoint="/api/billing/products"
+        showPrice
         value={null}
-        options={options}
-        onSearchChange={setTerm}
-        loading={loading}
+        onSelect={onPick}
         placeholder="Add product…"
-        emptyMessage="No active products match."
         aria-label="Add a product"
-        onSelect={(option) => {
-          const product = products.find((p) => p.id === option.id)
-          if (product) onPick(product)
-        }}
+        noun="products"
       />
     </div>
   )

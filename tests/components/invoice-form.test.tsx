@@ -17,6 +17,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/utils', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
+  formatPhone: (phone: string | null | undefined) => phone ?? '',
 }))
 
 vi.mock('@/lib/billing-utils', () => ({
@@ -186,7 +187,7 @@ describe('NewInvoicePage', () => {
 
     it('renders patient search field', () => {
       renderPage()
-      expect(screen.getByPlaceholderText(/Search by name, ID, or phone/)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Search by name, ID or phone/)).toBeInTheDocument()
     })
 
     it('renders Invoice Summary section', () => {

@@ -30,16 +30,44 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+/**
+ * Dialog widths. Eleven ad-hoc widths had appeared (`max-w-md`,
+ * `sm:max-w-[425px]`, `sm:max-w-[520px]`, `max-w-2xl`…), and long forms in
+ * some dialogs ran off the bottom of a laptop screen with no way to scroll.
+ *
+ *   sm  — a confirmation, a single field          (max-w-sm, 384px)
+ *   md  — a short form: three to five fields      (max-w-md, 448px)
+ *   lg  — a form with sections, a picker          (max-w-2xl, 672px)
+ *   xl  — a table or a side-by-side layout        (max-w-4xl, 896px)
+ *
+ * Every preset also caps the height at 90% of the viewport and scrolls inside,
+ * so the footer's buttons are always reachable. Without `size` the dialog is
+ * what it always was — `max-w-lg`, no height cap — so existing dialogs are
+ * unchanged until they choose one.
+ */
+export type DialogSize = 'sm' | 'md' | 'lg' | 'xl'
+
+const DIALOG_SIZE_CLASS: Record<DialogSize, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** A width preset with a scrolling height cap. See `DialogSize`. */
+    size?: DialogSize
+  }
+>(({ className, children, size, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
         'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-2xl',
+        size && [DIALOG_SIZE_CLASS[size], 'max-h-[90vh] overflow-y-auto'],
         GLASS_OVERLAY,
         className
       )}

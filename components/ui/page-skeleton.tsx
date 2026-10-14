@@ -1,5 +1,47 @@
 import { cn } from '@/lib/utils'
 
+/**
+ * Whole-page placeholders for a screen's first load.
+ *
+ * Client screens showed three different things while their data arrived: grey
+ * blocks shaped like the page, a big centred spinner, or the word "Loading…".
+ * The spinner throws the layout away and the page jumps when the data lands;
+ * the word looks like a fault. The standard is a skeleton the shape of the
+ * screen:
+ *
+ *   if (loading) return <PageSkeleton variant="detail" />
+ *
+ * `table` for a list, `detail` for a record, `form` for a create or edit page,
+ * `dashboard` for the dashboard. A list that has already drawn its toolbar
+ * should not use this: `GridBody loading` puts skeleton rows inside the grid.
+ */
+export function PageSkeleton({
+  variant,
+  rows,
+  cols,
+}: {
+  variant: 'table' | 'detail' | 'form' | 'dashboard'
+  /** `table` only. Default 5. */
+  rows?: number
+  /** `table` only. Default 4. */
+  cols?: number
+}) {
+  // Announced once, rather than leaving a screen reader on a silent page.
+  return (
+    <div role="status" aria-label="Loading">
+      {variant === 'table' ? (
+        <TablePageSkeleton rows={rows} cols={cols} />
+      ) : variant === 'detail' ? (
+        <DetailPageSkeleton />
+      ) : variant === 'form' ? (
+        <FormPageSkeleton />
+      ) : (
+        <DashboardSkeleton />
+      )}
+    </div>
+  )
+}
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('bg-muted animate-pulse rounded', className)} />
 }

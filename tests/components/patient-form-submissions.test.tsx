@@ -102,13 +102,6 @@ vi.mock('@/components/forms/form-renderer', () => ({
   ),
 }))
 
-vi.mock('sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
-}))
-
 import { PatientFormSubmissions } from '@/components/forms/patient-form-submissions'
 
 // ---------------------------------------------------------------------------

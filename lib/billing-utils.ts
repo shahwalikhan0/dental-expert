@@ -341,17 +341,14 @@ export function calculateInvoiceTotals(
   }
 }
 
-// Invoices always show both decimal places, unlike the summary figures
-// elsewhere in the app.
+// Two decimal places, as everywhere: this used to force them while the shared
+// formatter did not, so invoices and every other screen disagreed. The shared
+// formatter in lib/i18n/format.ts now defaults to two, and this delegates.
 export function formatCurrency(
   amount: number | string | null | undefined,
   locale?: string
 ): string {
-  return baseFormatCurrency(amount, {
-    locale,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  return baseFormatCurrency(amount, { locale })
 }
 
 // Format date for display
