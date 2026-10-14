@@ -12,9 +12,9 @@ test.describe('Inventory Suppliers', () => {
       ).toBeVisible({ timeout: 10000 })
     })
 
-    test('should have Add Supplier button', async ({ adminPage: page }) => {
+    test('should have New supplier action', async ({ adminPage: page }) => {
       await page.goto('/inventory/suppliers')
-      const addButton = page.getByRole('button', { name: /add|new|create/i }).first()
+      const addButton = page.getByRole('link', { name: /new supplier/i }).first()
       await expect(addButton).toBeVisible()
     })
 
@@ -63,8 +63,10 @@ test.describe('Inventory Suppliers', () => {
   test.describe('Add Supplier', () => {
     test('should open add supplier form', async ({ adminPage: page }) => {
       await page.goto('/inventory/suppliers')
-      const addButton = page.getByRole('button', { name: /add|new|create/i }).first()
+      // A page now, not a modal: /inventory/suppliers/new.
+      const addButton = page.getByRole('link', { name: /new supplier/i }).first()
       await addButton.click()
+      await page.waitForURL('**/inventory/suppliers/new')
       await page.waitForTimeout(500)
       await expect(
         page
@@ -74,30 +76,27 @@ test.describe('Inventory Suppliers', () => {
       ).toBeVisible({ timeout: 5000 })
     })
 
-    // The "Add Supplier" modal in app/(dashboard)/inventory/suppliers/page.tsx
-    // is still a placeholder — it renders a heading and a Close button, and
-    // says the form "will be implemented here". These two specs describe what
-    // it should do once it exists; until then there is nothing to assert.
-    test.fixme('should validate required fields', async ({ adminPage: page }) => {
+    // The new-supplier page (components/inventory/supplier-form.tsx) validates
+    // code, name and phone inline.
+    test('should validate required fields', async ({ adminPage: page }) => {
       await page.goto('/inventory/suppliers')
-      const addButton = page.getByRole('button', { name: /add|new|create/i }).first()
+      // A page now, not a modal: /inventory/suppliers/new.
+      const addButton = page.getByRole('link', { name: /new supplier/i }).first()
       await addButton.click()
+      await page.waitForURL('**/inventory/suppliers/new')
       await page.waitForTimeout(500)
-      const submitBtn = page.getByRole('button', { name: /save|create|add|submit/i })
-      if (await submitBtn.isVisible()) {
-        await submitBtn.click()
-        await expect(page.getByText(/required|enter|provide/i).first()).toBeVisible({
-          timeout: 5000,
-        })
-      }
+      await page.getByRole('button', { name: /create supplier/i }).click()
+      await expect(page.getByText(/enter a supplier code/i).first()).toBeVisible({
+        timeout: 5000,
+      })
     })
 
-    test.fixme('should show contact fields (phone, email, address)', async ({
-      adminPage: page,
-    }) => {
+    test('should show contact fields (phone, email, address)', async ({ adminPage: page }) => {
       await page.goto('/inventory/suppliers')
-      const addButton = page.getByRole('button', { name: /add|new|create/i }).first()
+      // A page now, not a modal: /inventory/suppliers/new.
+      const addButton = page.getByRole('link', { name: /new supplier/i }).first()
       await addButton.click()
+      await page.waitForURL('**/inventory/suppliers/new')
       await page.waitForTimeout(500)
       await expect(page.getByLabel(/phone|email|address|contact/i).first()).toBeVisible({
         timeout: 5000,

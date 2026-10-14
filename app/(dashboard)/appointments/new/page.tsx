@@ -1,11 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { fetchHandedPatient } from '@/lib/prefill'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,12 +16,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { ArrowLeft, Calendar, Clock, User, Search, Check, Loader2, Video } from 'lucide-react'
+import { FormField } from '@/components/ui/form-field'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { PatientPicker } from '@/components/patients/patient-picker'
+import { Calendar, Clock, User, Check, Loader2 } from 'lucide-react'
 import { formatTime } from '@/lib/appointment-utils'
 import { isoDay } from '@/lib/dates'
+import { toastError } from '@/lib/toast-utils'
 
 interface Patient {
   id: string
@@ -47,8 +51,17 @@ interface TimeSlot {
   available: boolean
 }
 
+/** The fields that can be missing on submit, each said under its own control. */
+type FieldErrors = Partial<Record<'patient' | 'visitorName' | 'doctor' | 'date' | 'time', string>>
+
+const PATIENT_MODES = [
+  { value: 'registered', label: 'Registered patient' },
+  { value: 'walk-in', label: 'Walk-in' },
+] as const
+
 export default function NewAppointmentPage() {
   const router = useRouter()
+  const trail = useTrail('New appointment')
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard()
   const searchParams = useSearchParams()
@@ -61,19 +74,14 @@ export default function NewAppointmentPage() {
   // statement about the diary, not a complaint about the form, and it clears
   // on its own when the next day is picked.
   const [slotsError, setSlotsError] = useState('')
+  const [errors, setErrors] = useState<FieldErrors>({})
 
   // Data
-  const [patients, setPatients] = useState<Patient[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
 
   // Form state
-  const [patientSearch, setPatientSearch] = useState('')
-  const debouncedPatientSearch = useDebouncedValue(patientSearch)
-  const [searchingPatients, setSearchingPatients] = useState(false)
-  // How many the register actually holds, so a list capped at eight can say so.
-  const [patientCount, setPatientCount] = useState(0)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   // Clicking an empty slot in the book arrives here with the dentist, the day
   // and the time already chosen. That is the whole point of the book: booking
@@ -103,32 +111,24 @@ export default function NewAppointmentPage() {
   )
   const [notes, setNotes] = useState('')
 
-  // Fetch initial data
+  /**
+   * The dentists.
+   *
+   * The patient a link handed over (`?patientId=` — the recall list's Book, a
+   * patient's own record) is fetched by `PatientPicker` itself through
+   * `initialPatientId`, so arriving with a patient chosen still does not ask
+   * the receptionist to search for the name they just clicked. The register
+   * is searched on the server, never downloaded whole.
+   */
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
       try {
-        // The dentists, and the one patient we were told to start with.
-        //
-        // This used to fetch `/api/patients?all=true` — every patient in the
-        // register, into the browser, to be filtered there. A practice with
-        // twenty thousand records downloaded all twenty thousand to book one
-        // appointment. The register is searched on the server now, as it is
-        // everywhere else in this application.
-        const [doctorsRes, handedPatient] = await Promise.all([
-          fetch('/api/staff/doctors'),
-          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
-        ])
-
+        const doctorsRes = await fetch('/api/staff/doctors')
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
           setDoctors(data.doctors)
         }
-
-        // Arriving with a patient already chosen — the recall list's Book, a
-        // patient's own record — must not ask the receptionist to search for
-        // the name they just clicked. See lib/prefill.ts for why this used to.
-        if (handedPatient) setSelectedPatient(handedPatient)
       } catch (err) {
         console.error('Error fetching data:', err)
       } finally {
@@ -137,50 +137,7 @@ export default function NewAppointmentPage() {
     }
 
     fetchData()
-  }, [preselectedPatientId])
-
-  /**
-   * Finding a patient, on the server.
-   *
-   * Matching used to happen here, against the whole register, one column at a
-   * time — so "John Smith" matched nothing, because neither the forename nor
-   * the surname contains both words. The server does it now, and knows how to
-   * read a full name.
-   */
-  useEffect(() => {
-    if (debouncedPatientSearch.trim().length < 2) {
-      setPatients([])
-      setPatientCount(0)
-      return
-    }
-
-    let current = true
-    setSearchingPatients(true)
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `/api/patients?search=${encodeURIComponent(debouncedPatientSearch.trim())}&limit=8`
-        )
-        if (!current) return
-        if (!res.ok) throw new Error('search failed')
-        const data = await res.json()
-        if (!current) return
-        setPatients(data.patients ?? [])
-        setPatientCount(data.pagination?.total ?? (data.patients ?? []).length)
-      } catch {
-        if (current) {
-          setPatients([])
-          setPatientCount(0)
-        }
-      } finally {
-        if (current) setSearchingPatients(false)
-      }
-    })()
-
-    return () => {
-      current = false
-    }
-  }, [debouncedPatientSearch])
+  }, [])
 
   /**
    * The times this dentist has free on this day, for an appointment this long.
@@ -219,7 +176,7 @@ export default function NewAppointmentPage() {
         if (!response.ok) {
           setTimeSlots([])
           setSlotsError('Those times could not be loaded. Try again.')
-          toast({ variant: 'destructive', title: 'Could not load the available times' })
+          toast(toastError('load the available times'))
           return
         }
 
@@ -237,7 +194,7 @@ export default function NewAppointmentPage() {
         if (!current) return
         setTimeSlots([])
         setSlotsError('Those times could not be loaded. Try again.')
-        toast({ variant: 'destructive', title: 'Could not load the available times' })
+        toast(toastError('load the available times', err))
       } finally {
         if (current) setLoadingSlots(false)
       }
@@ -249,34 +206,33 @@ export default function NewAppointmentPage() {
     }
   }, [selectedDoctor, selectedDate, duration, toast])
 
+  const clearError = (key: keyof FieldErrors) =>
+    setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev))
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const incomplete = (description: string) =>
-      toast({ variant: 'destructive', title: 'Appointment not booked', description })
-
+    // Every missing field at once, each under its own control, plus one
+    // summary toast — rather than one toast per attempt naming only the first.
+    const found: FieldErrors = {}
     if (isWalkIn) {
-      if (visitorName.trim().length < 2) {
-        incomplete('A walk-in needs a name')
-        return
-      }
+      if (visitorName.trim().length < 2) found.visitorName = 'A walk-in needs a name'
     } else if (!selectedPatient) {
-      incomplete('Please select a patient')
-      return
+      found.patient = 'Select a patient'
     }
+    if (!selectedDoctor) found.doctor = 'Select a doctor'
+    if (!selectedDate) found.date = 'Select a date'
+    if (!selectedTime) found.time = 'Select a time slot'
 
-    if (!selectedDoctor) {
-      incomplete('Please select a doctor')
-      return
-    }
-
-    if (!selectedDate) {
-      incomplete('Please select a date')
-      return
-    }
-
-    if (!selectedTime) {
-      incomplete('Please select a time slot')
+    setErrors(found)
+    const first = (['patient', 'visitorName', 'doctor', 'date', 'time'] as const).find(
+      (key) => found[key]
+    )
+    if (first) {
+      toast(toastError('book the appointment', 'Check the highlighted fields.'))
+      document
+        .getElementById(`appointment-${first}`)
+        ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
       return
     }
 
@@ -302,17 +258,13 @@ export default function NewAppointmentPage() {
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to create appointment')
       }
 
       router.push('/appointments')
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not book the appointment',
-        description: err.message,
-      })
+    } catch (err) {
+      toast(toastError('book the appointment', err))
     } finally {
       setSubmitting(false)
     }
@@ -330,39 +282,17 @@ export default function NewAppointmentPage() {
    */
   const getMinDate = () => isoDay(new Date())
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  if (loading) return <PageSkeleton variant="form" />
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/appointments">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Appointment</h1>
-          <p className="text-muted-foreground">Schedule a new appointment for a patient</p>
-        </div>
-      </div>
+      <PageHeader
+        title="New appointment"
+        description="Schedule a new appointment for a patient"
+        back={<BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />}
+      />
 
-      <form ref={formRef} onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit} noValidate>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Patient Selection */}
           <Card>
@@ -378,145 +308,71 @@ export default function NewAppointmentPage() {
             <CardContent className="space-y-4">
               {/* Two ways in, because a clinic sees both kinds of person and
                   should not have to open a patient record to see the second. */}
-              <div className="inline-flex rounded-md border p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isWalkIn ? 'ghost' : 'default'}
-                  onClick={() => setIsWalkIn(false)}
-                >
-                  Registered patient
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isWalkIn ? 'default' : 'ghost'}
-                  onClick={() => {
-                    setIsWalkIn(true)
-                    setSelectedPatient(null)
-                  }}
-                >
-                  Walk-in
-                </Button>
-              </div>
+              <SegmentedControl
+                aria-label="Who the appointment is for"
+                size="md"
+                value={isWalkIn ? 'walk-in' : 'registered'}
+                onChange={(mode) => {
+                  const walkIn = mode === 'walk-in'
+                  setIsWalkIn(walkIn)
+                  if (walkIn) setSelectedPatient(null)
+                  setErrors((prev) => ({ ...prev, patient: undefined, visitorName: undefined }))
+                }}
+                options={PATIENT_MODES}
+              />
 
               {isWalkIn ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="visitorName">Name *</Label>
-                    <Input
-                      id="visitorName"
-                      value={visitorName}
-                      onChange={(e) => setVisitorName(e.target.value)}
-                      placeholder="What they gave at the desk"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="visitorPhone">Phone</Label>
-                    <Input
-                      id="visitorPhone"
-                      value={visitorPhone}
-                      onChange={(e) => setVisitorPhone(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </div>
+                  <FormField
+                    label="Name"
+                    required
+                    htmlFor="appointment-visitorName"
+                    error={errors.visitorName}
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={visitorName}
+                        onChange={(e) => {
+                          setVisitorName(e.target.value)
+                          clearError('visitorName')
+                        }}
+                        placeholder="What they gave at the desk"
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Phone" htmlFor="appointment-visitorPhone" hint="Optional">
+                    {(control) => (
+                      <PhoneInput {...control} value={visitorPhone} onChange={setVisitorPhone} />
+                    )}
+                  </FormField>
                   <p className="sm:col-span-2 text-xs text-muted-foreground">
                     No patient record is created. Register them later from Walk-ins if they come
                     back, and this visit will follow them.
                   </p>
                 </div>
-              ) : selectedPatient ? (
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">
-                        {selectedPatient.firstName} {selectedPatient.lastName}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{selectedPatient.patientId}</p>
-                      <p className="text-sm text-muted-foreground">{selectedPatient.phone}</p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedPatient(null)}
-                    >
-                      Change
-                    </Button>
-                  </div>
-                </div>
               ) : (
-                <>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search patient by name, phone, or ID..."
-                      data-form-guard="ignore"
-                      value={patientSearch}
-                      onChange={(e) => setPatientSearch(e.target.value)}
-                      className="pl-9"
+                <FormField
+                  label="Patient"
+                  required
+                  htmlFor="appointment-patient"
+                  error={errors.patient}
+                >
+                  {(control) => (
+                    <PatientPicker<Patient>
+                      id={control.id}
+                      aria-describedby={control['aria-describedby']}
+                      aria-invalid={control['aria-invalid']}
+                      value={selectedPatient}
+                      onChange={(patient) => {
+                        setSelectedPatient(patient)
+                        if (patient) clearError('patient')
+                      }}
+                      initialPatientId={preselectedPatientId}
+                      allowAdd
                     />
-                  </div>
-                  <div className="max-h-48 overflow-y-auto rounded-lg border">
-                    {patientSearch.trim().length < 2 ? (
-                      <p className="p-4 text-center text-sm text-muted-foreground">
-                        Type two letters of a name, a phone number or a patient ID.
-                      </p>
-                    ) : searchingPatients ? (
-                      <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Searching…
-                      </p>
-                    ) : patients.length === 0 ? (
-                      <div className="p-4 text-center text-muted-foreground">
-                        <p>No patients found</p>
-                        <Button variant="link" size="sm" asChild>
-                          <Link href="/patients/new">Add New Patient</Link>
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        {/*
-                          Real buttons, not clickable divs. The front desk works
-                          at a keyboard: this list could previously only be
-                          reached with a mouse, so finding a patient meant
-                          typing a name and then letting go of the keyboard.
-                        */}
-                        {patients.map((patient) => (
-                          <button
-                            key={patient.id}
-                            type="button"
-                            className="flex w-full items-center justify-between border-b p-3 text-left last:border-0 hover:bg-muted/50 focus:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            onClick={() => {
-                              setSelectedPatient(patient)
-                              setPatientSearch('')
-                            }}
-                          >
-                            <span>
-                              <span className="block font-medium">
-                                {patient.firstName} {patient.lastName}
-                              </span>
-                              <span className="block text-sm text-muted-foreground">
-                                {patient.patientId} | {patient.phone}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                        {/*
-                          The list stops at eight. It used to stop at five and
-                          say nothing, so a common surname could hide the right
-                          patient behind a cut-off nobody could see.
-                        */}
-                        {patientCount > patients.length && (
-                          <p className="p-3 text-center text-xs text-muted-foreground">
-                            Showing {patients.length} of {patientCount}. Narrow the search — add a
-                            surname, or type the phone number.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </>
+                  )}
+                </FormField>
               )}
             </CardContent>
           </Card>
@@ -531,40 +387,50 @@ export default function NewAppointmentPage() {
               <CardDescription>Select doctor, date, and time for the appointment</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Doctor *</Label>
-                <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a doctor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor.id} value={doctor.id}>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                        {doctor.specialization && ` (${doctor.specialization})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormField label="Doctor" required htmlFor="appointment-doctor" error={errors.doctor}>
+                {(control) => (
+                  <Select
+                    value={selectedDoctor}
+                    onValueChange={(id) => {
+                      setSelectedDoctor(id)
+                      clearError('doctor')
+                    }}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Choose a doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((doctor) => (
+                        <SelectItem key={doctor.id} value={doctor.id}>
+                          Dr. {doctor.firstName} {doctor.lastName}
+                          {doctor.specialization && ` (${doctor.specialization})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
 
               <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value)
+                        setSelectedTime('')
+                        clearError('date')
+                      }}
+                      min={getMinDate()}
+                    />
+                  )}
+                </FormField>
                 <div className="space-y-2">
-                  <Label>Date *</Label>
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => {
-                      setSelectedDate(e.target.value)
-                      setSelectedTime('')
-                    }}
-                    min={getMinDate()}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Duration</Label>
+                  <Label htmlFor="appointment-duration">Duration</Label>
                   <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-duration">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -580,12 +446,19 @@ export default function NewAppointmentPage() {
               </div>
 
               {/* Time Slots */}
-              <div className="space-y-2">
-                <Label>Time Slot *</Label>
+              <div
+                className="space-y-2"
+                id="appointment-time"
+                role="group"
+                aria-labelledby="appointment-time-label"
+              >
+                <p id="appointment-time-label" className="label-required text-sm font-medium">
+                  Time slot
+                </p>
                 {loadingSlots ? (
                   <div className="flex items-center gap-2 p-4 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading available slots...
+                    Loading available slots…
                   </div>
                 ) : !selectedDoctor || !selectedDate ? (
                   <p className="p-4 text-sm text-muted-foreground">
@@ -613,7 +486,10 @@ export default function NewAppointmentPage() {
                               ? ''
                               : 'hover:bg-primary/10'
                         }
-                        onClick={() => setSelectedTime(slot.time)}
+                        onClick={() => {
+                          setSelectedTime(slot.time)
+                          clearError('time')
+                        }}
                       >
                         {selectedTime === slot.time && <Check className="mr-1 h-3 w-3" />}
                         {formatTime(slot.time)}
@@ -621,6 +497,7 @@ export default function NewAppointmentPage() {
                     ))}
                   </div>
                 )}
+                {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
               </div>
             </CardContent>
           </Card>
@@ -630,32 +507,32 @@ export default function NewAppointmentPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-                Appointment Details
+                Appointment details
               </CardTitle>
               <CardDescription>Additional information about the appointment</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Appointment Type</Label>
+                  <Label htmlFor="appointment-type">Appointment type</Label>
                   <Select value={appointmentType} onValueChange={setAppointmentType}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="CONSULTATION">Consultation</SelectItem>
                       <SelectItem value="PROCEDURE">Procedure</SelectItem>
-                      <SelectItem value="FOLLOW_UP">Follow Up</SelectItem>
+                      <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
                       <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                      <SelectItem value="CHECK_UP">Check Up</SelectItem>
+                      <SelectItem value="CHECK_UP">Check-up</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Priority</Label>
+                  <Label htmlFor="appointment-priority">Priority</Label>
                   <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-priority">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -668,8 +545,9 @@ export default function NewAppointmentPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-3">
-                  <Label>Chief Complaint</Label>
+                  <Label htmlFor="appointment-complaint">Chief complaint</Label>
                   <Input
+                    id="appointment-complaint"
                     placeholder="Patient's main concern or reason for visit"
                     value={chiefComplaint}
                     onChange={(e) => setChiefComplaint(e.target.value)}
@@ -677,8 +555,9 @@ export default function NewAppointmentPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-3">
-                  <Label>Notes</Label>
+                  <Label htmlFor="appointment-notes">Notes</Label>
                   <Input
+                    id="appointment-notes"
                     placeholder="Additional notes about the appointment"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -693,19 +572,9 @@ export default function NewAppointmentPage() {
           <Button type="button" variant="outline" asChild>
             <Link href="/appointments">Cancel</Link>
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Calendar className="mr-2 h-4 w-4" />
-                Book Appointment
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={submitting} busyLabel="Booking…" icon={Calendar}>
+            Book appointment
+          </SubmitButton>
         </div>
       </form>
     </div>

@@ -1,8 +1,9 @@
 'use client'
 
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { formatCurrency } from '@/lib/i18n/format'
+import { displayDate } from '@/lib/dates'
 import { groupTeeth } from '@/lib/teeth'
 import { PortalEmpty, PortalState, usePortalData } from '@/components/portal/portal-data'
 
@@ -42,10 +43,12 @@ export default function PortalTreatmentsPage() {
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{t.procedure}</span>
-                      {t.status === 'IN_PROGRESS' && <Badge variant="outline">In progress</Badge>}
+                      {t.status === 'IN_PROGRESS' && (
+                        <StatusBadge kind="treatment" status={t.status} />
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {formatDate(t.date)} &middot; {t.dentist}
+                      {displayDate(t.date)} &middot; {t.dentist}
                     </p>
                     {/* "Upper right: 13, 15" rather than the notation on the
                         chart. A patient is not reading a quadrant code. */}

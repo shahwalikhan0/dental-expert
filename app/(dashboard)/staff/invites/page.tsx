@@ -1,10 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -22,7 +20,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { BackLink, useTrail } from '@/components/ui/trail'
 import {
   GridActionsCell,
   GridActionsHead,
@@ -33,8 +35,9 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
-import { formatDate } from '@/lib/i18n/format'
-import { MailPlus, RotateCw, X, ArrowLeft } from 'lucide-react'
+import { displayDate } from '@/lib/dates'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
+import { MailPlus, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useCan } from '@/hooks/use-can'
 
@@ -59,53 +62,68 @@ interface Invite {
   createdAt: string
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
-  EXPIRED: 'bg-muted text-foreground',
-}
-
-function label(status: string) {
-  return status.charAt(0) + status.slice(1).toLowerCase()
-}
+type InviteField = 'name' | 'email' | 'role'
 
 export default function StaffInvitesPage() {
+  // This screen's own crumb, and the way back to wherever it was opened from.
+  const trail = useTrail('Invitations')
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
+  // The fetch failed — said in the grid, not as "no invitations yet".
+  const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
   // The list is `staff:read`; sending, resending and cancelling are
   // `staff:write`, which a dentist reading this page does not hold.
   const canWrite = useCan('staff:write') === true
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: '' })
+  const [errors, setErrors] = useState<Partial<Record<InviteField, string>>>({})
   // The route hands back every invitation, so the paging is done here.
   const paged = usePagedRows(invites)
 
   const fetchInvites = useCallback(async () => {
     setLoading(true)
+    setFailed(false)
     try {
       const response = await fetch('/api/staff-invites')
       const data = await response.json()
-      if (response.ok) setInvites(data.invites ?? [])
+      if (!response.ok) throw new Error(data?.error || 'Failed to load invitations')
+      setInvites(data.invites ?? [])
     } catch (err) {
       console.error('Error loading invitations:', err)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
+    // Loading the screen's data is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchInvites()
   }, [fetchInvites])
 
+  const setField = (field: InviteField, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+    // The message goes as soon as the field is touched again.
+    setErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
+
+  const openDialog = () => {
+    setErrors({})
+    setOpen(true)
+  }
+
   const send = async () => {
-    if (!form.name || !form.email || !form.role) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing details',
-        description: 'A name, an email address and a role are all needed.',
-      })
+    const missing: Partial<Record<InviteField, string>> = {}
+    if (!form.name.trim()) missing.name = 'Enter their name'
+    if (!form.email.trim()) missing.email = 'Enter their email address'
+    if (!form.role) missing.role = 'Choose the role they will have'
+    if (Object.keys(missing).length > 0) {
+      setErrors(missing)
+      toast(toastError('send the invitation', 'Check the highlighted fields.'))
       return
     }
 
@@ -120,9 +138,7 @@ export default function StaffInvitesPage() {
 
       if (!response.ok) {
         toast({
-          variant: 'destructive',
-          title: 'Could not send the invitation',
-          description: data.message || data.error || 'Please try again.',
+          ...toastError('send the invitation', data.message || data.error),
           // The plan's staff limit comes with the way past it (finding 53).
           ...(data.code === 'STAFF_LIMIT' && {
             action: (
@@ -138,31 +154,36 @@ export default function StaffInvitesPage() {
       // `emailSent: false` means the invite exists but SMTP is not configured,
       // which is a different problem from the invite failing — and the one the
       // admin has to fix before anybody receives anything.
-      toast({
-        title: data.emailSent ? 'Invitation sent' : 'Invitation created',
-        description: data.message,
-        ...(data.emailSent ? {} : { variant: 'destructive' as const }),
-      })
+      toast(
+        data.emailSent
+          ? toastSuccess('Invitation sent', data.message)
+          : { title: 'Invitation created', description: data.message, variant: 'destructive' }
+      )
 
       setForm({ name: '', email: '', role: '' })
       setOpen(false)
       await fetchInvites()
+    } catch (err) {
+      toast(toastError('send the invitation', err))
     } finally {
       setSaving(false)
     }
   }
 
   const resend = async (invite: Invite) => {
-    const response = await fetch(`/api/staff-invites/${invite.id}`, { method: 'POST' })
-    const data = await response.json()
+    try {
+      const response = await fetch(`/api/staff-invites/${invite.id}`, { method: 'POST' })
+      const data = await response.json()
 
-    toast({
-      variant: response.ok ? undefined : 'destructive',
-      title: response.ok ? 'Invitation resent' : 'Could not resend',
-      description: data.message || data.error,
-    })
-
-    if (response.ok) await fetchInvites()
+      if (!response.ok) {
+        toast(toastError(`resend the invitation to ${invite.email}`, data))
+        return
+      }
+      toast(toastSuccess('Invitation resent', data.message))
+      await fetchInvites()
+    } catch (err) {
+      toast(toastError(`resend the invitation to ${invite.email}`, err))
+    }
   }
 
   const cancel = async (invite: Invite) => {
@@ -170,52 +191,46 @@ export default function StaffInvitesPage() {
       title: `Cancel the invitation to ${invite.email}?`,
       description: 'Their link will stop working. They can be invited again afterwards.',
       confirmLabel: 'Cancel invitation',
-      variant: 'destructive',
+      cancelLabel: 'Keep invitation',
     })
     if (!ok) return
 
-    const response = await fetch(`/api/staff-invites/${invite.id}`, { method: 'DELETE' })
-    const data = await response.json()
+    try {
+      const response = await fetch(`/api/staff-invites/${invite.id}`, { method: 'DELETE' })
+      const data = await response.json()
 
-    toast({
-      variant: response.ok ? undefined : 'destructive',
-      title: response.ok ? 'Invitation cancelled' : 'Could not cancel',
-      description: data.message || data.error,
-    })
-
-    if (response.ok) await fetchInvites()
+      if (!response.ok) {
+        toast(toastError(`cancel the invitation to ${invite.email}`, data))
+        return
+      }
+      toast(toastSuccess('Invitation cancelled', data.message))
+      await fetchInvites()
+    } catch (err) {
+      toast(toastError(`cancel the invitation to ${invite.email}`, err))
+    }
   }
 
   return (
     <div className="space-y-6">
       {ConfirmDialogComponent}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="page-title">Invitations</h1>
-          <p className="text-muted-foreground">
-            Invite a colleague and they choose their own password.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/staff">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Staff
-            </Link>
-          </Button>
-          {canWrite && (
-            <Button onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Invitations"
+        description="Invite a colleague and they choose their own password."
+        back={<BackLink trail={trail} fallback="/staff" fallbackLabel="Staff" />}
+        actions={
+          canWrite && (
+            <Button onClick={openDialog}>
               <MailPlus className="h-4 w-4 mr-2" />
               Invite someone
             </Button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {/*
         Worth saying on the screen rather than only in the docs: adding somebody
-        from "Add Staff" means typing a password on their behalf, and an audit
-        trail that answers "who did this" is weaker for every account whose
+        from "New staff member" means typing a password on their behalf, and an
+        audit trail that answers "who did this" is weaker for every account whose
         password its owner did not choose.
       */}
       <Card>
@@ -247,12 +262,14 @@ export default function StaffInvitesPage() {
             <GridBody
               columns={7}
               loading={loading}
+              failed={failed}
+              onRetry={fetchInvites}
               empty={invites.length === 0}
               emptyIcon={MailPlus}
               emptyTitle="No invitations yet"
               emptyDescription="Invite a colleague by email and they will set their own password when they accept."
               emptyActionLabel={canWrite ? 'Invite someone' : undefined}
-              onEmptyAction={canWrite ? () => setOpen(true) : undefined}
+              onEmptyAction={canWrite ? openDialog : undefined}
             >
               {paged.rows.map((invite) => (
                 <TableRow key={invite.id}>
@@ -260,29 +277,32 @@ export default function StaffInvitesPage() {
                   <TableCell>{invite.email}</TableCell>
                   <TableCell>{roleLabel(invite.role)}</TableCell>
                   <TableCell>
-                    <Badge
-                      className={`border-0 ${STATUS_STYLES[invite.status] ?? STATUS_STYLES.EXPIRED}`}
-                    >
-                      {label(invite.status)}
-                    </Badge>
+                    <StatusBadge kind="invite" status={invite.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {formatDate(invite.createdAt)}
+                    {displayDate(invite.createdAt)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {formatDate(invite.expiresAt)}
+                    {displayDate(invite.expiresAt)}
                   </TableCell>
+                  {/* GridActionsCell carries `row-actions`, which fades these
+                      back until the row is hovered or focused. */}
                   <GridActionsCell>
                     <div className={canWrite ? 'flex justify-end gap-1' : 'hidden'}>
                       {/* Resending issues a fresh token and a new seven days,
                           which is the fix for an invitation that has lapsed —
                           so it is offered for an expired one too. */}
                       <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
-                        <RotateCw className="h-4 w-4 mr-1" />
+                        <RefreshCw className="h-4 w-4 mr-1" />
                         Resend
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => cancel(invite)}>
-                        <X className="h-4 w-4 mr-1" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => cancel(invite)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
                         Cancel
                       </Button>
                     </div>
@@ -304,7 +324,7 @@ export default function StaffInvitesPage() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Invite a colleague</DialogTitle>
             <DialogDescription>
@@ -313,56 +333,66 @@ export default function StaffInvitesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="invite-name">Name</Label>
-              <Input
-                id="invite-name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Sana Iqbal"
-              />
-            </div>
+          <form
+            className="space-y-4"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              send()
+            }}
+          >
+            <FormField label="Name" htmlFor="invite-name" required error={errors.name}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={form.name}
+                  onChange={(e) => setField('name', e.target.value)}
+                  placeholder="Sana Iqbal"
+                />
+              )}
+            </FormField>
 
-            <div>
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="sana@example.com"
-              />
-            </div>
+            <FormField label="Email" htmlFor="invite-email" required error={errors.email}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setField('email', e.target.value)}
+                  placeholder="sana@example.com"
+                />
+              )}
+            </FormField>
 
-            <div>
-              <Label htmlFor="invite-role">Role</Label>
-              <Select value={form.role} onValueChange={(role) => setForm({ ...form, role })}>
-                <SelectTrigger id="invite-role">
-                  <SelectValue placeholder="Choose a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* Straight from the capability table, so this list cannot
-                      drift from the roles that can actually be granted. ADMIN
-                      is deliberately not on it. */}
-                  {INVITABLE_ROLES.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {roleLabel(role)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            <FormField label="Role" htmlFor="invite-role" required error={errors.role}>
+              {(control) => (
+                <Select value={form.role} onValueChange={(role) => setField('role', role)}>
+                  <SelectTrigger {...control}>
+                    <SelectValue placeholder="Choose a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Straight from the capability table, so this list cannot
+                        drift from the roles that can actually be granted. ADMIN
+                        is deliberately not on it. */}
+                    {INVITABLE_ROLES.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {roleLabel(role)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FormField>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={send} disabled={saving}>
-              {saving ? 'Sending…' : 'Send invitation'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <SubmitButton busy={saving} busyLabel="Sending…" icon={Send}>
+                Send invitation
+              </SubmitButton>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

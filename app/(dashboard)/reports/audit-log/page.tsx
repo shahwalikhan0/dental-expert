@@ -1,35 +1,20 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useEffect, useState, useRef } from 'react'
+import { format } from 'date-fns'
+import { useListParams } from '@/hooks/use-list-params'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { GridBody, GridPagination } from '@/components/ui/data-grid'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Activity,
-  Search,
-  Shield,
-  UserCog,
-  FileText,
-  CreditCard,
-  Calendar,
-  Download,
-} from 'lucide-react'
-import { format } from 'date-fns'
-import { useToast } from '@/hooks/use-toast'
-import { downloadCSV } from '@/lib/export-utils'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { ExportMenu } from '@/components/ui/export-menu'
+import { Activity, Shield, UserCog, FileText, CreditCard, Calendar } from 'lucide-react'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AUDIT_GROUPS, auditLabel, auditTone } from '@/lib/audit-labels'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { BLANK, displayDateTime, isoDay } from '@/lib/dates'
 
 interface AuditEntry {
   id: string
@@ -58,18 +43,36 @@ const ENTITY_ICONS: Record<string, typeof Activity> = {
   default: Activity,
 }
 
+/**
+ * The action filter offers groups ("Signing in", "Records read"); each group's
+ * value is its actions joined by commas, which the route splits.
+ */
+const ACTION_OPTIONS = AUDIT_GROUPS.map((group) => ({
+  value: group.actions.join(','),
+  label: group.label,
+}))
+
+const ENTITY_OPTIONS = ['Patient', 'Appointment', 'Invoice', 'User', 'Treatment'].map((entity) => ({
+  value: entity,
+  label: entity,
+}))
+
 export default function AuditLogPage() {
   const [logs, setLogs] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(30)
+  const [failed, setFailed] = useState(false)
   const [total, setTotal] = useState(0)
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [actionFilter, setActionFilter] = useState<string>('all')
-  const [entityFilter, setEntityFilter] = useState<string>('all')
-  const { toast } = useToast()
+
+  /**
+   * Search, filters and page in the address bar. The audit route reads its
+   * search as `q`, the one list that does not call it `search`.
+   */
+  const list = useListParams({
+    defaults: { action: 'all', entity: 'all' },
+    searchKey: 'q',
+  })
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const query = list.apiParams({ searchParam: 'q' }).toString()
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -78,15 +81,12 @@ export default function AuditLogPage() {
    */
   const latestRequest = useRef(0)
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
-      if (debouncedSearch) params.set('q', debouncedSearch)
-      if (actionFilter !== 'all') params.set('action', actionFilter)
-      if (entityFilter !== 'all') params.set('entity', entityFilter)
-      const res = await fetch(`/api/audit-log?${params}`)
+      const res = await fetch(`/api/audit-log?${query}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       // A newer request has been sent since; this answer is out of date.
@@ -94,141 +94,95 @@ export default function AuditLogPage() {
       setLogs(data.data)
       setTotal(data.pagination.total)
     } catch {
-      toast({ title: 'Error', description: 'Failed to load audit logs', variant: 'destructive' })
+      // Said in the grid, with a retry, rather than as an empty list.
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [page, limit, debouncedSearch, actionFilter, entityFilter, toast])
+  }
 
   useEffect(() => {
     fetchLogs()
-  }, [fetchLogs])
+    // The query string is the whole question; `fetchLogs` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
-  const exportLogs = () => {
-    downloadCSV(
-      logs.map((l) => ({
-        Date: format(new Date(l.createdAt), 'yyyy-MM-dd HH:mm:ss'),
-        User: l.user?.name || 'System',
-        Role: l.user?.role || '-',
-        Action: auditLabel(l.action),
-        Entity: l.entityType,
-        'Entity ID': l.entityId || '-',
-        Details: l.details || '-',
-        IP: l.ipAddress || '-',
-      })),
-      `audit-log-${format(new Date(), 'yyyy-MM-dd')}`
-    )
-  }
+  // The file keeps a sortable timestamp to the second; the screen shows the
+  // ordinary date and time.
+  const exportRows = () =>
+    logs.map((l) => ({
+      Date: format(new Date(l.createdAt), 'yyyy-MM-dd HH:mm:ss'),
+      User: l.user?.name || 'System',
+      Role: l.user?.role || BLANK,
+      Action: auditLabel(l.action),
+      Entity: l.entityType,
+      'Entity ID': l.entityId || BLANK,
+      Details: l.details || BLANK,
+      IP: l.ipAddress || BLANK,
+    }))
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Shield className="h-6 w-6" /> Audit Log
-          </h1>
-          <p className="text-muted-foreground">{total.toLocaleString()} total events</p>
-        </div>
-        <Button variant="outline" onClick={exportLogs}>
-          <Download className="h-4 w-4 mr-2" /> Export CSV
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search logs..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-          />
-        </div>
-        <Select
-          value={actionFilter}
-          onValueChange={(v) => {
-            setActionFilter(v)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Action" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Everything</SelectItem>
-            {AUDIT_GROUPS.map((group) => (
-              <SelectItem key={group.key} value={group.actions.join(',')}>
-                {group.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={entityFilter}
-          onValueChange={(v) => {
-            setEntityFilter(v)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Entity" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Entities</SelectItem>
-            <SelectItem value="Patient">Patient</SelectItem>
-            <SelectItem value="Appointment">Appointment</SelectItem>
-            <SelectItem value="Invoice">Invoice</SelectItem>
-            <SelectItem value="User">User</SelectItem>
-            <SelectItem value="Treatment">Treatment</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <ActiveFilters
-        noun="log entries"
-        onClearAll={() => {
-          setSearch('')
-          setActionFilter('all')
-          setEntityFilter('all')
-          setPage(1)
-        }}
-        filters={[
-          {
-            label: 'Search',
-            value: search,
-            onClear: () => {
-              setSearch('')
-              setPage(1)
-            },
-          },
-          {
-            label: 'Action',
-            value:
-              actionFilter === 'all'
-                ? null
-                : (AUDIT_GROUPS.find((g) => g.actions.join(',') === actionFilter)?.label ??
-                  'Selected actions'),
-            onClear: () => {
-              setActionFilter('all')
-              setPage(1)
-            },
-          },
-          {
-            label: 'Entity',
-            value: entityFilter === 'all' ? null : entityFilter,
-            onClear: () => {
-              setEntityFilter('all')
-              setPage(1)
-            },
-          },
-        ]}
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Shield className="h-6 w-6" aria-hidden="true" /> Audit log
+          </span>
+        }
+        description={`${total.toLocaleString()} total events`}
+        actions={<ExportMenu filename={`audit-log-${isoDay(new Date())}`} getData={exportRows} />}
       />
 
-      {/* Log entries */}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search the audit log"
+            placeholder="Search by action, entity or details…"
+          />
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Action"
+              plural="actions"
+              value={list.filters.action}
+              onValueChange={(action) => list.setFilter('action', action)}
+              options={ACTION_OPTIONS}
+            />
+            <FilterSelect
+              label="Entity"
+              plural="entities"
+              value={list.filters.entity}
+              onValueChange={(entity) => list.setFilter('entity', entity)}
+              options={ENTITY_OPTIONS}
+            />
+          </>
+        }
+        active={{
+          noun: 'log entries',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Action',
+              value:
+                list.filters.action === 'all'
+                  ? null
+                  : (filterValueLabel(ACTION_OPTIONS, list.filters.action) ?? 'Selected actions'),
+              onClear: () => list.setFilter('action', 'all'),
+            },
+            {
+              label: 'Entity',
+              value: filterValueLabel(ENTITY_OPTIONS, list.filters.entity),
+              onClear: () => list.setFilter('entity', 'all'),
+            },
+          ],
+        }}
+      />
+
+      {/* Log entries — read-only, so the rows open nothing and carry no actions. */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[860px]">
@@ -246,17 +200,25 @@ export default function AuditLogPage() {
               columns={6}
               loading={loading}
               skeletonRows={8}
+              failed={failed}
+              onRetry={fetchLogs}
               empty={logs.length === 0}
               emptyIcon={Activity}
               emptyTitle="No audit logs found"
-              emptyDescription="No activity matches your current filters. Try adjusting your search criteria."
+              emptyDescription={
+                list.isFiltered
+                  ? 'No activity matches these filters.'
+                  : 'Nothing has been recorded yet.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : undefined}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {logs.map((log) => {
                 const Icon = ENTITY_ICONS[log.entityType] || ENTITY_ICONS.default
                 return (
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {format(new Date(log.createdAt), 'MMM dd, yyyy HH:mm:ss')}
+                      {displayDateTime(log.createdAt)}
                     </TableCell>
                     <TableCell>
                       <div className="font-medium">{log.user?.name || 'System'}</div>
@@ -276,10 +238,10 @@ export default function AuditLogPage() {
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[28rem] text-sm text-muted-foreground">
-                      <span className="block truncate">{log.details || '—'}</span>
+                      <span className="block truncate">{log.details || BLANK}</span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {log.ipAddress || '—'}
+                      {log.ipAddress || BLANK}
                     </TableCell>
                   </TableRow>
                 )
@@ -288,15 +250,12 @@ export default function AuditLogPage() {
           </Table>
 
           <GridPagination
-            page={page}
-            pageSize={limit}
+            page={list.page}
+            pageSize={list.pageSize}
             total={total}
             noun="entries"
-            onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setLimit(size)
-              setPage(1)
-            }}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

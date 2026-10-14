@@ -3,20 +3,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableHead, TableHeader, TableRow, TableCell } from '@/components/ui/table'
-import { GridActionsCell, GridActionsHead, GridBody } from '@/components/ui/data-grid'
+import {
+  ClickableRow,
+  GridActionsCell,
+  GridActionsHead,
+  GridBody,
+  GridPagination,
+  usePagedRows,
+} from '@/components/ui/data-grid'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
 import { AgeingStrip } from '@/components/billing/patient-ledger'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useListParams } from '@/hooks/use-list-params'
 import { useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
-import { displayDate } from '@/lib/dates'
+import { BLANK, displayDate } from '@/lib/dates'
+import { cn, formatPhone } from '@/lib/utils'
 import { AGEING_BUCKETS, type Ageing } from '@/lib/ageing'
 import type { ReceivableRow } from '@/lib/ledger'
-import { Phone, Printer, Search, Wallet } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Phone, Printer, Wallet } from 'lucide-react'
 
 /**
  * Who owes the clinic money, and for how long.
@@ -38,8 +46,10 @@ interface Receivables {
 
 export default function ReceivablesPage() {
   const trail = useTrail('Receivables')
-  const [search, setSearch] = useState('')
-  const debouncedSearch = useDebouncedValue(search, 300)
+  // The search lives in the address bar, so opening a patient and coming back
+  // keeps it. The hook debounces it; `list.query` is the settled term.
+  const list = useListParams({ defaults: {} })
+  const query = list.query
   const [data, setData] = useState<Receivables | null>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -49,7 +59,7 @@ export default function ReceivablesPage() {
     setFailed(false)
     try {
       const params = new URLSearchParams()
-      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
+      if (query) params.set('search', query)
       const res = await fetch(`/api/billing/receivables?${params}`)
       if (!res.ok) throw new Error()
       setData(await res.json())
@@ -58,34 +68,35 @@ export default function ReceivablesPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch])
+  }, [query])
 
   useEffect(() => {
+    // Fetching on mount and on change is what this effect is for; the state it
+    // sets is the answer arriving.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
   const rows = data?.rows ?? []
   const totals = data?.totals
+  // The route returns everyone in arrears at once; paged here rather than
+  // drawing a thousand rows. Oldest debt first is the route's order.
+  const paged = usePagedRows(rows)
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Wallet className="h-6 w-6" />
-            Receivables
-          </h1>
-          <p className="text-muted-foreground">
-            {data
-              ? data.patientsOwing === 0
-                ? 'Nobody owes the clinic anything.'
-                : `${formatCurrency(totals?.total ?? 0)} outstanding across ${data.patientsOwing} ${
-                    data.patientsOwing === 1 ? 'patient' : 'patients'
-                  }`
-              : 'What has been billed and not paid'}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Receivables"
+        description={
+          data
+            ? data.patientsOwing === 0
+              ? 'Nobody owes the clinic anything.'
+              : `${formatCurrency(totals?.total ?? 0)} outstanding across ${data.patientsOwing} ${
+                  data.patientsOwing === 1 ? 'patient' : 'patients'
+                }`
+            : 'What has been billed and not paid'
+        }
+      />
 
       {totals && totals.total > 0 && (
         <Card>
@@ -102,19 +113,21 @@ export default function ReceivablesPage() {
         </Card>
       )}
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name, patient number or phone"
-              className="pl-9"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search receivables"
+            placeholder="Search by name, patient number or phone…"
+          />
+        }
+        active={{
+          noun: 'patients',
+          onClearAll: list.clear,
+          filters: [{ label: 'Search', value: query, onClear: () => list.setSearch('') }],
+        }}
+      />
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -140,15 +153,21 @@ export default function ReceivablesPage() {
               onRetry={load}
               empty={rows.length === 0}
               emptyIcon={Wallet}
-              emptyTitle={debouncedSearch.trim() ? 'No matches' : 'Nothing outstanding'}
+              emptyTitle={query ? 'No matches' : 'Nothing outstanding'}
               emptyDescription={
-                debouncedSearch.trim()
+                query
                   ? 'Nobody in arrears matches that search.'
                   : 'Every invoice the clinic has raised has been settled.'
               }
+              emptyActionLabel={query ? 'Clear the filters' : undefined}
+              onEmptyAction={query ? list.clear : undefined}
             >
-              {rows.map((row) => (
-                <TableRow key={row.patientId}>
+              {paged.rows.map((row) => (
+                <ClickableRow
+                  key={row.patientId}
+                  href={trail.to(`/patients/${row.patientId}?tab=billing`)}
+                  label={`Open ${row.name}`}
+                >
                   <TableCell>
                     <Link
                       href={trail.to(`/patients/${row.patientId}?tab=billing`)}
@@ -160,7 +179,7 @@ export default function ReceivablesPage() {
                       <span>{row.patientNo}</span>
                       <span className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
-                        {row.phone}
+                        {formatPhone(row.phone)}
                       </span>
                     </div>
                   </TableCell>
@@ -202,7 +221,7 @@ export default function ReceivablesPage() {
                           'text-red-700 dark:text-red-300'
                       )}
                     >
-                      {row.ageing[bucket.key] > 0 ? formatCurrency(row.ageing[bucket.key]) : '—'}
+                      {row.ageing[bucket.key] > 0 ? formatCurrency(row.ageing[bucket.key]) : BLANK}
                     </TableCell>
                   ))}
 
@@ -224,10 +243,19 @@ export default function ReceivablesPage() {
                       </Link>
                     </Button>
                   </GridActionsCell>
-                </TableRow>
+                </ClickableRow>
               ))}
             </GridBody>
           </Table>
+
+          <GridPagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            noun="patients"
+            onPageChange={paged.setPage}
+            onPageSizeChange={paged.setPageSize}
+          />
         </CardContent>
       </Card>
 

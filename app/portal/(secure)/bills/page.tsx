@@ -1,8 +1,9 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { formatCurrency } from '@/lib/i18n/format'
+import { displayDate } from '@/lib/dates'
 import { PortalEmpty, PortalState, usePortalData } from '@/components/portal/portal-data'
 
 interface Line {
@@ -29,9 +30,21 @@ interface RefundRow {
   date: string
 }
 
-const CLOSED_LABEL: Record<string, string> = {
-  CANCELLED: 'Cancelled',
-  REFUNDED: 'Refunded',
+/**
+ * A bill as the patient reads it: due (or overdue), paid, or closed. Whether it
+ * is owed is the clinic's rule (`owed`), so the badge follows that rather than
+ * the stored status, and is coloured as the clinic's own invoice badge is.
+ */
+function billBadge(inv: { owed: boolean; status: string }) {
+  if (inv.owed) {
+    return inv.status === 'OVERDUE' ? (
+      <StatusBadge kind="invoice" status="OVERDUE" />
+    ) : (
+      <StatusBadge kind="invoice" status="PENDING" label="Due" />
+    )
+  }
+  const closed = inv.status === 'CANCELLED' || inv.status === 'REFUNDED'
+  return <StatusBadge kind="invoice" status={closed ? inv.status : 'PAID'} />
 }
 
 interface Invoice {
@@ -91,10 +104,8 @@ export default function PortalBillsPage() {
                 <Card key={inv.id}>
                   <CardHeader className="pb-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <CardTitle className="text-base">{formatDate(inv.date)}</CardTitle>
-                      <Badge variant={inv.owed ? 'outline' : 'secondary'}>
-                        {inv.owed ? 'Due' : (CLOSED_LABEL[inv.status] ?? 'Paid')}
-                      </Badge>
+                      <CardTitle className="text-base">{displayDate(inv.date)}</CardTitle>
+                      {billBadge(inv)}
                     </div>
                     <p className="text-xs text-muted-foreground">{inv.invoiceNo}</p>
                   </CardHeader>
@@ -150,7 +161,7 @@ export default function PortalBillsPage() {
                             className="flex justify-between gap-4 text-xs text-muted-foreground"
                           >
                             <span>
-                              {formatDate(p.date)} &middot; {p.paymentNo}
+                              {displayDate(p.date)} &middot; {p.paymentNo}
                             </span>
                             <span className="tabular-nums">{formatCurrency(p.amount)}</span>
                           </div>
@@ -161,7 +172,7 @@ export default function PortalBillsPage() {
                             className="flex justify-between gap-4 text-xs text-muted-foreground"
                           >
                             <span>
-                              {formatDate(r.date)} &middot; {r.refundNo} &middot; refund of{' '}
+                              {displayDate(r.date)} &middot; {r.refundNo} &middot; refund of{' '}
                               {r.paymentNo}
                             </span>
                             <span className="tabular-nums">−{formatCurrency(r.amount)}</span>

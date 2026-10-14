@@ -1,41 +1,72 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/i18n/format'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput, parseMoney } from '@/components/ui/money-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { SupplierPicker } from '@/components/inventory/supplier-picker'
+import {
+  InventoryItemPicker,
+  type InventoryItemRow,
+} from '@/components/inventory/inventory-item-picker'
 
-interface Supplier {
-  id: string
-  name: string
-  code: string
-}
-
-interface Item {
-  id: string
-  sku: string
-  name: string
-  unit: string
-  currentStock: number
-  minimumStock: number
-  purchasePrice: string
+/** What the order form reads of a stock item. */
+interface Item extends InventoryItemRow {
+  minimumStock?: number | null
+  purchasePrice?: string | number | null
 }
 
 interface Line {
+  /** A stable key for React; lines have no id until saved. */
+  key: number
   itemId: string
-  quantity: number
-  unitPrice: number
+  itemName: string
+  /** "12 box in stock, minimum 5" — what was on the shelf when it was chosen. */
+  stock: string
+  /** Kept as typed. */
+  quantity: string
+  /** Kept as typed; `parseMoney` reads it. */
+  unitPrice: string
+}
+
+interface LineErrors {
+  item?: string
+  quantity?: string
+  unitPrice?: string
+}
+
+interface Errors {
+  supplier?: string
+  expectedDate?: string
+  lines?: string
+  line?: Record<number, LineErrors>
+}
+
+function parseQuantity(raw: string): number | null {
+  if (!/^\s*\d+\s*$/.test(raw)) return null
+  const value = parseInt(raw, 10)
+  return value >= 1 ? value : null
 }
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [items, setItems] = useState<Item[]>([])
-  const [supplierId, setSupplierId] = useState('')
+  const trail = useTrail('New purchase order')
+  const { toast } = useToast()
+  const [supplier, setSupplier] = useState<{ id: string; name: string } | null>(null)
   const [expectedDate, setExpectedDate] = useState('')
   // The earliest delivery date the picker offers. Set after mount: the
   // server's today and the browser's can differ around midnight, and a
@@ -43,266 +74,333 @@ export default function NewPurchaseOrderPage() {
   const [today, setToday] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([])
-  const [saving, setSaving] = useState(false)
-  const { toast } = useToast()
+  const nextKey = useRef(0)
+  // Which of the two buttons is sending, so only that one shows the spinner.
+  const [saving, setSaving] = useState<'draft' | 'place' | null>(null)
+  const [errors, setErrors] = useState<Errors>({})
+  // Warn before a half-filled form is thrown away by a stray click.
+  const guardRef = useFormGuard(saving !== null)
+  // The form's element, for scrolling to the first error; the guard's ref is a
+  // callback, so both are handed the node here.
+  const formNode = useRef<HTMLDivElement | null>(null)
+  const formRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      formNode.current = node
+      guardRef(node)
+    },
+    [guardRef]
+  )
 
   useEffect(() => {
     const now = new Date()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToday(
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     )
   }, [])
 
-  useEffect(() => {
-    Promise.all([
-      // Active suppliers and items only: an order naming an inactive one is
-      // refused (finding 44), and deleted items are never listed (finding 58).
-      fetch('/api/inventory/suppliers?status=active&limit=100&sort=name').then((r) => r.json()),
-      fetch('/api/inventory/items?status=active&limit=500').then((r) => r.json()),
-    ])
-      .then(([supplierData, itemData]) => {
-        if (supplierData.success) setSuppliers(supplierData.data)
-        if (itemData.success) setItems(itemData.data)
-      })
-      .catch((err) => console.error('Error loading order form:', err))
-  }, [])
-
-  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
-
   const addLine = () =>
-    setLines((current) => [...current, { itemId: '', quantity: 1, unitPrice: 0 }])
+    setLines((current) => [
+      ...current,
+      { key: nextKey.current++, itemId: '', itemName: '', stock: '', quantity: '1', unitPrice: '' },
+    ])
 
-  const updateLine = (index: number, changes: Partial<Line>) =>
-    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...changes } : line)))
+  const updateLine = (key: number, changes: Partial<Line>) =>
+    setLines((current) =>
+      current.map((line) => (line.key === key ? { ...line, ...changes } : line))
+    )
 
-  const removeLine = (index: number) => setLines((current) => current.filter((_, i) => i !== index))
+  const removeLine = (key: number) =>
+    setLines((current) => current.filter((line) => line.key !== key))
 
   // Choosing an item fills in the price the clinic already pays, so a routine
-  // reorder does not have to be retyped from the last invoice.
-  const chooseItem = (index: number, itemId: string) => {
-    const item = itemById.get(itemId)
-    updateLine(index, { itemId, unitPrice: item ? Number(item.purchasePrice) : 0 })
+  // reorder does not have to be retyped from the last invoice. Only active
+  // items are offered (the picker's default): an order naming an inactive one
+  // is refused (finding 44), and deleted items are never listed (finding 58).
+  const chooseItem = (key: number, item: Item) =>
+    updateLine(key, {
+      itemId: item.id,
+      itemName: item.name,
+      stock:
+        `${item.currentStock ?? 0} ${item.unit ?? ''}`.trim() +
+        ` in stock, minimum ${item.minimumStock ?? 0}`,
+      unitPrice: item.purchasePrice != null ? String(Number(item.purchasePrice)) : '',
+    })
+
+  const lineTotal = (line: Line) =>
+    (parseQuantity(line.quantity) ?? 0) * (parseMoney(line.unitPrice) ?? 0)
+  const subtotal = lines.reduce((sum, line) => sum + lineTotal(line), 0)
+
+  const validate = (): Errors => {
+    const found: Errors = {}
+    if (!supplier) found.supplier = 'Choose a supplier.'
+    // The server refuses a date before the clinic's today (lib/purchase-orders.ts
+    // `expectedDateRefusal`); said here first, against the browser's today.
+    if (expectedDate && today && expectedDate < today)
+      found.expectedDate = 'The expected delivery date cannot be before today.'
+    if (lines.length === 0) found.lines = 'Add at least one item.'
+    const perLine: Record<number, LineErrors> = {}
+    for (const line of lines) {
+      const e: LineErrors = {}
+      if (!line.itemId) e.item = 'Choose an item.'
+      if (parseQuantity(line.quantity) === null) e.quantity = 'At least 1.'
+      if (parseMoney(line.unitPrice) === null) e.unitPrice = 'Enter a price.'
+      if (Object.keys(e).length) perLine[line.key] = e
+    }
+    if (Object.keys(perLine).length) found.line = perLine
+    return found
   }
 
-  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0)
-
   const save = async (place: boolean) => {
-    const fail = (description: string) => {
-      toast({ variant: 'destructive', title: 'Could not save the order', description })
+    const found = validate()
+    setErrors(found)
+    if (Object.keys(found).length) {
+      toast(toastError('save the order', 'Check the highlighted fields.'))
+      // The first field that needs attention, in reading order.
+      requestAnimationFrame(() => {
+        formNode.current
+          ?.querySelector<HTMLElement>('[aria-invalid="true"], [data-field-error]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
+      return
     }
 
-    if (!supplierId) return fail('Choose a supplier')
-    if (lines.length === 0) return fail('Add at least one item')
-    if (lines.some((line) => !line.itemId)) return fail('Every line needs an item')
-
-    setSaving(true)
+    setSaving(place ? 'place' : 'draft')
     try {
-      const response = await fetch('/api/inventory/purchase-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplierId,
-          expectedDate: expectedDate || null,
-          notes: notes || null,
-          status: place ? 'ORDERED' : 'DRAFT',
-          items: lines,
-        }),
-      })
+      const data = await readJson<{ data: { id: string; orderNumber?: string } }>(
+        await fetch('/api/inventory/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            supplierId: supplier!.id,
+            expectedDate: expectedDate || null,
+            notes: notes || null,
+            status: place ? 'ORDERED' : 'DRAFT',
+            items: lines.map((line) => ({
+              itemId: line.itemId,
+              quantity: parseQuantity(line.quantity)!,
+              unitPrice: parseMoney(line.unitPrice)!,
+            })),
+          }),
+        })
+      )
 
-      const data = await response.json()
-      if (!response.ok) {
-        fail(data.error || 'The server refused the order.')
-        return
-      }
-
+      toast(
+        toastSuccess(place ? 'Purchase order placed' : 'Draft order saved', data.data.orderNumber)
+      )
       router.push(`/inventory/purchase-orders/${data.data.id}`)
     } catch (err) {
       console.error('Error saving purchase order:', err)
-      fail('The order could not be sent. Check the connection and try again.')
-    } finally {
-      setSaving(false)
+      toast(toastError('save the order', err))
+      setSaving(null)
     }
   }
 
   return (
-    <div ref={formRef} className="mx-auto max-w-5xl">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="page-title">New Purchase Order</h1>
-        <Link
-          href="/inventory/purchase-orders"
-          className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
-        >
-          Cancel
-        </Link>
-      </div>
-
-      <div className="bg-background rounded-lg shadow p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="supplier" className="block text-sm font-medium mb-1">
-              Supplier
-            </label>
-            <select
-              id="supplier"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="w-full px-4 py-2 border border-border rounded-lg"
-            >
-              <option value="">Choose a supplier…</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name} ({supplier.code})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="expected" className="block text-sm font-medium mb-1">
-              Expected delivery
-            </label>
-            <input
-              id="expected"
-              type="date"
-              value={expectedDate}
-              min={today || undefined}
-              onChange={(e) => setExpectedDate(e.target.value)}
-              className="w-full px-4 py-2 border border-border rounded-lg"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="notes" className="block text-sm font-medium mb-1">
-            Notes
-          </label>
-          <textarea
-            id="notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="w-full px-4 py-2 border border-border rounded-lg"
+    <div ref={formRef} className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        title="New purchase order"
+        back={
+          <BackLink
+            trail={trail}
+            fallback="/inventory/purchase-orders"
+            fallbackLabel="Purchase orders"
           />
-        </div>
-      </div>
+        }
+      />
 
-      <div className="bg-background rounded-lg shadow p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Items</h2>
-          <button
-            type="button"
-            onClick={addLine}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            + Add line
-          </button>
-        </div>
-
-        {lines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing on this order yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {lines.map((line, index) => {
-              const item = itemById.get(line.itemId)
-              return (
-                <div key={index} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-6">
-                    <label className="block text-xs text-muted-foreground mb-1">Item</label>
-                    <select
-                      value={line.itemId}
-                      onChange={(e) => chooseItem(index, e.target.value)}
-                      className="w-full px-3 py-2 border border-border rounded-lg text-sm"
-                    >
-                      <option value="">Choose an item…</option>
-                      {items.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name} ({option.sku})
-                        </option>
-                      ))}
-                    </select>
-                    {item && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {item.currentStock} {item.unit} in stock, minimum {item.minimumStock}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-xs text-muted-foreground mb-1">Quantity</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={line.quantity}
-                      onChange={(e) =>
-                        updateLine(index, { quantity: parseInt(e.target.value, 10) || 0 })
-                      }
-                      className="w-full px-3 py-2 border border-border rounded-lg text-sm"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-xs text-muted-foreground mb-1">Unit price</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={line.unitPrice}
-                      onChange={(e) =>
-                        updateLine(index, { unitPrice: parseFloat(e.target.value) || 0 })
-                      }
-                      className="w-full px-3 py-2 border border-border rounded-lg text-sm"
-                    />
-                  </div>
-
-                  <div className="col-span-1 text-sm text-right pb-2">
-                    {formatCurrency(line.quantity * line.unitPrice)}
-                  </div>
-
-                  <div className="col-span-1 pb-1">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(index)}
-                      className="px-2 py-1 text-sm text-red-600 hover:underline dark:text-red-400"
-                    >
-                      Remove
-                    </button>
-                  </div>
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="Supplier" required error={errors.supplier}>
+              {(control) => (
+                <div data-field-error={errors.supplier ? '' : undefined}>
+                  {/* Active suppliers only (the picker's default). */}
+                  <SupplierPicker
+                    id={control.id}
+                    aria-describedby={control['aria-describedby']}
+                    aria-invalid={control['aria-invalid']}
+                    value={supplier?.id ?? null}
+                    selectedLabel={supplier?.name}
+                    onSelect={(s) => {
+                      setSupplier({ id: s.id, name: s.name })
+                      setErrors((e) => ({ ...e, supplier: undefined }))
+                    }}
+                    onClear={() => setSupplier(null)}
+                    allowAdd
+                  />
                 </div>
-              )
-            })}
-          </div>
-        )}
+              )}
+            </FormField>
 
-        {lines.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-border text-right">
-            <span className="text-sm text-muted-foreground mr-3">Subtotal before tax</span>
-            <span className="text-lg font-semibold">{formatCurrency(subtotal)}</span>
+            <FormField label="Expected delivery" error={errors.expectedDate}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  value={expectedDate}
+                  min={today || undefined}
+                  onChange={(e) => {
+                    setExpectedDate(e.target.value)
+                    setErrors((x) => ({ ...x, expectedDate: undefined }))
+                  }}
+                />
+              )}
+            </FormField>
           </div>
-        )}
-      </div>
 
-      <div className="flex justify-end gap-2">
-        <button
+          <FormField label="Notes" htmlFor="notes">
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+            />
+          </FormField>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">Items</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={addLine}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add line
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {lines.length === 0 ? (
+            <p
+              className={
+                errors.lines ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'
+              }
+              data-field-error={errors.lines ? '' : undefined}
+              role={errors.lines ? 'alert' : undefined}
+            >
+              {errors.lines ?? 'Nothing on this order yet.'}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {lines.map((line, index) => {
+                const e = errors.line?.[line.key] ?? {}
+                return (
+                  <div
+                    key={line.key}
+                    className="grid grid-cols-1 items-start gap-3 border-b pb-4 last:border-b-0 last:pb-0 md:grid-cols-12"
+                  >
+                    <FormField
+                      className="md:col-span-6"
+                      label={`Item ${index + 1}`}
+                      required
+                      error={e.item}
+                      hint={line.stock || undefined}
+                    >
+                      {(control) => (
+                        <InventoryItemPicker<Item>
+                          id={control.id}
+                          aria-describedby={control['aria-describedby']}
+                          aria-invalid={control['aria-invalid']}
+                          value={line.itemId || null}
+                          selectedLabel={line.itemName}
+                          onSelect={(item) => chooseItem(line.key, item)}
+                        />
+                      )}
+                    </FormField>
+
+                    <FormField
+                      className="md:col-span-2"
+                      label="Quantity"
+                      required
+                      error={e.quantity}
+                    >
+                      {(control) => (
+                        <Input
+                          {...control}
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          step={1}
+                          value={line.quantity}
+                          onChange={(ev) => updateLine(line.key, { quantity: ev.target.value })}
+                        />
+                      )}
+                    </FormField>
+
+                    <FormField
+                      className="md:col-span-2"
+                      label="Unit price"
+                      required
+                      error={e.unitPrice}
+                    >
+                      {(control) => (
+                        <MoneyInput
+                          {...control}
+                          value={line.unitPrice}
+                          onChange={(raw) => updateLine(line.key, { unitPrice: raw })}
+                        />
+                      )}
+                    </FormField>
+
+                    <div className="flex items-center justify-between gap-2 md:col-span-2 md:pt-8">
+                      <span className="text-sm tabular-nums">
+                        {formatCurrency(lineTotal(line))}
+                      </span>
+                      <IconTooltip label="Remove line">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove line ${index + 1}`}
+                          onClick={() => removeLine(line.key)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </IconTooltip>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {lines.length > 0 && (
+            <div className="mt-4 border-t pt-4 text-right">
+              <span className="mr-3 text-sm text-muted-foreground">Subtotal before tax</span>
+              <span className="text-lg font-semibold">{formatCurrency(subtotal)}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" asChild>
+          <Link href={trail.back('/inventory/purchase-orders')}>Cancel</Link>
+        </Button>
+        <SubmitButton
           type="button"
-          disabled={saving}
+          variant="outline"
+          busy={saving === 'draft'}
+          busyLabel="Saving…"
+          disabled={saving !== null}
           onClick={() => save(false)}
-          className="px-4 py-2 border border-border rounded-lg hover:bg-muted disabled:opacity-50"
         >
           Save as draft
-        </button>
-        <button
+        </SubmitButton>
+        <SubmitButton
           type="button"
-          disabled={saving}
+          busy={saving === 'place'}
+          busyLabel="Placing order…"
+          disabled={saving !== null}
           onClick={() => save(true)}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
         >
           Save and place order
-        </button>
+        </SubmitButton>
       </div>
 
       {/* Receiving is only possible against a placed order: goods arriving
           against something nobody sent is a stock adjustment, not a delivery. */}
-      <p className="text-xs text-muted-foreground text-right mt-2">
+      <p className="text-right text-xs text-muted-foreground">
         A draft can be edited later. Goods can only be received against a placed order.
       </p>
     </div>

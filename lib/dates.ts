@@ -82,6 +82,23 @@ export function displayDateShort(value: Date | string | null | undefined): strin
   return date.toLocaleDateString(LOCALE, { day: '2-digit', month: 'short' })
 }
 
+/** `September 2026` — a month as a whole, for a calendar's heading. */
+export function displayMonth(value: Date | string | null | undefined): string {
+  const date = toDate(value)
+  if (!date) return BLANK
+
+  return date.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })
+}
+
+/**
+ * The short month names `displayDate` uses (`Jan` … `Sept` … `Dec`), for code
+ * that assembles a date from a `YYYY-MM-DD` string by hand. A list typed out
+ * separately said `Sep` beside a column that said `Sept`.
+ */
+export const MONTHS_SHORT: readonly string[] = Array.from({ length: 12 }, (_, month) =>
+  new Date(2000, month, 1).toLocaleDateString(LOCALE, { month: 'short' })
+)
+
 /** `3:00 pm`. */
 export function displayTime(value: Date | string | null | undefined): string {
   const date = toDate(value)

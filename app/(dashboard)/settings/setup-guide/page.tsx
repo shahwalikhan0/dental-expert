@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { BackLink, useTrail } from '@/components/ui/trail'
 import {
   Building2,
   Calendar,
@@ -26,8 +28,7 @@ import {
   Smartphone,
   Star,
   Video,
-  BookOpen,
-  ArrowLeft,
+  ArrowRight,
   ClipboardList,
 } from 'lucide-react'
 
@@ -55,7 +56,7 @@ interface SetupSection {
 const setupSections: SetupSection[] = [
   {
     id: 'clinic',
-    title: 'Clinic Information',
+    title: 'Clinic information',
     description: 'Set up your clinic profile, logo, address, and working hours',
     icon: Building2,
     color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30',
@@ -63,78 +64,77 @@ const setupSections: SetupSection[] = [
     estimatedTime: '10 min',
     guides: [
       {
-        title: 'Add Your Clinic Logo',
+        title: 'Add your clinic logo',
         description:
           'Upload your clinic logo that will appear on invoices, prescriptions, and the patient portal.',
         steps: [
-          'Go to Settings → Clinic Information',
-          'Click the camera icon on the placeholder image at the top',
+          'Go to Settings → Clinic information',
+          'In the "Clinic logo" card, click "Upload logo"',
           'Select your clinic logo from your computer (JPEG, PNG, or SVG, max 2MB)',
-          "The logo will be uploaded automatically — you'll see a preview",
-          'Click "Save Changes" at the bottom of the page',
+          "The logo is uploaded straight away — you'll see a preview",
         ],
         tips: [
           'Use a square image (e.g., 512×512 pixels) for best results',
           'PNG with transparent background works best',
           'The logo appears on printed invoices and prescriptions',
         ],
-        link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
+        link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
       {
-        title: 'Fill in Clinic Details',
+        title: 'Fill in clinic details',
         description:
           'Add your clinic name, phone number, email, address, and registration details.',
         steps: [
-          'Go to Settings → Clinic Information',
-          'Fill in the "Basic Information" section: Clinic Name and Tagline',
-          'Fill in "Contact Information": Primary Phone, Email, and Website',
+          'Go to Settings → Clinic information',
+          'Fill in the "Basic information" section: clinic name and tagline',
+          'Fill in "Contact information": primary phone, email and website',
           'Fill in "Address": Street Address, City, Province, and Postal Code',
           'Fill in "Registration & Tax": STRN and NTN (if the clinic is registered)',
-          'Click "Save Changes"',
+          'Click "Save changes"',
         ],
         tips: [
           'Most dental clinics are not registered for sales tax on services — leave these blank if yours is not',
           'STRN is the Sales Tax Registration Number; NTN is the National Tax Number',
           'These details appear on your invoices automatically',
         ],
-        link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
+        link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
       {
-        title: 'Set Working Hours',
+        title: 'Set working hours',
         description: "Configure your clinic's opening and closing hours for each day of the week.",
         steps: [
-          'Go to Settings → Clinic Information, scroll to "Working Hours"',
+          'Go to Settings → Clinic information, scroll to "Working hours"',
           'For each day, set the Opening Time and Closing Time',
           'Toggle "Closed" for days when the clinic is not open (e.g., Sundays)',
           'Use the "Copy to All" button to apply one day\'s hours to all days',
-          'Click "Save Changes"',
+          'Click "Save changes"',
         ],
         tips: [
           'Working hours are used for appointment scheduling — patients can only book during these hours',
           'You can set different hours for different days (e.g., half-day on Saturdays)',
         ],
-        link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
+        link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
       {
-        title: 'Add Bank & Wallet Details',
+        title: 'Add bank and wallet details',
         description: 'Add the account details patients should pay into.',
         steps: [
-          'Go to Settings → Clinic Information, scroll to "Bank & Payment Details"',
+          'Go to Settings → Clinic information, scroll to "Bank and payment details"',
           'Enter your Bank Name, Account Number, and IBAN',
           'Enter a JazzCash or Easypaisa number, if the clinic takes mobile payments',
-          'Click "Save Changes"',
+          'Click "Save changes"',
         ],
         tips: [
           'Bank details appear on invoices so patients can make bank transfers',
           'Double-check the IBAN — an incorrect one will cause payment failures',
         ],
-        link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
+        link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
     ],
   },
   {
     id: 'staff',
-    title: 'Staff & User Accounts',
+    title: 'Staff and user accounts',
     description: 'Add your team members so they can log in and use the system',
     icon: Users,
     color: 'text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-950/30',
@@ -142,7 +142,7 @@ const setupSections: SetupSection[] = [
     estimatedTime: '5 min per staff',
     guides: [
       {
-        title: 'Add a Staff Member',
+        title: 'Add a staff member',
         description: 'Create accounts for your doctors, receptionists, and other staff.',
         steps: [
           'Go to Staff from the left sidebar',
@@ -158,10 +158,10 @@ const setupSections: SetupSection[] = [
           'Only ADMIN users can access Settings and manage other staff',
           'Share the login URL and temporary password with each staff member',
         ],
-        link: { label: 'Go to Staff Management', href: '/staff' },
+        link: { label: 'Go to staff', href: '/staff' },
       },
       {
-        title: 'Invite Staff via Email',
+        title: 'Invite staff by email',
         description: 'Send an invitation email so staff can set up their own accounts.',
         steps: [
           'Go to Staff and click Invitations',
@@ -174,13 +174,13 @@ const setupSections: SetupSection[] = [
           'Email invites require your SMTP/email to be configured first (see Email Setup below)',
           'Invites expire after 7 days — you can resend if needed',
         ],
-        link: { label: 'Go to Staff Invites', href: '/staff/invites' },
+        link: { label: 'Go to staff invitations', href: '/staff/invites' },
       },
     ],
   },
   {
     id: 'procedures',
-    title: 'Dental Procedures & Pricing',
+    title: 'Dental procedures and pricing',
     description: 'Set up your list of dental procedures with prices',
     icon: ClipboardList,
     color: 'text-pink-600 bg-pink-50 dark:text-pink-400 dark:bg-pink-950/30',
@@ -188,11 +188,11 @@ const setupSections: SetupSection[] = [
     estimatedTime: '15 min',
     guides: [
       {
-        title: 'Add Your Dental Procedures',
+        title: 'Add your dental procedures',
         description:
           'Create your catalog of dental procedures with codes, pricing, and instructions.',
         steps: [
-          'Go to Settings → Procedure Settings',
+          'Go to Settings → Procedure settings',
           'Click "+ New Procedure"',
           'Fill in the Code (e.g., "RCT", "SCALING"), Name, and Category',
           'Set the Base Price — this is the default price shown on invoices',
@@ -206,13 +206,13 @@ const setupSections: SetupSection[] = [
           'You can import procedures from your old system using Data Import',
           'Mark procedures as inactive instead of deleting them — this preserves billing history',
         ],
-        link: { label: 'Go to Procedure Settings', href: '/settings/procedures' },
+        link: { label: 'Go to procedure settings', href: '/settings/procedures' },
       },
     ],
   },
   {
     id: 'appointments',
-    title: 'Appointment Settings',
+    title: 'Appointment settings',
     description: 'Configure time slots, working hours, and holiday calendar',
     icon: Calendar,
     color: 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-950/30',
@@ -220,33 +220,33 @@ const setupSections: SetupSection[] = [
     estimatedTime: '5 min',
     guides: [
       {
-        title: 'Configure Time Slots',
+        title: 'Configure time slots',
         description:
           'Set up how long each appointment slot is and the buffer time between appointments.',
         steps: [
-          'Go to Settings → Appointment Settings',
+          'Go to Settings → Appointment settings',
           'Set "Default Slot Duration" — this is how long each appointment lasts (e.g., 30 minutes)',
           'Set "Buffer Time" — gap between appointments for cleanup/preparation (e.g., 10 minutes)',
           'Set "Clinic Start Time" and "Clinic End Time" to match your working hours',
           'Optionally set a lunch break time range',
-          'Click "Save Settings"',
+          'Click "Save changes"',
         ],
         tips: [
           'A 30-minute slot with 10-minute buffer means 40 minutes between appointment starts',
           'You can override slot duration for specific appointments when booking',
         ],
-        link: { label: 'Go to Appointment Settings', href: '/settings/appointments' },
+        link: { label: 'Go to appointment settings', href: '/settings/appointments' },
       },
       {
-        title: 'Add Holidays',
+        title: 'Add holidays',
         description:
           "Block out dates when your clinic is closed so patients can't book on those days.",
         steps: [
-          'Go to Settings → Appointment Settings',
-          'Scroll down to the "Holiday Calendar" section',
+          'Go to Settings → Appointment settings',
+          'Scroll down to the "Holiday calendar" section',
           'Enter the Holiday Name (e.g., "Diwali", "Christmas")',
           'Select the Date',
-          'Click "Add Holiday"',
+          'Click "Add holiday"',
           "The holiday will appear in the list below — appointments can't be booked on that date",
         ],
         tips: [
@@ -254,13 +254,13 @@ const setupSections: SetupSection[] = [
           'You can delete a holiday if plans change',
           'Existing appointments on that date are NOT automatically cancelled — cancel them manually if needed',
         ],
-        link: { label: 'Go to Appointment Settings', href: '/settings/appointments' },
+        link: { label: 'Go to appointment settings', href: '/settings/appointments' },
       },
     ],
   },
   {
     id: 'billing',
-    title: 'Billing & Tax Setup',
+    title: 'Billing and tax setup',
     description: 'Configure tax, invoice format, and payment terms',
     icon: Receipt,
     color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30',
@@ -268,43 +268,43 @@ const setupSections: SetupSection[] = [
     estimatedTime: '5 min',
     guides: [
       {
-        title: 'Set Up Sales Tax',
+        title: 'Set up sales tax',
         description: 'Decide whether invoices carry a tax line, and at what rate.',
         steps: [
-          'Go to Settings → Billing Settings',
-          'In "Tax Configuration", leave "Charge sales tax on invoices" off if the clinic is exempt',
+          'Go to Settings → Billing settings',
+          'In "Tax configuration", leave "Charge sales tax on invoices" off if the clinic is exempt',
           'If it is registered, switch it on and enter the rate and the label to print',
-          'Click "Save Settings"',
+          'Click "Save changes"',
         ],
         tips: [
           'Dental services are exempt from sales tax in most cases — off is the usual answer',
           'Sales tax on services in Pakistan is provincial (PRA, SRB, KPRA, BRA) and the rates differ',
           'Changing the rate affects new invoices only — an invoice already issued keeps the rate it was raised with',
         ],
-        link: { label: 'Go to Billing Settings', href: '/settings/billing' },
+        link: { label: 'Go to billing settings', href: '/settings/billing' },
       },
       {
-        title: 'Customize Invoice Format',
+        title: 'Customize the invoice format',
         description: 'Set your invoice prefix, numbering, and footer text.',
         steps: [
-          'Go to Settings → Billing Settings',
-          'In "Invoice Format", set your Invoice Prefix (e.g., "INV") and Receipt Prefix (e.g., "REC")',
+          'Go to Settings → Billing settings',
+          'In "Invoice format", set your Invoice Prefix (e.g., "INV") and Receipt Prefix (e.g., "REC")',
           'Set the Starting Number (e.g., 1001) — invoices will be numbered INV1001, INV1002, etc.',
-          'Scroll to "Invoice Footer" and add your Terms & Conditions text',
+          'Scroll to "Invoice footer" and add your Terms & Conditions text',
           'Optionally add Invoice Notes that appear on every invoice',
-          'Click "Save Settings"',
+          'Click "Save changes"',
         ],
         tips: [
           "If you're migrating from another system, set the starting number to continue from where you left off",
           'Common footer text: "Payment is due within 15 days. Thank you for your business."',
         ],
-        link: { label: 'Go to Billing Settings', href: '/settings/billing' },
+        link: { label: 'Go to billing settings', href: '/settings/billing' },
       },
     ],
   },
   {
     id: 'payment-gateway',
-    title: 'Online Payment Gateway',
+    title: 'Online payment gateway',
     description:
       'India-only as shipped. Razorpay, PhonePe and Paytm do not onboard Pakistani merchants — a local processor has to be chosen and built before online payment works here.',
     icon: CreditCard,
@@ -325,7 +325,7 @@ const setupSections: SetupSection[] = [
           'The invoice, payment, refund and daily closing flows do not depend on a gateway',
           'Payment links and the online-payment buttons will not work until a processor is connected',
         ],
-        link: { label: 'Go to Billing Settings', href: '/settings/billing' },
+        link: { label: 'Go to billing settings', href: '/settings/billing' },
       },
       {
         title: 'Connecting a payment processor',
@@ -341,13 +341,13 @@ const setupSections: SetupSection[] = [
           'Nothing at the desk depends on this: invoices, payments, refunds and the daily closing all work without a gateway',
           'Only the online payment link and the “pay now” button need one',
         ],
-        link: { label: 'Go to Billing Settings', href: '/settings/billing' },
+        link: { label: 'Go to billing settings', href: '/settings/billing' },
       },
     ],
   },
   {
     id: 'sms',
-    title: 'SMS Notifications',
+    title: 'SMS notifications',
     description: 'Send appointment reminders and notifications via SMS to patients',
     icon: Smartphone,
     color: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/30',
@@ -355,19 +355,19 @@ const setupSections: SetupSection[] = [
     estimatedTime: '15 min',
     guides: [
       {
-        title: 'Set Up SMS Gateway (Twilio)',
+        title: 'Set up the SMS gateway (Twilio)',
         description:
           'Twilio is the only gateway configured. MSG91, TextLocal and Fast2SMS were removed: all three need a sender registered under India’s DLT scheme, which a Pakistani clinic cannot obtain.',
         steps: [
           'Create an account at twilio.com and verify your email and phone number',
           'From the Twilio Console, copy your Account SID and Auth Token',
           'Buy a number with SMS capability, or register an Alphanumeric Sender ID',
-          'In Dental Expert, go to Settings → Communication Settings',
+          'In Dental Expert, go to Settings → Communication settings',
           'Toggle "Enable SMS" ON',
           'Paste your Account SID, Auth Token and From number',
           'Set the hours messages may go out — these are read in the clinic’s own timezone',
-          'Click "Save Settings"',
-          'Test by entering a phone number and clicking "Send Test SMS"',
+          'Click "Save changes"',
+          'Test by entering a phone number and clicking "Send test SMS"',
         ],
         tips: [
           'Enter patient numbers as 03xx-xxxxxxx; the system sends them in +92 form',
@@ -375,16 +375,16 @@ const setupSections: SetupSection[] = [
           'Per-message pricing depends on your country and route — check the current rate card rather than budgeting from a figure quoted here',
           'Sender ID registration and any local content rules are set by the PTA and by the operators, so allow time before go-live',
         ],
-        link: { label: 'Go to Communication Settings', href: '/settings/communications' },
+        link: { label: 'Go to communication settings', href: '/settings/communications' },
         externalLinks: [
-          { label: 'Create Twilio Account', url: 'https://www.twilio.com/try-twilio' },
+          { label: 'Create a Twilio account', url: 'https://www.twilio.com/try-twilio' },
         ],
       },
     ],
   },
   {
     id: 'email',
-    title: 'Email Setup (SMTP)',
+    title: 'Email setup (SMTP)',
     description: 'Send emails for appointment confirmations, invoices, and reports',
     icon: Mail,
     color: 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/30',
@@ -392,22 +392,22 @@ const setupSections: SetupSection[] = [
     estimatedTime: '10 min',
     guides: [
       {
-        title: 'Set Up Email with Your Domain',
+        title: 'Set up email with your domain',
         description:
           'If you have a business email (e.g., info@yourclinic.com) through Hostinger, GoDaddy, etc.',
         steps: [
-          'In Dental Expert, go to Settings → Communication Settings → Email tab',
-          'Toggle "Enable Email" ON',
+          'In Dental Expert, go to Settings → Communication settings → Email tab',
+          'Toggle "Enable email" ON',
           'Enter the SMTP settings from your email provider:',
           "  — SMTP Host: e.g., smtp.hostinger.com (check your email provider's documentation)",
           '  — SMTP Port: 587 (most common) or 465 (for SSL)',
           '  — SMTP Username: your full email address (e.g., info@yourclinic.com)',
           '  — SMTP Password: your email account password',
           'Toggle "Use SSL" ON if you chose Port 465, leave OFF for Port 587',
-          'Set "From Name" to your clinic name (e.g., "Dr. Smith\'s Dental Clinic")',
-          'Set "From Email" to your email address',
-          'Click "Save Settings"',
-          'Enter a test email address and click "Send Test Email" to verify',
+          'Set "From name" to your clinic name (e.g., "Dr. Smith\'s Dental Clinic")',
+          'Set "From email" to your email address',
+          'Click "Save changes"',
+          'Enter a test email address and click "Send test email" to verify',
         ],
         tips: [
           'Common SMTP servers: Hostinger (smtp.hostinger.com:587), Gmail (smtp.gmail.com:587), Outlook (smtp.office365.com:587)',
@@ -415,10 +415,10 @@ const setupSections: SetupSection[] = [
           'Port 587 uses STARTTLS, Port 465 uses SSL — both are secure',
           'If the test email fails, double-check your password and port number',
         ],
-        link: { label: 'Go to Communication Settings', href: '/settings/communications' },
+        link: { label: 'Go to communication settings', href: '/settings/communications' },
       },
       {
-        title: 'Set Up Email with Gmail',
+        title: 'Set up email with Gmail',
         description: 'Use a Gmail account for sending emails. Requires creating an App Password.',
         steps: [
           'Go to your Google Account settings (myaccount.google.com)',
@@ -426,13 +426,13 @@ const setupSections: SetupSection[] = [
           'Go to Security → 2-Step Verification → App Passwords',
           'Select "Mail" as the app and "Other" as the device, name it "Dental Expert"',
           'Click "Generate" — Google will show a 16-character password. Copy it immediately!',
-          'In Dental Expert Communication Settings:',
+          'In Dental Expert, Communication settings:',
           '  — SMTP Host: smtp.gmail.com',
           '  — SMTP Port: 587',
           '  — Username: your full Gmail address',
           '  — Password: the 16-character App Password (NOT your Gmail password)',
           '  — SSL: OFF (Port 587 uses STARTTLS)',
-          'Click "Save Settings" and send a test email',
+          'Click "Save changes" and send a test email',
         ],
         tips: [
           'Gmail allows ~500 emails/day for personal accounts, 2000/day for Workspace',
@@ -440,7 +440,7 @@ const setupSections: SetupSection[] = [
           'Gmail shows "Sent on behalf of" in some email clients',
           'For better branding, consider using a custom domain email instead',
         ],
-        link: { label: 'Go to Communication Settings', href: '/settings/communications' },
+        link: { label: 'Go to communication settings', href: '/settings/communications' },
         externalLinks: [
           { label: 'Google App Passwords', url: 'https://myaccount.google.com/apppasswords' },
         ],
@@ -449,7 +449,7 @@ const setupSections: SetupSection[] = [
   },
   {
     id: 'google-reviews',
-    title: 'Google Reviews',
+    title: 'Google reviews',
     description: 'Automatically request Google reviews from happy patients',
     icon: Star,
     color: 'text-yellow-600 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-950/30',
@@ -457,7 +457,7 @@ const setupSections: SetupSection[] = [
     estimatedTime: '5 min',
     guides: [
       {
-        title: 'Set Up Automatic Google Review Requests',
+        title: 'Set up automatic Google review requests',
         description:
           'Automatically ask patients who rated you 4 or 5 stars to leave a Google review.',
         steps: [
@@ -466,11 +466,11 @@ const setupSections: SetupSection[] = [
           '  2. Click on your clinic listing',
           '  3. Click "Write a Review"',
           "  4. Copy the URL from your browser's address bar",
-          'In Dental Expert, go to Settings → Communication Settings → "Google Reviews" tab',
+          'In Dental Expert, go to Settings → Communication settings → "Google reviews" tab',
           'Paste your Google Review URL in the field',
           'Toggle "Auto-Request Reviews" ON',
-          'Set "Review Request Delay" (e.g., 2 hours — sends the request 2 hours after the appointment)',
-          'Click "Save Settings"',
+          'Set "Review request delay" (e.g., 2 hours — sends the request 2 hours after the appointment)',
+          'Click "Save changes"',
         ],
         tips: [
           'Review requests are only sent to patients who rated your clinic 4/5 or higher in feedback surveys',
@@ -478,13 +478,13 @@ const setupSections: SetupSection[] = [
           'Patients who opted out of communications will not receive requests',
           "More Google reviews improve your clinic's visibility in Google searches",
         ],
-        link: { label: 'Go to Communication Settings', href: '/settings/communications' },
+        link: { label: 'Go to communication settings', href: '/settings/communications' },
       },
     ],
   },
   {
     id: 'patient-portal',
-    title: 'Patient Portal',
+    title: 'Patient portal',
     description: 'Let patients book appointments and view records online',
     icon: Users,
     color: 'text-violet-600 bg-violet-50 dark:text-violet-400 dark:bg-violet-950/30',
@@ -492,16 +492,16 @@ const setupSections: SetupSection[] = [
     estimatedTime: '2 min',
     guides: [
       {
-        title: 'Enable the Patient Portal',
+        title: 'Enable the patient portal',
         description:
           'Allow patients to log in, book appointments, view treatment history, and make payments online.',
         steps: [
-          'Go to Settings → Clinic Information',
+          'Go to Settings → Clinic information',
           'Scroll down to the "Patient Portal" section',
           'Toggle "Enable Patient Portal" ON',
           'A portal URL will be generated automatically (e.g., yourclinic.dentalexpert.com/portal)',
           'Copy the portal URL and share it with your patients',
-          'Click "Save Changes"',
+          'Click "Save changes"',
         ],
         tips: [
           'Patients log in using their phone number + OTP (no password needed)',
@@ -509,13 +509,13 @@ const setupSections: SetupSection[] = [
           'Patients can book appointments, view invoices, and see treatment history',
           'You can disable the portal at any time from the same toggle',
         ],
-        link: { label: 'Go to Clinic Settings', href: '/settings/clinic' },
+        link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
     ],
   },
   {
     id: 'security',
-    title: 'Security Settings',
+    title: 'Security settings',
     description: 'Configure password policies, session timeouts, and two-factor authentication',
     icon: Shield,
     color: 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30',
@@ -523,15 +523,15 @@ const setupSections: SetupSection[] = [
     estimatedTime: '5 min',
     guides: [
       {
-        title: 'Configure Security Policies',
+        title: 'Configure security policies',
         description:
           'Set auto-logout timers and the sign-in lockout. Passwords are always 8 to 32 characters.',
         steps: [
-          'Go to Settings → Security Settings',
+          'Go to Settings → Security settings',
           'Set "Session Timeout" — users are auto-logged out after this many minutes of inactivity (recommended: 30-60 min)',
           'Set "Maximum Login Attempts" (recommended: 5) — locks account after too many failed attempts',
           'Set "Lockout Duration" (recommended: 30 minutes)',
-          'Click "Save Settings"',
+          'Click "Save changes"',
         ],
         tips: [
           'Security changes take effect immediately for all users',
@@ -539,13 +539,13 @@ const setupSections: SetupSection[] = [
           'Two-factor authentication (2FA) adds an extra step using a phone app like Google Authenticator',
           'Set IP restrictions only if your clinic has a fixed IP address — otherwise you might lock yourself out',
         ],
-        link: { label: 'Go to Security Settings', href: '/settings/security' },
+        link: { label: 'Go to security settings', href: '/settings/security' },
       },
     ],
   },
   {
     id: 'data-import',
-    title: 'Import Data from Old System',
+    title: 'Import data from your old system',
     description:
       'Migrate patient records, appointments, and billing data from your previous software',
     icon: Upload,
@@ -554,11 +554,11 @@ const setupSections: SetupSection[] = [
     estimatedTime: '20-60 min',
     guides: [
       {
-        title: 'Import Data from CSV/Excel',
+        title: 'Import data from CSV or Excel',
         description: 'Upload your old data files and let AI help map columns to the right fields.',
         steps: [
           'Export your data from your old software as CSV or Excel (.xlsx) files',
-          'Go to Settings → Data Import',
+          'Go to Settings → Data import',
           "Step 1: Select what you're importing (Patients, Appointments, Treatments, etc.)",
           'Upload your CSV/Excel file (max 20MB)',
           'Step 2: AI will automatically suggest column mappings (e.g., "Full Name" → First Name + Last Name)',
@@ -578,30 +578,23 @@ const setupSections: SetupSection[] = [
           'Import invoices before payments. A paid amount in the invoice file becomes one payment; a payments file, if you import one, replaces it for each invoice it names',
           'If importing staff, temporary passwords will be created — share them with each staff member',
         ],
-        link: { label: 'Go to Data Import', href: '/settings/import' },
+        link: { label: 'Go to data import', href: '/settings/import' },
       },
     ],
   },
 ]
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const styles = {
-    essential: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
-    recommended: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-    optional: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
-  }
-  return (
-    <Badge
-      className={styles[priority as keyof typeof styles] || styles.optional}
-      variant="secondary"
-    >
-      {priority === 'essential'
-        ? 'Essential'
-        : priority === 'recommended'
-          ? 'Recommended'
-          : 'Optional'}
-    </Badge>
-  )
+// The badge's own tones rather than hand-written colours: a priority is not a
+// record status, so it has no kind in lib/status.ts.
+const PRIORITY_BADGE = {
+  essential: { variant: 'danger', label: 'Essential' },
+  recommended: { variant: 'info', label: 'Recommended' },
+  optional: { variant: 'secondary', label: 'Optional' },
+} as const
+
+function PriorityBadge({ priority }: { priority: SetupSection['priority'] }) {
+  const { variant, label } = PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.optional
+  return <Badge variant={variant}>{label}</Badge>
 }
 
 function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
@@ -610,6 +603,8 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
   return (
     <div className="border rounded-lg overflow-hidden">
       <button
+        type="button"
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/50 transition-colors"
       >
@@ -632,7 +627,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
           <div className="mt-3 space-y-4">
             {/* Steps */}
             <div>
-              <p className="text-sm font-medium mb-2">Steps:</p>
+              <p className="text-sm font-medium mb-2">Steps</p>
               <ol className="space-y-1.5 ml-1">
                 {guide.steps.map((step, i) => (
                   <li key={i} className="flex gap-2 text-sm text-muted-foreground">
@@ -651,7 +646,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
             {guide.tips && guide.tips.length > 0 && (
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-3">
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-1.5">
-                  Tips:
+                  Tips
                 </p>
                 <ul className="space-y-1">
                   {guide.tips.map((tip, i) => (
@@ -670,7 +665,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
                 <Button size="sm" variant="default" asChild>
                   <Link href={guide.link.href}>
                     {guide.link.label}
-                    <ArrowLeft className="w-3 h-3 ml-1 rotate-180" />
+                    <ArrowRight className="w-3 h-3 ml-1" />
                   </Link>
                 </Button>
               )}
@@ -691,6 +686,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
 }
 
 export default function SetupGuidePage() {
+  const trail = useTrail('Setup guide')
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['clinic']))
   const [filter, setFilter] = useState<'all' | 'essential' | 'recommended' | 'optional'>('all')
 
@@ -718,25 +714,11 @@ export default function SetupGuidePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Button variant="ghost" size="sm" className="gap-1" asChild>
-            <Link href="/settings">
-              <ArrowLeft className="w-4 h-4" />
-              Settings
-            </Link>
-          </Button>
-        </div>
-        <h1 className="page-title flex items-center gap-2">
-          <BookOpen className="w-7 h-7" />
-          Setup Guide
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Step-by-step instructions to set up your clinic. Follow the essential steps first, then
-          add optional integrations.
-        </p>
-      </div>
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+        title="Setup guide"
+        description="Step-by-step instructions to set up your clinic. Follow the essential steps first, then add optional integrations."
+      />
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -751,7 +733,7 @@ export default function SetupGuidePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{essentialCount}</p>
-                <p className="text-xs text-muted-foreground">Essential Steps</p>
+                <p className="text-xs text-muted-foreground">Essential steps</p>
               </div>
             </div>
           </CardContent>
@@ -793,14 +775,14 @@ export default function SetupGuidePage() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={expandAll}>
-          Expand All
+          Expand all
         </Button>
         <Button variant="outline" size="sm" onClick={collapseAll}>
-          Collapse All
+          Collapse all
         </Button>
         {filter !== 'all' && (
           <Button variant="ghost" size="sm" onClick={() => setFilter('all')}>
-            Clear Filter
+            Clear filter
           </Button>
         )}
       </div>
@@ -813,7 +795,12 @@ export default function SetupGuidePage() {
 
           return (
             <Card key={section.id}>
-              <button onClick={() => toggleSection(section.id)} className="w-full text-left">
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                onClick={() => toggleSection(section.id)}
+                className="w-full text-left"
+              >
                 <CardHeader className="pb-2">
                   <div className="flex items-start gap-3">
                     <div
@@ -860,7 +847,7 @@ export default function SetupGuidePage() {
       <Card className="bg-primary/5 border-primary/20">
         <CardContent className="pt-6">
           <div className="text-center">
-            <h3 className="font-semibold mb-1">Need More Help?</h3>
+            <h3 className="font-semibold mb-1">Need more help?</h3>
             <p className="text-sm text-muted-foreground">
               {/* This offered a button to `/chat`, which is not a page. The
                   assistant it means is the one in the bottom-right corner of

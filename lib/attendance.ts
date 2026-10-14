@@ -12,6 +12,8 @@
  * clinic's Monday on a server's Sunday.
  */
 
+import { MONTHS_SHORT } from './dates'
+
 export const ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE'] as const
 export type AttendanceMark = (typeof ATTENDANCE_STATUSES)[number]
 
@@ -139,7 +141,6 @@ export function monthEndOf(day: string): string {
 
 const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export function weekdayShort(day: string): string {
   return WEEKDAYS_SHORT[weekdayIndex(day)]
@@ -149,18 +150,18 @@ export function weekdayLong(day: string): string {
   return WEEKDAYS_LONG[weekdayIndex(day)]
 }
 
-/** `28 Sep` — a column heading. */
+/** `28 Sept` — a column heading. Month names are `displayDate`'s. */
 export function dayMonth(day: string): string {
-  return `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slice(5, 7)) - 1]}`
+  return `${Number(day.slice(8, 10))} ${MONTHS_SHORT[Number(day.slice(5, 7)) - 1]}`
 }
 
-/** `28 Sep 2026`. */
+/** `28 Sept 2026`. */
 export function fullDay(day: string): string {
   return `${dayMonth(day)} ${day.slice(0, 4)}`
 }
 
 /**
- * `22 – 28 Sep 2026`, or across a month boundary `29 Sep – 5 Oct 2026`.
+ * `22 – 28 Sept 2026`, or across a month boundary `29 Sept – 5 Oct 2026`.
  *
  * Spelled out once here because every screen of the module heads itself with
  * a range, and three slightly different spellings of the same week is how a

@@ -545,15 +545,15 @@ export function numberToWords(num: number): string {
 export const dateRangePresets = [
   { label: 'Today', value: 'today' },
   { label: 'Yesterday', value: 'yesterday' },
-  { label: 'This Week', value: 'this_week' },
-  { label: 'Last Week', value: 'last_week' },
-  { label: 'This Month', value: 'this_month' },
-  { label: 'Last Month', value: 'last_month' },
-  { label: 'This Quarter', value: 'this_quarter' },
-  { label: 'Last Quarter', value: 'last_quarter' },
-  { label: 'This Year', value: 'this_year' },
-  { label: 'Last Year', value: 'last_year' },
-  { label: 'Custom Range', value: 'custom' },
+  { label: 'This week', value: 'this_week' },
+  { label: 'Last week', value: 'last_week' },
+  { label: 'This month', value: 'this_month' },
+  { label: 'Last month', value: 'last_month' },
+  { label: 'This quarter', value: 'this_quarter' },
+  { label: 'Last quarter', value: 'last_quarter' },
+  { label: 'This year', value: 'this_year' },
+  { label: 'Last year', value: 'last_year' },
+  { label: 'Custom range', value: 'custom' },
 ]
 
 /**

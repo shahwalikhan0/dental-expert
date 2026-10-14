@@ -1,12 +1,16 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { Loader2, Printer } from 'lucide-react'
-import { formatCurrency } from '@/lib/billing-utils'
-import { displayDate } from '@/lib/dates'
-import { formatToothNumbers, parseToothNumbers } from '@/lib/treatment-utils'
+import { EmptyState } from '@/components/ui/empty-state'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { FileText, Printer } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
+import { formatPhone } from '@/lib/utils'
 import { groupByPhase } from '@/lib/treatment-phases'
 
 /**
@@ -65,42 +69,65 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
   const [plan, setPlan] = useState<Plan | null>(null)
   const [clinic, setClinic] = useState<Clinic | null>(null)
   const [loading, setLoading] = useState(true)
+  // Why there is no plan: the route said 404, or the request failed.
+  const [loadState, setLoadState] = useState<'ok' | 'missing' | 'failed'>('ok')
+  // The newest load; an older one that lands late is dropped.
+  const latest = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [planRes, clinicRes] = await Promise.all([
-          fetch(`/api/treatment-plans/${id}`),
-          fetch('/api/settings/clinic'),
-        ])
-        if (!cancelled && planRes.ok) setPlan(await planRes.json())
-        if (!cancelled && clinicRes.ok) {
-          const payload = await clinicRes.json()
-          setClinic(payload.hospital ?? payload.clinic ?? payload)
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+  const load = useCallback(async () => {
+    const request = ++latest.current
+    setLoading(true)
+    setLoadState('ok')
+    try {
+      const [planRes, clinicRes] = await Promise.all([
+        fetch(`/api/treatment-plans/${id}`),
+        // The letterhead is a nicety; the sheet prints without it.
+        fetch('/api/settings/clinic').catch(() => null),
+      ])
+      if (request !== latest.current) return
+      if (planRes.status === 404) {
+        setLoadState('missing')
+      } else if (!planRes.ok) {
+        setLoadState('failed')
+      } else {
+        setPlan(await planRes.json())
       }
-    })()
-    return () => {
-      cancelled = true
+      if (clinicRes?.ok) {
+        const payload = await clinicRes.json()
+        if (request === latest.current) setClinic(payload.hospital ?? payload.clinic ?? payload)
+      }
+    } catch {
+      if (request === latest.current) setLoadState('failed')
+    } finally {
+      if (request === latest.current) setLoading(false)
     }
   }, [id])
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
+  useEffect(() => {
+    // Loading is the effect's job: it fetches and stores what comes back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load()
+  }, [load])
+
+  if (loading && !plan) {
+    return <PageSkeleton variant="detail" />
   }
 
   if (!plan) {
     return (
       <div className="space-y-4">
         <BackLink fallback="/treatments/plans" fallbackLabel="Treatment plans" trail={trail} />
-        <p className="text-muted-foreground">That plan could not be loaded.</p>
+        {loadState === 'failed' ? (
+          <LoadFailed what="this estimate" onRetry={load} />
+        ) : (
+          <EmptyState
+            icon={FileText}
+            title="Treatment plan not found"
+            description="It may have been deleted, or the link is wrong."
+            actionLabel="Back to treatment plans"
+            actionHref="/treatments/plans"
+          />
+        )}
       </div>
     )
   }
@@ -130,7 +157,7 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
               <p className="mt-1 text-sm text-muted-foreground">
                 {[clinic.address, clinic.city].filter(Boolean).join(', ')}
                 {clinic.phone && <br />}
-                {clinic.phone}
+                {formatPhone(clinic.phone)}
               </p>
             )}
           </div>
@@ -152,7 +179,7 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
               {plan.patient.firstName} {plan.patient.lastName}
             </p>
             <p className="text-sm text-muted-foreground">{plan.patient.patientId}</p>
-            <p className="text-sm text-muted-foreground">{plan.patient.phone}</p>
+            <p className="text-sm text-muted-foreground">{formatPhone(plan.patient.phone)}</p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Plan</p>
@@ -193,7 +220,7 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
                       )}
                     </td>
                     <td className="py-2">
-                      {formatToothNumbers(parseToothNumbers(item.toothNumbers ?? ''))}
+                      {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
                     </td>
                     <td className="py-2 text-right tabular-nums">
                       {formatCurrency(item.estimatedCost)}
@@ -237,7 +264,9 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
             told before any additional work is carried out.
             {phased && ' Each phase can be agreed to on its own.'}
           </p>
-          {clinic?.phone && <p className="mt-2">Questions? Call us on {clinic.phone}.</p>}
+          {clinic?.phone && (
+            <p className="mt-2">Questions? Call us on {formatPhone(clinic.phone)}.</p>
+          )}
         </footer>
       </div>
     </div>

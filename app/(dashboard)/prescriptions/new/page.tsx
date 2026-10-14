@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useMemo, useId } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -19,15 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  ClipboardList,
-  Plus,
-  Trash2,
-  Loader2,
-  Search,
-  ArrowLeft,
-  AlertTriangle,
-} from 'lucide-react'
+import { Plus, Trash2, AlertTriangle } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { FormField, fieldIds } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { PatientPicker, patientName } from '@/components/patients/patient-picker'
+import { MedicationPicker } from '@/components/catalogue/medication-picker'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 import { medicalAlerts, type AllergyClash } from '@/lib/medical-history'
 import {
   describeAllergyClashes,
@@ -36,7 +35,6 @@ import {
   prescriptionAllergyClashes,
 } from '@/lib/prescribing'
 import { useCan } from '@/hooks/use-can'
-import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
 import {
   medicationStock,
   type MedicationStock,
@@ -203,11 +201,53 @@ function blankMedRow(): MedicationRow {
   }
 }
 
+/** What is wrong with each field of one medication row, for the inline errors. */
+interface RowErrors {
+  medication?: string
+  dosage?: string
+  frequency?: string
+  duration?: string
+  quantity?: string
+  /** Anything the field checks do not cover — said under the row. */
+  other?: string
+}
+
+interface FormErrors {
+  patient?: string
+  rows: Record<number, RowErrors>
+}
+
+/**
+ * The inline errors for one row, or null when it is fine.
+ *
+ * The same rules as `lineRefusal` (lib/prescribing.ts), which the server runs,
+ * said per field so each message sits under the box it is about. A row the
+ * prescriber never touched is not checked — unless it is the only one, when
+ * there is nothing to prescribe at all.
+ */
+function rowErrors(row: MedicationRow, index: number, onlyRow: boolean): RowErrors | null {
+  if (isEmptyLine(row) && !onlyRow) return null
+  const errors: RowErrors = {}
+  if (!row.medicationName.trim()) errors.medication = 'Choose a medicine from the catalogue.'
+  if (!row.dosage.trim()) errors.dosage = 'Give a dosage.'
+  if (!row.frequency.trim()) errors.frequency = 'Give a frequency.'
+  if (!row.duration.trim()) errors.duration = 'Give a duration.'
+  if (row.quantity.trim()) {
+    const n = Number(row.quantity)
+    if (!Number.isInteger(n) || n <= 0) errors.quantity = 'A whole number above zero.'
+  }
+  if (Object.keys(errors).length === 0) {
+    const refusal = lineRefusal(row, index)
+    if (refusal) errors.other = refusal
+  }
+  return Object.keys(errors).length ? errors : null
+}
+
 export default function NewPrescriptionPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
   const searchParams = useSearchParams()
+  // So the patient record opened from here can offer the way back.
+  const trail = useTrail('New prescription')
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   // Label ↔ input ids, the same on the server and in the browser. See
@@ -223,19 +263,15 @@ export default function NewPrescriptionPage() {
   const canPrescribe = useCan('clinical:sign')
 
   const [saving, setSaving] = useState(false)
+  // Warn before a half-filled form is thrown away by a stray click — but not
+  // during the navigation a successful save performs.
+  const formRef = useFormGuard(saving)
+  // Inline errors appear from the first attempt to save, and then follow the
+  // form as it is corrected.
+  const [showErrors, setShowErrors] = useState(false)
 
   // Patient selection
-  const [patientSearch, setPatientSearch] = useState('')
-  const debouncedPatientSearch = useDebouncedValue(patientSearch)
-  const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [searchingPatients, setSearchingPatients] = useState(false)
-
-  // Medication search
-  const [medSearch, setMedSearch] = useState('')
-  const debouncedMedSearch = useDebouncedValue(medSearch)
-  const [medOptions, setMedOptions] = useState<MedicationOption[]>([])
-  const [searchingMeds, setSearchingMeds] = useState(false)
 
   /*
    * Templates, the treatment this is being written during, and the teeth.
@@ -257,87 +293,13 @@ export default function NewPrescriptionPage() {
   const [medications, setMedications] = useState<MedicationRow[]>([blankMedRow()])
 
   /**
-   * Pre-fill the patient this form was opened for.
-   *
-   * This read `result.data || result` against a route that answers
-   * `{ success, patient }`, so it set the envelope as the patient: an object
-   * with no name and no id, which the form rendered as a blank selection and
-   * would have submitted as one. See lib/prefill.ts.
+   * The patient this form was opened for (`?patientId=`), handed to the
+   * picker, which fetches it by id the way lib/prefill.ts does. Not when the
+   * form was opened from a treatment: then the treatment names the patient
+   * (below), so a hand-edited URL cannot attach a prescription to the wrong
+   * record.
    */
-  useEffect(() => {
-    const pid = searchParams.get('patientId')
-    if (!pid) return
-    const controller = new AbortController()
-    fetchHandedPatient<Patient>(pid, controller.signal).then((patient) => {
-      if (patient && !controller.signal.aborted) setSelectedPatient(patient)
-    })
-    return () => controller.abort()
-  }, [searchParams])
-
-  /**
-   * Patient search.
-   *
-   * The wait lived in a `setTimeout` here; it is `useDebouncedValue` now, as it
-   * is on every other search box. Clearing that timer covered a request not yet
-   * sent but not one already in flight, so a slow answer for a shorter term
-   * could still land last and overwrite the right one — hence `current`.
-   */
-  useEffect(() => {
-    const term = debouncedPatientSearch.trim()
-    if (term.length < 2) {
-      setPatients([])
-      return
-    }
-
-    let current = true
-    setSearchingPatients(true)
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=10`)
-        const result = await res.json()
-        if (!current) return
-        setPatients(result.data || result.patients || [])
-      } catch {
-        if (current) setPatients([])
-      } finally {
-        if (current) setSearchingPatients(false)
-      }
-    })()
-
-    return () => {
-      current = false
-    }
-  }, [debouncedPatientSearch])
-
-  /** Medication search. Same shape as the patient search above. */
-  useEffect(() => {
-    const term = debouncedMedSearch.trim()
-    if (term.length < 2) {
-      setMedOptions([])
-      return
-    }
-
-    let current = true
-    setSearchingMeds(true)
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true&sort=name`
-        )
-        const result = await res.json()
-        if (!current) return
-        setMedOptions(result.data || [])
-      } catch {
-        if (current) setMedOptions([])
-      } finally {
-        if (current) setSearchingMeds(false)
-      }
-    })()
-
-    return () => {
-      current = false
-    }
-  }, [debouncedMedSearch])
+  const handedPatientId = presetTreatmentId ? null : searchParams.get('patientId')
 
   /** What to put in front of the prescriber before they choose anything. */
   const patientAlerts = useMemo(
@@ -366,22 +328,18 @@ export default function NewPrescriptionPage() {
     return map
   }, [selectedPatient, medications])
 
-  /**
-   * The catalogue results in the shape the select renders.
-   *
-   * Mapped rather than passed through, because `SearchSelect` shows a label, a
-   * hint and a detail line and knows nothing about strengths or generic names.
-   */
-  const medOptionsForSelect: SearchOption[] = useMemo(
-    () =>
-      medOptions.map((m) => ({
-        id: m.id,
-        label: `${m.name}${m.strength ? ` ${m.strength}` : ''}`,
-        hint: m.form || undefined,
-        detail: m.genericName || undefined,
-      })),
-    [medOptions]
-  )
+  /** What is wrong with the form now; empty until the first attempt to save. */
+  const errors: FormErrors = useMemo(() => {
+    if (!showErrors) return { rows: {} }
+    const found: FormErrors = { rows: {} }
+    if (!selectedPatient) found.patient = 'Choose the patient this prescription is for.'
+    const onlyRow = medications.every(isEmptyLine)
+    medications.forEach((row, index) => {
+      const rowProblem = rowErrors(row, index, onlyRow && index === 0)
+      if (rowProblem) found.rows[index] = rowProblem
+    })
+    return found
+  }, [showErrors, selectedPatient, medications])
 
   const selectMedication = (med: MedicationOption, rowIndex: number) => {
     setMedications((prev) =>
@@ -406,8 +364,6 @@ export default function NewPrescriptionPage() {
           : r
       )
     )
-    setMedSearch('')
-    setMedOptions([])
   }
 
   /**
@@ -529,11 +485,7 @@ export default function NewPrescriptionPage() {
       ? `${inactive.join(', ')} ${inactive.length === 1 ? 'was' : 'were'} left out: deactivated in the drug catalogue.`
       : ''
     if (usable.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: `Nothing added from ${template.name}`,
-        description: leftOut,
-      })
+      toast(toastError(`add anything from ${template.name}`, leftOut))
       return
     }
 
@@ -568,37 +520,30 @@ export default function NewPrescriptionPage() {
   }
 
   const handleSubmit = async () => {
-    if (!selectedPatient) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select a patient' })
-      return
-    }
-
     /*
      * The untouched starter row is left out; every other row must be whole.
      *
      * This used to keep only the complete rows and send those, so a row with a
      * drug but no dosage vanished from the prescription without a word. The
-     * same per-row check the server runs (lib/prescribing.ts) names the row and
-     * what it is missing instead.
+     * same per-row rules the server runs (lib/prescribing.ts) mark each field
+     * that is missing, under the field, with one toast to say so.
      */
-    for (let i = 0; i < medications.length; i++) {
-      const row = medications[i]
-      if (isEmptyLine(row)) continue
-      const refusal = lineRefusal(row, i)
-      if (refusal) {
-        toast({ variant: 'destructive', title: 'Not saved', description: refusal })
-        return
-      }
-    }
-    const validMeds = medications.filter((m) => !isEmptyLine(m))
-    if (validMeds.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Add at least one medication with dosage, frequency, and duration',
+    setShowErrors(true)
+    const onlyRow = medications.every(isEmptyLine)
+    const invalid =
+      !selectedPatient ||
+      medications.some((row, index) => rowErrors(row, index, onlyRow && index === 0))
+    if (invalid || !selectedPatient) {
+      toast(toastError('create the prescription', 'Check the highlighted fields.'))
+      // After the errors have rendered, take the prescriber to the first one.
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[aria-invalid="true"]')
+        first?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+        first?.focus({ preventScroll: true })
       })
       return
     }
+    const validMeds = medications.filter((m) => !isEmptyLine(m))
 
     // A warning that costs nothing to ignore is a warning people stop reading.
     // This one asks for a deliberate answer, and takes no for one — but it does
@@ -606,10 +551,10 @@ export default function NewPrescriptionPage() {
     // says no outright gets worked around on paper.
     const confirmClashes = (clashes: AllergyClash[]) =>
       confirm({
-        title: 'This prescription clashes with a recorded allergy',
-        description: `${describeAllergyClashes(clashes)}. Prescribe anyway?`,
+        title: `Prescribe for ${patientName(selectedPatient)} despite a recorded allergy?`,
+        description: `${describeAllergyClashes(clashes)}.`,
         confirmLabel: 'Prescribe anyway',
-        variant: 'destructive',
+        tone: 'destructive',
       })
 
     // Sent only once the prescriber has said yes. The server runs the same
@@ -672,24 +617,21 @@ export default function NewPrescriptionPage() {
 
       if (!res.ok) throw new Error(result.error || 'Failed to save prescription')
 
-      toast({
-        title: 'Prescription created',
-        description: `${result.data.prescriptionNo} saved successfully`,
-      })
+      toast(toastSuccess('Prescription created', result.data.prescriptionNo))
       router.push(`/prescriptions/${result.data.id}`)
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message })
+    } catch (error) {
+      toast(toastError('create the prescription', error))
     } finally {
       setSaving(false)
     }
   }
 
+  const back = <BackLink trail={trail} fallback="/prescriptions" fallbackLabel="Prescriptions" />
+
   if (canPrescribe === false) {
     return (
-      <div className="mx-auto max-w-4xl">
-        <Button variant="ghost" className="mb-4" onClick={() => router.push('/prescriptions')}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Prescriptions
-        </Button>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <PageHeader back={back} title="New prescription" />
         <Card>
           <CardHeader>
             <CardTitle>Only a dentist can write a prescription</CardTitle>
@@ -703,19 +645,49 @@ export default function NewPrescriptionPage() {
     )
   }
 
-  return (
-    <div ref={formRef} className="mx-auto max-w-4xl">
-      <Button variant="ghost" className="mb-4" onClick={() => router.push('/prescriptions')}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Prescriptions
-      </Button>
+  const patientField = fieldIds('rx-patient', { error: errors.patient, required: true })
 
-      <div className="mb-6">
-        <h1 className="page-title flex items-center gap-2">
-          <ClipboardList className="h-6 w-6" />
-          New Prescription
-        </h1>
-        <p className="text-muted-foreground">Create a new e-prescription for a patient</p>
+  /*
+   * Its own block, not a clause appended to the phone number. Allergies were
+   * shown as muted small print beside the ID, which is where the eye goes last
+   * on a screen whose whole purpose is choosing a drug. Drawn inside the
+   * patient card, under the name.
+   */
+  const medicalAlertBlock = selectedPatient ? (
+    patientAlerts.length > 0 ? (
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3" role="alert">
+        <p className="text-sm font-semibold text-destructive">Medical alerts</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {patientAlerts.map((alert, i) => (
+            <Badge key={i} variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}>
+              {alert.label}
+            </Badge>
+          ))}
+        </div>
       </div>
+    ) : (
+      /* An empty history and an unasked question look identical on a screen
+         that shows nothing, and they are not the same. */
+      <p className="text-sm text-muted-foreground">
+        No allergies or conditions recorded.{' '}
+        <Link
+          href={trail.to(`/patients/${selectedPatient.id}`)}
+          className="underline hover:text-foreground"
+        >
+          Check the record
+        </Link>{' '}
+        before prescribing.
+      </p>
+    )
+  ) : null
+
+  return (
+    <div ref={formRef} className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        back={back}
+        title="New prescription"
+        description="Create a new e-prescription for a patient"
+      />
 
       <div className="space-y-6">
         {/* Patient Selection */}
@@ -724,107 +696,25 @@ export default function NewPrescriptionPage() {
             <CardTitle>Patient</CardTitle>
             <CardDescription>Select the patient for this prescription</CardDescription>
           </CardHeader>
-          <CardContent>
-            {selectedPatient ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
-                  <div>
-                    <p className="font-medium">
-                      {selectedPatient.firstName} {selectedPatient.lastName}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedPatient.patientId} · {selectedPatient.phone}
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setSelectedPatient(null)}>
-                    Change
-                  </Button>
-                </div>
-
-                {/*
-                  Its own block, not a clause appended to the phone number.
-                  Allergies were shown as muted small print beside the ID, which
-                  is where the eye goes last on a screen whose whole purpose is
-                  choosing a drug.
-                */}
-                {patientAlerts.length > 0 ? (
-                  <div
-                    className="rounded-lg border border-destructive/50 bg-destructive/10 p-3"
-                    role="alert"
-                  >
-                    <p className="text-sm font-semibold text-destructive">Medical alerts</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {patientAlerts.map((alert, i) => (
-                        <Badge
-                          key={i}
-                          variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}
-                        >
-                          {alert.label}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  /* An empty history and an unasked question look identical on
-                     a screen that shows nothing, and they are not the same. */
-                  <p className="text-sm text-muted-foreground">
-                    No allergies or conditions recorded.{' '}
-                    <Link
-                      href={`/patients/${selectedPatient.id}`}
-                      className="underline hover:text-foreground"
-                    >
-                      Check the record
-                    </Link>{' '}
-                    before prescribing.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search patient by name, ID, or phone..."
-                  data-form-guard="ignore"
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  className="pl-9"
-                />
-                {debouncedPatientSearch.trim().length >= 2 && (
-                  <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-60 overflow-y-auto">
-                    {searchingPatients ? (
-                      <div className="p-3 text-center text-sm text-muted-foreground">
-                        Searching...
-                      </div>
-                    ) : patients.length === 0 ? (
-                      // Closing the list on nothing-found left the prescriber
-                      // looking at a plain box, which is what it looks like
-                      // before a search has finished.
-                      <div className="p-3 text-sm text-muted-foreground">
-                        No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
-                      </div>
-                    ) : (
-                      patients.map((p) => (
-                        <button
-                          key={p.id}
-                          className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                          onClick={() => {
-                            setSelectedPatient(p)
-                            setPatientSearch('')
-                            setPatients([])
-                          }}
-                        >
-                          <span className="font-medium">
-                            {p.firstName} {p.lastName}
-                          </span>
-                          <span className="text-muted-foreground ml-2">
-                            {p.patientId} · {p.phone}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
+          <CardContent className="space-y-2">
+            {/*
+              The shared picker: opens onto the newest patients, searches the
+              register from the second letter, and arrow keys work. A link that
+              names a patient (?patientId=) hands it over.
+            */}
+            <PatientPicker<Patient>
+              id={patientField.id}
+              aria-describedby={patientField.control['aria-describedby']}
+              aria-invalid={patientField.control['aria-invalid']}
+              value={selectedPatient}
+              onChange={setSelectedPatient}
+              initialPatientId={handedPatientId}
+              alert={medicalAlertBlock}
+            />
+            {errors.patient && (
+              <p id={patientField.errorId} className="text-sm text-destructive">
+                {errors.patient}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -906,23 +796,27 @@ export default function NewPrescriptionPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label>Diagnosis / Condition</Label>
-              <Input
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-                placeholder="e.g., Dental caries, Periodontal disease"
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Valid Until</Label>
+            <FormField label="Diagnosis or condition">
+              {(control) => (
                 <Input
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
+                  {...control}
+                  value={diagnosis}
+                  onChange={(e) => setDiagnosis(e.target.value)}
+                  placeholder="e.g., Dental caries, Periodontal disease"
                 />
-              </div>
+              )}
+            </FormField>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="Valid until">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={validUntil}
+                    onChange={(e) => setValidUntil(e.target.value)}
+                  />
+                )}
+              </FormField>
             </div>
 
             <div className="space-y-2">
@@ -950,230 +844,232 @@ export default function NewPrescriptionPage() {
         <Card>
           <CardHeader>
             <CardTitle>Medications</CardTitle>
-            <CardDescription>
-              Add medications from your drug catalog or type manually
-            </CardDescription>
+            <CardDescription>Choose each medicine from your drug catalogue</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {medications.map((med, index) => (
-              <div key={med.key} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Medication {index + 1}
-                  </span>
-                  {medications.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete"
-                      className="h-7 w-7 text-destructive"
-                      onClick={() => removeMedRow(index)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-
-                {/*
-                  A select, not a text box. It used to be an Input with a
-                  suggestion list: picking a suggestion linked the row to the
-                  drug catalogue, typing a name and ignoring the list did not,
-                  and nothing downstream could tell the two apart. Stock,
-                  contraindications and side effects all hang off that link, so
-                  a row without one is a row that silently opts out of every
-                  check on this screen.
-                */}
-                <div>
-                  <Label htmlFor={`${idBase}-medication-${index}`}>Medication *</Label>
-                  <SearchSelect
-                    id={`${idBase}-medication-${index}`}
-                    value={med.medicationId}
-                    selectedLabel={med.medicationName}
-                    options={medOptionsForSelect}
-                    loading={searchingMeds}
-                    onSearchChange={setMedSearch}
-                    onSelect={(option) => {
-                      const chosen = medOptions.find((m) => m.id === option.id)
-                      if (chosen) selectMedication(chosen, index)
-                    }}
-                    onClear={() => clearMedication(index)}
-                    placeholder="Search the drug catalogue…"
-                    emptyMessage={
-                      debouncedMedSearch.trim().length < 2
-                        ? 'Type at least two letters to search.'
-                        : `Nothing in the catalogue matches “${debouncedMedSearch.trim()}”.`
-                    }
-                    emptyAction={
-                      debouncedMedSearch.trim().length >= 2 ? (
-                        <Link
-                          href="/medications"
-                          target="_blank"
-                          className="text-sm text-primary hover:underline"
+            {medications.map((med, index) => {
+              const rowError = errors.rows[index] ?? {}
+              return (
+                <div key={med.key} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Medication {index + 1}
+                    </span>
+                    {medications.length > 1 && (
+                      <IconTooltip label={`Remove medication ${index + 1}`}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove medication ${index + 1}`}
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeMedRow(index)}
                         >
-                          Add it to the drug catalogue
-                        </Link>
-                      ) : null
-                    }
-                    aria-label="Medication"
-                  />
-                </div>
-
-                {/*
-                  What the catalogue knows about this drug, shown while it is
-                  being prescribed rather than filed where nobody reads it.
-                  These two columns existed on Medication from the start and
-                  were written to by the catalogue form, but no screen had ever
-                  displayed them — a field that writes to nowhere.
-                */}
-                {(med.contraindications || med.sideEffects) && (
-                  <div className="rounded-lg border border-border/60 bg-foreground/[0.02] p-3 text-xs">
-                    {med.contraindications && (
-                      <p>
-                        <span className="font-semibold">Contraindications: </span>
-                        <span className="text-muted-foreground">{med.contraindications}</span>
-                      </p>
-                    )}
-                    {med.sideEffects && (
-                      <p className={med.contraindications ? 'mt-1' : undefined}>
-                        <span className="font-semibold">Side effects: </span>
-                        <span className="text-muted-foreground">{med.sideEffects}</span>
-                      </p>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </IconTooltip>
                     )}
                   </div>
-                )}
 
-                {/*
-                  Stock, when the drug is linked to a shelf. "Not tracked" is
-                  deliberately silent: on the day this shipped nothing was
-                  linked, and a warning on every row would have trained
-                  prescribers to ignore the one that matters.
-                */}
-                {med.stock && med.stock.state !== 'unlinked' && (
-                  <p
-                    className={cn(
-                      'text-xs',
-                      med.stock.state === 'ok'
-                        ? 'text-muted-foreground'
-                        : 'font-medium text-amber-700 dark:text-amber-400'
+                  {/*
+                    A picker, not a text box. It used to be an Input with a
+                    suggestion list: picking a suggestion linked the row to the
+                    drug catalogue, typing a name and ignoring the list did not,
+                    and nothing downstream could tell the two apart. Stock,
+                    contraindications and side effects all hang off that link, so
+                    a row without one is a row that silently opts out of every
+                    check on this screen.
+                  */}
+                  <FormField
+                    label="Medication"
+                    required
+                    htmlFor={`${idBase}-medication-${index}`}
+                    error={rowError.medication}
+                  >
+                    {(control) => (
+                      <MedicationPicker<MedicationOption>
+                        id={control.id}
+                        aria-describedby={control['aria-describedby']}
+                        aria-invalid={control['aria-invalid']}
+                        value={med.medicationId}
+                        selectedLabel={med.medicationName}
+                        onSelect={(chosen) => selectMedication(chosen, index)}
+                        onClear={() => clearMedication(index)}
+                      />
                     )}
-                  >
-                    {med.stock.label}
-                  </p>
-                )}
+                  </FormField>
 
-                {/*
-                  Beside the drug that caused it, not gathered into a summary at
-                  the bottom. The prescriber is looking at this row.
-                */}
-                {clashesByRow.has(index) && (
-                  <div
-                    className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
-                    role="alert"
-                  >
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
-                    <div className="text-sm">
-                      {clashesByRow.get(index)!.map((c, i) => (
-                        <p key={i} className="text-destructive">
-                          <span className="font-semibold">
-                            {c.note ? 'Check before prescribing' : 'Allergy clash'}
-                          </span>{' '}
-                          — this patient is recorded as allergic to {c.allergy}
-                          {c.note ? `, and ${c.drug} is a ${c.note}` : ''}.
+                  {/*
+                    What the catalogue knows about this drug, shown while it is
+                    being prescribed rather than filed where nobody reads it.
+                    These two columns existed on Medication from the start and
+                    were written to by the catalogue form, but no screen had ever
+                    displayed them — a field that writes to nowhere.
+                  */}
+                  {(med.contraindications || med.sideEffects) && (
+                    <div className="rounded-lg border border-border/60 bg-foreground/[0.02] p-3 text-xs">
+                      {med.contraindications && (
+                        <p>
+                          <span className="font-semibold">Contraindications: </span>
+                          <span className="text-muted-foreground">{med.contraindications}</span>
                         </p>
-                      ))}
-                      <p className="text-muted-foreground mt-1">
-                        Change the drug, or confirm on the next screen that you mean it.
-                      </p>
+                      )}
+                      {med.sideEffects && (
+                        <p className={med.contraindications ? 'mt-1' : undefined}>
+                          <span className="font-semibold">Side effects: </span>
+                          <span className="text-muted-foreground">{med.sideEffects}</span>
+                        </p>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div>
-                    <Label>Dosage *</Label>
-                    <Input
-                      value={med.dosage}
-                      onChange={(e) => updateMedRow(index, 'dosage', e.target.value)}
-                      placeholder="1 tablet"
-                    />
-                  </div>
-                  <div>
-                    <Label>Frequency *</Label>
-                    <Input
-                      value={med.frequency}
-                      onChange={(e) => updateMedRow(index, 'frequency', e.target.value)}
-                      placeholder="3 times a day"
-                    />
-                  </div>
-                  <div>
-                    <Label>Duration *</Label>
-                    <Input
-                      value={med.duration}
-                      onChange={(e) => updateMedRow(index, 'duration', e.target.value)}
-                      placeholder="5 days"
-                    />
-                  </div>
-                  <div>
-                    <Label>Route</Label>
-                    <Select
-                      value={med.route}
-                      onValueChange={(v) => updateMedRow(index, 'route', v)}
+                  {/*
+                    Stock, when the drug is linked to a shelf. "Not tracked" is
+                    deliberately silent: on the day this shipped nothing was
+                    linked, and a warning on every row would have trained
+                    prescribers to ignore the one that matters.
+                  */}
+                  {med.stock && med.stock.state !== 'unlinked' && (
+                    <p
+                      className={cn(
+                        'text-xs',
+                        med.stock.state === 'ok'
+                          ? 'text-muted-foreground'
+                          : 'font-medium text-amber-700 dark:text-amber-400'
+                      )}
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ROUTES.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {r}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Timing</Label>
-                    <Select
-                      value={med.timing || undefined}
-                      onValueChange={(v) => updateMedRow(index, 'timing', v)}
+                      {med.stock.label}
+                    </p>
+                  )}
+
+                  {/*
+                    Beside the drug that caused it, not gathered into a summary at
+                    the bottom. The prescriber is looking at this row.
+                  */}
+                  {clashesByRow.has(index) && (
+                    <div
+                      className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
+                      role="alert"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIMINGS.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
-                          </SelectItem>
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+                      <div className="text-sm">
+                        {clashesByRow.get(index)!.map((c, i) => (
+                          <p key={i} className="text-destructive">
+                            <span className="font-semibold">
+                              {c.note ? 'Check before prescribing' : 'Allergy clash'}
+                            </span>{' '}
+                            — this patient is recorded as allergic to {c.allergy}
+                            {c.note ? `, and ${c.drug} is a ${c.note}` : ''}.
+                          </p>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      value={med.quantity}
-                      onChange={(e) => updateMedRow(index, 'quantity', e.target.value)}
-                      placeholder="10"
-                    />
-                  </div>
-                </div>
+                        <p className="text-muted-foreground mt-1">
+                          Change the drug, or confirm on the next screen that you mean it.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                <div>
-                  <Label>Special Instructions</Label>
-                  <Input
-                    value={med.instructions}
-                    onChange={(e) => updateMedRow(index, 'instructions', e.target.value)}
-                    placeholder="Take with warm water, avoid dairy..."
-                  />
-                </div>
-              </div>
-            ))}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <FormField label="Dosage" required error={rowError.dosage}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={med.dosage}
+                          onChange={(e) => updateMedRow(index, 'dosage', e.target.value)}
+                          placeholder="1 tablet"
+                        />
+                      )}
+                    </FormField>
+                    <FormField label="Frequency" required error={rowError.frequency}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={med.frequency}
+                          onChange={(e) => updateMedRow(index, 'frequency', e.target.value)}
+                          placeholder="3 times a day"
+                        />
+                      )}
+                    </FormField>
+                    <FormField label="Duration" required error={rowError.duration}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={med.duration}
+                          onChange={(e) => updateMedRow(index, 'duration', e.target.value)}
+                          placeholder="5 days"
+                        />
+                      )}
+                    </FormField>
+                    <FormField label="Route">
+                      {(control) => (
+                        <Select
+                          value={med.route}
+                          onValueChange={(v) => updateMedRow(index, 'route', v)}
+                        >
+                          <SelectTrigger id={control.id}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROUTES.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {r}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </FormField>
+                    <FormField label="Timing">
+                      {(control) => (
+                        <Select
+                          value={med.timing || undefined}
+                          onValueChange={(v) => updateMedRow(index, 'timing', v)}
+                        >
+                          <SelectTrigger id={control.id}>
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIMINGS.map((t) => (
+                              <SelectItem key={t} value={t}>
+                                {t}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </FormField>
+                    <FormField label="Quantity" error={rowError.quantity}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          type="number"
+                          value={med.quantity}
+                          onChange={(e) => updateMedRow(index, 'quantity', e.target.value)}
+                          placeholder="10"
+                        />
+                      )}
+                    </FormField>
+                  </div>
 
-            <Button variant="outline" onClick={addMedRow} className="w-full">
+                  <FormField label="Special instructions">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={med.instructions}
+                        onChange={(e) => updateMedRow(index, 'instructions', e.target.value)}
+                        placeholder="Take with warm water, avoid dairy…"
+                      />
+                    )}
+                  </FormField>
+
+                  {rowError.other && <p className="text-sm text-destructive">{rowError.other}</p>}
+                </div>
+              )
+            })}
+
+            <Button type="button" variant="outline" onClick={addMedRow} className="w-full">
               <Plus className="h-4 w-4 mr-2" />
-              Add Another Medication
+              Add another medication
             </Button>
           </CardContent>
         </Card>
@@ -1181,13 +1077,14 @@ export default function NewPrescriptionPage() {
         {/* Notes */}
         <Card>
           <CardHeader>
-            <CardTitle>Additional Notes</CardTitle>
+            <CardTitle>Additional notes</CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-label="Additional notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="General advice, follow-up instructions..."
+              placeholder="General advice, follow-up instructions…"
               rows={3}
             />
           </CardContent>
@@ -1195,13 +1092,22 @@ export default function NewPrescriptionPage() {
 
         {/* Submit */}
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => router.push('/prescriptions')}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push(trail.back('/prescriptions'))}
+          >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={saving} size="lg">
-            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create Prescription
-          </Button>
+          <SubmitButton
+            type="button"
+            onClick={handleSubmit}
+            busy={saving}
+            busyLabel="Creating prescription…"
+            size="lg"
+          >
+            Create prescription
+          </SubmitButton>
         </div>
       </div>
       {ConfirmDialogComponent}

@@ -8,23 +8,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { GridActionsCell } from '@/components/ui/data-grid'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { GridActionsCell, GridActionsHead, GridBody } from '@/components/ui/data-grid'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { PageHeader } from '@/components/ui/page-header'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { useToast } from '@/hooks/use-toast'
+import { useFormGuard } from '@/hooks/use-form-guard'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 import {
   RecareProcedurePicker,
   type PickerProcedure,
 } from '@/components/settings/recare-procedure-picker'
-import { ListChecks, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CalendarClock, ListChecks, Plus, Trash2 } from 'lucide-react'
 
 /**
  * Recare types — the kinds of recurring visit a practice runs, and how often
@@ -58,6 +56,8 @@ const SHOWN_PROCEDURES = 3
 /** Who the picker is open for: an existing type, or the add form's draft. */
 type Picking = { kind: 'type'; type: RecareType } | { kind: 'draft' } | null
 
+type DraftErrors = Partial<Record<'name' | 'intervalMonths', string>>
+
 export default function RecareTypesPage() {
   const trail = useTrail('Recare types')
   const { toast } = useToast()
@@ -71,6 +71,11 @@ export default function RecareTypesPage() {
   const [catalogue, setCatalogue] = useState<PickerProcedure[]>([])
   const [picking, setPicking] = useState<Picking>(null)
   const [savingLinks, setSavingLinks] = useState(false)
+  // The list could not be fetched — said in the grid, with a retry.
+  const [failed, setFailed] = useState(false)
+  const [errors, setErrors] = useState<DraftErrors>({})
+  // Typing into the new-type form is work the guard asks about before leaving.
+  const formGuard = useFormGuard(saving)
 
   const load = useCallback(async () => {
     try {
@@ -78,16 +83,13 @@ export default function RecareTypesPage() {
       if (!res.ok) throw new Error('Recare types could not be loaded')
       const data = await res.json()
       setTypes(data.types ?? [])
-    } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to load recare types',
-        variant: 'destructive',
-      })
+      setFailed(false)
+    } catch {
+      setFailed(true)
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [])
 
   // The clinic's active procedures, for the picker. A failure here leaves the
   // picker empty with a note rather than blocking the rest of the screen.
@@ -106,12 +108,7 @@ export default function RecareTypesPage() {
         }))
       )
     } catch (err) {
-      toast({
-        title: 'Error',
-        description:
-          err instanceof Error ? err.message : 'The procedure catalogue could not be loaded',
-        variant: 'destructive',
-      })
+      toast(toastError('load the procedure catalogue', err))
     }
   }, [toast])
 
@@ -122,6 +119,23 @@ export default function RecareTypesPage() {
 
   const add = async (event: React.FormEvent) => {
     event.preventDefault()
+
+    const months = Number(draft.intervalMonths)
+    const found: DraftErrors = {}
+    if (!draft.name.trim()) found.name = 'Enter a name.'
+    if (
+      draft.intervalMonths.trim() === '' ||
+      !Number.isInteger(months) ||
+      months < 1 ||
+      months > 120
+    )
+      found.intervalMonths = 'Enter a whole number of months, 1 to 120.'
+    setErrors(found)
+    if (Object.keys(found).length > 0) {
+      toast(toastError('create the recare type', 'Check the highlighted fields.'))
+      return
+    }
+
     setSaving(true)
     try {
       const res = await fetch('/api/recare/types', {
@@ -138,16 +152,16 @@ export default function RecareTypesPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'That recare type could not be added')
 
-      toast({ title: 'Added', description: `${draft.name} every ${draft.intervalMonths} months.` })
+      toast(
+        toastSuccess('Recare type added', `${draft.name} every ${draft.intervalMonths} months.`)
+      )
       setDraft({ name: '', intervalMonths: '6', description: '' })
       setDraftProcedures([])
+      // The draft is saved and the form is empty again: nothing left to lose.
+      formGuard.reset()
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'That recare type could not be added',
-        variant: 'destructive',
-      })
+      toast(toastError('create the recare type', err))
     } finally {
       setSaving(false)
     }
@@ -164,11 +178,7 @@ export default function RecareTypesPage() {
       if (!res.ok) throw new Error(data.error || 'That change could not be saved')
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'That change could not be saved',
-        variant: 'destructive',
-      })
+      toast(toastError(`save the change to ${type.name}`, err))
     }
   }
 
@@ -193,21 +203,18 @@ export default function RecareTypesPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'The procedures could not be saved')
-      toast({
-        title: 'Saved',
-        description:
+      toast(
+        toastSuccess(
+          'Procedures saved',
           procedureIds.length === 0
             ? `No procedure moves ${type.name} now. Mark as done still does.`
-            : `${procedureIds.length} procedure${procedureIds.length === 1 ? '' : 's'} now move${procedureIds.length === 1 ? 's' : ''} ${type.name} on.`,
-      })
+            : `${procedureIds.length} procedure${procedureIds.length === 1 ? '' : 's'} now move${procedureIds.length === 1 ? 's' : ''} ${type.name} on.`
+        )
+      )
       setPicking(null)
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'The procedures could not be saved',
-        variant: 'destructive',
-      })
+      toast(toastError(`save the procedures for ${type.name}`, err))
     } finally {
       setSavingLinks(false)
     }
@@ -215,13 +222,13 @@ export default function RecareTypesPage() {
 
   const remove = async (type: RecareType) => {
     const inUse = type._count.recares > 0
+    const verb = inUse ? 'Deactivate' : 'Delete'
     const ok = await confirm({
-      title: `${inUse ? 'Deactivate' : 'Delete'} ${type.name}?`,
+      title: `${verb} recare type “${type.name}”?`,
       description: inUse
         ? `${type._count.recares} patient${type._count.recares === 1 ? ' is' : 's are'} on this recare, so it will be deactivated rather than deleted. Their dates are kept.`
         : 'Nobody is on this recare, so it will be deleted.',
-      confirmLabel: inUse ? 'Deactivate' : 'Delete',
-      variant: 'destructive',
+      confirmLabel: `${verb} recare type`,
     })
     if (!ok) return
 
@@ -229,14 +236,10 @@ export default function RecareTypesPage() {
       const res = await fetch(`/api/recare/types/${type.id}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'That recare type could not be removed')
-      toast({ title: 'Done', description: data.message })
+      toast(toastSuccess(inUse ? 'Recare type deactivated' : 'Recare type deleted', data.message))
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'That recare type could not be removed',
-        variant: 'destructive',
-      })
+      toast(toastError(`${verb.toLowerCase()} recare type “${type.name}”`, err))
     }
   }
 
@@ -254,16 +257,11 @@ export default function RecareTypesPage() {
         saving={savingLinks}
         onSave={saveLinks}
       />
-      <BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />
-
-      <div>
-        <h1 className="page-title">Recare types</h1>
-        <p className="text-muted-foreground">
-          What a patient is recalled for, and how often. The default is what a newly registered
-          patient is put on. Completing a treatment with one of a recall&apos;s procedures moves
-          that patient&apos;s recall on by itself.
-        </p>
-      </div>
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+        title="Recare types"
+        description="What a patient is recalled for, and how often. The default is what a newly registered patient is put on. Completing a treatment with one of a recall’s procedures moves that patient’s recall on by itself."
+      />
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -276,172 +274,171 @@ export default function RecareTypesPage() {
                 <TableHead>Patients</TableHead>
                 <TableHead>Default</TableHead>
                 <TableHead>Active</TableHead>
-                <TableHead className="w-12" />
+                <GridActionsHead />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+            <GridBody
+              columns={7}
+              loading={loading}
+              skeletonRows={3}
+              failed={failed}
+              onRetry={() => {
+                setFailed(false)
+                setLoading(true)
+                load()
+              }}
+              empty={types.length === 0}
+              emptyIcon={CalendarClock}
+              emptyTitle="No recare types"
+              emptyDescription="Add one below and patients will start appearing on the recall list."
+            >
+              {types.map((type) => (
+                <TableRow key={type.id}>
+                  <TableCell>
+                    <div className="font-medium">{type.name}</div>
+                    {type.description && (
+                      <div className="text-xs text-muted-foreground">{type.description}</div>
+                    )}
                   </TableCell>
-                </TableRow>
-              ) : types.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No recare types. Add one below and patients will start appearing on the recall
-                    list.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                types.map((type) => (
-                  <TableRow key={type.id}>
-                    <TableCell>
-                      <div className="font-medium">{type.name}</div>
-                      {type.description && (
-                        <div className="text-xs text-muted-foreground">{type.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-[260px]">
-                      <div className="flex items-start gap-1">
-                        <div className="min-w-0 flex-1">
-                          {type.procedures.length === 0 ? (
-                            <span className="text-xs text-amber-700 dark:text-amber-400">
-                              No procedure — only Mark as done moves it
-                            </span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {type.procedures.slice(0, SHOWN_PROCEDURES).map((procedure) => (
-                                <Badge
-                                  key={procedure.id}
-                                  variant="outline"
-                                  className="font-normal"
-                                  title={procedure.code}
-                                >
-                                  {procedure.name}
-                                  {!procedure.isActive && ' (inactive)'}
-                                </Badge>
-                              ))}
-                              {type.procedures.length > SHOWN_PROCEDURES && (
-                                <span className="text-xs text-muted-foreground self-center">
-                                  and {type.procedures.length - SHOWN_PROCEDURES} more
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <IconTooltip label={`Choose the procedures for ${type.name}`}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0"
-                            onClick={() => setPicking({ kind: 'type', type })}
-                            aria-label={`Choose the procedures for ${type.name}`}
-                          >
-                            <ListChecks className="h-4 w-4" />
-                          </Button>
-                        </IconTooltip>
+                  <TableCell className="max-w-[260px]">
+                    <div className="flex items-start gap-1">
+                      <div className="min-w-0 flex-1">
+                        {type.procedures.length === 0 ? (
+                          <span className="text-xs text-amber-700 dark:text-amber-400">
+                            No procedure — only Mark as done moves it
+                          </span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {type.procedures.slice(0, SHOWN_PROCEDURES).map((procedure) => (
+                              <Badge
+                                key={procedure.id}
+                                variant="outline"
+                                className="font-normal"
+                                title={procedure.code}
+                              >
+                                {procedure.name}
+                                {!procedure.isActive && ' (inactive)'}
+                              </Badge>
+                            ))}
+                            {type.procedures.length > SHOWN_PROCEDURES && (
+                              <span className="text-xs text-muted-foreground self-center">
+                                and {type.procedures.length - SHOWN_PROCEDURES} more
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          min="1"
-                          max="120"
-                          defaultValue={type.intervalMonths}
-                          onBlur={(e) => {
-                            const months = Number(e.target.value)
-                            if (months !== type.intervalMonths) {
-                              patch(type, { intervalMonths: months })
-                            }
-                          }}
-                          className="h-8 w-20"
-                          aria-label={`Interval in months for ${type.name}`}
-                        />
-                        <span className="text-sm text-muted-foreground">months</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{type._count.recares}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={type.isDefault}
-                        onCheckedChange={(checked) => patch(type, { isDefault: checked })}
-                        aria-label={`Make ${type.name} the default`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={type.isActive}
-                        onCheckedChange={(checked) => patch(type, { isActive: checked })}
-                        aria-label={`${type.name} is active`}
-                      />
-                    </TableCell>
-                    <GridActionsCell>
-                      <IconTooltip label={`Remove ${type.name}`}>
+                      <IconTooltip label={`Choose the procedures for ${type.name}`}>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-600 dark:text-red-400"
-                          onClick={() => remove(type)}
-                          aria-label={`Remove ${type.name}`}
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => setPicking({ kind: 'type', type })}
+                          aria-label={`Choose the procedures for ${type.name}`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <ListChecks className="h-4 w-4" />
                         </Button>
                       </IconTooltip>
-                    </GridActionsCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="1"
+                        max="120"
+                        defaultValue={type.intervalMonths}
+                        onBlur={(e) => {
+                          const months = Number(e.target.value)
+                          if (months !== type.intervalMonths) {
+                            patch(type, { intervalMonths: months })
+                          }
+                        }}
+                        className="h-8 w-20"
+                        aria-label={`Interval in months for ${type.name}`}
+                      />
+                      <span className="text-sm text-muted-foreground">months</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{type._count.recares}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={type.isDefault}
+                      onCheckedChange={(checked) => patch(type, { isDefault: checked })}
+                      aria-label={`Make ${type.name} the default`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={type.isActive}
+                      onCheckedChange={(checked) => patch(type, { isActive: checked })}
+                      aria-label={`${type.name} is active`}
+                    />
+                  </TableCell>
+                  {/* GridActionsCell carries the `row-actions` class. */}
+                  <GridActionsCell>
+                    <IconTooltip label={`Remove ${type.name}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-600 dark:text-red-400"
+                        onClick={() => remove(type)}
+                        aria-label={`Remove ${type.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </IconTooltip>
+                  </GridActionsCell>
+                </TableRow>
+              ))}
+            </GridBody>
           </Table>
         </CardContent>
       </Card>
 
-      <form onSubmit={add}>
+      <form ref={formGuard} onSubmit={add} noValidate>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Add a recare type</CardTitle>
+            <CardTitle className="text-base">New recare type</CardTitle>
             <CardDescription>
               The interval is measured from the visit, not from when it fell due.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
-                <Input
-                  id="name"
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="e.g. Scale and polish"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="interval">Every (months) *</Label>
-                <Input
-                  id="interval"
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={draft.intervalMonths}
-                  onChange={(e) => setDraft({ ...draft, intervalMonths: e.target.value })}
-                  required
-                />
-              </div>
+              <FormField label="Name" required error={errors.name}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    placeholder="e.g. Scale and polish"
+                  />
+                )}
+              </FormField>
+              <FormField label="Every (months)" required error={errors.intervalMonths}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={draft.intervalMonths}
+                    onChange={(e) => setDraft({ ...draft, intervalMonths: e.target.value })}
+                  />
+                )}
+              </FormField>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <FormField label="Description" htmlFor="description">
               <Input
                 id="description"
                 value={draft.description}
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 placeholder="Optional"
               />
-            </div>
+            </FormField>
             <div className="space-y-2">
               <Label>Moved on by</Label>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
@@ -462,14 +459,9 @@ export default function RecareTypesPage() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={saving || !draft.name.trim()}>
-                {saving ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4 mr-2" />
-                )}
-                Add
-              </Button>
+              <SubmitButton busy={saving} busyLabel="Creating…" icon={Plus}>
+                Create recare type
+              </SubmitButton>
             </div>
           </CardContent>
         </Card>

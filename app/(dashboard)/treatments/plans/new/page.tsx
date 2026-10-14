@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -10,14 +10,6 @@ import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -27,18 +19,23 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Search, User, Plus, Trash2, Save, GripVertical, Loader2 } from 'lucide-react'
-import { procedureCategoryConfig, formatCurrency, formatToothNumbers } from '@/lib/treatment-utils'
-import { usePatientSearch } from '@/hooks/use-patient-search'
-import { fetchHandedPatient } from '@/lib/prefill'
-import { parseTeeth } from '@/lib/teeth'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput, isInvalidMoney, parseMoney } from '@/components/ui/money-input'
+import { PageHeader } from '@/components/ui/page-header'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
+import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
+import { ToothPicker } from '@/components/dental-chart/tooth-picker'
+import { User, Plus, Trash2, GripVertical } from 'lucide-react'
+import { procedureCategoryConfig } from '@/lib/treatment-utils'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK } from '@/lib/dates'
+import { describeTeethByQuadrant, formatTeeth, parseTeeth } from '@/lib/teeth'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
-interface Patient {
-  id: string
-  patientId: string
-  firstName: string
-  lastName: string
-  phone: string
+interface Patient extends PickedPatient {
+  dateOfBirth?: string | null
 }
 
 interface Procedure {
@@ -55,22 +52,34 @@ interface PlanItem {
   procedureName: string
   procedureCode: string
   category: string
+  /** The stored form, `11,12,13`, or '' for none. */
   toothNumbers: string
   estimatedCost: number
   notes: string
 }
 
+type Errors = Partial<Record<'patient' | 'title' | 'procedure' | 'cost', string>>
+
+/** The field each error is shown under, in the order they appear on the page. */
+const FIELD_IDS: Record<keyof Errors, string> = {
+  patient: 'patient',
+  title: 'title',
+  procedure: 'procedure',
+  cost: 'itemCost',
+}
+
 export default function NewTreatmentPlanPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
+  const trail = useTrail(null)
   const searchParams = useSearchParams()
+  // A link from the patient's record hands the patient over (lib/prefill.ts).
   const preselectedPatientId = searchParams.get('patientId')
-
-  const [procedures, setProcedures] = useState<Procedure[]>([])
-  const [loading, setLoading] = useState(false)
   const { toast } = useToast()
-  const patientSearch = usePatientSearch<Patient>()
+
+  const [saving, setSaving] = useState(false)
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard(saving)
+  const [errors, setErrors] = useState<Errors>({})
 
   // Form state
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
@@ -80,69 +89,47 @@ export default function NewTreatmentPlanPage() {
   const [expectedEndDate, setExpectedEndDate] = useState('')
   const [items, setItems] = useState<PlanItem[]>([])
 
-  // Add procedure modal state
-  const [selectedProcedureId, setSelectedProcedureId] = useState('')
-  const [itemToothNumbers, setItemToothNumbers] = useState('')
+  // The line being added
+  // The whole catalogue row, for its list price.
+  const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
+  const [itemTeeth, setItemTeeth] = useState<number[]>([])
   const [itemNotes, setItemNotes] = useState('')
+  // The text in the field; parsed with parseMoney, never `Number(x) || 0`.
   const [itemCost, setItemCost] = useState('')
 
-  // Fetch initial data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [proceduresRes, handedPatient] = await Promise.all([
-          fetch('/api/procedures?all=true&isActive=true'),
-          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
-        ])
-
-        // Asked for by id rather than looked for in a page of the register,
-        // which quietly failed for every patient past the hundredth.
-        if (handedPatient) setSelectedPatient(handedPatient)
-
-        if (proceduresRes.ok) {
-          const data = await proceduresRes.json()
-          setProcedures(data.procedures)
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      }
-    }
-
-    fetchData()
-  }, [preselectedPatientId])
-
-  const groupedProcedures = procedures.reduce(
-    (acc, proc) => {
-      if (!acc[proc.category]) {
-        acc[proc.category] = []
-      }
-      acc[proc.category].push(proc)
-      return acc
-    },
-    {} as Record<string, Procedure[]>
-  )
+  const clearError = (key: keyof Errors) =>
+    setErrors((current) => (current[key] ? { ...current, [key]: undefined } : current))
 
   const handleAddProcedure = () => {
-    if (!selectedProcedureId) return
-
-    const procedure = procedures.find((p) => p.id === selectedProcedureId)
-    if (!procedure) return
+    if (!selectedProcedure) {
+      setErrors((current) => ({ ...current, procedure: 'Choose a procedure to add.' }))
+      return
+    }
+    if (isInvalidMoney(itemCost)) {
+      setErrors((current) => ({
+        ...current,
+        cost: 'Enter an amount like 1500 or 1500.50, or leave it blank for the list price.',
+      }))
+      return
+    }
 
     const newItem: PlanItem = {
-      procedureId: procedure.id,
-      procedureName: procedure.name,
-      procedureCode: procedure.code,
-      category: procedure.category,
-      toothNumbers: itemToothNumbers,
-      estimatedCost: itemCost ? parseFloat(itemCost) : Number(procedure.basePrice),
+      procedureId: selectedProcedure.id,
+      procedureName: selectedProcedure.name,
+      procedureCode: selectedProcedure.code,
+      category: selectedProcedure.category,
+      toothNumbers: formatTeeth(itemTeeth) ?? '',
+      // A blank price is the procedure's list price; zero is zero.
+      estimatedCost: parseMoney(itemCost) ?? Number(selectedProcedure.basePrice),
       notes: itemNotes,
     }
 
     setItems([...items, newItem])
+    setErrors((current) => ({ ...current, procedure: undefined, cost: undefined }))
 
-    // Reset form
-    setSelectedProcedureId('')
-    setItemToothNumbers('')
+    // Ready for the next line
+    setSelectedProcedure(null)
+    setItemTeeth([])
     setItemNotes('')
     setItemCost('')
   }
@@ -151,90 +138,70 @@ export default function NewTreatmentPlanPage() {
     setItems(items.filter((_, i) => i !== index))
   }
 
-  const calculateTotalCost = () => {
-    return items.reduce((sum, item) => sum + item.estimatedCost, 0)
-  }
+  const totalCost = items.reduce((sum, item) => sum + item.estimatedCost, 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const incomplete = (description: string) =>
-      toast({ variant: 'destructive', title: 'Treatment plan not saved', description })
+    const found: Errors = {}
+    if (!selectedPatient) found.patient = 'Choose the patient this plan is for.'
+    if (!title.trim()) found.title = 'Give the plan a title. The patient sees it on the estimate.'
+    if (items.length === 0) found.procedure = 'Add at least one procedure to the plan.'
+    setErrors(found)
 
-    if (!selectedPatient) {
-      incomplete('Please select a patient')
-      return
-    }
-
-    if (!title) {
-      incomplete('Please enter a title for the treatment plan')
-      return
-    }
-
-    if (items.length === 0) {
-      incomplete('Please add at least one procedure to the plan')
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const response = await fetch('/api/treatment-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: selectedPatient.id,
-          title,
-          notes,
-          startDate: startDate || null,
-          expectedEndDate: expectedEndDate || null,
-          items: items.map((item, index) => ({
-            procedureId: item.procedureId,
-            toothNumbers: item.toothNumbers || null,
-            priority: index + 1,
-            estimatedCost: item.estimatedCost,
-            notes: item.notes || null,
-          })),
-        }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create treatment plan')
+    const first = (Object.keys(FIELD_IDS) as (keyof Errors)[]).find((key) => found[key])
+    if (first || !selectedPatient) {
+      toast(toastError('create the treatment plan', 'Check the highlighted fields.'))
+      if (first) {
+        const field = document.getElementById(FIELD_IDS[first])
+        field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        field?.focus({ preventScroll: true })
       }
+      return
+    }
 
-      const plan = await response.json()
+    setSaving(true)
+    try {
+      const plan = await readJson<{ id: string; planNumber?: string }>(
+        await fetch('/api/treatment-plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: selectedPatient.id,
+            title,
+            notes,
+            startDate: startDate || null,
+            expectedEndDate: expectedEndDate || null,
+            items: items.map((item, index) => ({
+              procedureId: item.procedureId,
+              toothNumbers: item.toothNumbers || null,
+              priority: index + 1,
+              estimatedCost: item.estimatedCost,
+              notes: item.notes || null,
+            })),
+          }),
+        })
+      )
+      toast(toastSuccess('Treatment plan created', plan.planNumber))
       router.push(`/treatments/plans/${plan.id}`)
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not save the treatment plan',
-        description: error.message,
-      })
-    } finally {
-      setLoading(false)
+    } catch (error) {
+      toast(toastError('create the treatment plan', error))
+      setSaving(false)
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/treatments/plans">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Treatment Plan</h1>
-          <p className="text-muted-foreground">
-            Create a comprehensive treatment plan for a patient
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="New treatment plan"
+        description="Create a comprehensive treatment plan for a patient"
+        back={
+          <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment plans" />
+        }
+      />
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-        {/* Patient Selection */}
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Patient */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -243,125 +210,71 @@ export default function NewTreatmentPlanPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {selectedPatient ? (
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium">
-                      {selectedPatient.firstName} {selectedPatient.lastName}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedPatient.patientId} | {selectedPatient.phone}
-                    </div>
-                  </div>
-                </div>
-                <Button type="button" variant="outline" onClick={() => setSelectedPatient(null)}>
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search patients..."
-                    value={patientSearch.term}
-                    onChange={(e) => patientSearch.setTerm(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {patientSearch.searching && (
-                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Searching…
-                    </p>
-                  )}
-                  {!patientSearch.searching && patientSearch.results.length === 0 && (
-                    <div className="p-4 text-center text-muted-foreground">
-                      {patientSearch.failed
-                        ? 'Could not search just now. Check the connection and try again.'
-                        : patientSearch.isSearch
-                          ? `No patients found for “${patientSearch.searchedFor}”`
-                          : 'No patients found'}
-                    </div>
-                  )}
-                  {!patientSearch.searching &&
-                    patientSearch.results.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        onClick={() => setSelectedPatient(patient)}
-                        className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {patient.firstName} {patient.lastName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {patient.patientId} | {patient.phone}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
+            <FormField label="Patient" htmlFor={FIELD_IDS.patient} required error={errors.patient}>
+              {(control) => (
+                <PatientPicker<Patient>
+                  id={control.id}
+                  aria-describedby={control['aria-describedby']}
+                  aria-invalid={control['aria-invalid']}
+                  value={selectedPatient}
+                  onChange={(patient) => {
+                    setSelectedPatient(patient)
+                    if (patient) clearError('patient')
+                  }}
+                  initialPatientId={preselectedPatientId}
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
-        {/* Plan Details */}
+        {/* Plan details */}
         <Card>
           <CardHeader>
-            <CardTitle>Plan Details</CardTitle>
+            <CardTitle>Plan details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Title *</Label>
-              <Input
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., Full Mouth Rehabilitation, Orthodontic Treatment"
-              />
-            </div>
+            <FormField label="Title" htmlFor={FIELD_IDS.title} required error={errors.title}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value)
+                    if (e.target.value.trim()) clearError('title')
+                  }}
+                  placeholder="e.g. Full mouth rehabilitation, orthodontic treatment"
+                />
+              )}
+            </FormField>
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+            <FormField label="Notes" htmlFor="notes">
               <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Additional notes about the treatment plan..."
+                placeholder="Additional notes about the treatment plan…"
                 rows={3}
               />
-            </div>
+            </FormField>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Expected Start Date</Label>
+              <FormField label="Expected start date" htmlFor="startDate">
                 <Input
                   id="startDate"
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expectedEndDate">Expected End Date</Label>
+              </FormField>
+              <FormField label="Expected end date" htmlFor="expectedEndDate">
                 <Input
                   id="expectedEndDate"
                   type="date"
                   value={expectedEndDate}
                   onChange={(e) => setExpectedEndDate(e.target.value)}
                 />
-              </div>
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -375,76 +288,87 @@ export default function NewTreatmentPlanPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Add Procedure Form */}
+            {/* The line being added */}
             <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Procedure</Label>
-                  <Select value={selectedProcedureId} onValueChange={setSelectedProcedureId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select procedure" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(groupedProcedures).map(([category, procs]) => (
-                        <div key={category}>
-                          <div className="px-2 py-1.5 text-sm font-semibold text-muted-foreground">
-                            {procedureCategoryConfig[category]?.label || category}
-                          </div>
-                          {procs.map((proc) => (
-                            <SelectItem key={proc.id} value={proc.id}>
-                              {proc.code} - {proc.name}
-                            </SelectItem>
-                          ))}
-                        </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tooth Numbers</Label>
-                  <Input
-                    value={itemToothNumbers}
-                    onChange={(e) => setItemToothNumbers(e.target.value)}
-                    placeholder="e.g., 11,12,13 or 11-13"
+                <FormField label="Procedure" htmlFor={FIELD_IDS.procedure} error={errors.procedure}>
+                  {(control) => (
+                    <ProcedurePicker<Procedure>
+                      id={control.id}
+                      aria-describedby={control['aria-describedby']}
+                      aria-invalid={control['aria-invalid']}
+                      value={selectedProcedure?.id ?? null}
+                      selectedLabel={selectedProcedure?.name}
+                      onSelect={(procedure) => {
+                        setSelectedProcedure(procedure)
+                        clearError('procedure')
+                      }}
+                      onClear={() => setSelectedProcedure(null)}
+                    />
+                  )}
+                </FormField>
+                <FormField
+                  label="Estimated cost"
+                  htmlFor={FIELD_IDS.cost}
+                  error={errors.cost}
+                  hint={
+                    selectedProcedure
+                      ? `Leave blank for the list price, ${formatCurrency(selectedProcedure.basePrice)}.`
+                      : 'Leave blank for the procedure’s list price.'
+                  }
+                >
+                  {(control) => (
+                    <MoneyInput
+                      {...control}
+                      value={itemCost}
+                      onChange={(raw) => {
+                        setItemCost(raw)
+                        clearError('cost')
+                      }}
+                      placeholder={
+                        selectedProcedure ? String(Number(selectedProcedure.basePrice)) : undefined
+                      }
+                    />
+                  )}
+                </FormField>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium" id="itemTeethLabel">
+                  Teeth
+                </p>
+                <div role="group" aria-labelledby="itemTeethLabel">
+                  <ToothPicker
+                    selected={itemTeeth}
+                    onChange={setItemTeeth}
+                    patientId={selectedPatient?.id}
+                    age={selectedPatient?.age}
+                    dateOfBirth={selectedPatient?.dateOfBirth}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Estimated Cost</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={itemCost}
-                    onChange={(e) => setItemCost(e.target.value)}
-                    placeholder={
-                      selectedProcedureId
-                        ? `Default: ${formatCurrency(procedures.find((p) => p.id === selectedProcedureId)?.basePrice || 0)}`
-                        : 'Enter cost'
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Notes</Label>
-                  <Input
-                    value={itemNotes}
-                    onChange={(e) => setItemNotes(e.target.value)}
-                    placeholder="Procedure notes..."
-                  />
-                </div>
-              </div>
+
+              <FormField label="Notes" htmlFor="itemNotes">
+                <Input
+                  id="itemNotes"
+                  value={itemNotes}
+                  onChange={(e) => setItemNotes(e.target.value)}
+                  placeholder="Procedure notes…"
+                />
+              </FormField>
+
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleAddProcedure}
-                disabled={!selectedProcedureId}
+                disabled={!selectedProcedure}
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Add Procedure
+                Add procedure
               </Button>
             </div>
 
-            {/* Procedures List */}
+            {/* The plan's lines */}
             {items.length > 0 && (
               <div className="border rounded-lg">
                 <Table>
@@ -453,7 +377,7 @@ export default function NewTreatmentPlanPage() {
                       <TableHead className="w-12">#</TableHead>
                       <TableHead>Procedure</TableHead>
                       <TableHead>Teeth</TableHead>
-                      <TableHead>Cost</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -473,11 +397,15 @@ export default function NewTreatmentPlanPage() {
                             variant="outline"
                             className={`mt-1 ${procedureCategoryConfig[item.category]?.bgColor} ${procedureCategoryConfig[item.category]?.color} border-0`}
                           >
-                            {procedureCategoryConfig[item.category]?.label}
+                            {procedureCategoryConfig[item.category]?.label ?? item.category}
                           </Badge>
                         </TableCell>
-                        <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
-                        <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
+                        <TableCell>
+                          {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(item.estimatedCost)}
+                        </TableCell>
                         <TableCell>
                           <IconTooltip label="Remove this line">
                             <Button
@@ -487,7 +415,7 @@ export default function NewTreatmentPlanPage() {
                               aria-label="Remove this line"
                               onClick={() => handleRemoveItem(index)}
                             >
-                              <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
+                              <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </IconTooltip>
                         </TableCell>
@@ -495,10 +423,10 @@ export default function NewTreatmentPlanPage() {
                     ))}
                     <TableRow>
                       <TableCell colSpan={3} className="text-right font-medium">
-                        Total Estimated Cost:
+                        Total estimated cost
                       </TableCell>
-                      <TableCell className="font-bold text-lg">
-                        {formatCurrency(calculateTotalCost())}
+                      <TableCell className="text-right font-bold text-lg tabular-nums">
+                        {formatCurrency(totalCost)}
                       </TableCell>
                       <TableCell></TableCell>
                     </TableRow>
@@ -512,18 +440,11 @@ export default function NewTreatmentPlanPage() {
         {/* Actions */}
         <div className="flex justify-end gap-4">
           <Button type="button" variant="outline" asChild>
-            <Link href="/treatments/plans">Cancel</Link>
+            <Link href={trail.back('/treatments/plans')}>Cancel</Link>
           </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              'Creating...'
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Create Treatment Plan
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={saving} busyLabel="Creating treatment plan…">
+            Create treatment plan
+          </SubmitButton>
         </div>
       </form>
     </div>

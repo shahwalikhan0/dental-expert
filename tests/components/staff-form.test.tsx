@@ -117,27 +117,26 @@ describe('NewStaffPage', () => {
   describe('Initial rendering', () => {
     it('renders the page heading', () => {
       render(<NewStaffPage />)
-      expect(screen.getByText('Add New Staff')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'New staff member' })).toBeInTheDocument()
       expect(screen.getByText('Create a new staff member account')).toBeInTheDocument()
     })
 
     it('renders all form sections', () => {
       render(<NewStaffPage />)
-      expect(screen.getByText('Account Information')).toBeInTheDocument()
-      expect(screen.getByText('Contact Information')).toBeInTheDocument()
-      expect(screen.getByText('Personal Details')).toBeInTheDocument()
-      expect(screen.getByText('Professional Details')).toBeInTheDocument()
-      expect(screen.getByText('Emergency Contact')).toBeInTheDocument()
+      expect(screen.getByText('Account information')).toBeInTheDocument()
+      expect(screen.getByText('Contact information')).toBeInTheDocument()
+      expect(screen.getByText('Personal details')).toBeInTheDocument()
+      expect(screen.getByText('Professional details')).toBeInTheDocument()
+      expect(screen.getByText('Emergency contact')).toBeInTheDocument()
     })
 
-    it('renders required fields with asterisks', () => {
+    // The asterisk is drawn by the `label-required` class, not typed into the
+    // label, so a screen reader is not read "First name star".
+    it('marks the required fields', () => {
       render(<NewStaffPage />)
-      expect(screen.getByText('First Name *')).toBeInTheDocument()
-      expect(screen.getByText('Last Name *')).toBeInTheDocument()
-      expect(screen.getByText('Email *')).toBeInTheDocument()
-      expect(screen.getByText('Password *')).toBeInTheDocument()
-      expect(screen.getByText('Role *')).toBeInTheDocument()
-      expect(screen.getByText('Phone Number *')).toBeInTheDocument()
+      for (const label of ['First name', 'Last name', 'Email', 'Password', 'Role', 'Phone']) {
+        expect(screen.getByText(label)).toHaveClass('label-required')
+      }
     })
 
     it('renders role options', () => {
@@ -153,7 +152,7 @@ describe('NewStaffPage', () => {
 
     it('renders submit and cancel buttons', () => {
       render(<NewStaffPage />)
-      expect(screen.getByText('Create Staff Member')).toBeInTheDocument()
+      expect(screen.getByText('Create staff member')).toBeInTheDocument()
       expect(screen.getByText('Cancel')).toBeInTheDocument()
     })
 
@@ -177,7 +176,7 @@ describe('NewStaffPage', () => {
       expect(screen.getByPlaceholderText('Enter first name')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('Enter last name')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('staff@yourclinic.com')).toBeInTheDocument()
-      expect(screen.getByLabelText('Password *')).toBeInTheDocument()
+      expect(screen.getByLabelText('Password')).toBeInTheDocument()
       // Phone placeholder appears 3 times (phone, alternatePhone, emergencyPhone)
       expect(screen.getAllByPlaceholderText('0300 1234567').length).toBe(3)
     })
@@ -217,13 +216,13 @@ describe('NewStaffPage', () => {
   describe('Password visibility toggle', () => {
     it('starts with password hidden', () => {
       render(<NewStaffPage />)
-      const passwordInput = screen.getByLabelText('Password *')
+      const passwordInput = screen.getByLabelText('Password')
       expect(passwordInput).toHaveAttribute('type', 'password')
     })
 
     it('toggles password visibility on button click', async () => {
       render(<NewStaffPage />)
-      const passwordInput = screen.getByLabelText('Password *')
+      const passwordInput = screen.getByLabelText('Password')
 
       // Find the toggle button (it's the button right after the password input)
       const toggleButtons = screen.getAllByRole('button')
@@ -253,8 +252,8 @@ describe('NewStaffPage', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            title: 'Validation Error',
-            description: 'Please fill in all required fields',
+            title: "Couldn't create the staff member",
+            description: 'Check the highlighted fields.',
           })
         )
       })
@@ -276,7 +275,7 @@ describe('NewStaffPage', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            description: 'Please fill in all required fields',
+            description: 'Check the highlighted fields.',
           })
         )
       })
@@ -292,7 +291,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: '123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: '123' } })
       // Select role
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       // Fill phone
@@ -301,14 +300,14 @@ describe('NewStaffPage', () => {
 
       fireEvent.submit(container.querySelector('form')!)
 
-      await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.objectContaining({
-            variant: 'destructive',
-            description: 'Password must be at least 8 characters',
-          })
-        )
-      })
+      // Said under the field, with one summary toast.
+      expect(await screen.findByText('Password must be at least 8 characters')).toBeInTheDocument()
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: 'Check the highlighted fields.',
+        })
+      )
     })
 
     it('does not submit when validation fails', async () => {
@@ -341,7 +340,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -361,7 +360,7 @@ describe('NewStaffPage', () => {
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
-            title: 'Success',
+            title: 'Staff member created',
             description: expect.stringContaining('John Doe'),
           })
         )
@@ -388,7 +387,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getByTestId('select-item-ADMIN'))
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -425,7 +424,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -436,7 +435,7 @@ describe('NewStaffPage', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            title: 'Error',
+            title: "Couldn't create the staff member",
             description: 'Email already exists',
           })
         )
@@ -455,7 +454,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -466,7 +465,7 @@ describe('NewStaffPage', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            title: 'Error',
+            title: "Couldn't create the staff member",
           })
         )
       })
@@ -487,7 +486,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -515,7 +514,7 @@ describe('NewStaffPage', () => {
       fireEvent.change(screen.getByPlaceholderText('staff@yourclinic.com'), {
         target: { value: 'john@test.com' },
       })
-      fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'password123' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
       fireEvent.click(screen.getAllByTestId('select-item-DOCTOR')[0])
       const phoneInputs = screen.getAllByPlaceholderText('0300 1234567')
       fireEvent.change(phoneInputs[0], { target: { value: '3001234567' } })
@@ -523,7 +522,7 @@ describe('NewStaffPage', () => {
       fireEvent.submit(container.querySelector('form')!)
 
       await waitFor(() => {
-        const submitBtn = screen.getByText('Create Staff Member').closest('button')
+        const submitBtn = screen.getByText('Creating…').closest('button')
         expect(submitBtn).toBeDisabled()
       })
     })

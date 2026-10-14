@@ -1,14 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { Shield, Lock, Clock, UserX, AlertTriangle, Users } from 'lucide-react'
+import { Lock, Clock, UserX, AlertTriangle, Users, Save } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useFormGuard } from '@/hooks/use-form-guard'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_SECURITY, type SecuritySettings } from '@/lib/security-settings'
 import { MAXIMUM_PASSWORD_LENGTH, MINIMUM_PASSWORD_LENGTH } from '@/lib/password-policy'
@@ -35,95 +41,91 @@ import { MAXIMUM_PASSWORD_LENGTH, MINIMUM_PASSWORD_LENGTH } from '@/lib/password
  */
 export default function SecuritySettingsPage() {
   const { toast } = useToast()
+  const trail = useTrail('Security settings')
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const formRef = useFormGuard(saving)
   const [settings, setSettings] = useState<SecuritySettings>(DEFAULT_SECURITY)
 
   const set = <K extends keyof SecuritySettings>(key: K, value: SecuritySettings[K]) =>
     setSettings((current) => ({ ...current, [key]: value }))
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const response = await fetch('/api/settings/security')
-        if (!response.ok) throw new Error('Failed to load settings')
-
-        const data = await response.json()
-        // The server returns stored values merged over the defaults, so
-        // whatever comes back is the whole truth about what is in force.
-        if (data?.data) setSettings(data.data as SecuritySettings)
-      } catch {
-        toast({
-          title: 'Could not load',
-          description: 'Security settings could not be loaded.',
-          variant: 'destructive',
-        })
-      } finally {
-        setLoading(false)
-      }
+  const load = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
+    try {
+      const data = await readJson<{ data?: SecuritySettings }>(
+        await fetch('/api/settings/security')
+      )
+      // The server returns stored values merged over the defaults, so
+      // whatever comes back is the whole truth about what is in force.
+      if (data?.data) setSettings(data.data)
+    } catch (error) {
+      // Not the form with the defaults: saved, they would quietly undo the
+      // clinic's own policy.
+      console.error('Failed to load security settings:', error)
+      setFailed(true)
+    } finally {
+      setLoading(false)
     }
+  }, [])
 
+  useEffect(() => {
+    // Loading from the server on mount is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
-  }, [toast])
+  }, [load])
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = async (event?: React.FormEvent) => {
+    event?.preventDefault()
     setSaving(true)
     try {
-      const response = await fetch('/api/settings/security', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        toast({
-          title: 'Not saved',
-          description: data.error || 'Security settings were not saved.',
-          variant: 'destructive',
+      const data = await readJson<{ data?: SecuritySettings }>(
+        await fetch('/api/settings/security', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings),
         })
-        return
-      }
+      )
 
-      if (data?.data) setSettings(data.data as SecuritySettings)
-      toast({ title: 'Saved', description: 'Security settings are in force now.' })
-    } catch {
-      toast({
-        title: 'Not saved',
-        description: 'Security settings were not saved.',
-        variant: 'destructive',
-      })
+      if (data?.data) setSettings(data.data)
+      // The page stays put after a save, so the guard is told the work is safe.
+      formRef.reset()
+      toast(toastSuccess('Security settings saved', 'They are in force now.'))
+    } catch (error) {
+      toast(toastError('save the security settings', error))
     } finally {
       setSaving(false)
     }
   }
 
+  const header = (
+    <PageHeader
+      back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+      title="Security"
+      description="How accounts, sessions and records are protected"
+    />
+  )
+
   if (loading) {
+    return <PageSkeleton variant="form" />
+  }
+
+  if (failed) {
     return (
-      <div>
-        <div className="mb-6">
-          <h1 className="page-title">Security</h1>
-          <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
-        </div>
-        <div className="flex h-64 items-center justify-center">
-          <p className="text-muted-foreground">Loading settings…</p>
-        </div>
+      <div className="space-y-6">
+        {header}
+        <LoadFailed what="the security settings" onRetry={load} />
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="page-title flex items-center gap-2">
-          <Shield className="h-6 w-6" />
-          Security
-        </h1>
-        <p className="text-muted-foreground">How accounts, sessions and records are protected</p>
-      </div>
+    <div className="space-y-6">
+      {header}
 
-      <div className="space-y-6">
+      <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -330,11 +332,11 @@ export default function SecuritySettingsPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={handleSaveSettings} disabled={saving}>
-            {saving ? 'Saving…' : 'Save security settings'}
-          </Button>
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
+            Save changes
+          </SubmitButton>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

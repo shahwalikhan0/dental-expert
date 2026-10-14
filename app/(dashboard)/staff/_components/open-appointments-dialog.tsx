@@ -1,18 +1,19 @@
 'use client'
 
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { SubmitButton } from '@/components/ui/submit-button'
+import type { Trail } from '@/components/ui/trail'
 import { displayDateTime } from '@/lib/dates'
-import { humanise } from '@/lib/labels'
+import { statusLabel } from '@/lib/status'
 
 export interface OpenAppointment {
   id: string
@@ -30,6 +31,12 @@ export interface OpenAppointment {
  * today's queue or future bookings (bug report 12 Oct, finding 21). Nothing is
  * moved automatically; the desk reassigns or cancels from the appointments
  * screen, or confirms here and deals with them afterwards.
+ *
+ * A `Dialog` rather than `useConfirmDialog`: the point of asking again is the
+ * list of appointments, each a link, which a plain confirmation has no room
+ * for. It follows the same rules otherwise — a question naming the person, a
+ * confirm button that repeats the verb in the destructive colour, and an
+ * outline way out on the left.
  */
 export function OpenAppointmentsDialog({
   open,
@@ -38,6 +45,7 @@ export function OpenAppointmentsDialog({
   appointments,
   busy,
   onConfirm,
+  trail,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -45,28 +53,38 @@ export function OpenAppointmentsDialog({
   appointments: OpenAppointment[]
   busy?: boolean
   onConfirm: () => void
+  /** The page's trail, so an appointment opened from here can come back. */
+  trail?: Trail
 }) {
   const count = appointments.length
+  const noun = `appointment${count === 1 ? '' : 's'}`
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-lg">
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {name} still has {count} appointment{count === 1 ? '' : 's'}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Not while the request is out: closing would hide whether it worked.
+        if (busy && !next) return
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>
+            Deactivate {name} with {count} open {noun}?
+          </DialogTitle>
+          <DialogDescription>
             These stay booked with {name} if you go ahead, and {name} will not be able to sign in to
             see them. Reassign or cancel them on the Appointments screen, or deactivate now and deal
             with them afterwards.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <ul className="max-h-64 divide-y overflow-y-auto rounded-md border text-sm">
           {appointments.map((a) => (
             <li key={a.id} className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0">
                 <Link
-                  href={`/appointments/${a.id}`}
+                  href={trail ? trail.to(`/appointments/${a.id}`) : `/appointments/${a.id}`}
                   className="font-medium text-primary hover:underline"
                 >
                   {a.appointmentNo}
@@ -75,26 +93,29 @@ export function OpenAppointmentsDialog({
               </div>
               <div className="shrink-0 text-right">
                 <div>{displayDateTime(a.startsAt)}</div>
-                <div className="text-xs text-muted-foreground">{humanise(a.status)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {statusLabel('appointment', a.status)}
+                </div>
               </div>
             </li>
           ))}
         </ul>
 
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Keep active</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={(e) => {
-              e.preventDefault()
-              onConfirm()
-            }}
-            disabled={busy}
-            className="bg-red-600 hover:bg-red-700"
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+            Keep active
+          </Button>
+          <SubmitButton
+            type="button"
+            variant="destructive"
+            busy={busy}
+            busyLabel="Deactivating…"
+            onClick={onConfirm}
           >
             Deactivate anyway
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </SubmitButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

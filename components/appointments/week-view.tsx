@@ -3,7 +3,9 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { formatTime } from '@/lib/appointment-utils'
 import type { BookAppointment } from './appointment-book'
+import { appointmentDotClass, appointmentStatusLabel } from './status-tone'
 
 /** A booking, plus the day it falls on — which a week has to read off each row. */
 export type WeekAppointment = BookAppointment & { scheduledDate: string }
@@ -22,16 +24,6 @@ export type WeekAppointment = BookAppointment & { scheduledDate: string }
  * being asked: a week is read by day, looking for the light column.
  */
 
-const STATUS_DOT: Record<string, string> = {
-  SCHEDULED: 'bg-slate-500',
-  CONFIRMED: 'bg-blue-500',
-  CHECKED_IN: 'bg-amber-500',
-  IN_PROGRESS: 'bg-violet-500',
-  COMPLETED: 'bg-green-500',
-  NO_SHOW: 'bg-red-500',
-  CANCELLED: 'bg-muted-foreground',
-}
-
 const DEAD = ['CANCELLED', 'NO_SHOW']
 
 const subjectOf = (a: BookAppointment) =>
@@ -44,13 +36,8 @@ function addDays(day: string, n: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-/** `14:30` as `2:30 pm`. */
-function clockLabel(time: string): string {
-  const [hours, minutes] = time.split(':').map(Number)
-  const suffix = hours < 12 ? 'am' : 'pm'
-  const hour = hours % 12 === 0 ? 12 : hours % 12
-  return `${hour}:${String(minutes).padStart(2, '0')}${suffix}`
-}
+/** The short weekday names, Sunday first, as `Date.getUTCDay()` counts. */
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export function WeekView({
   weekStart,
@@ -108,7 +95,7 @@ export function WeekView({
                 )}
               >
                 <span className="block text-xs text-muted-foreground">
-                  {date.toLocaleDateString('en-PK', { weekday: 'short', timeZone: 'UTC' })}
+                  {WEEKDAY_SHORT[date.getUTCDay()]}
                 </span>
                 <span className={cn('block text-lg font-semibold', isToday && 'text-primary')}>
                   {date.getUTCDate()}
@@ -136,11 +123,14 @@ export function WeekView({
                       <span
                         className={cn(
                           'h-1.5 w-1.5 shrink-0 rounded-full',
-                          STATUS_DOT[appointment.status] ?? 'bg-muted-foreground'
+                          appointmentDotClass(appointment.status)
                         )}
                         aria-hidden
                       />
-                      <span className="font-medium">{clockLabel(appointment.scheduledTime)}</span>
+                      <span className="font-medium">{formatTime(appointment.scheduledTime)}</span>
+                      <span className="sr-only">
+                        , {appointmentStatusLabel(appointment.status)}
+                      </span>
                     </span>
                     <span className="block truncate">{subjectOf(appointment)}</span>
                     {appointment.doctor && (

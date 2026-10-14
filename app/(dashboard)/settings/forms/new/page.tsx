@@ -17,37 +17,33 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import {
-  ArrowLeft,
-  Plus,
-  Trash2,
-  GripVertical,
-  Eye,
-  Save,
-  Loader2,
-  ChevronUp,
-  ChevronDown,
-} from 'lucide-react'
+import { Plus, Trash2, GripVertical, Eye, Pencil, Save, ChevronUp, ChevronDown } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { PageHeader } from '@/components/ui/page-header'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { FormField as Field } from '@/components/ui/form-field'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { toastError, toastInfo, toastSuccess } from '@/lib/toast-utils'
 import { FormRenderer, type FormField } from '@/components/forms/form-renderer'
 
 const FIELD_TYPES = [
-  { value: 'text', label: 'Text Input' },
-  { value: 'textarea', label: 'Text Area' },
+  { value: 'text', label: 'Text input' },
+  { value: 'textarea', label: 'Text area' },
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },
   { value: 'select', label: 'Dropdown' },
   { value: 'checkbox', label: 'Checkbox' },
-  { value: 'radio', label: 'Radio Buttons' },
+  { value: 'radio', label: 'Radio buttons' },
   { value: 'signature', label: 'Signature' },
-  { value: 'heading', label: 'Section Heading' },
-  { value: 'paragraph', label: 'Paragraph Text' },
+  { value: 'heading', label: 'Section heading' },
+  { value: 'paragraph', label: 'Paragraph text' },
 ] as const
 
 const FORM_TYPES = [
-  { value: 'MEDICAL_HISTORY', label: 'Medical History' },
-  { value: 'CONSENT', label: 'Consent Form' },
-  { value: 'INTAKE', label: 'Intake Form' },
+  { value: 'MEDICAL_HISTORY', label: 'Medical history' },
+  { value: 'CONSENT', label: 'Consent form' },
+  { value: 'INTAKE', label: 'Intake form' },
   { value: 'FEEDBACK', label: 'Feedback' },
   { value: 'CUSTOM', label: 'Custom' },
 ]
@@ -59,13 +55,16 @@ function generateId() {
 export default function NewFormTemplatePage() {
   const { toast } = useToast()
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
+  const trail = useTrail('New form template')
+  const [saving, setSaving] = useState(false)
+  // Warn before a half-filled form is thrown away by a stray click — but not
+  // during the navigation a successful save makes.
+  const formRef = useFormGuard(saving)
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState<string>()
   const [description, setDescription] = useState('')
   const [type, setType] = useState('CUSTOM')
   const [fields, setFields] = useState<FormField[]>([])
-  const [saving, setSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
 
@@ -75,7 +74,7 @@ export default function NewFormTemplatePage() {
       type: fieldType as FormField['type'],
       label:
         fieldType === 'heading'
-          ? 'Section Title'
+          ? 'Section title'
           : fieldType === 'paragraph'
             ? 'Enter informational text here'
             : '',
@@ -129,11 +128,12 @@ export default function NewFormTemplatePage() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast({ variant: 'destructive', title: 'Template name is required' })
+      setNameError('Enter a name for the template.')
+      toast(toastError('create the template', 'Check the highlighted fields.'))
       return
     }
     if (fields.length === 0) {
-      toast({ variant: 'destructive', title: 'Add at least one field' })
+      toast(toastError('create the template', 'Add at least one field.'))
       return
     }
 
@@ -146,13 +146,13 @@ export default function NewFormTemplatePage() {
       })
       const data = await res.json()
       if (res.ok) {
-        toast({ title: 'Form template created' })
+        toast(toastSuccess('Form template created'))
         router.push('/settings/forms')
       } else {
-        toast({ variant: 'destructive', title: data.error || 'Failed to save' })
+        toast(toastError('create the template', data))
       }
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to save template' })
+    } catch (error) {
+      toast(toastError('create the template', error))
     } finally {
       setSaving(false)
     }
@@ -161,35 +161,25 @@ export default function NewFormTemplatePage() {
   if (showPreview) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Go back"
-              onClick={() => setShowPreview(false)}
-            >
-              <ArrowLeft className="h-4 w-4" />
+        <PageHeader
+          title={<>Preview: {name || 'Untitled'}</>}
+          description="This is how the form will appear to patients"
+          actions={
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              Back to editor
             </Button>
-            <div>
-              <h1 className="page-title">Preview: {name || 'Untitled'}</h1>
-              <p className="text-muted-foreground">This is how the form will appear to patients</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={() => setShowPreview(false)}>
-            Back to Editor
-          </Button>
-        </div>
+          }
+        />
         <Card>
           <CardHeader>
-            <CardTitle>{name || 'Untitled Form'}</CardTitle>
+            <CardTitle>{name || 'Untitled form'}</CardTitle>
             {description && <p className="text-sm text-muted-foreground">{description}</p>}
           </CardHeader>
           <CardContent>
             <FormRenderer
               fields={fields}
-              onSubmit={() => toast({ title: 'Preview mode — form not submitted' })}
-              submitLabel="Submit (Preview)"
+              onSubmit={() => toast(toastInfo('Preview mode — form not submitted'))}
+              submitLabel="Submit (preview)"
             />
           </CardContent>
         </Card>
@@ -199,63 +189,59 @@ export default function NewFormTemplatePage() {
 
   return (
     <div ref={formRef} className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Go back"
-            onClick={() => router.push('/settings/forms')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="page-title">New Form Template</h1>
-            <p className="text-muted-foreground">Design a custom form for patients</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowPreview(true)}
-            disabled={fields.length === 0}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Preview
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Save Template
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/settings/forms" fallbackLabel="Form templates" />}
+        title="New form template"
+        description="Design a custom form for patients"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setShowPreview(true)}
+              disabled={fields.length === 0}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview
+            </Button>
+            <SubmitButton
+              type="button"
+              onClick={handleSave}
+              busy={saving}
+              busyLabel="Creating…"
+              icon={Save}
+            >
+              Create template
+            </SubmitButton>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Form Settings + Fields */}
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Form Details</CardTitle>
+              <CardTitle>Form details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Template name" required error={nameError}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value)
+                        setNameError(undefined)
+                      }}
+                      placeholder="e.g. General Consent Form"
+                    />
+                  )}
+                </Field>
                 <div className="space-y-2">
-                  <Label htmlFor="name">Template Name *</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. General Consent Form"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Form Type</Label>
+                  <Label htmlFor="form-type">Form type</Label>
                   <Select value={type} onValueChange={setType}>
-                    <SelectTrigger>
+                    <SelectTrigger id="form-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -274,7 +260,7 @@ export default function NewFormTemplatePage() {
                   id="desc"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Brief description of this form..."
+                  placeholder="Brief description of this form…"
                   rows={2}
                 />
               </div>
@@ -284,7 +270,7 @@ export default function NewFormTemplatePage() {
           {/* Field List */}
           <Card>
             <CardHeader>
-              <CardTitle>Form Fields ({fields.length})</CardTitle>
+              <CardTitle>Form fields ({fields.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {fields.length === 0 && (
@@ -312,44 +298,58 @@ export default function NewFormTemplatePage() {
                       </Badge>
                     )}
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Collapse"
-                        className="h-7 w-7"
-                        onClick={() => moveField(index, -1)}
-                        disabled={index === 0}
+                      <IconTooltip label="Move field up">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Move field up"
+                          className="h-7 w-7"
+                          onClick={() => moveField(index, -1)}
+                          disabled={index === 0}
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Move field down">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Move field down"
+                          className="h-7 w-7"
+                          onClick={() => moveField(index, 1)}
+                          disabled={index === fields.length - 1}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip
+                        label={editingField === field.id ? 'Close field settings' : 'Edit field'}
                       >
-                        <ChevronUp className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Expand"
-                        className="h-7 w-7"
-                        onClick={() => moveField(index, 1)}
-                        disabled={index === fields.length - 1}
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="View"
-                        className="h-7 w-7"
-                        onClick={() => setEditingField(editingField === field.id ? null : field.id)}
-                      >
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete"
-                        className="h-7 w-7 text-destructive"
-                        onClick={() => removeField(field.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={
+                            editingField === field.id ? 'Close field settings' : 'Edit field'
+                          }
+                          className="h-7 w-7"
+                          onClick={() =>
+                            setEditingField(editingField === field.id ? null : field.id)
+                          }
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Remove field">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove field"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeField(field.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
                     </div>
                   </div>
 
@@ -385,7 +385,7 @@ export default function NewFormTemplatePage() {
                         field.type
                       ) ? null : (
                         <div className="space-y-1">
-                          <Label className="text-xs">Help Text</Label>
+                          <Label className="text-xs">Help text</Label>
                           <Input
                             value={field.description || ''}
                             onChange={(e) => updateField(field.id, { description: e.target.value })}
@@ -405,20 +405,22 @@ export default function NewFormTemplatePage() {
                                 onChange={(e) => updateOption(field.id, oi, e.target.value)}
                                 className="flex-1"
                               />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Delete"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => removeOption(field.id, oi)}
-                                disabled={(field.options?.length || 0) <= 1}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                              <IconTooltip label="Remove option">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Remove option"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={() => removeOption(field.id, oi)}
+                                  disabled={(field.options?.length || 0) <= 1}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </IconTooltip>
                             </div>
                           ))}
                           <Button variant="outline" size="sm" onClick={() => addOption(field.id)}>
-                            <Plus className="h-3 w-3 mr-1" /> Add Option
+                            <Plus className="h-3 w-3 mr-1" /> Add option
                           </Button>
                         </div>
                       )}
@@ -426,12 +428,15 @@ export default function NewFormTemplatePage() {
                       {!['heading', 'paragraph'].includes(field.type) && (
                         <div className="flex items-center gap-2">
                           <Switch
+                            id={`required-${field.id}`}
                             checked={field.required || false}
                             onCheckedChange={(checked) =>
                               updateField(field.id, { required: checked })
                             }
                           />
-                          <Label className="text-xs">Required</Label>
+                          <Label htmlFor={`required-${field.id}`} className="text-xs">
+                            Required
+                          </Label>
                         </div>
                       )}
                     </div>
@@ -446,7 +451,7 @@ export default function NewFormTemplatePage() {
         <div>
           <Card className="sticky top-6">
             <CardHeader>
-              <CardTitle className="text-base">Add Field</CardTitle>
+              <CardTitle className="text-base">Add field</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {FIELD_TYPES.map((ft) => (

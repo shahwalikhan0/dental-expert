@@ -1,19 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useListParams } from '@/hooks/use-list-params'
+import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -24,19 +17,22 @@ import {
   GridPagination,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { DateRangeFilter, dateRangeLabel } from '@/components/ui/date-range-filter'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Plus,
-  Search,
   User,
   Phone,
   MoreHorizontal,
-  Eye,
-  Edit,
+  Pencil,
   Play,
   CheckCircle,
   Stethoscope,
   Calendar,
-  Clock,
   FileText,
   AlertCircle,
 } from 'lucide-react'
@@ -49,16 +45,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
 import {
-  treatmentStatusConfig,
   procedureCategoryConfig,
-  formatCurrency,
-  formatDate,
   formatToothNumbers,
   parseToothNumbers,
 } from '@/lib/treatment-utils'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { readJson, toastError } from '@/lib/toast-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { ActiveFilters } from '@/components/ui/active-filters'
-import { humanise } from '@/lib/labels'
+import { CompleteTreatmentDialog } from '@/components/treatments/complete-treatment-dialog'
 
 interface Treatment {
   id: string
@@ -97,34 +94,40 @@ interface Treatment {
   } | null
 }
 
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
+/** What the status filter offers: every treatment status, as the badge names it. */
+const STATUS_OPTIONS = statusOptions('treatment')
+
+const FOLLOW_UP_OPTIONS = [{ value: 'required', label: 'Follow-up required' }]
 
 export default function TreatmentsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Treatments')
   const router = useRouter()
+  const { toast } = useToast()
   const [treatments, setTreatments] = useState<Treatment[]>([])
   const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  })
+  const [total, setTotal] = useState(0)
+  // The fetch failed — said in the grid, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  // The row whose "Complete treatment" was chosen: the same dialog as the
+  // treatment's own page, so completing from here asks for the same notes.
+  const [completing, setCompleting] = useState<Treatment | null>(null)
 
-  // Filters
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [followUpFilter, setFollowUpFilter] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  /**
+   * Search, filters and page, kept in the address bar, so opening a treatment
+   * and coming back keeps the view. The hook debounces the search and goes
+   * back to page 1 on any change.
+   */
+  const list = useListParams({
+    defaults: { status: 'all', followUp: 'all', from: '', to: '' },
+  })
+  const range = { from: list.filters.from, to: list.filters.to }
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const params = list.apiParams({ rename: { from: 'dateFrom', to: 'dateTo' } })
+  // The route reads the follow-up filter as a flag.
+  if (params.get('followUp') === 'required') params.set('followUpRequired', 'true')
+  params.delete('followUp')
+  const query = params.toString()
 
   /**
    * Which request is the current one.
@@ -139,91 +142,36 @@ export default function TreatmentsPage() {
     const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-      })
-
-      if (debouncedSearch) params.append('search', debouncedSearch)
-      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
-      if (followUpFilter === 'required') params.append('followUpRequired', 'true')
-      if (dateFrom) params.append('dateFrom', dateFrom)
-      if (dateTo) params.append('dateTo', dateTo)
-
-      const response = await fetch(`/api/treatments?${params}`)
+      setFailed(false)
+      const response = await fetch(`/api/treatments?${query}`)
       if (!response.ok) throw new Error('Failed to fetch treatments')
 
       const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setTreatments(data.treatments)
-      setPagination(data.pagination)
+      setTotal(data.pagination?.total ?? 0)
     } catch (error) {
       console.error('Error fetching treatments:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
-  /**
-   * Back to the first page whenever what we are filtering by changes.
-   *
-   * Without this, searching from page three asked the server for page three of
-   * the results for that search — which is usually empty, so the screen said
-   * there was nothing to find while the row sat in the list behind it.
-   */
-  useEffect(() => {
-    // The cascading render this causes is the point, and it is bounded: one
-    // extra pass, only when a filter changes while the list is off page one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [debouncedSearch, statusFilter, followUpFilter, dateFrom, dateTo])
-
   useEffect(() => {
     fetchTreatments()
-  }, [
-    pagination.page,
-    pagination.limit,
-    debouncedSearch,
-    statusFilter,
-    followUpFilter,
-    dateFrom,
-    dateTo,
-  ])
+    // The query string is the whole question; `fetchTreatments` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
-  const handleStartTreatment = async (id: string) => {
+  const handleStartTreatment = async (treatment: Treatment) => {
     try {
-      const response = await fetch(`/api/treatments/${id}/start`, {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to start treatment')
+      await readJson(await fetch(`/api/treatments/${treatment.id}/start`, { method: 'POST' }))
       fetchTreatments()
     } catch (error) {
-      console.error('Error starting treatment:', error)
+      toast(toastError(`start treatment ${treatment.treatmentNo}`, error))
     }
-  }
-
-  const handleCompleteTreatment = async (id: string) => {
-    try {
-      const response = await fetch(`/api/treatments/${id}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      if (!response.ok) throw new Error('Failed to complete treatment')
-      fetchTreatments()
-    } catch (error) {
-      console.error('Error completing treatment:', error)
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const config = treatmentStatusConfig[status] || {
-      label: status,
-      color: 'text-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
   }
 
   const getCategoryBadge = (category: string) => {
@@ -241,132 +189,111 @@ export default function TreatmentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="page-title">Treatments</h1>
-          <p className="text-muted-foreground">Manage patient treatments and clinical records</p>
-        </div>
-        <div className="flex gap-2">
-          <ExportMenu
-            filename="treatments"
-            getData={() =>
-              treatments.map((t) => ({
-                'Treatment No': t.treatmentNo,
-                Patient: `${t.patient.firstName} ${t.patient.lastName}`,
-                'Patient ID': t.patient.patientId,
-                'Patient Phone': t.patient.phone,
-                Doctor: `Dr. ${t.doctor.firstName} ${t.doctor.lastName}`,
-                Specialization: t.doctor.specialization || '',
-                Procedure: t.procedure.name,
-                'Procedure Code': t.procedure.code,
-                Category: t.procedure.category,
-                Diagnosis: t.diagnosis || '',
-                'Chief Complaint': t.chiefComplaint || '',
-                Teeth: t.toothNumbers || '',
-                Cost: Number(t.cost),
-                Status: t.status,
-                'Follow-up Required': t.followUpRequired ? 'Yes' : 'No',
-                'Follow-up Date': t.followUpDate || '',
-                Date: formatDate(t.createdAt),
-              }))
-            }
-          />
-          <Button variant="outline" asChild>
-            <Link href="/treatments/plans">
-              <FileText className="h-4 w-4 mr-2" />
-              Treatment Plans
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/treatments/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Treatment
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Treatments"
+        description="Manage patient treatments and clinical records"
+        actions={
+          <>
+            <ExportMenu
+              filename="treatments"
+              getData={() =>
+                treatments.map((t) => ({
+                  'Treatment No': t.treatmentNo,
+                  Patient: `${t.patient.firstName} ${t.patient.lastName}`,
+                  'Patient ID': t.patient.patientId,
+                  'Patient Phone': t.patient.phone,
+                  Doctor: `Dr. ${t.doctor.firstName} ${t.doctor.lastName}`,
+                  Specialization: t.doctor.specialization || '',
+                  Procedure: t.procedure.name,
+                  'Procedure Code': t.procedure.code,
+                  Category: t.procedure.category,
+                  Diagnosis: t.diagnosis || '',
+                  'Chief Complaint': t.chiefComplaint || '',
+                  Teeth: t.toothNumbers || '',
+                  Cost: Number(t.cost),
+                  Status: t.status,
+                  'Follow-up Required': t.followUpRequired ? 'Yes' : 'No',
+                  'Follow-up Date': t.followUpDate || '',
+                  Date: displayDate(t.createdAt),
+                }))
+              }
+            />
+            <Button variant="outline" asChild>
+              <Link href="/treatments/plans">
+                <FileText className="h-4 w-4 mr-2" />
+                Treatment plans
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/treatments/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New treatment
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by patient name, treatment number, or diagnosis..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="PLANNED">Planned</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={followUpFilter} onValueChange={setFollowUpFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Follow-up" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Treatments</SelectItem>
-                  <SelectItem value="required">Follow-up Required</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-[140px]"
-                placeholder="From Date"
-              />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-[140px]"
-                placeholder="To Date"
-              />
-            </div>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="treatments"
-            onClearAll={() => {
-              setSearch('')
-              setStatusFilter('all')
-              setFollowUpFilter('all')
-              setDateFrom('')
-              setDateTo('')
-            }}
-            filters={[
-              { label: 'Search', value: search, onClear: () => setSearch('') },
-              {
-                label: 'Status',
-                value: statusFilter === 'all' ? null : humanise(statusFilter),
-                onClear: () => setStatusFilter('all'),
-              },
-              {
-                label: 'Follow-up',
-                value: followUpFilter === 'all' ? null : 'Required',
-                onClear: () => setFollowUpFilter('all'),
-              },
-              { label: 'From', value: dateFrom, onClear: () => setDateFrom('') },
-              { label: 'To', value: dateTo, onClear: () => setDateTo('') },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search treatments"
+            placeholder="Search by patient name, treatment number or diagnosis…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={list.filters.status}
+              onValueChange={(status) => list.setFilter('status', status)}
+              options={STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Follow-up"
+              plural="treatments"
+              value={list.filters.followUp}
+              onValueChange={(followUp) => list.setFilter('followUp', followUp)}
+              options={FOLLOW_UP_OPTIONS}
+            />
+          </>
+        }
+        date={
+          <DateRangeFilter
+            label="Created"
+            value={range}
+            onChange={(next) => list.setFilters(next)}
+          />
+        }
+        active={{
+          noun: 'treatments',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Status',
+              value:
+                list.filters.status === 'all'
+                  ? null
+                  : statusLabel('treatment', list.filters.status),
+              onClear: () => list.setFilter('status', 'all'),
+            },
+            {
+              label: 'Follow-up',
+              value: filterValueLabel(FOLLOW_UP_OPTIONS, list.filters.followUp),
+              onClear: () => list.setFilter('followUp', 'all'),
+            },
+            {
+              label: 'Created',
+              value: dateRangeLabel(range),
+              onClear: () => list.setFilters({ from: '', to: '' }),
+            },
+          ],
+        }}
+      />
 
       {/* Treatments Table */}
       <Card>
@@ -387,12 +314,19 @@ export default function TreatmentsPage() {
             <GridBody
               columns={8}
               loading={loading}
+              failed={failed}
+              onRetry={fetchTreatments}
               empty={treatments.length === 0}
               emptyIcon={Stethoscope}
               emptyTitle="No treatments found"
-              emptyDescription="Nothing has been carried out under these filters."
-              emptyActionLabel="Create New Treatment"
-              emptyActionHref="/treatments/new"
+              emptyDescription={
+                list.isFiltered
+                  ? 'Nothing has been carried out under these filters.'
+                  : 'No treatment has been recorded yet.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New treatment'}
+              emptyActionHref={list.isFiltered ? undefined : '/treatments/new'}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {treatments.map((treatment) => (
                 <ClickableRow
@@ -403,7 +337,7 @@ export default function TreatmentsPage() {
                   <TableCell>
                     <div className="font-medium">{treatment.treatmentNo}</div>
                     <div className="text-sm text-muted-foreground">
-                      {formatDate(treatment.createdAt)}
+                      {displayDate(treatment.createdAt)}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -417,7 +351,7 @@ export default function TreatmentsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Phone className="h-3 w-3" />
-                          {treatment.patient.phone}
+                          {formatPhone(treatment.patient.phone)}
                         </div>
                       </div>
                     </div>
@@ -442,7 +376,7 @@ export default function TreatmentsPage() {
                         {formatToothNumbers(parseToothNumbers(treatment.toothNumbers))}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground">{BLANK}</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -450,7 +384,7 @@ export default function TreatmentsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">
-                      {getStatusBadge(treatment.status)}
+                      <StatusBadge kind="treatment" status={treatment.status} />
                       {treatment.followUpRequired && (
                         <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                           <AlertCircle className="h-3 w-3" />
@@ -460,54 +394,57 @@ export default function TreatmentsPage() {
                     </div>
                   </TableCell>
                   <GridActionsCell>
-                    <DropdownMenu>
-                      <IconTooltip label="More actions">
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </IconTooltip>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/treatments/${treatment.id}`)}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        {treatment.status === 'PLANNED' && (
-                          <DropdownMenuItem onClick={() => handleStartTreatment(treatment.id)}>
-                            <Play className="h-4 w-4 mr-2" />
-                            Start Treatment
-                          </DropdownMenuItem>
-                        )}
-                        {treatment.status === 'IN_PROGRESS' && (
-                          <DropdownMenuItem onClick={() => handleCompleteTreatment(treatment.id)}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Complete Treatment
-                          </DropdownMenuItem>
-                        )}
-                        {treatment.appointment && (
-                          <DropdownMenuItem
-                            onClick={() =>
-                              router.push(`/appointments/${treatment.appointment!.id}`)
-                            }
-                          >
-                            <Calendar className="h-4 w-4 mr-2" />
-                            View Appointment
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* A finished treatment with no appointment has nothing
+                        to offer here; the row opens it. */}
+                    {(treatment.status === 'PLANNED' ||
+                      treatment.status === 'IN_PROGRESS' ||
+                      treatment.appointment) && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          {/* No "View details": the row itself opens the treatment. */}
+                          {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          {treatment.status === 'PLANNED' && (
+                            <DropdownMenuItem onClick={() => handleStartTreatment(treatment)}>
+                              <Play className="h-4 w-4 mr-2" />
+                              Start treatment
+                            </DropdownMenuItem>
+                          )}
+                          {treatment.status === 'IN_PROGRESS' && (
+                            <DropdownMenuItem onClick={() => setCompleting(treatment)}>
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Complete treatment…
+                            </DropdownMenuItem>
+                          )}
+                          {treatment.appointment && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(trail.to(`/appointments/${treatment.appointment!.id}`))
+                              }
+                            >
+                              <Calendar className="h-4 w-4 mr-2" />
+                              View appointment
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
                 </ClickableRow>
               ))}
@@ -515,15 +452,21 @@ export default function TreatmentsPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="treatments"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>
+
+      <CompleteTreatmentDialog
+        treatment={completing}
+        onClose={() => setCompleting(null)}
+        onCompleted={fetchTreatments}
+      />
     </div>
   )
 }

@@ -1,8 +1,8 @@
 'use client'
 
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { displayDate, displayTime } from '@/lib/dates'
 import { PortalEmpty, PortalState, usePortalData } from '@/components/portal/portal-data'
 
 interface Appointment {
@@ -17,7 +17,12 @@ interface Appointment {
   dentist: string
 }
 
-const STATUS_LABELS: Record<string, string> = {
+/**
+ * The patient's words for a status. The colour is the clinic's (lib/status),
+ * so "Missed" is red here as "No-show" is on the clinic's own screens; only
+ * the label is put the way a patient would say it.
+ */
+const PATIENT_LABELS: Record<string, string> = {
   SCHEDULED: 'Booked',
   CONFIRMED: 'Confirmed',
   CHECKED_IN: 'Checked in',
@@ -34,13 +39,14 @@ function Row({ a }: { a: Appointment }) {
       <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
         <div className="min-w-0">
           <p className="font-medium">
-            {formatDate(a.scheduledDate)} at {a.scheduledTime}
+            {displayDate(a.scheduledDate)} at{' '}
+            {displayTime(`${a.scheduledDate.slice(0, 10)}T${a.scheduledTime}`)}
           </p>
           <p className="text-sm text-muted-foreground">
             {a.dentist} &middot; {a.appointmentNo}
           </p>
         </div>
-        <Badge variant="outline">{STATUS_LABELS[a.status] ?? a.status}</Badge>
+        <StatusBadge kind="appointment" status={a.status} label={PATIENT_LABELS[a.status]} />
       </CardContent>
     </Card>
   )

@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useState, useEffect, useRef } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useListParams } from '@/hooks/use-list-params'
+import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   ClickableRow,
@@ -19,11 +18,24 @@ import {
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ClipboardList, Plus, Search, Eye, Trash2 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ClipboardList, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { fetchHandedPatient } from '@/lib/prefill'
 import { prescriberName } from '@/lib/prescribing'
+import { prescriptionStatus } from '@/lib/status'
+import { BLANK, displayDate } from '@/lib/dates'
+import { DEFAULT_TIMEZONE, localDay } from '@/lib/appointment-time'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { useCan } from '@/hooks/use-can'
 
 interface Prescription {
@@ -54,24 +66,34 @@ interface HandedPatient {
 export default function PrescriptionsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Prescriptions')
-  const router = useRouter()
-  // Arriving from a patient or a treatment narrows the list to that patient.
-  // The route has always accepted this filter; nothing passed it, so the only
-  // way to see one patient's prescriptions was to search for their name.
-  const searchParams = useSearchParams()
-  const patientId = searchParams.get('patientId') ?? ''
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   // Only a dentist prescribes (bug report 12 Oct, finding 36). Hidden rather
   // than offered to a form that can only end in a refusal; `null` while the
   // session loads, so it does not flash on and off.
   const canPrescribe = useCan('clinical:sign') === true
+  // Deleting is `clinical:write` on the server; not offered without it.
+  const canDelete = useCan('clinical:write') === true
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 })
+  // The fetch failed — said in the grid, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
+
+  /**
+   * Search, page and the patient filter, kept in the address bar.
+   *
+   * Arriving from a patient or a treatment narrows the list to that patient
+   * (`?patientId=`). The route has always accepted this filter; it is a filter
+   * like any other here, so clearing the filters clears it too.
+   */
+  const list = useListParams({ defaults: { patientId: '' } })
+  const patientId = list.filters.patientId
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const query = list.apiParams().toString()
+
+  // The clinic's calendar day, for whether a prescription is still valid.
+  const today = localDay(new Date(), DEFAULT_TIMEZONE)
 
   /**
    * The name behind `?patientId=`, so the screen can say whose list this is.
@@ -96,14 +118,6 @@ export default function PrescriptionsPage() {
   // thing worse here than no name.
   const handedPatient = fetchedPatient?.id === patientId ? fetchedPatient : null
 
-  /** Drop the patient filter but keep the trail, so Back still works. */
-  const clearPatient = () => {
-    const next = new URLSearchParams(searchParams.toString())
-    next.delete('patientId')
-    const query = next.toString()
-    router.replace(query ? `/prescriptions?${query}` : '/prescriptions', { scroll: false })
-  }
-
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
    * the order they were asked for, and this list used to render whichever came
@@ -111,173 +125,119 @@ export default function PrescriptionsPage() {
    */
   const latestRequest = useRef(0)
 
-  const fetchPrescriptions = useCallback(async () => {
+  const fetchPrescriptions = async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        page: String(pagination.page),
-        limit: String(pagination.limit),
-      })
-      if (debouncedSearch) params.set('search', debouncedSearch)
-      if (patientId) params.set('patientId', patientId)
-
-      const res = await fetch(`/api/prescriptions?${params}`)
-      const result = await res.json()
+      const result = await readJson<{
+        data: Prescription[]
+        pagination?: { total: number }
+      }>(await fetch(`/api/prescriptions?${query}`))
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
-      if (result.success) {
-        setPrescriptions(result.data)
-        setPagination((prev) => ({
-          ...prev,
-          total: result.pagination.total,
-          pages: result.pagination.pages,
-        }))
-      }
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load prescriptions' })
+      setPrescriptions(result.data ?? [])
+      setTotal(result.pagination?.total ?? 0)
+    } catch (error) {
+      console.error('Error fetching prescriptions:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [debouncedSearch, patientId, pagination.page, pagination.limit])
+  }
 
   useEffect(() => {
     fetchPrescriptions()
-  }, [fetchPrescriptions])
+    // The query string is the whole question; `fetchPrescriptions` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   const handleDelete = async (rx: Prescription) => {
     const ok = await confirm({
-      title: 'Delete Prescription',
-      description: `Delete prescription ${rx.prescriptionNo}?`,
-      confirmLabel: 'Delete',
+      title: `Delete prescription ${rx.prescriptionNo}?`,
+      description: 'It is removed from the patient’s record. This cannot be undone.',
+      confirmLabel: 'Delete prescription',
     })
     if (!ok) return
     try {
-      const res = await fetch(`/api/prescriptions/${rx.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed')
-      toast({ title: 'Deleted', description: `Prescription ${rx.prescriptionNo} removed` })
+      await readJson(await fetch(`/api/prescriptions/${rx.id}`, { method: 'DELETE' }))
+      toast(toastSuccess(`Prescription ${rx.prescriptionNo} deleted`))
       fetchPrescriptions()
-    } catch {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete prescription',
-      })
+    } catch (error) {
+      toast(toastError(`delete prescription ${rx.prescriptionNo}`, error))
     }
   }
 
+  // Carry the patient onward when the list is already scoped to one. Writing a
+  // prescription for the patient whose list you are reading should not start
+  // by searching for them again.
+  const newHref = trail.to(
+    patientId ? `/prescriptions/new?patientId=${patientId}` : '/prescriptions/new'
+  )
+
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* `page-header`/`page-actions` rather than a hand-rolled flex row: this
-          page kept its own `flex items-center justify-between`, which does not
-          stack on a phone, so the title and the export/new buttons fought over
-          one line. The shared classes are what every other list header uses. */}
-      <div className="page-header mb-6">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <ClipboardList className="h-6 w-6" />
-            Prescriptions
-          </h1>
-          <p className="text-muted-foreground">Create and manage patient prescriptions</p>
-        </div>
-        <div className="page-actions">
-          <ExportMenu
-            filename="prescriptions"
-            getData={() =>
-              prescriptions.map((rx) => ({
-                'Rx #': rx.prescriptionNo,
-                Patient: `${rx.patient.firstName} ${rx.patient.lastName}`,
-                'Patient ID': rx.patient.patientId,
-                Doctor: prescriberName(rx.doctor),
-                Diagnosis: rx.diagnosis || '',
-                Medications: rx.medications
-                  .map((m) => `${m.medicationName} ${m.dosage} ${m.frequency} ${m.duration}`)
-                  .join('; '),
-                Date: new Date(rx.createdAt).toLocaleDateString('en-PK', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                }),
-                'Valid Until': rx.validUntil
-                  ? new Date(rx.validUntil).toLocaleDateString('en-PK', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })
-                  : '',
-              }))
-            }
-          />
-          {/*
-            Carry the patient onward when the list is already scoped to one.
-            Writing a prescription for the patient whose list you are reading
-            should not start by searching for them again.
-          */}
-          {canPrescribe && (
-            <Button
-              onClick={() =>
-                router.push(
-                  trail.to(
-                    patientId ? `/prescriptions/new?patientId=${patientId}` : '/prescriptions/new'
-                  )
-                )
+    <div className="mx-auto max-w-6xl space-y-6">
+      <PageHeader
+        title="Prescriptions"
+        description="Create and manage patient prescriptions"
+        actions={
+          <>
+            <ExportMenu
+              filename="prescriptions"
+              getData={() =>
+                prescriptions.map((rx) => ({
+                  'Rx #': rx.prescriptionNo,
+                  Patient: `${rx.patient.firstName} ${rx.patient.lastName}`,
+                  'Patient ID': rx.patient.patientId,
+                  Doctor: prescriberName(rx.doctor),
+                  Diagnosis: rx.diagnosis || '',
+                  Medications: rx.medications
+                    .map((m) => `${m.medicationName} ${m.dosage} ${m.frequency} ${m.duration}`)
+                    .join('; '),
+                  Date: displayDate(rx.createdAt),
+                  'Valid until': rx.validUntil ? displayDate(rx.validUntil) : '',
+                }))
               }
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Prescription
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Search */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by prescription #, patient name..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setPagination((p) => ({ ...p, page: 1 }))
-              }}
-              className="pl-9"
             />
-          </div>
+            {canPrescribe && (
+              <Button asChild>
+                <Link href={newHref}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New prescription
+                </Link>
+              </Button>
+            )}
+          </>
+        }
+      />
 
-          <ActiveFilters
-            className="mt-4"
-            noun="prescriptions"
-            onClearAll={() => {
-              setSearch('')
-              setPagination((p) => ({ ...p, page: 1 }))
-              if (patientId) clearPatient()
-            }}
-            filters={[
-              {
-                label: 'Patient',
-                value: patientId
-                  ? handedPatient
-                    ? `${handedPatient.firstName} ${handedPatient.lastName}`
-                    : 'Selected patient'
-                  : null,
-                onClear: clearPatient,
-              },
-              {
-                label: 'Search',
-                value: search,
-                onClear: () => {
-                  setSearch('')
-                  setPagination((p) => ({ ...p, page: 1 }))
-                },
-              },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search prescriptions"
+            placeholder="Search by prescription number, patient name or ID…"
           />
-        </CardContent>
-      </Card>
+        }
+        active={{
+          noun: 'prescriptions',
+          onClearAll: list.clear,
+          filters: [
+            {
+              label: 'Patient',
+              value: patientId
+                ? handedPatient
+                  ? `${handedPatient.firstName} ${handedPatient.lastName}`
+                  : 'Selected patient'
+                : null,
+              onClear: () => list.setFilter('patientId', ''),
+            },
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+          ],
+        }}
+      />
 
-      {/* Table */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[900px]">
@@ -289,16 +249,32 @@ export default function PrescriptionsPage() {
                 <TableHead>Diagnosis</TableHead>
                 <TableHead>Medications</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
                 <GridActionsHead />
               </TableRow>
             </TableHeader>
             <GridBody
-              columns={7}
+              columns={8}
               loading={loading}
+              failed={failed}
+              onRetry={fetchPrescriptions}
               empty={prescriptions.length === 0}
               emptyIcon={ClipboardList}
               emptyTitle="No prescriptions found"
-              emptyDescription="Nothing has been prescribed under these filters."
+              emptyDescription={
+                list.isFiltered
+                  ? 'Nothing has been prescribed under these filters.'
+                  : 'No prescription has been written yet.'
+              }
+              emptyActionLabel={
+                list.isFiltered
+                  ? 'Clear the filters'
+                  : canPrescribe
+                    ? 'New prescription'
+                    : undefined
+              }
+              emptyActionHref={list.isFiltered || !canPrescribe ? undefined : newHref}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {prescriptions.map((rx) => (
                 <ClickableRow
@@ -312,8 +288,8 @@ export default function PrescriptionsPage() {
                     <br />
                     <span className="text-xs text-muted-foreground">{rx.patient.patientId}</span>
                   </TableCell>
-                  <TableCell>{prescriberName(rx.doctor) || '—'}</TableCell>
-                  <TableCell className="text-sm">{rx.diagnosis || '—'}</TableCell>
+                  <TableCell>{prescriberName(rx.doctor) || BLANK}</TableCell>
+                  <TableCell className="text-sm">{rx.diagnosis || BLANK}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {rx.medications.slice(0, 3).map((m) => (
@@ -329,37 +305,37 @@ export default function PrescriptionsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(rx.createdAt).toLocaleDateString('en-PK', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+                    {displayDate(rx.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge
+                      kind="prescription"
+                      status={prescriptionStatus(rx.validUntil, today)}
+                    />
                   </TableCell>
                   <GridActionsCell>
-                    <div className="flex gap-1">
-                      <IconTooltip label="Open this prescription">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Open this prescription"
-                          className="h-8 w-8"
-                          onClick={() => router.push(`/prescriptions/${rx.id}`)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                      </IconTooltip>
-                      <IconTooltip label="Delete this prescription">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Delete this prescription"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(rx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </IconTooltip>
-                    </div>
+                    {/* No "View details": the row itself opens the prescription.
+                        The menu holds only Delete, so without it there is none. */}
+                    {canDelete && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDelete(rx)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete prescription
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
                 </ClickableRow>
               ))}
@@ -367,15 +343,16 @@ export default function PrescriptionsPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="prescriptions"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>
+      {ConfirmDialogComponent}
     </div>
   )
 }

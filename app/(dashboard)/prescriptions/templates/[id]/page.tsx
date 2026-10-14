@@ -1,11 +1,12 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
+import { use, useCallback, useEffect, useState } from 'react'
+import { FileText } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   TemplateForm,
   blankItem,
@@ -19,19 +20,25 @@ export default function EditPrescriptionTemplatePage({
 }) {
   const { id } = use(params)
   const [draft, setDraft] = useState<TemplateDraft | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  /** Why there is no template to edit: it does not exist, or it did not load. */
+  const [problem, setProblem] = useState<'not-found' | 'failed' | null>(null)
+  const [name, setName] = useState<string | null>(null)
+  const trail = useTrail(name)
 
-  useEffect(() => {
-    let cancelled = false
-    fetch(`/api/prescription-templates/${id}`)
-      .then(async (res) => {
-        const body = await res.json()
-        if (!res.ok) throw new Error(body.error || 'Template not found')
-        return body.data
-      })
-      .then((template) => {
-        if (cancelled) return
+  const load = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      setProblem(null)
+      try {
+        const res = await fetch(`/api/prescription-templates/${id}`)
+        if (res.status === 404) {
+          if (isCurrent()) setProblem('not-found')
+          return
+        }
+        const body = await res.json().catch(() => null)
+        if (!res.ok || !body?.data) throw new Error(body?.error || 'Template not loaded')
+        const template = body.data
+        if (!isCurrent()) return
+        setName(template.name ?? null)
         setDraft({
           name: template.name ?? '',
           description: template.description ?? '',
@@ -56,54 +63,70 @@ export default function EditPrescriptionTemplatePage({
               }))
             : [blankItem()],
         })
-      })
-      .catch((err) => {
-        if (cancelled) return
-        // The card below stays so the page is not blank; the toast is what
-        // says so wherever the user happens to be looking.
-        setError(err.message)
-        toast({
-          variant: 'destructive',
-          title: 'Could not load the template',
-          description: err.message,
-        })
-      })
+      } catch (error) {
+        console.error('Error loading template:', error)
+        if (isCurrent()) setProblem('failed')
+      }
+    },
+    [id]
+  )
+
+  useEffect(() => {
+    let current = true
+    load(() => current)
     return () => {
-      cancelled = true
+      current = false
     }
-  }, [id, toast])
+  }, [load])
+
+  const back = (
+    <BackLink
+      trail={trail}
+      fallback="/prescriptions/templates"
+      fallbackLabel="Prescription templates"
+    />
+  )
+
+  if (problem === 'not-found') {
+    return (
+      <div className="space-y-6">
+        {back}
+        <EmptyState
+          icon={FileText}
+          title="Template not found"
+          description="It may have been removed, or the link is wrong."
+          actionLabel="Go to templates"
+          actionHref="/prescriptions/templates"
+        />
+      </div>
+    )
+  }
+
+  if (problem === 'failed') {
+    return (
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="this template" onRetry={() => load()} />
+      </div>
+    )
+  }
+
+  if (!draft) return <PageSkeleton variant="form" />
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/prescriptions/templates">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">Edit template</h1>
-          <p className="text-muted-foreground">
-            Changes apply to prescriptions written from now on. Ones already issued keep their own
-            copy.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={back}
+        title="Edit template"
+        description="Changes apply to prescriptions written from now on. Ones already issued keep their own copy."
+      />
 
-      {error ? (
-        <Card className="border-red-200 dark:border-red-800/60">
-          <CardContent className="pt-6 text-sm text-red-600 dark:text-red-400">{error}</CardContent>
-        </Card>
-      ) : !draft ? (
-        <Card>
-          <CardContent className="text-muted-foreground flex items-center justify-center gap-2 py-16">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading template…
-          </CardContent>
-        </Card>
-      ) : (
-        <TemplateForm initial={draft} templateId={id} submitLabel="Save changes" />
-      )}
+      <TemplateForm
+        initial={draft}
+        templateId={id}
+        submitLabel="Save changes"
+        backHref={trail.back('/prescriptions/templates')}
+      />
     </div>
   )
 }

@@ -1,12 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, KeyRound, Loader2 } from 'lucide-react'
+import { Copy, KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { formatDateTime } from '@/lib/utils'
+import { displayDateTime } from '@/lib/dates'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 
 /**
  * Giving a patient a sign-in to read their own record.
@@ -43,6 +47,7 @@ export function PortalAccessCard({
   const [busy, setBusy] = useState(false)
   /** Held in memory only, and only until the page is left. */
   const [issued, setIssued] = useState<string | null>(null)
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   /**
    * Only ever clears `loading`, never sets it. The initial state already says
@@ -66,6 +71,18 @@ export function PortalAccessCard({
   }, [load])
 
   const issue = async () => {
+    // Reissuing stops the password they have now from working.
+    if (
+      state?.account &&
+      !(await confirm({
+        title: 'Issue a new portal password?',
+        description:
+          'The password they have now stops working. The new one is shown once, here, to give to them.',
+        confirmLabel: 'Issue a new password',
+        tone: 'default',
+      }))
+    )
+      return
     setBusy(true)
     setIssued(null)
     try {
@@ -74,14 +91,23 @@ export function PortalAccessCard({
       if (!res.ok || !result.success) throw new Error(result.error || 'Could not issue a password')
       setIssued(result.data.password)
       await load()
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Not issued', description: err.message })
+    } catch (err) {
+      toast(toastError('issue a portal password', err))
     } finally {
       setBusy(false)
     }
   }
 
   const setActive = async (isActive: boolean) => {
+    if (
+      !isActive &&
+      !(await confirm({
+        title: `Withdraw portal access for ${state?.patientNumber ?? 'this patient'}?`,
+        description: 'Their password stops working at once. Restore access to let them back in.',
+        confirmLabel: 'Withdraw access',
+      }))
+    )
+      return
     setBusy(true)
     try {
       const res = await fetch(`/api/patients/${patientId}/portal-access`, {
@@ -93,14 +119,16 @@ export function PortalAccessCard({
       if (!res.ok) throw new Error(result.error || 'Could not change access')
       setIssued(null)
       await load()
-      toast({
-        title: isActive ? 'Access restored' : 'Access withdrawn',
-        description: isActive
-          ? 'They can sign in again with their existing password.'
-          : 'Their password no longer works. Reissue to give access back.',
-      })
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Not changed', description: err.message })
+      toast(
+        toastSuccess(
+          isActive ? 'Access restored' : 'Access withdrawn',
+          isActive
+            ? 'They can sign in again with their existing password.'
+            : 'Their password no longer works. Reissue to give access back.'
+        )
+      )
+    } catch (err) {
+      toast(toastError(isActive ? 'restore portal access' : 'withdraw portal access', err))
     } finally {
       setBusy(false)
     }
@@ -109,8 +137,10 @@ export function PortalAccessCard({
   if (loading) {
     return (
       <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <CardContent className="space-y-3 py-6" role="status" aria-label="Loading">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-9 w-48" />
         </CardContent>
       </Card>
     )
@@ -153,7 +183,7 @@ export function PortalAccessCard({
             {account && (
               <p className="text-sm text-muted-foreground">
                 {account.lastLoginAt
-                  ? `Last signed in ${formatDateTime(account.lastLoginAt)}.`
+                  ? `Last signed in ${displayDateTime(account.lastLoginAt)}.`
                   : 'Has never signed in.'}
               </p>
             )}
@@ -186,7 +216,7 @@ export function PortalAccessCard({
                       ?.writeText(
                         `Patient number: ${state.patientNumber}\nPassword: ${issued}\nSign in at: ${loginUrl}`
                       )
-                      .then(() => toast({ title: 'Copied' }))
+                      .then(() => toast(toastSuccess('Sign-in details copied')))
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
@@ -197,10 +227,9 @@ export function PortalAccessCard({
 
             {canManage ? (
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={issue} disabled={busy}>
-                  {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <SubmitButton type="button" size="sm" onClick={issue} busy={busy}>
                   {account ? 'Issue a new password' : 'Give portal access'}
-                </Button>
+                </SubmitButton>
                 {account?.isActive && (
                   <Button
                     type="button"
@@ -232,6 +261,7 @@ export function PortalAccessCard({
           </>
         )}
       </CardContent>
+      {ConfirmDialogComponent}
     </Card>
   )
 }

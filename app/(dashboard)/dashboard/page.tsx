@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,7 +8,6 @@ import {
   Calendar,
   Receipt,
   TrendingUp,
-  AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
   ChevronRight,
@@ -36,6 +35,14 @@ import {
 } from 'recharts'
 import { CHART_COLORS } from '@/lib/chart-theme'
 import { displayDate, displayDateShort } from '@/lib/dates'
+import { formatCurrency, formatNumber } from '@/lib/i18n/format'
+import { statusLabel } from '@/lib/status'
+import { toastError } from '@/lib/toast-utils'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { useTrail } from '@/components/ui/trail'
 import { formatTime } from '@/lib/appointment-utils'
 import { useSession } from 'next-auth/react'
 import { holderCan, type Permission } from '@/lib/rbac'
@@ -149,23 +156,26 @@ const QUICK_ACTIONS: Array<{
   },
 ]
 
+/**
+ * The dashboard's money is in whole rupees: a tile reading "Rs 412,000" is
+ * answering "about how much", and the paise are on the invoices it links to.
+ */
+const WHOLE_RUPEES = { maximumFractionDigits: 0 } as const
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   const { toast } = useToast()
+  const trail = useTrail('Dashboard')
   const { data: session } = useSession()
   const holder = { role: session?.user?.role, clinicalRole: session?.user?.clinicalRole }
   const actions = QUICK_ACTIONS.filter((action) => holderCan(holder, action.permission))
 
-  useEffect(() => {
-    fetchDashboardStats()
-  }, [])
-
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true)
-      setError(null)
+      setFailed(false)
       const response = await fetch('/api/dashboard/stats')
 
       if (!response.ok) {
@@ -174,26 +184,18 @@ export default function DashboardPage() {
 
       const data = await response.json()
       setStats(data.data)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching dashboard stats:', err)
-      setError(err.message)
-      toast({
-        variant: 'destructive',
-        title: 'Could not load the dashboard figures',
-        description: err.message,
-      })
+      setFailed(true)
+      toast(toastError('load the dashboard figures', err))
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
+  useEffect(() => {
+    fetchDashboardStats()
+  }, [fetchDashboardStats])
 
   const growth = (value: number) => ({
     icon:
@@ -231,55 +233,38 @@ export default function DashboardPage() {
     </div>
   )
 
+  const header = (
+    <PageHeader
+      title="Dashboard"
+      description="Here's what's happening at your dental practice today."
+    />
+  )
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="text-muted-foreground">Loading your practice data...</p>
-        </div>
+        {header}
         {/* The actions do not depend on the figures, so they are usable while
             the figures are still arriving. */}
         {quickActions}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-              </CardHeader>
-              <CardContent>
-                <div className="mb-2 h-8 w-16 animate-pulse rounded bg-muted" />
-                <div className="h-3 w-32 animate-pulse rounded bg-muted" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <PageSkeleton variant="dashboard" withHeader={false} />
       </div>
     )
   }
 
-  if (error || !stats) {
+  if (failed || !stats) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="text-muted-foreground">
-            The figures could not be loaded. Everything else still works.
-          </p>
-        </div>
+        {header}
         {/* The dashboard is a summary. Its failure must not strand somebody who
             came here to book an appointment. */}
         {quickActions}
-        <Card className="border-red-200 dark:border-red-800/60">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
-              <p>{error || 'An error occurred'}</p>
-            </div>
-            <Button onClick={fetchDashboardStats} className="mt-4">
-              Try again
-            </Button>
-          </CardContent>
+        <Card>
+          <LoadFailed
+            what="the dashboard figures"
+            description="Everything else still works. Try again."
+            onRetry={fetchDashboardStats}
+          />
         </Card>
       </div>
     )
@@ -324,13 +309,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome message */}
-      <div>
-        <h1 className="page-title">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Here&apos;s what&apos;s happening at your dental practice today.
-        </p>
-      </div>
+      {header}
 
       {/* What you came here to do */}
       {quickActions}
@@ -369,9 +348,9 @@ export default function DashboardPage() {
       <div className={`grid gap-4 md:grid-cols-2 ${showsMoney ? 'lg:grid-cols-4' : ''}`}>
         {stat(
           '/patients',
-          'Total Patients',
+          'Total patients',
           Users,
-          stats.overview.totalPatients.toLocaleString(),
+          formatNumber(stats.overview.totalPatients),
           <>
             {patientTrend.icon}
             <span className={patientTrend.color}>
@@ -383,7 +362,7 @@ export default function DashboardPage() {
         )}
         {stat(
           '/appointments',
-          "Today's Appointments",
+          "Today's appointments",
           Calendar,
           String(stats.overview.todayAppointments),
           <span>
@@ -394,9 +373,9 @@ export default function DashboardPage() {
         {showsMoney &&
           stat(
             '/billing/reports',
-            'Collected This Month',
+            'Collected this month',
             TrendingUp,
-            formatCurrency(stats.overview.thisMonthRevenue ?? 0),
+            formatCurrency(stats.overview.thisMonthRevenue ?? 0, WHOLE_RUPEES),
             <>
               {revenueTrend.icon}
               <span className={revenueTrend.color}>
@@ -411,7 +390,7 @@ export default function DashboardPage() {
             '/billing/invoices',
             'Outstanding',
             Receipt,
-            formatCurrency(stats.overview.pendingPayments ?? 0),
+            formatCurrency(stats.overview.pendingPayments ?? 0, WHOLE_RUPEES),
             <span>Still owed on issued invoices</span>
           )}
       </div>
@@ -429,7 +408,7 @@ export default function DashboardPage() {
                 upcoming.map((apt) => (
                   <Link
                     key={apt.id}
-                    href={`/appointments/${apt.id}`}
+                    href={trail.to(`/appointments/${apt.id}`)}
                     className="-mx-2 flex items-start gap-3 rounded-lg px-2 py-2 text-sm transition-colors hover:bg-foreground/[0.04]"
                   >
                     <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-[11px] font-semibold text-primary">
@@ -441,6 +420,7 @@ export default function DashboardPage() {
                         {displayDate(apt.scheduledDate)} • {apt.doctorName}
                       </p>
                     </div>
+                    <StatusBadge kind="appointment" status={apt.status} className="shrink-0" />
                   </Link>
                 ))
               ) : (
@@ -454,7 +434,7 @@ export default function DashboardPage() {
             </div>
             {upcoming.length > 0 && (
               <Button asChild variant="outline" className="mt-4 w-full">
-                <Link href="/appointments">View all appointments</Link>
+                <Link href={trail.to('/appointments')}>View all appointments</Link>
               </Button>
             )}
           </CardContent>
@@ -482,7 +462,7 @@ export default function DashboardPage() {
                     <YAxis />
                     <Tooltip
                       formatter={(value) =>
-                        typeof value === 'number' ? formatCurrency(value) : ''
+                        typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
                       }
                       labelStyle={{ color: 'inherit' }}
                     />
@@ -514,7 +494,7 @@ export default function DashboardPage() {
       <div className={`grid gap-4 ${showsMoney ? 'md:grid-cols-2' : ''}`}>
         <Card>
           <CardHeader>
-            <CardTitle>Appointments by Status</CardTitle>
+            <CardTitle>Appointments by status</CardTitle>
             <CardDescription>This month&apos;s appointment distribution</CardDescription>
           </CardHeader>
           <CardContent>
@@ -523,7 +503,7 @@ export default function DashboardPage() {
                 <PieChart>
                   <Pie
                     data={stats.charts.appointmentsByStatus.map((item: any) => ({
-                      name: item.status,
+                      name: statusLabel('appointment', item.status),
                       value: item.count,
                     }))}
                     cx="50%"
@@ -559,7 +539,7 @@ export default function DashboardPage() {
         {showsMoney && (
           <Card>
             <CardHeader>
-              <CardTitle>Monthly Collections</CardTitle>
+              <CardTitle>Monthly collections</CardTitle>
               <CardDescription>Collected per month, net of refunds, last 6 months</CardDescription>
             </CardHeader>
             <CardContent>
@@ -577,7 +557,7 @@ export default function DashboardPage() {
                     <YAxis />
                     <Tooltip
                       formatter={(value) =>
-                        typeof value === 'number' ? formatCurrency(value) : ''
+                        typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
                       }
                     />
                     <Legend />
@@ -599,7 +579,7 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Top Procedures</CardTitle>
+          <CardTitle>Top procedures</CardTitle>
           <CardDescription>Most common procedures this month</CardDescription>
         </CardHeader>
         <CardContent>
@@ -607,7 +587,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart
                 data={stats.charts.topProcedures.map((proc: any) => ({
-                  name: proc.name.length > 20 ? proc.name.substring(0, 20) + '...' : proc.name,
+                  name: proc.name.length > 20 ? proc.name.substring(0, 20) + '…' : proc.name,
                   count: Number(proc.count),
                   revenue: proc.revenue === undefined ? undefined : Number(proc.revenue),
                 }))}
@@ -623,9 +603,9 @@ export default function DashboardPage() {
                   formatter={(value, _name, item) => {
                     if (typeof value !== 'number') return ''
                     // Match on dataKey, not name: the <Bar> sets a display
-                    // name ("Invoiced (Rs)"), and that is what recharts passes
-                    // as `name`, so comparing it to 'revenue' never matched.
-                    if (item?.dataKey === 'revenue') return formatCurrency(value)
+                    // name ("Invoiced"), and that is what recharts passes as
+                    // `name`, so comparing it to 'revenue' never matched.
+                    if (item?.dataKey === 'revenue') return formatCurrency(value, WHOLE_RUPEES)
                     return value
                   }}
                 />
@@ -642,7 +622,7 @@ export default function DashboardPage() {
                     yAxisId="right"
                     dataKey="revenue"
                     fill="hsl(var(--chart-2))"
-                    name="Invoiced (Rs)"
+                    name="Invoiced"
                     radius={[6, 6, 0, 0]}
                   />
                 )}

@@ -6,20 +6,23 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { useListParams } from '@/hooks/use-list-params'
 import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
 import { useCan } from '@/hooks/use-can'
 import { newInvoiceHref } from '@/lib/invoice-links'
 import { useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
+import { formatPhone } from '@/lib/utils'
+import { formatTime } from '@/lib/appointment-utils'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 import {
   ArrowRight,
   CheckCircle2,
@@ -28,7 +31,6 @@ import {
   LogIn,
   Receipt,
   RefreshCw,
-  Search,
   UserPlus,
   UserX,
 } from 'lucide-react'
@@ -142,8 +144,8 @@ function Person({
         )}
       </div>
       <p className="text-xs text-muted-foreground truncate">
-        {a.scheduledTime}
-        {phoneOf(a) ? ` · ${phoneOf(a)}` : ''}
+        {formatTime(a.scheduledTime)}
+        {phoneOf(a) ? ` · ${formatPhone(phoneOf(a))}` : ''}
         {a.doctor ? ` · Dr. ${a.doctor.firstName} ${a.doctor.lastName}` : ''}
       </p>
       {a.chiefComplaint && (
@@ -229,17 +231,19 @@ function Column({
                     <span className="ml-1.5">{action.label}</span>
                   </Button>
                 )}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  aria-label="Open appointment"
-                  asChild
-                >
-                  <Link href={to(`/appointments/${a.id}`)}>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+                <IconTooltip label="Open appointment">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    aria-label={`Open appointment ${a.appointmentNo}`}
+                    asChild
+                  >
+                    <Link href={to(`/appointments/${a.id}`)}>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </IconTooltip>
               </div>
             </div>
           ))
@@ -259,9 +263,15 @@ export default function QueuePage() {
   const [queue, setQueue] = useState<Queue>(EMPTY)
   const [stats, setStats] = useState(EMPTY_STATS)
   const [doctors, setDoctors] = useState<{ id: string; firstName: string; lastName: string }[]>([])
-  const [doctorFilter, setDoctorFilter] = useState('all')
-  const [search, setSearch] = useState('')
+  // The dentist and the search, in the address bar like every other list. The
+  // search filters the columns already on screen, at once, as it always did.
+  const list = useListParams({ defaults: { doctor: 'all' } })
+  const doctorFilter = list.filters.doctor
+  const search = list.search
   const [loading, setLoading] = useState(true)
+  // Only the first load says so on the page; a failed refresh keeps what is
+  // on screen and says so in a toast.
+  const [failed, setFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -274,12 +284,10 @@ export default function QueuePage() {
       const data = await res.json()
       setQueue(data.queue ?? EMPTY)
       setStats(data.stats ?? EMPTY_STATS)
+      setFailed(false)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to load the queue',
-        variant: 'destructive',
-      })
+      setFailed(true)
+      toast(toastError('load the queue', err))
     } finally {
       setLoading(false)
     }
@@ -332,10 +340,12 @@ export default function QueuePage() {
       // confirmation says. A receptionist reads it out; they should not have to
       // go looking for it.
       if (action === 'check-in') {
-        toast({
-          title: `Token ${formatToken(data.tokenNumber)}`,
-          description: `${subjectOf(appointment)} is in the queue.`,
-        })
+        toast(
+          toastSuccess(
+            `Token ${formatToken(data.tokenNumber)}`,
+            `${subjectOf(appointment)} is in the queue.`
+          )
+        )
       }
 
       // Finished, and on their way to the desk: the bill is next. Check-out
@@ -344,8 +354,10 @@ export default function QueuePage() {
       if (action === 'complete' && appointment.patient && canBill) {
         const href = billHref(appointment)
         toast({
-          title: 'Checked out',
-          description: `${subjectOf(appointment)} can be billed for this visit now.`,
+          ...toastSuccess(
+            'Checked out',
+            `${subjectOf(appointment)} can be billed for this visit now.`
+          ),
           action: (
             <ToastAction altText="Create invoice" onClick={() => router.push(href)}>
               Create invoice
@@ -356,11 +368,15 @@ export default function QueuePage() {
 
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'That did not work',
-        variant: 'destructive',
-      })
+      const verb =
+        action === 'check-in'
+          ? 'check in'
+          : action === 'start'
+            ? 'call in'
+            : action === 'complete'
+              ? 'check out'
+              : 'mark as a no-show'
+      toast(toastError(`${verb} ${subjectOf(appointment)}`, err))
     } finally {
       setBusyId(null)
     }
@@ -377,24 +393,17 @@ export default function QueuePage() {
     )
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  const doctorOptions = doctors.map((d) => ({
+    value: d.id,
+    label: `Dr. ${d.firstName} ${d.lastName}`,
+  }))
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">Today&rsquo;s queue</h1>
-          <p className="text-muted-foreground">
-            Who is waiting, in the order they arrived. Refreshes on its own.
-          </p>
-        </div>
-        <div className="flex gap-2">
+  const header = (
+    <PageHeader
+      title="Today’s queue"
+      description="Who is waiting, in the order they arrived. Refreshes on its own."
+      actions={
+        <>
           <Button variant="outline" onClick={load}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -402,11 +411,29 @@ export default function QueuePage() {
           <Button asChild>
             <Link href={trail.to('/appointments/new?walkIn=1')}>
               <UserPlus className="h-4 w-4 mr-2" />
-              Add a walk-in
+              New walk-in
             </Link>
           </Button>
-        </div>
+        </>
+      }
+    />
+  )
+
+  if (loading) return <PageSkeleton variant="dashboard" />
+
+  const nothingLoaded = Object.values(queue).every((rows) => rows.length === 0)
+  if (failed && nothingLoaded) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoadFailed what="the queue" onRetry={load} />
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {header}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
@@ -437,31 +464,38 @@ export default function QueuePage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Find a name, number or token…"
-            className="pl-9"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
             aria-label="Search the queue"
+            placeholder="Search by name, number or token…"
           />
-        </div>
-        <Select value={doctorFilter} onValueChange={setDoctorFilter}>
-          <SelectTrigger className="w-[220px]" aria-label="Filter by dentist">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All dentists</SelectItem>
-            {doctors.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                Dr. {d.firstName} {d.lastName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        }
+        filters={
+          <FilterSelect
+            label="Dentist"
+            plural="dentists"
+            value={doctorFilter}
+            onValueChange={(doctor) => list.setFilter('doctor', doctor)}
+            options={doctorOptions}
+            className="w-full sm:w-[220px]"
+          />
+        }
+        active={{
+          noun: 'patients',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: search.trim(), onClear: () => list.setSearch('') },
+            {
+              label: 'Dentist',
+              value: filterValueLabel(doctorOptions, doctorFilter),
+              onClear: () => list.setFilter('doctor', 'all'),
+            },
+          ],
+        }}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Column

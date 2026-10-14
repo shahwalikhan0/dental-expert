@@ -8,7 +8,13 @@ import {
   findAppointmentConflicts,
   getDoubleBookingPolicy,
 } from '@/lib/appointment-conflicts'
-import { clinicTimezone, dayRangeIn, instantAt, withWallClock } from '@/lib/appointment-time'
+import {
+  clinicTimezone,
+  dayRangeIn,
+  instantAt,
+  localDay,
+  withWallClock,
+} from '@/lib/appointment-time'
 import { validateVisitor } from '@/lib/visitors'
 import { scheduleRefusal } from '@/lib/appointment-availability'
 import { INACTIVE_PATIENT } from '@/lib/appointment-status'
@@ -47,6 +53,16 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const status = searchParams.get('status') || ''
     const date = searchParams.get('date') || ''
+    // A range of the clinic's days, `YYYY-MM-DD`, either end open — the list
+    // screen's date filter. `date` (one day, or a week/month with `view`) is
+    // unchanged and wins when both are sent.
+    const dayPattern = /^\d{4}-\d{2}-\d{2}$/
+    const dateFrom = dayPattern.test(searchParams.get('dateFrom') ?? '')
+      ? searchParams.get('dateFrom')!
+      : ''
+    const dateTo = dayPattern.test(searchParams.get('dateTo') ?? '')
+      ? searchParams.get('dateTo')!
+      : ''
     const doctorId = searchParams.get('doctorId') || ''
     const patientId = searchParams.get('patientId') || ''
     const type = searchParams.get('type') || ''
@@ -96,6 +112,11 @@ export async function GET(request: NextRequest) {
         where.startsAt = dayRangeIn(start, timezone, days)
       } else {
         where.startsAt = dayRangeIn(date, timezone)
+      }
+    } else if (dateFrom || dateTo) {
+      where.startsAt = {
+        ...(dateFrom ? { gte: dayRangeIn(dateFrom, timezone).gte } : {}),
+        ...(dateTo ? { lt: dayRangeIn(dateTo, timezone).lt } : {}),
       }
     }
 
@@ -172,6 +193,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       appointments: appointments.map((a) => withWallClock(a, timezone)),
       pendingReview,
+      // The clinic's calendar day, so the screen's date presets ("Today",
+      // "This week") mean the clinic's day rather than the browser's.
+      today: localDay(new Date(), timezone),
       pagination: {
         page,
         limit,

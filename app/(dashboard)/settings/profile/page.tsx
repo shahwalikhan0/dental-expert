@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { LanguagePreferenceCard } from '@/components/i18n/language-preference-card'
 import { auth } from '@/lib/auth'
 import { locales } from '@/lib/i18n/config'
@@ -27,12 +28,10 @@ export default async function ProfileSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">My Profile</h1>
-        <p className="text-muted-foreground">
-          Preferences that apply to your account only — {user.name} ({user.email})
-        </p>
-      </div>
+      <PageHeader
+        title="My profile"
+        description={`Preferences that apply to your account only — ${user.name} (${user.email})`}
+      />
 
       <LanguagePreferenceCard
         locale={user.locale}

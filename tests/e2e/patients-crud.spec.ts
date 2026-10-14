@@ -109,9 +109,9 @@ test.describe('Patient Management', () => {
       if (await lastNameInput.isVisible()) {
         await lastNameInput.fill('Patient')
       }
-      // "Phone *" specifically — /phone/i also matches "Alternate Phone" and
-      // the emergency "Contact Phone".
-      const phoneInput = page.getByLabel('Phone *')
+      // "Phone" exactly — /phone/i also matches "Alternate phone" and the
+      // emergency "Contact phone". The required marker is drawn by CSS.
+      const phoneInput = page.getByLabel('Phone', { exact: true })
       if (await phoneInput.isVisible()) {
         await phoneInput.fill('9876543210')
       }
@@ -130,7 +130,7 @@ test.describe('Patient Management', () => {
       }
 
       // Submit
-      const submitButton = page.getByRole('button', { name: 'Create Patient' })
+      const submitButton = page.getByRole('button', { name: 'Create patient' })
       if (await submitButton.isVisible()) {
         await submitButton.click()
         // Should show success or navigate

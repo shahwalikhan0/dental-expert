@@ -328,7 +328,7 @@ describe('DentalChart', () => {
     })
   })
 
-  it('dialog has Cancel and Save Changes buttons', async () => {
+  it('dialog has Cancel and Save changes buttons', async () => {
     render(<DentalChart patientId="p1" />)
     await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
@@ -336,11 +336,11 @@ describe('DentalChart', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Cancel')).toBeInTheDocument()
-      expect(screen.getByText('Save Changes')).toBeInTheDocument()
+      expect(screen.getByText('Save changes')).toBeInTheDocument()
     })
   })
 
-  it('saves entry when Save Changes clicked', async () => {
+  it('saves entry when Save changes clicked', async () => {
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -356,9 +356,9 @@ describe('DentalChart', () => {
     await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
-    await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Save changes')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('Save Changes'))
+    fireEvent.click(screen.getByText('Save changes'))
 
     await waitFor(() => {
       const postCalls = vi.mocked(global.fetch).mock.calls.filter((c) => c[1]?.method === 'POST')
@@ -386,11 +386,11 @@ describe('DentalChart', () => {
     await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
-    await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('Save Changes'))
+    await waitFor(() => expect(screen.getByText('Save changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Save changes'))
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Success' }))
+      expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Tooth 11 charted' }))
     })
   })
 
@@ -403,7 +403,7 @@ describe('DentalChart', () => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive',
-          title: 'Error',
+          title: "Couldn't load the dental chart",
         })
       )
     })
@@ -424,8 +424,8 @@ describe('DentalChart', () => {
     await waitFor(() => expect(screen.getByText('Dental Chart')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /^Tooth 11,/ }))
-    await waitFor(() => expect(screen.getByText('Save Changes')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('Save Changes'))
+    await waitFor(() => expect(screen.getByText('Save changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Save changes'))
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }))

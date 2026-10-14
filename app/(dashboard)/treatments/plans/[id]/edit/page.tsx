@@ -1,22 +1,22 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -25,10 +25,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { FormField } from '@/components/ui/form-field'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { MoneyInput, isInvalidMoney, parseMoney } from '@/components/ui/money-input'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
+import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { formatCurrency } from '@/lib/billing-utils'
-import { ArrowDown, ArrowUp, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK } from '@/lib/dates'
+import { describeTeethByQuadrant, formatTeeth, parseTeeth } from '@/lib/teeth'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { ArrowDown, ArrowUp, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 
 /**
  * Edit a treatment plan.
@@ -59,25 +72,40 @@ interface PlanItem {
   procedureId: string
   procedureName: string
   procedureCode: string
+  /** The stored form, `11,12,13`, or '' for none. */
   toothNumbers: string
-  estimatedCost: number
+  /** The text in the price field; read with parseMoney. */
+  estimatedCost: string
   notes: string
   status: string
 }
 
+interface Patient {
+  id: string
+  name: string
+  dateOfBirth: string | null
+}
+
+type Errors = {
+  title?: string
+  procedure?: string
+  pickCost?: string
+  /** Per line, by position. */
+  cost?: Record<number, string>
+}
+
 const LOCKED = new Set(['IN_PROGRESS', 'COMPLETED'])
+
+const BAD_PRICE = 'Enter an amount like 1500 or 1500.50.'
 
 export default function EditTreatmentPlanPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
   const params = useParams()
   const planId = params.id as string
   const { toast } = useToast()
 
-  const [procedures, setProcedures] = useState<Procedure[]>([])
   const [planNumber, setPlanNumber] = useState<string | null>(null)
-  const [patient, setPatient] = useState<{ id: string; name: string } | null>(null)
+  const [patient, setPatient] = useState<Patient | null>(null)
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -85,255 +113,308 @@ export default function EditTreatmentPlanPage() {
   const [items, setItems] = useState<PlanItem[]>([])
   const [storedTotal, setStoredTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing'>('ok')
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Errors>({})
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard(saving)
 
-  const [pickProcedure, setPickProcedure] = useState('')
-  const [pickTeeth, setPickTeeth] = useState('')
+  // The line being added
+  const [pickProcedure, setPickProcedure] = useState<Procedure | null>(null)
+  const [pickTeeth, setPickTeeth] = useState<number[]>([])
   const [pickCost, setPickCost] = useState('')
+
+  // The line whose teeth are being chosen, by position.
+  const [teethFor, setTeethFor] = useState<number | null>(null)
 
   const trail = useTrail(planNumber)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [planRes, procRes] = await Promise.all([
-          fetch(`/api/treatment-plans/${planId}`),
-          fetch('/api/procedures?all=true&isActive=true'),
-        ])
-
-        const planData = await planRes.json()
-        if (!planRes.ok) throw new Error(planData.error || 'That plan could not be loaded')
-        const plan = planData.treatmentPlan ?? planData
-
-        const procData = await procRes.json().catch(() => ({}))
-        setProcedures(procData.procedures ?? procData.data ?? [])
-
-        setPlanNumber(plan.planNumber ?? null)
-        setPatient(
-          plan.patient
-            ? { id: plan.patient.id, name: `${plan.patient.firstName} ${plan.patient.lastName}` }
-            : null
-        )
-        setStoredTotal(Number(plan.estimatedCost ?? 0))
-        setTitle(plan.title ?? '')
-        setNotes(plan.notes ?? '')
-        setStartDate(plan.startDate ? String(plan.startDate).slice(0, 10) : '')
-        setExpectedEndDate(plan.expectedEndDate ? String(plan.expectedEndDate).slice(0, 10) : '')
-        setItems(
-          (plan.items ?? []).map((item: any) => ({
-            id: item.id,
-            phase: item.phase ?? 1,
-            procedureId: item.procedureId,
-            procedureName: item.procedure?.name ?? 'Procedure',
-            procedureCode: item.procedure?.code ?? '',
-            toothNumbers: item.toothNumbers ?? '',
-            estimatedCost: Number(item.estimatedCost ?? 0),
-            notes: item.notes ?? '',
-            status: item.status ?? 'PENDING',
-          }))
-        )
-      } catch (err) {
-        toast({
-          title: 'Error',
-          description: err instanceof Error ? err.message : 'Failed to load the plan',
-          variant: 'destructive',
-        })
-      } finally {
-        setLoading(false)
+  const load = useCallback(async () => {
+    setLoading(true)
+    setLoadState('ok')
+    try {
+      const planRes = await fetch(`/api/treatment-plans/${planId}`)
+      if (planRes.status === 404) {
+        setLoadState('missing')
+        return
       }
-    }
-    load()
-  }, [planId, toast])
+      const planData = await readJson<any>(planRes)
+      const plan = planData.treatmentPlan ?? planData
 
-  const total = useMemo(
-    () => items.reduce((sum, item) => sum + Number(item.estimatedCost || 0), 0),
-    [items]
-  )
+      setPlanNumber(plan.planNumber ?? null)
+      setPatient(
+        plan.patient
+          ? {
+              id: plan.patient.id,
+              name: `${plan.patient.firstName} ${plan.patient.lastName}`,
+              dateOfBirth: plan.patient.dateOfBirth ?? null,
+            }
+          : null
+      )
+      setStoredTotal(Number(plan.estimatedCost ?? 0))
+      setTitle(plan.title ?? '')
+      setNotes(plan.notes ?? '')
+      setStartDate(plan.startDate ? String(plan.startDate).slice(0, 10) : '')
+      setExpectedEndDate(plan.expectedEndDate ? String(plan.expectedEndDate).slice(0, 10) : '')
+      setItems(
+        (plan.items ?? []).map((item: any) => ({
+          id: item.id,
+          phase: item.phase ?? 1,
+          procedureId: item.procedureId,
+          procedureName: item.procedure?.name ?? 'Procedure',
+          procedureCode: item.procedure?.code ?? '',
+          toothNumbers: item.toothNumbers ?? '',
+          estimatedCost: String(Number(item.estimatedCost ?? 0)),
+          notes: item.notes ?? '',
+          status: item.status ?? 'PENDING',
+        }))
+      )
+    } catch (err) {
+      console.error('Error loading treatment plan:', err)
+      setLoadState('failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [planId])
+
+  useEffect(() => {
+    // Loading is the effect's job: it fetches and stores what comes back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load()
+  }, [load])
+
+  // What the patient is quoted: each line as it reads now, a line still being
+  // typed counting for nothing until it is an amount.
+  const total = items.reduce((sum, item) => sum + (parseMoney(item.estimatedCost) ?? 0), 0)
 
   const addItem = () => {
-    const procedure = procedures.find((p) => p.id === pickProcedure)
-    if (!procedure) {
-      toast({
-        title: 'Choose a procedure',
-        description: 'Pick what is being added to the plan.',
-        variant: 'destructive',
-      })
+    if (!pickProcedure) {
+      setErrors((current) => ({ ...current, procedure: 'Choose a procedure to add.' }))
+      return
+    }
+    if (isInvalidMoney(pickCost)) {
+      setErrors((current) => ({
+        ...current,
+        pickCost: `${BAD_PRICE} Leave it blank for the list price.`,
+      }))
       return
     }
 
+    // A blank price is the procedure's list price; zero is zero.
+    const cost = parseMoney(pickCost) ?? Number(pickProcedure.basePrice)
     setItems([
       ...items,
       {
         // Added to the last phase, which is where a step added afterwards
         // usually belongs; the plan page shows it there.
         phase: items.length ? Math.max(...items.map((item) => item.phase)) : 1,
-        procedureId: procedure.id,
-        procedureName: procedure.name,
-        procedureCode: procedure.code,
-        toothNumbers: pickTeeth,
-        estimatedCost: pickCost === '' ? Number(procedure.basePrice) : Number(pickCost),
+        procedureId: pickProcedure.id,
+        procedureName: pickProcedure.name,
+        procedureCode: pickProcedure.code,
+        toothNumbers: formatTeeth(pickTeeth) ?? '',
+        estimatedCost: String(cost),
         notes: '',
         status: 'PENDING',
       },
     ])
-    setPickProcedure('')
-    setPickTeeth('')
+    setErrors((current) => ({ ...current, procedure: undefined, pickCost: undefined }))
+    setPickProcedure(null)
+    setPickTeeth([])
     setPickCost('')
   }
 
+  // Line errors are by position, so a move or a removal starts them afresh.
   const move = (index: number, by: number) => {
     const next = [...items]
     const target = index + by
     if (target < 0 || target >= next.length) return
     ;[next[index], next[target]] = [next[target], next[index]]
     setItems(next)
+    setErrors((current) => ({ ...current, cost: undefined }))
   }
 
   const remove = (index: number) => {
     const item = items[index]
     if (LOCKED.has(item.status)) {
-      toast({
-        title: 'That step has already started',
-        description: `${item.procedureName} is ${item.status.toLowerCase().replace('_', ' ')}. Cancel it on the plan instead of removing it here.`,
-        variant: 'destructive',
-      })
+      toast(
+        toastError(
+          `remove ${item.procedureName}`,
+          'That step has already started. Cancel it on the plan instead of removing it here.'
+        )
+      )
       return
     }
     setItems(items.filter((_, i) => i !== index))
+    setErrors((current) => ({ ...current, cost: undefined }))
   }
 
-  const setCost = (index: number, value: string) => {
-    const next = [...items]
-    next[index] = { ...next[index], estimatedCost: value === '' ? 0 : Number(value) }
-    setItems(next)
+  const updateItem = (index: number, change: Partial<PlanItem>) => {
+    setItems((current) => current.map((item, i) => (i === index ? { ...item, ...change } : item)))
   }
 
-  const setTeeth = (index: number, value: string) => {
-    const next = [...items]
-    next[index] = { ...next[index], toothNumbers: value }
-    setItems(next)
+  const setCost = (index: number, raw: string) => {
+    updateItem(index, { estimatedCost: raw })
+    setErrors((current) => {
+      if (!current.cost?.[index]) return current
+      const cost = { ...current.cost }
+      delete cost[index]
+      return { ...current, cost }
+    })
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!title.trim()) {
-      toast({
-        title: 'A title is required',
-        description: 'The patient sees this name on their estimate.',
-        variant: 'destructive',
-      })
-      return
-    }
+    const found: Errors = {}
+    if (!title.trim()) found.title = 'Give the plan a title. The patient sees it on the estimate.'
     if (items.length === 0) {
-      toast({
-        title: 'A plan needs at least one step',
-        description: 'Add a procedure, or cancel the plan instead of emptying it.',
-        variant: 'destructive',
-      })
+      found.procedure = 'A plan needs at least one step. Add a procedure, or cancel the plan.'
+    }
+    const cost: Record<number, string> = {}
+    items.forEach((item, index) => {
+      if (parseMoney(item.estimatedCost) === null) {
+        cost[index] = item.estimatedCost.trim() ? BAD_PRICE : 'Enter a price, 0 for no charge.'
+      }
+    })
+    if (Object.keys(cost).length) found.cost = cost
+    setErrors(found)
+
+    const firstId = found.title
+      ? 'title'
+      : found.cost
+        ? `cost-${Object.keys(found.cost)[0]}`
+        : found.procedure
+          ? 'procedure'
+          : null
+    if (firstId) {
+      toast(toastError('save the treatment plan', 'Check the highlighted fields.'))
+      const field = document.getElementById(firstId)
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      field?.focus({ preventScroll: true })
       return
     }
 
     setSaving(true)
     try {
-      const res = await fetch(`/api/treatment-plans/${planId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          notes,
-          startDate: startDate || null,
-          expectedEndDate: expectedEndDate || null,
-          items: items.map((item, index) => ({
-            id: item.id,
-            phase: item.phase,
-            procedureId: item.procedureId,
-            toothNumbers: item.toothNumbers || null,
-            priority: index + 1,
-            estimatedCost: item.estimatedCost,
-            notes: item.notes || null,
-            status: item.status,
-          })),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save the plan')
+      await readJson(
+        await fetch(`/api/treatment-plans/${planId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            notes,
+            startDate: startDate || null,
+            expectedEndDate: expectedEndDate || null,
+            items: items.map((item, index) => ({
+              id: item.id,
+              phase: item.phase,
+              procedureId: item.procedureId,
+              toothNumbers: item.toothNumbers || null,
+              priority: index + 1,
+              estimatedCost: parseMoney(item.estimatedCost),
+              notes: item.notes || null,
+              status: item.status,
+            })),
+          }),
+        })
+      )
 
-      toast({ title: 'Saved', description: `${planNumber ?? 'The plan'} has been updated.` })
+      toast(toastSuccess('Treatment plan saved', planNumber ?? undefined))
       router.push(`/treatments/plans/${planId}`)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to save the plan',
-        variant: 'destructive',
-      })
-    } finally {
+      toast(toastError(`save ${planNumber ?? 'the treatment plan'}`, err))
       setSaving(false)
     }
   }
 
   if (loading) {
+    return <PageSkeleton variant="form" />
+  }
+
+  if (loadState === 'missing') {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="Treatment plan not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to treatment plans"
+        actionHref="/treatments/plans"
+      />
     )
   }
 
-  return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
-      <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
+  if (loadState === 'failed') {
+    return <LoadFailed what="this treatment plan" onRetry={load} />
+  }
 
-      <div>
-        <h1 className="page-title">Edit {planNumber ?? 'treatment plan'}</h1>
-        {patient && (
-          <p className="text-muted-foreground">
-            for{' '}
-            <Link href={trail.to(`/patients/${patient.id}`)} className="hover:underline">
-              {patient.name}
-            </Link>
-          </p>
-        )}
-      </div>
+  const teethItem = teethFor !== null ? items[teethFor] : null
+
+  return (
+    <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6 max-w-4xl">
+      <PageHeader
+        title={`Edit ${planNumber ?? 'treatment plan'}`}
+        description={
+          patient && (
+            <>
+              for{' '}
+              <Link href={trail.to(`/patients/${patient.id}`)} className="hover:underline">
+                {patient.name}
+              </Link>
+            </>
+          )
+        }
+        back={
+          <BackLink
+            trail={trail}
+            fallback={`/treatments/plans/${planId}`}
+            fallbackLabel={planNumber ?? 'Treatment plan'}
+          />
+        }
+      />
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">The plan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title *</Label>
-            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Start date</Label>
+          <FormField label="Title" htmlFor="title" required error={errors.title}>
+            {(control) => (
+              <Input
+                {...control}
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  if (errors.title) setErrors((current) => ({ ...current, title: undefined }))
+                }}
+              />
+            )}
+          </FormField>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Start date" htmlFor="startDate">
               <Input
                 id="startDate"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="expectedEndDate">Expected completion</Label>
+            </FormField>
+            <FormField label="Expected completion" htmlFor="expectedEndDate">
               <Input
                 id="expectedEndDate"
                 type="date"
                 value={expectedEndDate}
                 onChange={(e) => setExpectedEndDate(e.target.value)}
               />
-            </div>
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+          <FormField label="Notes" htmlFor="notes">
             <Textarea
               id="notes"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 
@@ -351,82 +432,104 @@ export default function EditTreatmentPlanPage() {
                 <TableHead className="w-10">#</TableHead>
                 <TableHead>Procedure</TableHead>
                 <TableHead>Teeth</TableHead>
-                <TableHead className="w-36 text-right">Cost</TableHead>
+                <TableHead className="w-40 text-right">Cost</TableHead>
                 <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item, index) => (
-                <TableRow key={item.id ?? `${item.procedureId}-${index}`}>
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>
-                    <p className="font-medium">{item.procedureName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.procedureCode}
-                      {LOCKED.has(item.status)
-                        ? ` · ${item.status.toLowerCase().replace('_', ' ')}`
-                        : ''}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={item.toothNumbers}
-                      onChange={(e) => setTeeth(index, e.target.value)}
-                      className="h-8"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.estimatedCost}
-                      onChange={(e) => setCost(index, e.target.value)}
-                      className="h-8 text-right"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <IconTooltip label="Move this item up">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => move(index, -1)}
-                          aria-label="Move this item up"
-                        >
-                          <ArrowUp className="h-4 w-4" />
-                        </Button>
-                      </IconTooltip>
-                      <IconTooltip label="Move this item down">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => move(index, 1)}
-                          aria-label="Move this item down"
-                        >
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                      </IconTooltip>
-                      <IconTooltip label="Remove this item">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-600 dark:text-red-400"
-                          onClick={() => remove(index)}
-                          aria-label="Remove this item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </IconTooltip>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {items.map((item, index) => {
+                const teeth = describeTeethByQuadrant(parseTeeth(item.toothNumbers))
+                const costError = errors.cost?.[index]
+                return (
+                  <TableRow key={item.id ?? `${item.procedureId}-${index}`}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>
+                      <p className="font-medium">{item.procedureName}</p>
+                      <p className="text-xs text-muted-foreground">{item.procedureCode}</p>
+                      {LOCKED.has(item.status) && (
+                        <StatusBadge
+                          kind="treatmentPlanItem"
+                          status={item.status}
+                          className="mt-1"
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">{teeth || BLANK}</span>
+                        <IconTooltip label={`Choose teeth for ${item.procedureName}`}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setTeethFor(index)}
+                            aria-label={`Choose teeth for ${item.procedureName}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </IconTooltip>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <MoneyInput
+                        id={`cost-${index}`}
+                        aria-label={`Cost of ${item.procedureName}`}
+                        aria-invalid={costError ? true : undefined}
+                        aria-describedby={costError ? `cost-${index}-error` : undefined}
+                        value={item.estimatedCost}
+                        onChange={(raw) => setCost(index, raw)}
+                        className="h-8"
+                      />
+                      {costError && (
+                        <p id={`cost-${index}-error`} className="mt-1 text-xs text-destructive">
+                          {costError}
+                        </p>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <IconTooltip label="Move this item up">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => move(index, -1)}
+                            aria-label="Move this item up"
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                        </IconTooltip>
+                        <IconTooltip label="Move this item down">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => move(index, 1)}
+                            aria-label="Move this item down"
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </Button>
+                        </IconTooltip>
+                        <IconTooltip label="Remove this item">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => remove(index)}
+                            aria-label="Remove this item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </IconTooltip>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
               {items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground">
@@ -456,45 +559,64 @@ export default function EditTreatmentPlanPage() {
             </p>
           )}
 
-          <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-3 items-end border-t pt-4">
-            <div className="space-y-2">
-              <Label>Add a procedure</Label>
-              <Select value={pickProcedure} onValueChange={setPickProcedure}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a procedure" />
-                </SelectTrigger>
-                <SelectContent>
-                  {procedures.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* The step being added */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
+              <FormField label="Add a procedure" htmlFor="procedure" error={errors.procedure}>
+                {(control) => (
+                  <ProcedurePicker<Procedure>
+                    id={control.id}
+                    aria-describedby={control['aria-describedby']}
+                    aria-invalid={control['aria-invalid']}
+                    value={pickProcedure?.id ?? null}
+                    selectedLabel={pickProcedure?.name}
+                    onSelect={(procedure) => {
+                      setPickProcedure(procedure)
+                      setErrors((current) => ({ ...current, procedure: undefined }))
+                    }}
+                    onClear={() => setPickProcedure(null)}
+                  />
+                )}
+              </FormField>
+              <FormField
+                label="Cost"
+                htmlFor="pickCost"
+                error={errors.pickCost}
+                hint={
+                  pickProcedure
+                    ? `Blank for the list price, ${formatCurrency(pickProcedure.basePrice)}.`
+                    : 'Blank for the list price.'
+                }
+              >
+                {(control) => (
+                  <MoneyInput
+                    {...control}
+                    value={pickCost}
+                    onChange={(raw) => {
+                      setPickCost(raw)
+                      setErrors((current) => ({ ...current, pickCost: undefined }))
+                    }}
+                    placeholder="List price"
+                  />
+                )}
+              </FormField>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pickTeeth">Teeth</Label>
-              <Input
-                id="pickTeeth"
-                value={pickTeeth}
-                onChange={(e) => setPickTeeth(e.target.value)}
-              />
+              <p className="text-sm font-medium" id="pickTeethLabel">
+                Teeth
+              </p>
+              <div role="group" aria-labelledby="pickTeethLabel">
+                <ToothPicker
+                  selected={pickTeeth}
+                  onChange={setPickTeeth}
+                  patientId={patient?.id}
+                  dateOfBirth={patient?.dateOfBirth}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pickCost">Cost</Label>
-              <Input
-                id="pickCost"
-                type="number"
-                min="0"
-                step="0.01"
-                value={pickCost}
-                onChange={(e) => setPickCost(e.target.value)}
-                placeholder="List price"
-              />
-            </div>
-            <Button type="button" variant="outline" onClick={addItem}>
+            <Button type="button" variant="outline" onClick={addItem} disabled={!pickProcedure}>
               <Plus className="h-4 w-4 mr-2" />
-              Add
+              Add procedure
             </Button>
           </div>
         </CardContent>
@@ -504,15 +626,33 @@ export default function EditTreatmentPlanPage() {
         <Button type="button" variant="outline" asChild>
           <Link href={`/treatments/plans/${planId}`}>Cancel</Link>
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-2" />
-          )}
-          Save changes
-        </Button>
+        <SubmitButton busy={saving}>Save changes</SubmitButton>
       </div>
+
+      {/* The teeth of a step already on the plan */}
+      <Dialog open={teethItem !== null} onOpenChange={(open) => !open && setTeethFor(null)}>
+        <DialogContent size="xl">
+          <DialogHeader>
+            <DialogTitle>Teeth for {teethItem?.procedureName}</DialogTitle>
+            <DialogDescription>
+              Click a tooth to add or remove it. Leave it empty for a procedure on the whole mouth.
+            </DialogDescription>
+          </DialogHeader>
+          {teethItem && teethFor !== null && (
+            <ToothPicker
+              selected={parseTeeth(teethItem.toothNumbers)}
+              onChange={(teeth) => updateItem(teethFor, { toothNumbers: formatTeeth(teeth) ?? '' })}
+              patientId={patient?.id}
+              dateOfBirth={patient?.dateOfBirth}
+            />
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setTeethFor(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   )
 }

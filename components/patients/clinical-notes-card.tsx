@@ -24,8 +24,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
-import { formatDateTime } from '@/lib/i18n/format'
+import { displayDateTime } from '@/lib/dates'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { MIN_REASON_LENGTH } from '@/lib/clinical-notes'
 import { Lock, MessageSquareText, NotebookPen, Plus } from 'lucide-react'
@@ -115,17 +118,26 @@ export function ClinicalNotesCard({
     load()
   }, [load])
 
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+
   const sign = async (note: Note) => {
-    const res = await fetch(`/api/clinical-notes/${note.id}/sign`, { method: 'POST' })
-    const data = await res.json()
-
-    if (!res.ok) {
-      toast({ title: 'Not signed', description: data.error, variant: 'destructive' })
-      return
+    // Irreversible but destroys nothing: asked, in the default tone.
+    const ok = await confirm({
+      title: `Sign note ${note.noteNo}?`,
+      description:
+        'Signing locks it. Anything added afterwards is an addendum, dated and attributed.',
+      confirmLabel: 'Sign note',
+      tone: 'default',
+    })
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/clinical-notes/${note.id}/sign`, { method: 'POST' })
+      await readJson(res)
+      toast(toastSuccess(`${note.noteNo} signed`, 'It is locked now.'))
+      load()
+    } catch (err) {
+      toast(toastError(`sign ${note.noteNo}`, err))
     }
-
-    toast({ title: `${note.noteNo} signed`, description: 'It is locked now.' })
-    load()
   }
 
   return (
@@ -188,6 +200,7 @@ export function ClinicalNotesCard({
           load()
         }}
       />
+      {ConfirmDialogComponent}
     </Card>
   )
 }
@@ -222,7 +235,7 @@ function NoteEntry({
             <span className="text-sm font-medium">{note.summary}</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {note.noteNo} · {note.author.name ?? 'Unknown'} · {formatDateTime(note.createdAt)}
+            {note.noteNo} · {note.author.name ?? 'Unknown'} · {displayDateTime(note.createdAt)}
             {note.appointment && ` · at ${note.appointment.appointmentNo}`}
           </p>
         </div>
@@ -258,8 +271,8 @@ function NoteEntry({
 
       {note.signedAt && (
         <p className="mt-3 text-xs text-muted-foreground">
-          Signed by {note.signedBy?.name ?? 'a clinician'} on {formatDateTime(note.signedAt)}
-          {note.amendedAt && ` · amended ${formatDateTime(note.amendedAt)}`}
+          Signed by {note.signedBy?.name ?? 'a clinician'} on {displayDateTime(note.signedAt)}
+          {note.amendedAt && ` · amended ${displayDateTime(note.amendedAt)}`}
         </p>
       )}
 
@@ -272,7 +285,7 @@ function NoteEntry({
               </span>
               <p className="whitespace-pre-wrap">{amendment.body}</p>
               <p className="text-xs text-muted-foreground">
-                {amendment.author.name ?? 'Unknown'} · {formatDateTime(amendment.createdAt)}
+                {amendment.author.name ?? 'Unknown'} · {displayDateTime(amendment.createdAt)}
               </p>
             </li>
           ))}
@@ -317,20 +330,12 @@ function ComposeDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind, summary, body, toothNumbers: teeth || null }),
       })
-      const data = await res.json()
+      const data = await readJson<{ noteNo: string }>(res)
 
-      if (!res.ok) {
-        toast({ title: 'Not saved', description: data.error, variant: 'destructive' })
-        return
-      }
-
-      toast({
-        title: `${data.noteNo} saved`,
-        description: 'It is a draft until it is signed.',
-      })
+      toast(toastSuccess(`${data.noteNo} saved`, 'It is a draft until it is signed.'))
       onSaved()
-    } catch {
-      toast({ title: 'Not saved', description: 'Please try again.', variant: 'destructive' })
+    } catch (err) {
+      toast(toastError('save the note', err))
     } finally {
       setSaving(false)
     }
@@ -338,7 +343,7 @@ function ComposeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>New clinical note</DialogTitle>
           <DialogDescription>
@@ -399,15 +404,18 @@ function ComposeDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button
+          <SubmitButton
+            type="button"
             onClick={save}
-            disabled={saving || summary.trim().length < 3 || body.trim().length < 3}
+            busy={saving}
+            busyLabel="Saving…"
+            disabled={summary.trim().length < 3 || body.trim().length < 3}
           >
-            {saving ? 'Saving…' : 'Save note'}
-          </Button>
+            Save note
+          </SubmitButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -440,17 +448,12 @@ function AddendumDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body }),
       })
-      const data = await res.json()
+      await readJson(res)
 
-      if (!res.ok) {
-        toast({ title: 'Not added', description: data.error, variant: 'destructive' })
-        return
-      }
-
-      toast({ title: 'Addendum added', description: `Appended to ${note.noteNo}.` })
+      toast(toastSuccess('Addendum added', `Appended to ${note.noteNo}.`))
       onSaved()
-    } catch {
-      toast({ title: 'Not added', description: 'Please try again.', variant: 'destructive' })
+    } catch (err) {
+      toast(toastError(`add the addendum to ${note.noteNo}`, err))
     } finally {
       setSaving(false)
     }
@@ -458,7 +461,7 @@ function AddendumDialog({
 
   return (
     <Dialog open={note !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Addendum to {note?.noteNo}</DialogTitle>
           <DialogDescription>
@@ -475,12 +478,18 @@ function AddendumDialog({
         />
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving || body.trim().length < MIN_REASON_LENGTH}>
-            {saving ? 'Adding…' : 'Add addendum'}
-          </Button>
+          <SubmitButton
+            type="button"
+            onClick={save}
+            busy={saving}
+            busyLabel="Adding…"
+            disabled={body.trim().length < MIN_REASON_LENGTH}
+          >
+            Add addendum
+          </SubmitButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

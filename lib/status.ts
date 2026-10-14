@@ -203,6 +203,30 @@ export const STATUS_TABLE = {
     low_stock: s('danger', 'Low stock'),
     out_of_stock: s('danger', 'Out of stock'),
   },
+  /** StockAlertType. Severity, not category: an expired batch is acted on first. */
+  stockAlert: {
+    EXPIRED: s('danger', 'Expired'),
+    OUT_OF_STOCK: s('danger', 'Out of stock'),
+    EXPIRING_SOON: s('progress', 'Expiring soon'),
+    LOW_STOCK: s('progress', 'Low stock'),
+  },
+  /**
+   * StockTransactionType, as the stock history names it. Stock in is good
+   * news, stock out by use is ordinary, stock lost needs a look. `PURCHASE`
+   * is "Purchase" here because a received order writes one too; the recording
+   * form, which only makes the unordered kind, says "Purchase (no order)".
+   */
+  stockTransaction: {
+    PURCHASE: s('success', 'Purchase'),
+    ADJUSTMENT_IN: s('success', 'Adjustment (add)'),
+    CONSUMPTION: s('info', 'Used in treatment'),
+    SALE: s('info', 'Sale'),
+    TRANSFERRED: s('info', 'Transfer'),
+    ADJUSTMENT_OUT: s('progress', 'Adjustment (remove)'),
+    RETURNED: s('progress', 'Returned to supplier'),
+    DAMAGED: s('danger', 'Damaged'),
+    EXPIRED: s('danger', 'Expired'),
+  },
   /** SubscriptionStatus — a clinic on the platform console. */
   tenant: {
     TRIALING: s('info', 'Trialing'),

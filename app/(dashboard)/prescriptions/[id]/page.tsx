@@ -1,18 +1,30 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter, useParams } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, Printer, Loader2, Trash2 } from 'lucide-react'
+import { ClipboardList, Printer, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { groupTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { prescriberName } from '@/lib/prescribing'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { prescriptionStatus } from '@/lib/status'
+import { BLANK, displayDate } from '@/lib/dates'
+import { DEFAULT_TIMEZONE, localDay } from '@/lib/appointment-time'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { ageInYears } from '@/lib/age'
+import { formatPhone } from '@/lib/utils'
+import { useCan } from '@/hooks/use-can'
 
 interface PrescriptionDetail {
   id: string
@@ -97,87 +109,115 @@ export default function PrescriptionDetailPage() {
   const toothGroups = groupTeeth(teeth)
   const [hospital, setHospital] = useState<Hospital | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Why there is no prescription to show: it does not exist, or it did not load. */
+  const [problem, setProblem] = useState<'not-found' | 'failed' | null>(null)
+  // Deleting is `clinical:write` on the server; not offered without it.
+  const canDelete = useCan('clinical:write') === true
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setProblem(null)
+    try {
+      const res = await fetch(`/api/prescriptions/${params.id}`)
+      if (res.status === 404) {
+        setProblem('not-found')
+        return
+      }
+      const result = await readJson<{ data: PrescriptionDetail; hospital: Hospital | null }>(res)
+      setPrescription(result.data)
+      setHospital(result.hospital)
+    } catch (error) {
+      console.error('Error loading prescription:', error)
+      setProblem('failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [params.id])
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch(`/api/prescriptions/${params.id}`)
-        const result = await res.json()
-        if (!res.ok) throw new Error(result.error)
-        setPrescription(result.data)
-        setHospital(result.hospital)
-      } catch (err: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: err.message || 'Failed to load prescription',
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [params.id])
+    load()
+  }, [load])
 
   const handlePrint = () => {
     window.print()
   }
 
   const handleDelete = async () => {
+    if (!prescription) return
     const ok = await confirm({
-      title: 'Delete Prescription',
-      description: 'Delete this prescription? This action cannot be undone.',
-      confirmLabel: 'Delete',
+      title: `Delete prescription ${prescription.prescriptionNo}?`,
+      description: 'It is removed from the patient’s record. This cannot be undone.',
+      confirmLabel: 'Delete prescription',
     })
     if (!ok) return
     try {
-      const res = await fetch(`/api/prescriptions/${params.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed')
-      toast({ title: 'Deleted' })
+      await readJson(await fetch(`/api/prescriptions/${params.id}`, { method: 'DELETE' }))
+      toast(toastSuccess(`Prescription ${prescription.prescriptionNo} deleted`))
       router.push('/prescriptions')
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete' })
+    } catch (error) {
+      toast(toastError(`delete prescription ${prescription.prescriptionNo}`, error))
     }
   }
 
-  if (loading) {
+  const back = <BackLink trail={trail} fallback="/prescriptions" fallbackLabel="Prescriptions" />
+
+  if (loading && !prescription) {
+    return <PageSkeleton variant="detail" />
+  }
+
+  if (problem === 'failed' && !prescription) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="mx-auto max-w-4xl space-y-6">
+        {back}
+        <LoadFailed what="this prescription" onRetry={load} />
       </div>
     )
   }
 
   if (!prescription) {
     return (
-      <div className="mx-auto max-w-4xl">
-        <p className="text-center text-muted-foreground py-20">Prescription not found</p>
+      <div className="mx-auto max-w-4xl space-y-6">
+        {back}
+        <EmptyState
+          icon={ClipboardList}
+          title="Prescription not found"
+          description="It may have been deleted, or the link is wrong."
+          actionLabel="Go to prescriptions"
+          actionHref="/prescriptions"
+        />
       </div>
     )
   }
 
-  const patientAge = prescription.patient.dateOfBirth
-    ? Math.floor(
-        (Date.now() - new Date(prescription.patient.dateOfBirth).getTime()) /
-          (365.25 * 24 * 60 * 60 * 1000)
-      )
-    : null
+  const patientAge = ageInYears(prescription.patient.dateOfBirth)
+  const today = localDay(new Date(), DEFAULT_TIMEZONE)
 
   return (
     <>
       {/* Screen-only controls */}
-      <div className="mx-auto max-w-4xl print:hidden">
-        <div className="flex items-center justify-between mb-6">
-          <BackLink trail={trail} fallback="/prescriptions" fallbackLabel="Prescriptions" />
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleDelete} className="text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" /> Delete
-            </Button>
-            <Button onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-2" /> Print
-            </Button>
-          </div>
-        </div>
+      <div className="mx-auto max-w-4xl mb-6 print:hidden">
+        <PageHeader
+          back={back}
+          title={prescription.prescriptionNo}
+          badges={
+            <StatusBadge
+              kind="prescription"
+              status={prescriptionStatus(prescription.validUntil, today)}
+            />
+          }
+          actions={
+            <>
+              {canDelete && (
+                <Button variant="outline" onClick={handleDelete} className="text-destructive">
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete prescription
+                </Button>
+              )}
+              <Button onClick={handlePrint}>
+                <Printer className="h-4 w-4 mr-2" /> Print
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Printable prescription */}
@@ -216,11 +256,7 @@ export default function PrescriptionDetailPage() {
                   {prescription.prescriptionNo}
                 </Badge>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {new Date(prescription.createdAt).toLocaleDateString('en-PK', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                  {displayDate(prescription.createdAt)}
                 </p>
               </div>
             </div>
@@ -256,7 +292,7 @@ export default function PrescriptionDetailPage() {
               )}
               <div>
                 <span className="text-muted-foreground">Phone: </span>
-                <span>{prescription.patient.phone}</span>
+                <span>{formatPhone(prescription.patient.phone) || BLANK}</span>
               </div>
               {prescription.patient.medicalHistory?.allergies?.length ? (
                 <div className="col-span-2 text-destructive font-medium">
@@ -310,7 +346,7 @@ export default function PrescriptionDetailPage() {
                   <span className="text-muted-foreground">
                     Written during{' '}
                     <Link
-                      href={`/treatments/${prescription.treatment.id}`}
+                      href={trail.to(`/treatments/${prescription.treatment.id}`)}
                       className="text-primary hover:underline"
                     >
                       {prescription.treatment.procedure?.name ?? prescription.treatment.treatmentNo}
@@ -362,7 +398,7 @@ export default function PrescriptionDetailPage() {
                     <td className="py-3">{med.dosage}</td>
                     <td className="py-3">{med.frequency}</td>
                     <td className="py-3">{med.duration}</td>
-                    <td className="py-3 hidden print:table-cell">{med.quantity || '—'}</td>
+                    <td className="py-3 hidden print:table-cell">{med.quantity || BLANK}</td>
                   </tr>
                 ))}
               </tbody>
@@ -377,12 +413,7 @@ export default function PrescriptionDetailPage() {
 
             {prescription.validUntil && (
               <p className="text-xs text-muted-foreground mb-6">
-                Valid until:{' '}
-                {new Date(prescription.validUntil).toLocaleDateString('en-PK', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                Valid until: {displayDate(prescription.validUntil)}
               </p>
             )}
 

@@ -238,9 +238,9 @@ describe('NewInvoicePage', () => {
       expect(screen.getByText('No items added yet')).toBeInTheDocument()
     })
 
-    it('renders "Add Custom Item" button', () => {
+    it('renders "Add custom item" button', () => {
       renderPage()
-      expect(screen.getByText('Add Custom Item')).toBeInTheDocument()
+      expect(screen.getByText('Add custom item')).toBeInTheDocument()
     })
   })
 
@@ -348,10 +348,10 @@ describe('NewInvoicePage', () => {
   })
 
   describe('Invoice items', () => {
-    it('adds custom item on "Add Custom Item" click', async () => {
+    it('adds custom item on "Add custom item" click', async () => {
       renderPage()
 
-      fireEvent.click(screen.getByText('Add Custom Item'))
+      fireEvent.click(screen.getByText('Add custom item'))
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Item description')).toBeInTheDocument()
@@ -361,12 +361,12 @@ describe('NewInvoicePage', () => {
     it('renders item table with description, qty, unit price, taxable, delete', async () => {
       renderPage()
 
-      fireEvent.click(screen.getByText('Add Custom Item'))
+      fireEvent.click(screen.getByText('Add custom item'))
 
       await waitFor(() => {
         expect(screen.getByText('Description')).toBeInTheDocument()
         expect(screen.getByText('Qty')).toBeInTheDocument()
-        expect(screen.getByText('Unit Price')).toBeInTheDocument()
+        expect(screen.getByText('Unit price')).toBeInTheDocument()
         expect(screen.getByText('Taxable')).toBeInTheDocument()
       })
     })
@@ -374,13 +374,13 @@ describe('NewInvoicePage', () => {
     it('can add multiple custom items', async () => {
       renderPage()
 
-      fireEvent.click(screen.getByText('Add Custom Item'))
+      fireEvent.click(screen.getByText('Add custom item'))
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Item description')).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText('Add Custom Item'))
+      fireEvent.click(screen.getByText('Add custom item'))
 
       await waitFor(() => {
         const descriptions = screen.getAllByPlaceholderText('Item description')

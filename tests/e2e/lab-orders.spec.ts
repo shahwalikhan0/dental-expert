@@ -7,7 +7,7 @@ test.describe('Lab Orders', () => {
       // Match the page title exactly. A /lab/i regex also matches the "Sent to
       // Lab" stat card and the "No lab orders found" empty state, which trips
       // strict mode.
-      await expect(page.getByRole('heading', { name: 'Lab Work Management' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Lab orders', exact: true })).toBeVisible()
     })
 
     test('should have New Lab Order button', async ({ adminPage: page }) => {

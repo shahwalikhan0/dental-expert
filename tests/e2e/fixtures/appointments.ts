@@ -3,10 +3,9 @@ import { Page, expect } from '@playwright/test'
 /**
  * Open the first appointment's detail page from the appointments list.
  *
- * Rows in app/(dashboard)/appointments/page.tsx are not links — they navigate
- * via router.push() from a per-row dropdown, and the only <a> inside the table
- * is the "Book New Appointment" button in the empty state. Clicking blindly
- * therefore lands on the creation form rather than an appointment.
+ * Rows in app/(dashboard)/appointments/page.tsx are ClickableRows (role="link",
+ * not <a>), so clicking the first cell opens the appointment. A blind
+ * `a[href*="/appointments/"]` would land on the creation form instead.
  */
 export async function openFirstAppointmentDetail(page: Page) {
   await page.goto('/appointments')
@@ -14,8 +13,9 @@ export async function openFirstAppointmentDetail(page: Page) {
   const firstRow = page.locator('tbody tr').first()
   await expect(firstRow).toBeVisible({ timeout: 10000 })
 
-  await firstRow.getByRole('button').last().click()
-  await page.getByRole('menuitem', { name: /view details/i }).click()
+  // The row opens the record (ClickableRow); the menu no longer repeats it
+  // with "View details". The first cell holds no control of its own.
+  await firstRow.locator('td').first().click()
 
   // Detail route is /appointments/<cuid>; exclude /appointments/new.
   await page.waitForURL(/\/appointments\/(?!new)[^/]+$/, { timeout: 10000 })

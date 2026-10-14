@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -16,20 +15,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput } from '@/components/ui/money-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
+import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { useToast } from '@/hooks/use-toast'
-import { checkLabOrderValues, WORK_TYPES } from '@/lib/lab-orders'
+import { WORK_TYPES } from '@/lib/lab-orders'
 import { LabTreatmentPicker } from '@/components/lab/treatment-picker'
-import { ArrowLeft, Search, User, FlaskConical, Save, Loader2 } from 'lucide-react'
+import {
+  focusFirstError,
+  labOrderErrors,
+  type LabOrderErrors,
+} from '@/components/lab/lab-order-errors'
+import { User, FlaskConical, Save } from 'lucide-react'
 import { isoDay } from '@/lib/dates'
-import { usePatientSearch } from '@/hooks/use-patient-search'
-import { fetchHandedPatient } from '@/lib/prefill'
+import { formatTeeth } from '@/lib/teeth'
+import { parseMoney } from '@/lib/money-input'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
-interface Patient {
-  id: string
-  patientId: string
-  firstName: string
-  lastName: string
-  phone: string
+interface Patient extends PickedPatient {
+  dateOfBirth?: string | null
 }
 
 interface LabVendor {
@@ -43,23 +51,25 @@ interface LabVendor {
 
 export default function NewLabOrderPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
+  const trail = useTrail('New lab order')
   const searchParams = useSearchParams()
+  // A link that hands a patient over (`?patientId=`) — the picker fetches that
+  // patient by id (lib/prefill.ts behaviour), not by searching a page of the register.
   const preselectedPatientId = searchParams.get('patientId')
   const { toast } = useToast()
 
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const patientSearch = usePatientSearch<Patient>()
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard(submitting)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
+  const [teeth, setTeeth] = useState<number[]>([])
+  const [errors, setErrors] = useState<LabOrderErrors>({})
 
   const [form, setForm] = useState({
-    patientId: preselectedPatientId || '',
     labVendorId: '',
     workType: '',
     description: '',
-    toothNumbers: '',
     shadeGuide: '',
     orderDate: isoDay(new Date()),
     expectedDate: '',
@@ -68,116 +78,77 @@ export default function NewLabOrderPage() {
     treatmentId: '',
   })
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [vendorsRes, handedPatient] = await Promise.all([
-          fetch('/api/lab-vendors?status=active&sort=name'),
-          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
-        ])
+  const set = (field: keyof typeof form, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+    // The error under a field goes as soon as it is touched again.
+    if (field in errors) setErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
 
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const vendorsRes = await fetch('/api/lab-vendors?status=active&sort=name')
         if (vendorsRes.ok) {
           const data = await vendorsRes.json()
           setVendors(data.data || [])
         }
-
-        // Asked for by id. Looking for it in a page of the register meant the
-        // link worked for the first hundred patients and quietly did not for
-        // the rest.
-        if (handedPatient) {
-          setSelectedPatient(handedPatient)
-          setForm((prev) => ({ ...prev, patientId: handedPatient.id }))
-        }
       } catch (error) {
-        console.error('Error fetching data:', error)
+        console.error('Error fetching vendors:', error)
       }
     }
+    fetchVendors()
+  }, [])
 
-    fetchData()
-  }, [preselectedPatientId])
-
-  const handlePatientSelect = (patient: Patient) => {
+  const choosePatient = (patient: Patient | null) => {
     setSelectedPatient(patient)
     // A treatment belongs to one patient; choosing another clears it.
-    setForm((prev) => ({ ...prev, patientId: patient.id, treatmentId: '' }))
+    setForm((prev) => ({ ...prev, treatmentId: '' }))
+    if (patient) setErrors((prev) => ({ ...prev, patientId: undefined }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!form.patientId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select a patient.' })
-      return
-    }
-    if (!form.labVendorId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select a lab vendor.' })
-      return
-    }
-    if (!form.workType) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select a work type.' })
-      return
-    }
-    if (!form.orderDate) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please enter an order date.' })
-      return
-    }
-    if (!form.estimatedCost) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please enter estimated cost.' })
-      return
-    }
-
-    // The same rules the API applies (finding 59), said before the round trip.
-    const invalid = checkLabOrderValues({
-      orderDate: form.orderDate,
-      expectedDate: form.expectedDate,
-      estimatedCost: form.estimatedCost,
-    })
-    if (invalid) {
-      toast({ variant: 'destructive', title: 'Error', description: invalid })
+    // The same rules the API applies (finding 59), said under each field.
+    const found = labOrderErrors(
+      { ...form, patientId: selectedPatient?.id ?? '' },
+      { requirePatient: true }
+    )
+    setErrors(found)
+    if (Object.values(found).some(Boolean)) {
+      toast(toastError('create the lab order', 'Check the highlighted fields.'))
+      focusFirstError(e.currentTarget as HTMLElement)
       return
     }
 
     setSubmitting(true)
     try {
       const payload = {
-        patientId: form.patientId,
+        patientId: selectedPatient!.id,
         labVendorId: form.labVendorId,
         workType: form.workType,
         description: form.description || undefined,
-        toothNumbers: form.toothNumbers || undefined,
+        toothNumbers: formatTeeth(teeth) ?? undefined,
         shadeGuide: form.shadeGuide || undefined,
         orderDate: form.orderDate,
         expectedDate: form.expectedDate || undefined,
-        estimatedCost: parseFloat(form.estimatedCost),
+        estimatedCost: parseMoney(form.estimatedCost),
         notes: form.notes || undefined,
         treatmentId: form.treatmentId || undefined,
       }
 
-      const response = await fetch('/api/lab-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const result = await readJson<{ data: { orderNumber: string } }>(
+        await fetch('/api/lab-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      )
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(data.error || `Failed to create lab order (${response.status})`)
-      }
-
-      const result = await response.json()
-
-      toast({
-        title: 'Lab Order Created',
-        description: `Order ${result.data.orderNumber} created successfully.`,
-      })
-
+      toast(toastSuccess('Lab order created', result.data?.orderNumber))
       router.push('/lab')
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to create lab order',
-      })
+    } catch (error) {
+      toast(toastError('create the lab order', error))
     } finally {
       setSubmitting(false)
     }
@@ -185,21 +156,14 @@ export default function NewLabOrderPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/lab">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Lab Order</h1>
-          <p className="text-muted-foreground">Create a new lab work order</p>
-        </div>
-      </div>
+      <PageHeader
+        title="New lab order"
+        description="Create a new lab work order"
+        back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
+      />
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-        {/* Patient Selection */}
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Patient selection */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -209,214 +173,155 @@ export default function NewLabOrderPage() {
             <CardDescription>Select the patient for this lab order</CardDescription>
           </CardHeader>
           <CardContent>
-            {selectedPatient ? (
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium">
-                      {selectedPatient.firstName} {selectedPatient.lastName}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedPatient.patientId} | {selectedPatient.phone}
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedPatient(null)
-                    setForm((prev) => ({ ...prev, patientId: '', treatmentId: '' }))
-                  }}
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search patients by name, phone, or ID..."
-                    value={patientSearch.term}
-                    onChange={(e) => patientSearch.setTerm(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {patientSearch.searching ? (
-                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Searching…
-                    </p>
-                  ) : patientSearch.results.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">
-                      {patientSearch.failed
-                        ? 'Could not search just now. Check the connection and try again.'
-                        : patientSearch.isSearch
-                          ? `No patients found for “${patientSearch.searchedFor}”`
-                          : 'No patients found'}
-                    </div>
-                  ) : (
-                    patientSearch.results.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        onClick={() => handlePatientSelect(patient)}
-                        className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {patient.firstName} {patient.lastName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {patient.patientId} | {patient.phone}
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            <FormField label="Patient" required error={errors.patientId}>
+              {({ id, 'aria-describedby': describedBy, 'aria-invalid': invalid }) => (
+                <PatientPicker<Patient>
+                  id={id}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  value={selectedPatient}
+                  onChange={choosePatient}
+                  initialPatientId={preselectedPatientId}
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
-        {/* Lab Order Details */}
+        {/* Lab order details */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FlaskConical className="h-5 w-5" />
-              Order Details
+              Order details
             </CardTitle>
             <CardDescription>Specify the lab work details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Lab Vendor *</Label>
-                <Select
-                  value={form.labVendorId}
-                  onValueChange={(v) => setForm((prev) => ({ ...prev, labVendorId: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select lab vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendors.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                        {vendor.avgTurnaround ? ` (${vendor.avgTurnaround}d avg)` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormField label="Lab vendor" required error={errors.labVendorId}>
+                {(control) => (
+                  <Select value={form.labVendorId} onValueChange={(v) => set('labVendorId', v)}>
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Select lab vendor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vendors.map((vendor) => (
+                        <SelectItem key={vendor.id} value={vendor.id}>
+                          {vendor.name}
+                          {vendor.avgTurnaround ? ` (${vendor.avgTurnaround}d avg)` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>Work Type *</Label>
-                <Select
-                  value={form.workType}
-                  onValueChange={(v) => setForm((prev) => ({ ...prev, workType: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select work type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WORK_TYPES.map((wt) => (
-                      <SelectItem key={wt.value} value={wt.value}>
-                        {wt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormField label="Work type" required error={errors.workType}>
+                {(control) => (
+                  <Select value={form.workType} onValueChange={(v) => set('workType', v)}>
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Select work type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WORK_TYPES.map((wt) => (
+                        <SelectItem key={wt.value} value={wt.value}>
+                          {wt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
             </div>
+
+            <FormField
+              label="Teeth"
+              hint={selectedPatient ? undefined : 'Choose the patient to see their chart.'}
+            >
+              <ToothPicker
+                selected={teeth}
+                onChange={setTeeth}
+                patientId={selectedPatient?.id ?? null}
+                age={selectedPatient?.age ?? null}
+                dateOfBirth={selectedPatient?.dateOfBirth ?? null}
+              />
+            </FormField>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tooth Numbers</Label>
-                <Input
-                  value={form.toothNumbers}
-                  onChange={(e) => setForm((prev) => ({ ...prev, toothNumbers: e.target.value }))}
-                  placeholder="e.g. 11, 21, 36"
-                />
-              </div>
+              <FormField label="Shade guide">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={form.shadeGuide}
+                    onChange={(e) => set('shadeGuide', e.target.value)}
+                    placeholder="e.g. A2, B1"
+                  />
+                )}
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>Shade Guide</Label>
-                <Input
-                  value={form.shadeGuide}
-                  onChange={(e) => setForm((prev) => ({ ...prev, shadeGuide: e.target.value }))}
-                  placeholder="e.g. A2, B1"
-                />
-              </div>
-            </div>
-
-            <LabTreatmentPicker
-              patientId={form.patientId}
-              value={form.treatmentId}
-              onChange={(treatmentId) => setForm((prev) => ({ ...prev, treatmentId }))}
-            />
-
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Describe the lab work required..."
-                rows={3}
+              <LabTreatmentPicker
+                patientId={selectedPatient?.id ?? ''}
+                value={form.treatmentId}
+                onChange={(treatmentId) => set('treatmentId', treatmentId)}
               />
             </div>
+
+            <FormField label="Description">
+              {(control) => (
+                <Textarea
+                  {...control}
+                  value={form.description}
+                  onChange={(e) => set('description', e.target.value)}
+                  placeholder="Describe the lab work required…"
+                  rows={3}
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
-        {/* Dates & Cost */}
+        {/* Dates and cost */}
         <Card>
           <CardHeader>
-            <CardTitle>Schedule & Cost</CardTitle>
+            <CardTitle>Schedule and cost</CardTitle>
             <CardDescription>Set dates and estimated cost</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Order Date *</Label>
-                <Input
-                  type="date"
-                  value={form.orderDate}
-                  onChange={(e) => setForm((prev) => ({ ...prev, orderDate: e.target.value }))}
-                  required
-                />
-              </div>
+              <FormField label="Order date" required error={errors.orderDate}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={form.orderDate}
+                    onChange={(e) => set('orderDate', e.target.value)}
+                  />
+                )}
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>Expected Delivery Date</Label>
-                <Input
-                  type="date"
-                  min={form.orderDate || undefined}
-                  value={form.expectedDate}
-                  onChange={(e) => setForm((prev) => ({ ...prev, expectedDate: e.target.value }))}
-                />
-              </div>
+              <FormField label="Expected delivery date" error={errors.expectedDate}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    min={form.orderDate || undefined}
+                    value={form.expectedDate}
+                    onChange={(e) => set('expectedDate', e.target.value)}
+                  />
+                )}
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>Estimated Cost (INR) *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.estimatedCost}
-                  onChange={(e) => setForm((prev) => ({ ...prev, estimatedCost: e.target.value }))}
-                  placeholder="Enter estimated cost"
-                  required
-                />
-              </div>
+              <FormField label="Estimated cost" required error={errors.estimatedCost}>
+                {(control) => (
+                  <MoneyInput
+                    {...control}
+                    value={form.estimatedCost}
+                    onChange={(raw) => set('estimatedCost', raw)}
+                    placeholder="0.00"
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -424,13 +329,14 @@ export default function NewLabOrderPage() {
         {/* Notes */}
         <Card>
           <CardHeader>
-            <CardTitle>Additional Notes</CardTitle>
+            <CardTitle>Additional notes</CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-label="Additional notes"
               value={form.notes}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Any special instructions or notes for the lab..."
+              onChange={(e) => set('notes', e.target.value)}
+              placeholder="Any special instructions or notes for the lab…"
               rows={3}
             />
           </CardContent>
@@ -439,21 +345,11 @@ export default function NewLabOrderPage() {
         {/* Actions */}
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" asChild>
-            <Link href="/lab">Cancel</Link>
+            <Link href={trail.back('/lab')}>Cancel</Link>
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Create Lab Order
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={submitting} busyLabel="Creating lab order…" icon={Save}>
+            Create lab order
+          </SubmitButton>
         </div>
       </form>
     </div>

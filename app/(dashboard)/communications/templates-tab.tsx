@@ -24,11 +24,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { Skeleton } from '@/components/ui/skeleton'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { IconTooltip } from '@/components/ui/icon-action'
 import { useToast } from '@/hooks/use-toast'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 import { useCan } from '@/hooks/use-can'
 import { humanise } from '@/lib/labels'
 import { TEMPLATE_VARIABLES } from '@/lib/template-variables'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 
 /**
  * The clinic's message templates: the wording automated reminders are sent in.
@@ -97,26 +103,25 @@ export function TemplatesTab() {
 
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
   const contentRef = useRef<HTMLTextAreaElement>(null)
 
   const load = useCallback(async () => {
+    setFailed(false)
     try {
       const res = await fetch('/api/communications/templates')
       if (!res.ok) throw new Error(await errorOf(res, 'Templates could not be loaded'))
       const body = await res.json()
       setTemplates(body.data ?? [])
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Templates could not be loaded',
-        variant: 'destructive',
-      })
+      console.error('Error fetching templates:', error)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
     load()
@@ -168,15 +173,11 @@ export function TemplatesTab() {
 
       if (!res.ok) throw new Error(await errorOf(res, 'The template could not be saved'))
 
-      toast({ title: 'Saved', description: `"${draft.name.trim()}" saved` })
+      toast(toastSuccess(draft.id ? 'Template saved' : 'Template created', draft.name.trim()))
       setDraft(null)
       load()
     } catch (error) {
-      toast({
-        title: 'Template not saved',
-        description: error instanceof Error ? error.message : 'The template could not be saved',
-        variant: 'destructive',
-      })
+      toast(toastError(`save template “${draft.name.trim()}”`, error))
     } finally {
       setSaving(false)
     }
@@ -192,22 +193,17 @@ export function TemplatesTab() {
       if (!res.ok) throw new Error(await errorOf(res, 'The template could not be updated'))
       setTemplates((list) => list.map((t) => (t.id === template.id ? { ...t, isActive } : t)))
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'The template could not be updated',
-        variant: 'destructive',
-      })
+      toast(toastError(`${isActive ? 'turn on' : 'turn off'} template “${template.name}”`, error))
     }
   }
 
   const remove = async (template: Template) => {
     const ok = await confirm({
-      title: `Delete "${template.name}"?`,
+      title: `Delete template “${template.name}”?`,
       description: template.isDefault
         ? 'This is the template automated messages of this kind are sent with. Without it they are not sent.'
         : 'The template will be deleted. Messages already sent with it are kept.',
-      confirmLabel: 'Delete',
-      variant: 'destructive',
+      confirmLabel: 'Delete template',
     })
     if (!ok) return
 
@@ -217,13 +213,9 @@ export function TemplatesTab() {
       })
       if (!res.ok) throw new Error(await errorOf(res, 'The template could not be deleted'))
       setTemplates((list) => list.filter((t) => t.id !== template.id))
-      toast({ title: 'Deleted', description: `"${template.name}" deleted` })
+      toast(toastSuccess('Template deleted', template.name))
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'The template could not be deleted',
-        variant: 'destructive',
-      })
+      toast(toastError(`delete template “${template.name}”`, error))
     }
   }
 
@@ -232,7 +224,7 @@ export function TemplatesTab() {
       {ConfirmDialogComponent}
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div>
-          <CardTitle>Communication Templates</CardTitle>
+          <CardTitle>Communication templates</CardTitle>
           <CardDescription>
             The wording automated reminders and messages are sent in
           </CardDescription>
@@ -246,11 +238,21 @@ export function TemplatesTab() {
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="space-y-3" role="status" aria-label="Loading">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
           </div>
+        ) : failed ? (
+          <LoadFailed what="the templates" onRetry={load} />
         ) : templates.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No templates yet.</p>
+          <EmptyState
+            icon={FileText}
+            title="No templates yet"
+            description="Templates are the wording automated reminders and messages are sent in."
+            actionLabel={canWrite ? 'New template' : undefined}
+            onAction={canWrite ? () => setDraft({ ...EMPTY_DRAFT }) : undefined}
+          />
         ) : (
           <ul className="divide-y rounded-lg border">
             {templates.map((template) => (
@@ -275,31 +277,35 @@ export function TemplatesTab() {
                       onCheckedChange={(checked) => setActive(template, checked)}
                       aria-label={`${template.name} active`}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Edit ${template.name}`}
-                      onClick={() =>
-                        setDraft({
-                          id: template.id,
-                          name: template.name,
-                          category: template.category,
-                          channel: template.channel,
-                          subject: template.subject ?? '',
-                          content: template.content,
-                        })
-                      }
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${template.name}`}
-                      onClick={() => remove(template)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <IconTooltip label="Edit template">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${template.name}`}
+                        onClick={() =>
+                          setDraft({
+                            id: template.id,
+                            name: template.name,
+                            category: template.category,
+                            channel: template.channel,
+                            subject: template.subject ?? '',
+                            content: template.content,
+                          })
+                        }
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </IconTooltip>
+                    <IconTooltip label="Delete template">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete ${template.name}`}
+                        onClick={() => remove(template)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </IconTooltip>
                   </div>
                 )}
               </li>
@@ -309,7 +315,7 @@ export function TemplatesTab() {
       </CardContent>
 
       <Dialog open={draft !== null} onOpenChange={(open) => !open && !saving && setDraft(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>{draft?.id ? 'Edit template' : 'New template'}</DialogTitle>
             <DialogDescription>
@@ -320,7 +326,9 @@ export function TemplatesTab() {
           {draft && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="template-name">Name</Label>
+                <Label htmlFor="template-name" className="label-required">
+                  Name
+                </Label>
                 <Input
                   id="template-name"
                   value={draft.name}
@@ -331,13 +339,13 @@ export function TemplatesTab() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Channel</Label>
+                  <Label htmlFor="template-channel">Channel</Label>
                   <Select
                     value={draft.channel}
                     onValueChange={(channel) => setDraft({ ...draft, channel })}
                     disabled={draft.id !== null}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="template-channel">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -350,13 +358,13 @@ export function TemplatesTab() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label htmlFor="template-category">Category</Label>
                   <Select
                     value={draft.category}
                     onValueChange={(category) => setDraft({ ...draft, category })}
                     disabled={draft.id !== null}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="template-category">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -382,7 +390,9 @@ export function TemplatesTab() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="template-content">Message</Label>
+                <Label htmlFor="template-content" className="label-required">
+                  Message
+                </Label>
                 <Textarea
                   id="template-content"
                   ref={contentRef}
@@ -420,13 +430,14 @@ export function TemplatesTab() {
             <Button variant="outline" onClick={() => setDraft(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button
+            <SubmitButton
+              type="button"
               onClick={save}
-              disabled={saving || !draft?.name.trim() || !draft?.content.trim()}
+              busy={saving}
+              disabled={!draft?.name.trim() || !draft?.content.trim()}
             >
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
-            </Button>
+              {draft?.id ? 'Save changes' : 'Create template'}
+            </SubmitButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

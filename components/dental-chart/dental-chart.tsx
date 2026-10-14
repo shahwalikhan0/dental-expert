@@ -45,7 +45,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2 } from 'lucide-react'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { displayDate } from '@/lib/dates'
 import {
   ALL_PRIMARY_TEETH,
@@ -144,11 +145,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
       setChartData(data.chartData || {})
     } catch (error) {
       console.error('Error fetching dental chart:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to load dental chart',
-      })
+      toast(toastError('load the dental chart', error))
     } finally {
       setLoading(false)
     }
@@ -276,24 +273,14 @@ export function DentalChart({ patientId }: DentalChartProps) {
         }),
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to save entry')
-      }
+      await readJson(response)
 
-      toast({
-        title: 'Success',
-        description: `Tooth ${selectedTooth} updated successfully`,
-      })
+      toast(toastSuccess(`Tooth ${selectedTooth} charted`))
 
       setDialogOpen(false)
       fetchChartData()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to save entry',
-      })
+    } catch (error) {
+      toast(toastError(`chart tooth ${selectedTooth}`, error))
     } finally {
       setSaving(false)
     }
@@ -479,7 +466,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
 
         {/* Tooth Detail Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent>
+          <DialogContent size="md">
             <DialogHeader>
               <DialogTitle>
                 Tooth {selectedTooth} · {selectedTooth ? toothLabel(selectedTooth) : ''}
@@ -554,7 +541,7 @@ export function DentalChart({ patientId }: DentalChartProps) {
               <div className="space-y-2">
                 <Label>Notes</Label>
                 <Textarea
-                  placeholder="Add any additional notes..."
+                  placeholder="Add any additional notes…"
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                 />
@@ -600,10 +587,9 @@ export function DentalChart({ patientId }: DentalChartProps) {
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveEntry} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Changes
-              </Button>
+              <SubmitButton type="button" onClick={handleSaveEntry} busy={saving}>
+                Save changes
+              </SubmitButton>
             </DialogFooter>
           </DialogContent>
         </Dialog>

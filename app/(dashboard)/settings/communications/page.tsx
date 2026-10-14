@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -14,14 +13,31 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { Save, Send } from 'lucide-react'
 
 export default function CommunicationSettingsPage() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
-  const [testing, setTesting] = useState(false)
+  const trail = useTrail('Communication settings')
+  // Which tab's save is out. The three save separately, so each button is busy
+  // on its own, and all three are held while any one is.
+  const [savingTab, setSavingTab] = useState<'sms' | 'email' | 'reviews' | null>(null)
+  const loading = savingTab !== null
+  const [testing, setTesting] = useState<'sms' | 'email' | null>(null)
   const [loadingSettings, setLoadingSettings] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  // One guard over all three tabs. A save resets it, so a change on one tab and
+  // a save on another is not asked about — the hook keeps one flag, not three.
+  const formRef = useFormGuard(loading)
 
   // SMS Settings
   // TWILIO is the only gateway that delivers to Pakistani numbers. MSG91,
@@ -56,21 +72,11 @@ export default function CommunicationSettingsPage() {
   const [testPhone, setTestPhone] = useState('')
   const [testEmail, setTestEmail] = useState('')
 
-  // Load settings on mount
-  useEffect(() => {
-    loadSettings()
-  }, [])
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       setLoadingSettings(true)
-      const response = await fetch('/api/settings/communications')
-
-      if (!response.ok) {
-        throw new Error('Failed to load settings')
-      }
-
-      const data = await response.json()
+      setLoadFailed(false)
+      const data = await readJson<any>(await fetch('/api/settings/communications'))
 
       // Load SMS settings
       if (data.sms) {
@@ -103,20 +109,25 @@ export default function CommunicationSettingsPage() {
         setEmailReplyTo(data.email.replyTo || '')
         setEmailEnabled(data.email.enabled !== 'false' && data.email.enabled !== false)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error loading settings:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load settings',
-        variant: 'destructive',
-      })
+      // Not the form with its defaults: saved, those would overwrite the
+      // clinic's real gateway credentials with blanks.
+      setLoadFailed(true)
     } finally {
       setLoadingSettings(false)
     }
-  }
+  }, [])
+
+  // Load settings on mount
+  useEffect(() => {
+    // Loading from the server on mount is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadSettings()
+  }, [loadSettings])
 
   const handleSaveSMSSettings = async () => {
-    setLoading(true)
+    setSavingTab('sms')
     try {
       const settings = {
         gateway: smsGateway,
@@ -128,40 +139,30 @@ export default function CommunicationSettingsPage() {
         enabled: smsEnabled,
       }
 
-      const response = await fetch('/api/settings/communications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'sms',
-          settings,
-        }),
-      })
+      await readJson(
+        await fetch('/api/settings/communications', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'sms',
+            settings,
+          }),
+        })
+      )
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save settings')
-      }
-
-      toast({
-        title: 'Success',
-        description: 'SMS settings saved successfully',
-      })
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      formRef.reset()
+      toast(toastSuccess('SMS settings saved'))
+    } catch (error) {
+      toast(toastError('save the SMS settings', error))
     } finally {
-      setLoading(false)
+      setSavingTab(null)
     }
   }
 
   const handleSaveEmailSettings = async () => {
-    setLoading(true)
+    setSavingTab('email')
     try {
       const settings = {
         smtp_host: emailHost,
@@ -175,49 +176,36 @@ export default function CommunicationSettingsPage() {
         enabled: emailEnabled,
       }
 
-      const response = await fetch('/api/settings/communications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'email',
-          settings,
-        }),
-      })
+      await readJson(
+        await fetch('/api/settings/communications', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'email',
+            settings,
+          }),
+        })
+      )
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save settings')
-      }
-
-      toast({
-        title: 'Success',
-        description: 'Email settings saved successfully',
-      })
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      formRef.reset()
+      toast(toastSuccess('Email settings saved'))
+    } catch (error) {
+      toast(toastError('save the email settings', error))
     } finally {
-      setLoading(false)
+      setSavingTab(null)
     }
   }
 
   const handleTestSMS = async () => {
     if (!testPhone) {
-      toast({
-        title: 'Error',
-        description: 'Please enter a phone number to test',
-        variant: 'destructive',
-      })
+      toast(toastError('send a test SMS', 'Enter a phone number to send it to.'))
+      document.getElementById('test-phone')?.focus()
       return
     }
 
-    setTesting(true)
+    setTesting('sms')
     try {
       const response = await fetch('/api/settings/communications/test', {
         method: 'POST',
@@ -238,32 +226,22 @@ export default function CommunicationSettingsPage() {
         throw new Error(data.details || data.error || 'Failed to send test SMS')
       }
 
-      toast({
-        title: 'Success',
-        description: data.message || 'Test SMS sent successfully',
-      })
-    } catch (error: any) {
-      toast({
-        title: 'Test Failed',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast(toastSuccess('Test SMS sent', data.message))
+    } catch (error) {
+      toast(toastError('send a test SMS', error))
     } finally {
-      setTesting(false)
+      setTesting(null)
     }
   }
 
   const handleTestEmail = async () => {
     if (!testEmail) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an email address to test',
-        variant: 'destructive',
-      })
+      toast(toastError('send a test email', 'Enter an email address to send it to.'))
+      document.getElementById('test-email')?.focus()
       return
     }
 
-    setTesting(true)
+    setTesting('email')
     try {
       const response = await fetch('/api/settings/communications/test', {
         method: 'POST',
@@ -284,23 +262,16 @@ export default function CommunicationSettingsPage() {
         throw new Error(data.details || data.error || 'Failed to send test email')
       }
 
-      toast({
-        title: 'Success',
-        description: data.message || 'Test email sent successfully',
-      })
-    } catch (error: any) {
-      toast({
-        title: 'Test Failed',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast(toastSuccess('Test email sent', data.message))
+    } catch (error) {
+      toast(toastError('send a test email', error))
     } finally {
-      setTesting(false)
+      setTesting(null)
     }
   }
 
   const handleSaveReviewSettings = async () => {
-    setLoading(true)
+    setSavingTab('reviews')
     try {
       const settings = {
         google_review_url: googleReviewUrl,
@@ -308,65 +279,69 @@ export default function CommunicationSettingsPage() {
         review_request_delay_hours: reviewRequestDelay,
       }
 
-      const response = await fetch('/api/settings/communications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'reviews', settings }),
-      })
+      await readJson(
+        await fetch('/api/settings/communications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'reviews', settings }),
+        })
+      )
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to save settings')
-
-      toast({ title: 'Success', description: 'Review settings saved successfully' })
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      formRef.reset()
+      toast(toastSuccess('Review settings saved'))
+    } catch (error) {
+      toast(toastError('save the review settings', error))
     } finally {
-      setLoading(false)
+      setSavingTab(null)
     }
   }
 
+  const header = (
+    <PageHeader
+      back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+      title="Communication settings"
+      description="Configure SMS and email gateways"
+    />
+  )
+
   if (loadingSettings) {
+    return <PageSkeleton variant="form" />
+  }
+
+  if (loadFailed) {
     return (
-      <div>
-        <div className="mb-6">
-          <h1 className="page-title">Communication Settings</h1>
-          <p className="text-muted-foreground">Configure SMS and Email gateways</p>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Loading settings...</p>
-        </div>
+      <div className="space-y-6">
+        {header}
+        <LoadFailed what="the communication settings" onRetry={loadSettings} />
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="page-title">Communication Settings</h1>
-        <p className="text-muted-foreground">Configure SMS and Email gateways</p>
-      </div>
+    <div ref={formRef} className="space-y-6">
+      {header}
 
       <Tabs defaultValue="sms" className="w-full">
         <TabsList>
-          <TabsTrigger value="sms">SMS Configuration</TabsTrigger>
-          <TabsTrigger value="email">Email Configuration</TabsTrigger>
-          <TabsTrigger value="reviews">Google Reviews</TabsTrigger>
+          <TabsTrigger value="sms">SMS configuration</TabsTrigger>
+          <TabsTrigger value="email">Email configuration</TabsTrigger>
+          <TabsTrigger value="reviews">Google reviews</TabsTrigger>
         </TabsList>
 
         {/* SMS Configuration */}
         <TabsContent value="sms">
           <Card>
             <CardHeader>
-              <CardTitle>SMS Gateway Settings</CardTitle>
-              <CardDescription>Configure your Indian SMS gateway provider</CardDescription>
+              <CardTitle>SMS gateway settings</CardTitle>
+              <CardDescription>Configure your Twilio account for sending SMS</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label>Enable SMS</Label>
+                  <Label htmlFor="sms-enabled">Enable SMS</Label>
                   <p className="text-sm text-muted-foreground">Turn on/off SMS communication</p>
                 </div>
-                <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
+                <Switch id="sms-enabled" checked={smsEnabled} onCheckedChange={setSmsEnabled} />
               </div>
 
               <Separator />
@@ -374,8 +349,11 @@ export default function CommunicationSettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="sms-sender-id">From number</Label>
+                  {/* Not a PhoneInput: Twilio needs the +92 form, which
+                      PhoneInput would rewrite to 0300… on blur. */}
                   <Input
                     id="sms-sender-id"
+                    type="tel"
                     placeholder="+923001234567"
                     value={smsSenderId}
                     onChange={(e) => setSmsSenderId(e.target.value)}
@@ -397,7 +375,7 @@ export default function CommunicationSettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="sms-api-key">Auth Token</Label>
+                  <Label htmlFor="sms-api-key">Auth token</Label>
                   <Input
                     id="sms-api-key"
                     type="password"
@@ -441,23 +419,33 @@ export default function CommunicationSettingsPage() {
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Test SMS Connection</h3>
+                <h3 className="text-lg font-semibold mb-4">Test SMS connection</h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="test-phone">Test Phone Number</Label>
-                    <Input
+                    <Label htmlFor="test-phone">Test phone number</Label>
+                    {/* Only where to send a test — not a setting, so not unsaved work. */}
+                    <PhoneInput
                       id="test-phone"
-                      placeholder="0300 1234567"
+                      data-form-guard="ignore"
+                      aria-describedby="test-phone-hint"
                       value={testPhone}
-                      onChange={(e) => setTestPhone(e.target.value)}
+                      onChange={setTestPhone}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Enter a 10-digit Indian mobile number
+                    <p id="test-phone-hint" className="text-xs text-muted-foreground">
+                      A Pakistani mobile number
                     </p>
                   </div>
-                  <Button onClick={handleTestSMS} disabled={testing} variant="outline">
-                    {testing ? 'Sending...' : 'Send Test SMS'}
-                  </Button>
+                  <SubmitButton
+                    type="button"
+                    variant="outline"
+                    busy={testing === 'sms'}
+                    busyLabel="Sending…"
+                    icon={Send}
+                    disabled={testing !== null}
+                    onClick={handleTestSMS}
+                  >
+                    Send test SMS
+                  </SubmitButton>
                 </div>
               </div>
 
@@ -474,9 +462,16 @@ export default function CommunicationSettingsPage() {
                 </ul>
               </div>
 
-              <Button onClick={handleSaveSMSSettings} disabled={loading}>
-                {loading ? 'Saving...' : 'Save SMS Settings'}
-              </Button>
+              <SubmitButton
+                type="button"
+                busy={savingTab === 'sms'}
+                busyLabel="Saving…"
+                icon={Save}
+                disabled={loading}
+                onClick={handleSaveSMSSettings}
+              >
+                Save changes
+              </SubmitButton>
             </CardContent>
           </Card>
         </TabsContent>
@@ -485,7 +480,7 @@ export default function CommunicationSettingsPage() {
         <TabsContent value="email">
           <Card>
             <CardHeader>
-              <CardTitle>Email SMTP Settings</CardTitle>
+              <CardTitle>Email SMTP settings</CardTitle>
               <CardDescription>
                 Configure your email server (Hostinger, Gmail, etc.)
               </CardDescription>
@@ -493,19 +488,23 @@ export default function CommunicationSettingsPage() {
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label>Enable Email</Label>
+                  <Label htmlFor="email-enabled">Enable email</Label>
                   <p className="text-sm text-muted-foreground">Turn on/off email communication</p>
                 </div>
-                <Switch checked={emailEnabled} onCheckedChange={setEmailEnabled} />
+                <Switch
+                  id="email-enabled"
+                  checked={emailEnabled}
+                  onCheckedChange={setEmailEnabled}
+                />
               </div>
 
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">SMTP Server Configuration</h3>
+                <h3 className="text-lg font-semibold mb-4">SMTP server configuration</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email-host">SMTP Host</Label>
+                    <Label htmlFor="email-host">SMTP host</Label>
                     <Input
                       id="email-host"
                       placeholder="smtp.hostinger.com"
@@ -515,7 +514,7 @@ export default function CommunicationSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email-port">SMTP Port</Label>
+                    <Label htmlFor="email-port">SMTP port</Label>
                     <Input
                       id="email-port"
                       placeholder="587"
@@ -525,7 +524,7 @@ export default function CommunicationSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email-user">SMTP Username</Label>
+                    <Label htmlFor="email-user">SMTP username</Label>
                     <Input
                       id="email-user"
                       placeholder="info@yourclinic.com"
@@ -535,7 +534,7 @@ export default function CommunicationSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email-password">SMTP Password</Label>
+                    <Label htmlFor="email-password">SMTP password</Label>
                     <Input
                       id="email-password"
                       type="password"
@@ -547,18 +546,22 @@ export default function CommunicationSettingsPage() {
                 </div>
 
                 <div className="flex items-center space-x-2 mt-4">
-                  <Switch checked={emailSecure} onCheckedChange={setEmailSecure} />
-                  <Label>Use SSL/TLS (for port 465)</Label>
+                  <Switch
+                    id="email-secure"
+                    checked={emailSecure}
+                    onCheckedChange={setEmailSecure}
+                  />
+                  <Label htmlFor="email-secure">Use SSL/TLS (for port 465)</Label>
                 </div>
               </div>
 
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Email Sender Details</h3>
+                <h3 className="text-lg font-semibold mb-4">Email sender details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email-from-name">From Name</Label>
+                    <Label htmlFor="email-from-name">From name</Label>
                     <Input
                       id="email-from-name"
                       placeholder="Your Dental Clinic"
@@ -568,7 +571,7 @@ export default function CommunicationSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email-from-email">From Email</Label>
+                    <Label htmlFor="email-from-email">From email</Label>
                     <Input
                       id="email-from-email"
                       type="email"
@@ -579,7 +582,7 @@ export default function CommunicationSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email-reply-to">Reply-To Email (Optional)</Label>
+                    <Label htmlFor="email-reply-to">Reply-to email (optional)</Label>
                     <Input
                       id="email-reply-to"
                       type="email"
@@ -594,12 +597,14 @@ export default function CommunicationSettingsPage() {
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Test Email Connection</h3>
+                <h3 className="text-lg font-semibold mb-4">Test email connection</h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="test-email">Test Email Address</Label>
+                    <Label htmlFor="test-email">Test email address</Label>
+                    {/* Only where to send a test — not a setting, so not unsaved work. */}
                     <Input
                       id="test-email"
+                      data-form-guard="ignore"
                       type="email"
                       placeholder="test@example.com"
                       value={testEmail}
@@ -609,9 +614,17 @@ export default function CommunicationSettingsPage() {
                       Enter an email address to receive the test email
                     </p>
                   </div>
-                  <Button onClick={handleTestEmail} disabled={testing} variant="outline">
-                    {testing ? 'Sending...' : 'Send Test Email'}
-                  </Button>
+                  <SubmitButton
+                    type="button"
+                    variant="outline"
+                    busy={testing === 'email'}
+                    busyLabel="Sending…"
+                    icon={Send}
+                    disabled={testing !== null}
+                    onClick={handleTestEmail}
+                  >
+                    Send test email
+                  </SubmitButton>
                 </div>
               </div>
 
@@ -628,9 +641,16 @@ export default function CommunicationSettingsPage() {
                 </ul>
               </div>
 
-              <Button onClick={handleSaveEmailSettings} disabled={loading}>
-                {loading ? 'Saving...' : 'Save Email Settings'}
-              </Button>
+              <SubmitButton
+                type="button"
+                busy={savingTab === 'email'}
+                busyLabel="Saving…"
+                icon={Save}
+                disabled={loading}
+                onClick={handleSaveEmailSettings}
+              >
+                Save changes
+              </SubmitButton>
             </CardContent>
           </Card>
         </TabsContent>
@@ -638,14 +658,14 @@ export default function CommunicationSettingsPage() {
         <TabsContent value="reviews">
           <Card>
             <CardHeader>
-              <CardTitle>Google Reviews Settings</CardTitle>
+              <CardTitle>Google reviews settings</CardTitle>
               <CardDescription>
                 Automatically request Google reviews from satisfied patients
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="google-review-url">Google Review URL</Label>
+                <Label htmlFor="google-review-url">Google review URL</Label>
                 <Input
                   id="google-review-url"
                   placeholder="https://g.page/r/YOUR_PLACE_ID/review"
@@ -662,16 +682,20 @@ export default function CommunicationSettingsPage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <Label>Auto-Request Reviews</Label>
+                  <Label htmlFor="auto-review-requests">Auto-request reviews</Label>
                   <p className="text-sm text-muted-foreground">
                     Automatically send review requests after appointments
                   </p>
                 </div>
-                <Switch checked={autoReviewRequests} onCheckedChange={setAutoReviewRequests} />
+                <Switch
+                  id="auto-review-requests"
+                  checked={autoReviewRequests}
+                  onCheckedChange={setAutoReviewRequests}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="review-delay">Review Request Delay (hours)</Label>
+                <Label htmlFor="review-delay">Review request delay (hours)</Label>
                 <Input
                   id="review-delay"
                   type="number"
@@ -690,7 +714,7 @@ export default function CommunicationSettingsPage() {
 
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 dark:bg-amber-950/30 dark:border-amber-800/60">
                 <h4 className="font-semibold text-amber-900 mb-2 dark:text-amber-200">
-                  Review Gating
+                  Review gating
                 </h4>
                 <ul className="text-sm text-amber-800 space-y-1 dark:text-amber-300">
                   <li>
@@ -705,9 +729,16 @@ export default function CommunicationSettingsPage() {
                 </ul>
               </div>
 
-              <Button onClick={handleSaveReviewSettings} disabled={loading}>
-                {loading ? 'Saving...' : 'Save Review Settings'}
-              </Button>
+              <SubmitButton
+                type="button"
+                busy={savingTab === 'reviews'}
+                busyLabel="Saving…"
+                icon={Save}
+                disabled={loading}
+                onClick={handleSaveReviewSettings}
+              >
+                Save changes
+              </SubmitButton>
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,47 +1,45 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { Receipt, Save } from 'lucide-react'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput, parseMoney } from '@/components/ui/money-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { formatCurrency } from '@/lib/i18n/format'
+import { Save } from 'lucide-react'
+
+/** The settings here that are amounts of money, kept as typed text. */
+const MONEY_FIELDS = [
+  ['discountApprovalThreshold', 'Enter an amount — 0 to have every discount approved.'],
+  ['minimumDueAmount', 'Enter an amount — 0 for no minimum.'],
+] as const
+
+type MoneyField = (typeof MONEY_FIELDS)[number][0]
 
 export default function BillingSettingsPage() {
   const { toast } = useToast()
+  const trail = useTrail('Billing settings')
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const formRef = useFormGuard(saving)
+  const [errors, setErrors] = useState<Partial<Record<MoneyField, string>>>({})
 
   // Tax lives on the clinic record rather than the key-value settings store,
   // because that is where the invoice routes read it from. Keeping it in two
   // places is how a rate gets changed in the UI and ignored by billing.
   const [tax, setTax] = useState({ taxEnabled: false, taxRate: '0', taxLabel: 'Sales Tax' })
-
-  useEffect(() => {
-    fetch('/api/settings/clinic')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((result) => {
-        const d = result?.data
-        if (!d) return
-        setTax({
-          taxEnabled: !!d.taxEnabled,
-          taxRate: String(d.taxRate ?? 0),
-          taxLabel: d.taxLabel || 'Sales Tax',
-        })
-      })
-      .catch(() => {
-        /* leave the exempt default in place */
-      })
-  }, [])
 
   const [settings, setSettings] = useState({
     defaultPaymentTerms: '30',
@@ -61,35 +59,81 @@ export default function BillingSettingsPage() {
     discountApprovalThreshold: '1000',
   })
 
-  useEffect(() => {
-    fetchSettings()
-  }, [])
-
-  const fetchSettings = async () => {
+  // The page waits for the settings it edits: shown before they arrive, the
+  // defaults could be saved over the clinic's own.
+  const fetchSettings = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
     try {
-      const response = await fetch('/api/settings?category=billing')
-      const result = await response.json()
+      const result = await readJson<{ success?: boolean; data?: { key: string; value: string }[] }>(
+        await fetch('/api/settings?category=billing')
+      )
 
       if (result.success && result.data) {
-        const settingsMap: any = {}
-        result.data.forEach((s: any) => {
+        const settingsMap: Record<string, string> = {}
+        result.data.forEach((s) => {
           const key = s.key.replace('billing.', '')
           settingsMap[key] = s.value
         })
 
         setSettings((prev) => ({ ...prev, ...settingsMap }))
       }
+
+      // The tax half. Its failure leaves the exempt default in place, as it
+      // always has, rather than holding up the rest of the page.
+      try {
+        const clinic = await fetch('/api/settings/clinic')
+        const d = clinic.ok ? (await clinic.json())?.data : null
+        if (d) {
+          setTax({
+            taxEnabled: !!d.taxEnabled,
+            taxRate: String(d.taxRate ?? 0),
+            taxLabel: d.taxLabel || 'Sales Tax',
+          })
+        }
+      } catch {
+        /* leave the exempt default in place */
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
+      setFailed(true)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
-  const handleSaveSettings = async () => {
+  useEffect(() => {
+    // Loading from the server on mount is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSettings()
+  }, [fetchSettings])
+
+  const handleSaveSettings = async (event?: React.FormEvent) => {
+    event?.preventDefault()
+
+    // An amount that is blank or not an amount is not saved as zero.
+    const found: Partial<Record<MoneyField, string>> = {}
+    for (const [field, message] of MONEY_FIELDS) {
+      if (parseMoney(settings[field]) === null) found[field] = message
+    }
+    setErrors(found)
+    const first = MONEY_FIELDS.find(([field]) => found[field])
+    if (first) {
+      toast(toastError('save the billing settings', 'Check the highlighted fields.'))
+      const element = document.getElementById(first[0])
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element?.focus({ preventScroll: true })
+      return
+    }
+
     setSaving(true)
     try {
       const settingsArray = Object.entries(settings).map(([key, value]) => ({
         key: `billing.${key}`,
-        value: value.toString(),
+        // Money is saved as the amount it parses to — "1,500" as "1500".
+        value: MONEY_FIELDS.some(([field]) => field === key)
+          ? String(parseMoney(value))
+          : value.toString(),
         category: 'billing',
       }))
 
@@ -113,47 +157,57 @@ export default function BillingSettingsPage() {
         }),
       ])
 
-      if (response.ok && taxResponse.ok) {
-        toast({
-          title: 'Success',
-          description: 'Billing settings saved successfully',
-        })
-      } else {
-        // Whichever half failed says why — a tax rate out of range, say.
-        const failed = response.ok ? taxResponse : response
-        const result = await failed.json().catch(() => null)
-        throw new Error(result?.error || 'Failed to save settings')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      // Whichever half failed says why — a tax rate out of range, say.
+      await readJson(response)
+      await readJson(taxResponse)
+
+      // The page stays put after a save, so the guard is told the work is safe.
+      formRef.reset()
+      toast(toastSuccess('Billing settings saved'))
+    } catch (error) {
+      toast(toastError('save the billing settings', error))
     } finally {
       setSaving(false)
     }
   }
 
-  return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
-        <h1 className="page-title flex items-center gap-2">
-          <Receipt className="w-8 h-8" />
-          Billing Settings
-        </h1>
-        <p className="text-muted-foreground">
-          Configure invoicing, tax rates, and payment settings
-        </p>
+  const setMoney = (field: MoneyField, raw: string) => {
+    setSettings((prev) => ({ ...prev, [field]: raw }))
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
+
+  const threshold = parseMoney(settings.discountApprovalThreshold)
+
+  const header = (
+    <PageHeader
+      back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+      title="Billing settings"
+      description="Configure invoicing, tax rates, and payment settings"
+    />
+  )
+
+  if (loading) {
+    return <PageSkeleton variant="form" />
+  }
+
+  if (failed) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6">
+        {header}
+        <LoadFailed what="the billing settings" onRetry={fetchSettings} />
       </div>
+    )
+  }
 
-      <div className="space-y-6">
-        {/* Payment Gateway */}
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      {header}
 
+      <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
         {/* Tax Configuration */}
         <Card>
           <CardHeader>
-            <CardTitle>Tax Configuration</CardTitle>
+            <CardTitle>Tax configuration</CardTitle>
             <CardDescription>Sales tax applied to invoices</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -174,33 +228,37 @@ export default function BillingSettingsPage() {
 
             {tax.taxEnabled && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="taxRate">Rate (%)</Label>
-                  <Input
-                    id="taxRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={tax.taxRate}
-                    onChange={(e) => setTax({ ...tax, taxRate: e.target.value })}
-                  />
-                  <p className="text-muted-foreground mt-1 text-sm">
-                    The provincial rate that applies to your clinic.
-                  </p>
-                </div>
+                <FormField
+                  label="Rate (%)"
+                  htmlFor="taxRate"
+                  hint="The provincial rate that applies to your clinic."
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={tax.taxRate}
+                      onChange={(e) => setTax({ ...tax, taxRate: e.target.value })}
+                    />
+                  )}
+                </FormField>
 
-                <div>
-                  <Label htmlFor="taxLabel">Label on invoices</Label>
-                  <Input
-                    id="taxLabel"
-                    value={tax.taxLabel}
-                    onChange={(e) => setTax({ ...tax, taxLabel: e.target.value })}
-                  />
-                  <p className="text-muted-foreground mt-1 text-sm">
-                    e.g. &ldquo;PRA Sales Tax&rdquo;. Printed beside the tax line.
-                  </p>
-                </div>
+                <FormField
+                  label="Label on invoices"
+                  htmlFor="taxLabel"
+                  hint={<>e.g. &ldquo;PRA Sales Tax&rdquo;. Printed beside the tax line.</>}
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={tax.taxLabel}
+                      onChange={(e) => setTax({ ...tax, taxLabel: e.target.value })}
+                    />
+                  )}
+                </FormField>
               </div>
             )}
 
@@ -225,36 +283,35 @@ export default function BillingSettingsPage() {
         {/* Discount control — FR-013 */}
         <Card>
           <CardHeader>
-            <CardTitle>Discount Approval</CardTitle>
+            <CardTitle>Discount approval</CardTitle>
             <CardDescription>
               When a discount needs a reason and a manager&rsquo;s approval
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="discountApprovalThreshold">Approval threshold (Rs)</Label>
-              <Input
-                id="discountApprovalThreshold"
-                type="number"
-                min="0"
-                value={settings.discountApprovalThreshold}
-                onChange={(e) =>
-                  setSettings({ ...settings, discountApprovalThreshold: e.target.value })
-                }
-              />
-              <p className="text-muted-foreground mt-1 text-sm">
-                Discounts above this amount need a written reason and approval from someone holding
-                the discount permission. Set it to 0 to have every discount approved.
-              </p>
-            </div>
+            <FormField
+              label="Approval threshold"
+              htmlFor="discountApprovalThreshold"
+              required
+              error={errors.discountApprovalThreshold}
+              hint="Discounts above this amount need a written reason and approval from someone holding the discount permission. Set it to 0 to have every discount approved."
+            >
+              {(control) => (
+                <MoneyInput
+                  {...control}
+                  className="max-w-xs"
+                  value={settings.discountApprovalThreshold}
+                  onChange={(raw) => setMoney('discountApprovalThreshold', raw)}
+                />
+              )}
+            </FormField>
 
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-950/30">
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                {Number(settings.discountApprovalThreshold) > 0 ? (
+                {threshold !== null && threshold > 0 ? (
                   <>
-                    Discounts up to <strong>Rs {settings.discountApprovalThreshold}</strong> go
-                    through without approval. Anything larger holds the invoice in draft until a
-                    manager decides.
+                    Discounts up to <strong>{formatCurrency(threshold)}</strong> go through without
+                    approval. Anything larger holds the invoice in draft until a manager decides.
                   </>
                 ) : (
                   <>
@@ -270,42 +327,45 @@ export default function BillingSettingsPage() {
         {/* Invoice Format */}
         <Card>
           <CardHeader>
-            <CardTitle>Invoice Format</CardTitle>
+            <CardTitle>Invoice format</CardTitle>
             <CardDescription>Customize invoice and receipt numbering</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="invoicePrefix">Invoice Prefix</Label>
-                <Input
-                  id="invoicePrefix"
-                  value={settings.invoicePrefix}
-                  onChange={(e) => setSettings({ ...settings, invoicePrefix: e.target.value })}
-                  placeholder="INV"
-                />
-              </div>
+              <FormField label="Invoice prefix" htmlFor="invoicePrefix">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={settings.invoicePrefix}
+                    onChange={(e) => setSettings({ ...settings, invoicePrefix: e.target.value })}
+                    placeholder="INV"
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="receiptPrefix">Receipt Prefix</Label>
-                <Input
-                  id="receiptPrefix"
-                  value={settings.receiptPrefix}
-                  onChange={(e) => setSettings({ ...settings, receiptPrefix: e.target.value })}
-                  placeholder="REC"
-                />
-              </div>
+              <FormField label="Receipt prefix" htmlFor="receiptPrefix">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={settings.receiptPrefix}
+                    onChange={(e) => setSettings({ ...settings, receiptPrefix: e.target.value })}
+                    placeholder="REC"
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="invoiceStartingNumber">Starting Number</Label>
-                <Input
-                  id="invoiceStartingNumber"
-                  type="number"
-                  value={settings.invoiceStartingNumber}
-                  onChange={(e) =>
-                    setSettings({ ...settings, invoiceStartingNumber: e.target.value })
-                  }
-                />
-              </div>
+              <FormField label="Starting number" htmlFor="invoiceStartingNumber">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    value={settings.invoiceStartingNumber}
+                    onChange={(e) =>
+                      setSettings({ ...settings, invoiceStartingNumber: e.target.value })
+                    }
+                  />
+                )}
+              </FormField>
             </div>
 
             <div className="bg-muted/50 border rounded-lg p-3">
@@ -320,46 +380,61 @@ export default function BillingSettingsPage() {
         {/* Payment Terms */}
         <Card>
           <CardHeader>
-            <CardTitle>Payment Terms</CardTitle>
+            <CardTitle>Payment terms</CardTitle>
             <CardDescription>Default payment policies</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="defaultPaymentTerms">Payment Due (days)</Label>
-                <Input
-                  id="defaultPaymentTerms"
-                  type="number"
-                  value={settings.defaultPaymentTerms}
-                  onChange={(e) =>
-                    setSettings({ ...settings, defaultPaymentTerms: e.target.value })
-                  }
-                />
-                <p className="text-sm text-muted-foreground mt-1">Days until payment is due</p>
-              </div>
+              <FormField
+                label="Payment due (days)"
+                htmlFor="defaultPaymentTerms"
+                hint="Days until payment is due"
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    value={settings.defaultPaymentTerms}
+                    onChange={(e) =>
+                      setSettings({ ...settings, defaultPaymentTerms: e.target.value })
+                    }
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="lateFeePercentage">Late Fee (%)</Label>
-                <Input
-                  id="lateFeePercentage"
-                  type="number"
-                  step="0.01"
-                  value={settings.lateFeePercentage}
-                  onChange={(e) => setSettings({ ...settings, lateFeePercentage: e.target.value })}
-                />
-                <p className="text-sm text-muted-foreground mt-1">Late payment penalty</p>
-              </div>
+              <FormField
+                label="Late fee (%)"
+                htmlFor="lateFeePercentage"
+                hint="Late payment penalty"
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    step="0.01"
+                    value={settings.lateFeePercentage}
+                    onChange={(e) =>
+                      setSettings({ ...settings, lateFeePercentage: e.target.value })
+                    }
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="minimumDueAmount">Minimum Due Amount</Label>
-                <Input
-                  id="minimumDueAmount"
-                  type="number"
-                  value={settings.minimumDueAmount}
-                  onChange={(e) => setSettings({ ...settings, minimumDueAmount: e.target.value })}
-                />
-                <p className="text-sm text-muted-foreground mt-1">Minimum invoice amount</p>
-              </div>
+              <FormField
+                label="Minimum due amount"
+                htmlFor="minimumDueAmount"
+                required
+                error={errors.minimumDueAmount}
+                hint="Minimum invoice amount"
+              >
+                {(control) => (
+                  <MoneyInput
+                    {...control}
+                    value={settings.minimumDueAmount}
+                    onChange={(raw) => setMoney('minimumDueAmount', raw)}
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -367,30 +442,32 @@ export default function BillingSettingsPage() {
         {/* Currency */}
         <Card>
           <CardHeader>
-            <CardTitle>Currency Settings</CardTitle>
+            <CardTitle>Currency settings</CardTitle>
             <CardDescription>Configure currency display</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="currencyCode">Currency Code</Label>
-                <Input
-                  id="currencyCode"
-                  value={settings.currencyCode}
-                  onChange={(e) => setSettings({ ...settings, currencyCode: e.target.value })}
-                  placeholder="PKR"
-                />
-              </div>
+              <FormField label="Currency code" htmlFor="currencyCode">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={settings.currencyCode}
+                    onChange={(e) => setSettings({ ...settings, currencyCode: e.target.value })}
+                    placeholder="PKR"
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="currencySymbol">Currency Symbol</Label>
-                <Input
-                  id="currencySymbol"
-                  value={settings.currencySymbol}
-                  onChange={(e) => setSettings({ ...settings, currencySymbol: e.target.value })}
-                  placeholder="Rs"
-                />
-              </div>
+              <FormField label="Currency symbol" htmlFor="currencySymbol">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={settings.currencySymbol}
+                    onChange={(e) => setSettings({ ...settings, currencySymbol: e.target.value })}
+                    placeholder="Rs"
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -398,46 +475,50 @@ export default function BillingSettingsPage() {
         {/* Invoice Notes */}
         <Card>
           <CardHeader>
-            <CardTitle>Invoice Footer</CardTitle>
+            <CardTitle>Invoice footer</CardTitle>
             <CardDescription>Default notes and terms for invoices</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="invoiceNotes">Invoice Notes</Label>
-              <Textarea
-                id="invoiceNotes"
-                value={settings.invoiceNotes}
-                onChange={(e) => setSettings({ ...settings, invoiceNotes: e.target.value })}
-                rows={2}
-                placeholder="Thank you for choosing our services."
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Appears at the bottom of invoices
-              </p>
-            </div>
+            <FormField
+              label="Invoice notes"
+              htmlFor="invoiceNotes"
+              hint="Appears at the bottom of invoices"
+            >
+              {(control) => (
+                <Textarea
+                  {...control}
+                  value={settings.invoiceNotes}
+                  onChange={(e) => setSettings({ ...settings, invoiceNotes: e.target.value })}
+                  rows={2}
+                  placeholder="Thank you for choosing our services."
+                />
+              )}
+            </FormField>
 
-            <div>
-              <Label htmlFor="termsAndConditions">Terms and Conditions</Label>
-              <Textarea
-                id="termsAndConditions"
-                value={settings.termsAndConditions}
-                onChange={(e) => setSettings({ ...settings, termsAndConditions: e.target.value })}
-                rows={4}
-                placeholder="Payment is due within 30 days..."
-              />
-              <p className="text-sm text-muted-foreground mt-1">Payment terms and conditions</p>
-            </div>
+            <FormField
+              label="Terms and conditions"
+              htmlFor="termsAndConditions"
+              hint="Payment terms and conditions"
+            >
+              {(control) => (
+                <Textarea
+                  {...control}
+                  value={settings.termsAndConditions}
+                  onChange={(e) => setSettings({ ...settings, termsAndConditions: e.target.value })}
+                  rows={4}
+                  placeholder="Payment is due within 30 days…"
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
-        {/* Save Button */}
         <div className="flex justify-end">
-          <Button onClick={handleSaveSettings} disabled={saving} size="lg">
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Billing Settings'}
-          </Button>
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+            Save changes
+          </SubmitButton>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

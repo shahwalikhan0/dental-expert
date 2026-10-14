@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { ChangePasswordCard } from '@/components/settings/change-password-card'
 import { auth } from '@/lib/auth'
 
@@ -22,12 +23,12 @@ export default async function ChangePasswordPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Change password</h1>
-        <p className="text-muted-foreground">
-          {forced ? 'Choose a new password to carry on.' : 'Your sign-in password for this clinic.'}
-        </p>
-      </div>
+      <PageHeader
+        title="Change password"
+        description={
+          forced ? 'Choose a new password to carry on.' : 'Your sign-in password for this clinic.'
+        }
+      />
 
       <ChangePasswordCard forced={forced} />
     </div>

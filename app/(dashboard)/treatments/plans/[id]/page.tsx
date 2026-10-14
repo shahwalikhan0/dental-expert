@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
@@ -26,34 +24,34 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  ArrowLeft,
   User,
   Phone,
   Mail,
-  Calendar,
   FileText,
   CheckCircle,
-  XCircle,
-  Edit,
+  Pencil,
   Printer,
-  AlertCircle,
   Play,
   ClipboardCheck,
+  Trash2,
 } from 'lucide-react'
-import {
-  treatmentPlanStatusConfig,
-  treatmentPlanItemStatusConfig,
-  procedureCategoryConfig,
-  formatCurrency,
-  formatDate,
-  calculatePlanProgress,
-} from '@/lib/treatment-utils'
+import { procedureCategoryConfig, calculatePlanProgress } from '@/lib/treatment-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
-import { parseTeeth } from '@/lib/teeth'
+import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { planIsFinished } from '@/lib/treatment-plan-status'
-import { formatToothNumbers } from '@/lib/treatment-utils'
 import { groupByPhase } from '@/lib/treatment-phases'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
 interface TreatmentPlanItem {
   id: string
@@ -106,64 +104,75 @@ interface TreatmentPlan {
   items: TreatmentPlanItem[]
 }
 
+/** What each status change is called once it has happened. */
+const STATUS_DONE: Record<string, string> = {
+  PROPOSED: 'Treatment plan proposed',
+  IN_PROGRESS: 'Treatment plan started',
+  COMPLETED: 'Treatment plan completed',
+  CANCELLED: 'Treatment plan cancelled',
+}
+
 export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const router = useRouter()
   const [plan, setPlan] = useState<TreatmentPlan | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(plan?.planNumber ?? null)
   const [loading, setLoading] = useState(true)
+  // Why there is no plan to show: the route said 404, or the fetch failed.
+  const [loadState, setLoadState] = useState<'ok' | 'missing' | 'failed'>('ok')
   const [actionLoading, setActionLoading] = useState(false)
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const { toast } = useToast()
-
-  /** The route's own words, as a toast, rather than a line in the console. */
-  const refused = (title: string, error: unknown) =>
-    toast({
-      variant: 'destructive',
-      title,
-      description: error instanceof Error ? error.message : undefined,
-    })
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   /** PUT a change to the plan; throws with the route's message on a refusal. */
-  const savePlan = async (change: Record<string, unknown>, fallback: string) => {
-    const response = await fetch(`/api/treatment-plans/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(change),
-    })
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.error || fallback)
-    }
+  const savePlan = async (change: Record<string, unknown>) => {
+    await readJson(
+      await fetch(`/api/treatment-plans/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(change),
+      })
+    )
   }
 
   const fetchPlan = async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/treatment-plans/${id}`)
-      if (!response.ok) throw new Error('Failed to fetch treatment plan')
-      const data = await response.json()
-      setPlan(data)
+      if (response.status === 404) {
+        setPlan(null)
+        setLoadState('missing')
+        return
+      }
+      setPlan(await readJson<TreatmentPlan>(response))
+      setLoadState('ok')
     } catch (error) {
       console.error('Error fetching treatment plan:', error)
+      // A refresh after an action that fails keeps the plan on screen.
+      setLoadState('failed')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // Loading is the effect's job: it fetches and stores what comes back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPlan()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  const planName = plan ? `plan ${plan.planNumber}` : 'the plan'
 
   const handleStatusChange = async (status: string) => {
     try {
       setActionLoading(true)
-      await savePlan({ status }, 'Failed to update status')
+      await savePlan({ status })
+      toast(toastSuccess(STATUS_DONE[status] ?? 'Treatment plan updated', plan?.planNumber))
       fetchPlan()
     } catch (error) {
-      refused('Could not update the plan', error)
+      toast(toastError(`update ${planName}`, error))
     } finally {
       setActionLoading(false)
     }
@@ -172,33 +181,31 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const handleConsentGiven = async () => {
     try {
       setActionLoading(true)
-      await savePlan(
-        {
-          consentGiven: true,
-          status: plan?.status === 'PROPOSED' ? 'ACCEPTED' : plan?.status,
-        },
-        'Failed to record consent'
-      )
+      await savePlan({
+        consentGiven: true,
+        status: plan?.status === 'PROPOSED' ? 'ACCEPTED' : plan?.status,
+      })
       setConsentDialogOpen(false)
+      toast(toastSuccess('Consent recorded', plan?.planNumber))
       fetchPlan()
     } catch (error) {
-      refused('Could not record consent', error)
+      toast(toastError(`record consent for ${planName}`, error))
     } finally {
       setActionLoading(false)
     }
   }
 
   const handleCancelPlan = async () => {
-    try {
-      setActionLoading(true)
-      await savePlan({ status: 'CANCELLED' }, 'Failed to cancel plan')
-      setCancelDialogOpen(false)
-      fetchPlan()
-    } catch (error) {
-      refused('Could not cancel the plan', error)
-    } finally {
-      setActionLoading(false)
-    }
+    if (!plan) return
+    const ok = await confirm({
+      title: `Cancel treatment plan ${plan.planNumber}?`,
+      description:
+        'The plan is marked cancelled and no further steps are started from it. Treatments already carried out are kept.',
+      confirmLabel: 'Cancel plan',
+      cancelLabel: 'Keep plan',
+    })
+    if (!ok) return
+    await handleStatusChange('CANCELLED')
   }
 
   /**
@@ -215,50 +222,25 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
       cost: String(Number(item.estimatedCost)),
     })
     if (item.toothNumbers) query.set('teeth', item.toothNumbers)
-    return `/treatments/new?${query.toString()}`
+    return trail.to(`/treatments/new?${query.toString()}`)
   }
 
-  const getStatusBadge = (status: string) => {
-    const config = treatmentPlanStatusConfig[status] || {
-      label: status,
-      color: 'text-foreground',
-      bgColor: 'bg-muted',
-    }
-    return (
-      <Badge className={`${config.bgColor} ${config.color} border-0 text-sm`}>{config.label}</Badge>
-    )
-  }
-
-  const getItemStatusBadge = (status: string) => {
-    const config = treatmentPlanItemStatusConfig[status] || {
-      label: status,
-      color: 'text-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    )
+  if (loading && !plan) {
+    return <PageSkeleton variant="detail" />
   }
 
   if (!plan) {
+    if (loadState === 'failed') {
+      return <LoadFailed what="this treatment plan" onRetry={fetchPlan} />
+    }
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Treatment plan not found</p>
-        <Button variant="outline" asChild>
-          <Link href="/treatments/plans">Back to Treatment Plans</Link>
-        </Button>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="Treatment plan not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to treatment plans"
+        actionHref="/treatments/plans"
+      />
     )
   }
 
@@ -270,82 +252,87 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment Plans" />
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="page-title">{plan.planNumber}</h1>
-              {getStatusBadge(plan.status)}
-              {plan.consentGiven && (
-                <Badge
+      <PageHeader
+        title={plan.planNumber}
+        description={plan.title}
+        back={
+          <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment plans" />
+        }
+        badges={
+          <>
+            <StatusBadge kind="treatmentPlan" status={plan.status} />
+            {plan.consentGiven && (
+              <StatusBadge
+                kind="active"
+                status="ACTIVE"
+                label={
+                  <>
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Consent given
+                  </>
+                }
+              />
+            )}
+          </>
+        }
+        actions={
+          <>
+            {plan.status === 'DRAFT' && (
+              <Button onClick={() => handleStatusChange('PROPOSED')} disabled={actionLoading}>
+                <FileText className="h-4 w-4 mr-2" />
+                Propose to patient
+              </Button>
+            )}
+            {plan.status === 'PROPOSED' && !plan.consentGiven && (
+              <Button onClick={() => setConsentDialogOpen(true)}>
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                Record consent…
+              </Button>
+            )}
+            {plan.status === 'ACCEPTED' && (
+              <Button onClick={() => handleStatusChange('IN_PROGRESS')} disabled={actionLoading}>
+                <Play className="h-4 w-4 mr-2" />
+                Start treatment
+              </Button>
+            )}
+            {/*
+              Only once every step is done or dropped — the rule the route
+              enforces. A plan finishes on its own when its last step's treatment
+              is completed; this is for the plan whose last open step was
+              cancelled instead.
+            */}
+            {plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
+              <Button onClick={() => handleStatusChange('COMPLETED')} disabled={actionLoading}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Mark plan complete
+              </Button>
+            )}
+            {!['COMPLETED', 'CANCELLED'].includes(plan.status) && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href={trail.to(`/treatments/plans/${id}/edit`)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Link>
+                </Button>
+                <Button
                   variant="outline"
-                  className="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300"
+                  className="text-destructive"
+                  onClick={handleCancelPlan}
+                  disabled={actionLoading}
                 >
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Consent Given
-                </Badge>
-              )}
-            </div>
-            <p className="text-muted-foreground">{plan.title}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {plan.status === 'DRAFT' && (
-            <Button onClick={() => handleStatusChange('PROPOSED')} disabled={actionLoading}>
-              <FileText className="h-4 w-4 mr-2" />
-              Propose to Patient
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Cancel plan…
+                </Button>
+              </>
+            )}
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </Button>
-          )}
-          {plan.status === 'PROPOSED' && !plan.consentGiven && (
-            <Button onClick={() => setConsentDialogOpen(true)}>
-              <ClipboardCheck className="h-4 w-4 mr-2" />
-              Record Consent
-            </Button>
-          )}
-          {plan.status === 'ACCEPTED' && (
-            <Button onClick={() => handleStatusChange('IN_PROGRESS')} disabled={actionLoading}>
-              <Play className="h-4 w-4 mr-2" />
-              Start Treatment
-            </Button>
-          )}
-          {/*
-            Only once every step is done or dropped — the rule the route
-            enforces. A plan finishes on its own when its last step's treatment
-            is completed; this is for the plan whose last open step was
-            cancelled instead.
-          */}
-          {plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
-            <Button onClick={() => handleStatusChange('COMPLETED')} disabled={actionLoading}>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Mark Plan Complete
-            </Button>
-          )}
-          {!['COMPLETED', 'CANCELLED'].includes(plan.status) && (
-            <>
-              <Button variant="outline" asChild>
-                <Link href={`/treatments/plans/${id}/edit`}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                className="text-red-600 dark:text-red-400"
-                onClick={() => setCancelDialogOpen(true)}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Cancel Plan
-              </Button>
-            </>
-          )}
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -353,7 +340,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
           {/* Progress */}
           <Card>
             <CardHeader>
-              <CardTitle>Treatment Progress</CardTitle>
+              <CardTitle>Treatment progress</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -434,17 +421,22 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                               variant="outline"
                               className={`mt-1 ${procedureCategoryConfig[item.procedure.category]?.bgColor} ${procedureCategoryConfig[item.procedure.category]?.color} border-0`}
                             >
-                              {procedureCategoryConfig[item.procedure.category]?.label}
+                              {procedureCategoryConfig[item.procedure.category]?.label ??
+                                item.procedure.category}
                             </Badge>
                             {item.notes && (
                               <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
                             )}
                           </TableCell>
-                          <TableCell>{formatToothNumbers(parseTeeth(item.toothNumbers))}</TableCell>
+                          <TableCell>
+                            {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
+                          </TableCell>
                           <TableCell className="text-right tabular-nums">
                             {formatCurrency(item.estimatedCost)}
                           </TableCell>
-                          <TableCell>{getItemStatusBadge(item.status)}</TableCell>
+                          <TableCell>
+                            <StatusBadge kind="treatmentPlanItem" status={item.status} />
+                          </TableCell>
                           <TableCell>
                             {item.treatment ? (
                               <Link
@@ -536,7 +528,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  {plan.patient.phone}
+                  {formatPhone(plan.patient.phone) || BLANK}
                 </div>
                 {plan.patient.email && (
                   <div className="flex items-center gap-2">
@@ -547,7 +539,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
               </div>
 
               <Button variant="outline" className="w-full" asChild>
-                <Link href={`/patients/${plan.patient.id}`}>View Patient Profile</Link>
+                <Link href={trail.to(`/patients/${plan.patient.id}`)}>View patient profile</Link>
               </Button>
             </CardContent>
           </Card>
@@ -555,13 +547,15 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
           {/* Plan Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Plan Summary</CardTitle>
+              <CardTitle>Plan summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-sm text-muted-foreground">Total Cost</div>
-                  <div className="font-bold text-lg">{formatCurrency(plan.estimatedCost)}</div>
+                  <div className="text-sm text-muted-foreground">Total cost</div>
+                  <div className="font-bold text-lg tabular-nums">
+                    {formatCurrency(plan.estimatedCost)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Procedures</div>
@@ -569,36 +563,36 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                 </div>
               </div>
 
-              {plan.estimatedDuration && (
+              {plan.estimatedDuration ? (
                 <div>
-                  <div className="text-sm text-muted-foreground">Est. Duration</div>
+                  <div className="text-sm text-muted-foreground">Estimated duration</div>
                   <div className="font-medium">{Math.round(plan.estimatedDuration / 60)} hours</div>
                 </div>
-              )}
+              ) : null}
 
               <Separator />
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created</span>
-                  <span>{formatDate(plan.createdAt)}</span>
+                  <span>{displayDate(plan.createdAt)}</span>
                 </div>
                 {plan.startDate && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Start Date</span>
-                    <span>{formatDate(plan.startDate)}</span>
+                    <span className="text-muted-foreground">Start date</span>
+                    <span>{displayDate(plan.startDate)}</span>
                   </div>
                 )}
                 {plan.expectedEndDate && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Expected End</span>
-                    <span>{formatDate(plan.expectedEndDate)}</span>
+                    <span className="text-muted-foreground">Expected end</span>
+                    <span>{displayDate(plan.expectedEndDate)}</span>
                   </div>
                 )}
                 {plan.completedDate && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Completed</span>
-                    <span>{formatDate(plan.completedDate)}</span>
+                    <span>{displayDate(plan.completedDate)}</span>
                   </div>
                 )}
               </div>
@@ -607,11 +601,11 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      {/* Consent Dialog */}
+      {/* Consent: a statement to confirm, not a destructive step, so a plain dialog. */}
       <Dialog open={consentDialogOpen} onOpenChange={setConsentDialogOpen}>
-        <DialogContent>
+        <DialogContent size="md">
           <DialogHeader>
-            <DialogTitle>Record Patient Consent</DialogTitle>
+            <DialogTitle>Record consent for {plan.planNumber}?</DialogTitle>
             <DialogDescription>
               Confirm that the patient has given consent to proceed with this treatment plan.
             </DialogDescription>
@@ -629,32 +623,19 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
             <Button variant="outline" onClick={() => setConsentDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleConsentGiven} disabled={actionLoading}>
-              {actionLoading ? 'Recording...' : 'Confirm Consent'}
-            </Button>
+            <SubmitButton
+              type="button"
+              onClick={handleConsentGiven}
+              busy={actionLoading}
+              busyLabel="Recording…"
+            >
+              Record consent
+            </SubmitButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Cancel Dialog */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Treatment Plan</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this treatment plan? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
-              Keep Plan
-            </Button>
-            <Button variant="destructive" onClick={handleCancelPlan} disabled={actionLoading}>
-              {actionLoading ? 'Cancelling...' : 'Cancel Plan'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {ConfirmDialogComponent}
     </div>
   )
 }

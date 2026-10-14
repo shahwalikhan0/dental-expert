@@ -3,130 +3,114 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { FormField } from '@/components/ui/form-field'
+import { PageHeader } from '@/components/ui/page-header'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { useToast } from '@/hooks/use-toast'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { MessageSquare, Mail, FileText, Send } from 'lucide-react'
 import { TemplatesTab } from './templates-tab'
 
+type SmsErrors = Partial<Record<'phone' | 'message', string>>
+type EmailErrors = Partial<Record<'to' | 'subject' | 'body', string>>
+
 export default function CommunicationsPage() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
+  const [sendingSms, setSendingSms] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   // SMS State
   const [smsPhone, setSmsPhone] = useState('')
   const [smsMessage, setSmsMessage] = useState('')
+  const [smsErrors, setSmsErrors] = useState<SmsErrors>({})
 
   // Email State
   const [emailTo, setEmailTo] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
+  const [emailErrors, setEmailErrors] = useState<EmailErrors>({})
 
   const handleSendSMS = async () => {
-    if (!smsPhone || !smsMessage) {
-      toast({
-        title: 'Error',
-        description: 'Please fill in all fields',
-        variant: 'destructive',
-      })
+    const found: SmsErrors = {}
+    if (!smsPhone.trim()) found.phone = 'Enter a phone number'
+    if (!smsMessage.trim()) found.message = 'Write a message'
+    setSmsErrors(found)
+    if (found.phone || found.message) {
+      toast(toastError('send the SMS', 'Check the highlighted fields.'))
+      document.getElementById(found.phone ? 'sms-phone' : 'sms-message')?.focus()
       return
     }
 
-    setLoading(true)
+    setSendingSms(true)
     try {
-      const response = await fetch('/api/communications/sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: smsPhone,
-          message: smsMessage,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'SMS sent successfully',
+      await readJson(
+        await fetch('/api/communications/sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: smsPhone,
+            message: smsMessage,
+          }),
         })
-        setSmsPhone('')
-        setSmsMessage('')
-      } else {
-        throw new Error(data.error || 'Failed to send SMS')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      toast(toastSuccess('SMS sent'))
+      setSmsPhone('')
+      setSmsMessage('')
+    } catch (error) {
+      toast(toastError('send the SMS', error))
     } finally {
-      setLoading(false)
+      setSendingSms(false)
     }
   }
 
   const handleSendEmail = async () => {
-    if (!emailTo || !emailSubject || !emailBody) {
-      toast({
-        title: 'Error',
-        description: 'Please fill in all fields',
-        variant: 'destructive',
-      })
+    const found: EmailErrors = {}
+    if (!emailTo.trim()) found.to = 'Enter an email address'
+    if (!emailSubject.trim()) found.subject = 'Enter a subject'
+    if (!emailBody.trim()) found.body = 'Write a message'
+    setEmailErrors(found)
+    const first = (['to', 'subject', 'body'] as const).find((key) => found[key])
+    if (first) {
+      toast(toastError('send the email', 'Check the highlighted fields.'))
+      document.getElementById(`email-${first}`)?.focus()
       return
     }
 
-    setLoading(true)
+    setSendingEmail(true)
     try {
-      const response = await fetch('/api/communications/email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: emailTo,
-          subject: emailSubject,
-          body: emailBody,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'Email sent successfully',
+      await readJson(
+        await fetch('/api/communications/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: emailTo,
+            subject: emailSubject,
+            body: emailBody,
+          }),
         })
-        setEmailTo('')
-        setEmailSubject('')
-        setEmailBody('')
-      } else {
-        throw new Error(data.error || 'Failed to send email')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      toast(toastSuccess('Email sent'))
+      setEmailTo('')
+      setEmailSubject('')
+      setEmailBody('')
+    } catch (error) {
+      toast(toastError('send the email', error))
     } finally {
-      setLoading(false)
+      setSendingEmail(false)
     }
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="page-title">Communication Center</h1>
-        <p className="text-muted-foreground">Manage SMS, Email, Templates, and Patient Feedback</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Communication center"
+        description="Manage SMS, email, templates and patient feedback"
+      />
 
       <Tabs defaultValue="sms" className="w-full">
         <TabsList className="w-full">
@@ -153,41 +137,64 @@ export default function CommunicationsPage() {
                 <CardDescription>Send individual or bulk SMS messages</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="sms-phone">Phone Number</Label>
-                  <Input
-                    id="sms-phone"
-                    placeholder="10-digit mobile number"
-                    value={smsPhone}
-                    onChange={(e) => setSmsPhone(e.target.value)}
-                  />
-                </div>
+                <FormField
+                  label="Phone number"
+                  required
+                  htmlFor="sms-phone"
+                  error={smsErrors.phone}
+                  hint="A Pakistani mobile, 11 digits"
+                >
+                  {(control) => (
+                    <PhoneInput
+                      {...control}
+                      value={smsPhone}
+                      onChange={(phone) => {
+                        setSmsPhone(phone)
+                        if (phone.trim()) setSmsErrors((e) => ({ ...e, phone: undefined }))
+                      }}
+                    />
+                  )}
+                </FormField>
 
-                <div>
-                  <Label htmlFor="sms-message">Message</Label>
-                  <Textarea
-                    id="sms-message"
-                    placeholder="Type your message here (max 500 characters)"
-                    rows={5}
-                    maxLength={500}
-                    value={smsMessage}
-                    onChange={(e) => setSmsMessage(e.target.value)}
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {smsMessage.length}/500 characters
-                  </p>
-                </div>
+                <FormField
+                  label="Message"
+                  required
+                  htmlFor="sms-message"
+                  error={smsErrors.message}
+                  hint={`${smsMessage.length}/500 characters`}
+                >
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      placeholder="Type your message here (max 500 characters)"
+                      rows={5}
+                      maxLength={500}
+                      value={smsMessage}
+                      onChange={(e) => {
+                        setSmsMessage(e.target.value)
+                        if (e.target.value.trim())
+                          setSmsErrors((prev) => ({ ...prev, message: undefined }))
+                      }}
+                    />
+                  )}
+                </FormField>
 
-                <Button onClick={handleSendSMS} disabled={loading} className="w-full">
-                  <Send className="w-4 h-4 mr-2" />
+                <SubmitButton
+                  type="button"
+                  onClick={handleSendSMS}
+                  busy={sendingSms}
+                  busyLabel="Sending…"
+                  icon={Send}
+                  className="w-full"
+                >
                   Send SMS
-                </Button>
+                </SubmitButton>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>SMS History</CardTitle>
+                <CardTitle>SMS history</CardTitle>
                 <CardDescription>Recent SMS communications</CardDescription>
               </CardHeader>
               <CardContent>
@@ -203,52 +210,71 @@ export default function CommunicationsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Send Email</CardTitle>
+                <CardTitle>Send email</CardTitle>
                 <CardDescription>Compose and send emails to patients</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="email-to">To (Email Address)</Label>
-                  <Input
-                    id="email-to"
-                    type="email"
-                    placeholder="patient@example.com"
-                    value={emailTo}
-                    onChange={(e) => setEmailTo(e.target.value)}
-                  />
-                </div>
+                <FormField
+                  label="To (email address)"
+                  required
+                  htmlFor="email-to"
+                  error={emailErrors.to}
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="email"
+                      placeholder="patient@example.com"
+                      value={emailTo}
+                      onChange={(e) => setEmailTo(e.target.value)}
+                    />
+                  )}
+                </FormField>
 
-                <div>
-                  <Label htmlFor="email-subject">Subject</Label>
-                  <Input
-                    id="email-subject"
-                    placeholder="Email subject"
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
-                  />
-                </div>
+                <FormField
+                  label="Subject"
+                  required
+                  htmlFor="email-subject"
+                  error={emailErrors.subject}
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      placeholder="Email subject"
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                    />
+                  )}
+                </FormField>
 
-                <div>
-                  <Label htmlFor="email-body">Message</Label>
-                  <Textarea
-                    id="email-body"
-                    placeholder="Type your email message here"
-                    rows={8}
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
-                  />
-                </div>
+                <FormField label="Message" required htmlFor="email-body" error={emailErrors.body}>
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      placeholder="Type your email message here"
+                      rows={8}
+                      value={emailBody}
+                      onChange={(e) => setEmailBody(e.target.value)}
+                    />
+                  )}
+                </FormField>
 
-                <Button onClick={handleSendEmail} disabled={loading} className="w-full">
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Email
-                </Button>
+                <SubmitButton
+                  type="button"
+                  onClick={handleSendEmail}
+                  busy={sendingEmail}
+                  busyLabel="Sending…"
+                  icon={Send}
+                  className="w-full"
+                >
+                  Send email
+                </SubmitButton>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Email History</CardTitle>
+                <CardTitle>Email history</CardTitle>
                 <CardDescription>Recent email communications</CardDescription>
               </CardHeader>
               <CardContent>

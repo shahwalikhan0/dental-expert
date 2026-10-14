@@ -4,12 +4,22 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { useToast } from '@/hooks/use-toast'
 import { Separator } from '@/components/ui/separator'
-import { Building2, Save, Upload, Trash2, Loader2, Copy } from 'lucide-react'
+import { FormField } from '@/components/ui/form-field'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { useFormGuard } from '@/hooks/use-form-guard'
+import { useToast } from '@/hooks/use-toast'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { Save, Upload, Trash2, Loader2, Copy } from 'lucide-react'
 import { OnlineBookingCard } from '@/components/settings/online-booking-card'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
@@ -89,19 +99,56 @@ function serializeSchedule(schedule: WeekSchedule): string {
   return JSON.stringify(obj)
 }
 
+type ClinicForm = {
+  name: string
+  tagline: string
+  phone: string
+  alternatePhone: string
+  email: string
+  website: string
+  address: string
+  city: string
+  state: string
+  postalCode: string
+  registrationNo: string
+  taxRegistrationNo: string
+  nationalTaxNo: string
+  workingHours: string
+  bankName: string
+  bankAccountNo: string
+  bankIban: string
+  mobileWalletId: string
+}
+
+/** The fields the clinic route refuses to save blank, in the order they appear. */
+const REQUIRED: Array<[keyof ClinicForm, string]> = [
+  ['name', 'Enter the clinic’s name.'],
+  ['phone', 'Enter the clinic’s main phone number.'],
+  ['address', 'Enter the street address.'],
+  ['city', 'Enter the city.'],
+  ['state', 'Enter the state or province.'],
+  ['postalCode', 'Enter the postal code.'],
+]
+
+type FieldErrors = Partial<Record<keyof ClinicForm, string>>
+
 export default function ClinicSettingsPage() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
+  const trail = useTrail('Clinic information')
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const formRef = useFormGuard(saving)
+  const [errors, setErrors] = useState<FieldErrors>({})
   const [logo, setLogo] = useState<string | null>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [schedule, setSchedule] = useState<WeekSchedule>({ ...DEFAULT_SCHEDULE })
   const [patientPortalEnabled, setPatientPortalEnabled] = useState(false)
-  const [hospitalSlug, setHospitalSlug] = useState('')
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ClinicForm>({
     name: '',
     tagline: '',
     phone: '',
@@ -122,21 +169,18 @@ export default function ClinicSettingsPage() {
     mobileWalletId: '',
   })
 
-  useEffect(() => {
-    fetchClinicInfo()
-  }, [])
-
-  const fetchClinicInfo = async () => {
+  const fetchClinicInfo = useCallback(async () => {
     setLoading(true)
+    setFailed(false)
     try {
-      const response = await fetch('/api/settings/clinic')
-      const result = await response.json()
+      const result = await readJson<{ success?: boolean; data?: Record<string, any> }>(
+        await fetch('/api/settings/clinic')
+      )
 
       if (result.success && result.data) {
         setLogo(result.data.logo || null)
         setSchedule(parseSchedule(result.data.workingHours))
         setPatientPortalEnabled(result.data.patientPortalEnabled || false)
-        setHospitalSlug(result.data.slug || '')
         setFormData({
           name: result.data.name || '',
           tagline: result.data.tagline || '',
@@ -158,16 +202,19 @@ export default function ClinicSettingsPage() {
           mobileWalletId: result.data.mobileWalletId || '',
         })
       }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load clinic information',
-        variant: 'destructive',
-      })
+    } catch (error) {
+      console.error('Failed to load clinic information:', error)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    // Loading from the server on mount is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchClinicInfo()
+  }, [fetchClinicInfo])
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -178,15 +225,14 @@ export default function ClinicSettingsPage() {
       const fd = new FormData()
       fd.append('file', file)
 
-      const res = await fetch('/api/settings/clinic/logo', { method: 'POST', body: fd })
-      const result = await res.json()
-
-      if (!res.ok) throw new Error(result.error || 'Upload failed')
+      const result = await readJson<{ logo: string }>(
+        await fetch('/api/settings/clinic/logo', { method: 'POST', body: fd })
+      )
 
       setLogo(result.logo)
-      toast({ title: 'Logo uploaded', description: 'Your clinic logo has been updated.' })
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Upload failed', description: err.message })
+      toast(toastSuccess('Logo uploaded', 'It shows in the sidebar and on invoices.'))
+    } catch (err) {
+      toast(toastError('upload the logo', err))
     } finally {
       setUploadingLogo(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -194,15 +240,22 @@ export default function ClinicSettingsPage() {
   }
 
   const handleLogoRemove = async () => {
+    const ok = await confirm({
+      title: 'Remove the clinic logo?',
+      description:
+        'The sidebar and new invoices show the clinic’s initial instead. You can upload a logo again at any time.',
+      confirmLabel: 'Remove logo',
+    })
+    if (!ok) return
+
     setUploadingLogo(true)
     try {
-      const res = await fetch('/api/settings/clinic/logo', { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to remove logo')
+      await readJson(await fetch('/api/settings/clinic/logo', { method: 'DELETE' }))
 
       setLogo(null)
-      toast({ title: 'Logo removed' })
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message })
+      toast(toastSuccess('Logo removed'))
+    } catch (err) {
+      toast(toastError('remove the logo', err))
     } finally {
       setUploadingLogo(false)
     }
@@ -229,7 +282,23 @@ export default function ClinicSettingsPage() {
     })
   }, [])
 
-  const handleSave = async () => {
+  const handleSave = async (event?: React.FormEvent) => {
+    event?.preventDefault()
+
+    const found: FieldErrors = {}
+    for (const [field, message] of REQUIRED) {
+      if (!formData[field].trim()) found[field] = message
+    }
+    setErrors(found)
+    const first = REQUIRED.find(([field]) => found[field])
+    if (first) {
+      toast(toastError('save the clinic settings', 'Check the highlighted fields.'))
+      const element = document.getElementById(first[0])
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element?.focus({ preventScroll: true })
+      return
+    }
+
     setSaving(true)
     try {
       const payload = {
@@ -237,420 +306,449 @@ export default function ClinicSettingsPage() {
         workingHours: serializeSchedule(schedule),
         patientPortalEnabled,
       }
-      const response = await fetch('/api/settings/clinic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const result = await response.json()
-
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'Clinic information saved successfully',
+      await readJson(
+        await fetch('/api/settings/clinic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
-      } else {
-        throw new Error(result.error || 'Failed to save')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      // The page stays put after a save, so the guard is told the work is safe.
+      formRef.reset()
+      toast(toastSuccess('Clinic settings saved'))
+    } catch (error) {
+      toast(toastError('save the clinic settings', error))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: keyof ClinicForm, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
-  if (loading) {
-    return <div className="p-6">Loading...</div>
-  }
+  const header = (
+    <PageHeader
+      back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+      title="Clinic information"
+      description="Manage your clinic details and contact information"
+    />
+  )
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
-        <h1 className="page-title flex items-center gap-2">
-          <Building2 className="w-8 h-8" />
-          Clinic Information
-        </h1>
-        <p className="text-muted-foreground">Manage your clinic details and contact information</p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      {loading ? (
+        <PageSkeleton variant="form" />
+      ) : failed ? (
+        <>
+          {header}
+          <LoadFailed what="the clinic settings" onRetry={fetchClinicInfo} />
+        </>
+      ) : (
+        <>
+          {header}
 
-      <div className="space-y-6">
-        {/* Clinic Logo */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Clinic Logo</CardTitle>
-            <CardDescription>
-              Upload your clinic logo to display in the sidebar and invoices
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6">
-              {/* Preview */}
-              {logo ? (
-                <img
-                  src={logo}
-                  alt="Clinic logo"
-                  className="h-20 w-20 rounded-lg object-cover border"
-                />
-              ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-primary text-primary-foreground text-2xl font-bold border">
-                  {formData.name?.charAt(0) || 'D'}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={uploadingLogo}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingLogo ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="mr-2 h-4 w-4" />
-                  )}
-                  {logo ? 'Change Logo' : 'Upload Logo'}
-                </Button>
-                {logo && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={uploadingLogo}
-                    onClick={handleLogoRemove}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Remove
-                  </Button>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Primary clinic details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Label htmlFor="name">Clinic Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
-                  placeholder="Your Dental Clinic"
-                  required
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <Label htmlFor="tagline">Tagline / Motto</Label>
-                <Input
-                  id="tagline"
-                  value={formData.tagline}
-                  onChange={(e) => handleChange('tagline', e.target.value)}
-                  placeholder="Your Smile, Our Priority"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Contact Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
-            <CardDescription>How patients can reach you</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="phone">Primary Phone *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                  placeholder="044-12345678"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="alternatePhone">Alternate Phone</Label>
-                <Input
-                  id="alternatePhone"
-                  value={formData.alternatePhone}
-                  onChange={(e) => handleChange('alternatePhone', e.target.value)}
-                  placeholder="0300 1234567"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  placeholder="info@yourclinic.com"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  value={formData.website}
-                  onChange={(e) => handleChange('website', e.target.value)}
-                  placeholder="https://www.yourclinic.com"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Address */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Address</CardTitle>
-            <CardDescription>Clinic location details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="address">Street Address *</Label>
-              <Textarea
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
-                placeholder="123, Main Street, Ayanavaram"
-                rows={2}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="city">City *</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) => handleChange('city', e.target.value)}
-                  placeholder="Lahore"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="state">State *</Label>
-                <Input
-                  id="state"
-                  value={formData.state}
-                  onChange={(e) => handleChange('state', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="postalCode">Postal Code *</Label>
-                <Input
-                  id="postalCode"
-                  value={formData.postalCode}
-                  onChange={(e) => handleChange('postalCode', e.target.value)}
-                  placeholder="600023"
-                  required
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Registration & Tax */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Registration & Tax Information</CardTitle>
-            <CardDescription>Legal and tax registration details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="registrationNo">Registration Number</Label>
-                <Input
-                  id="registrationNo"
-                  value={formData.registrationNo}
-                  onChange={(e) => handleChange('registrationNo', e.target.value)}
-                  placeholder="REG123456"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="taxRegistrationNo">Sales Tax Registration (STRN)</Label>
-                <Input
-                  id="taxRegistrationNo"
-                  value={formData.taxRegistrationNo}
-                  onChange={(e) => handleChange('taxRegistrationNo', e.target.value)}
-                  placeholder="29XXXXX1234X1ZX"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="nationalTaxNo">National Tax Number (NTN)</Label>
-                <Input
-                  id="nationalTaxNo"
-                  value={formData.nationalTaxNo}
-                  onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
-                  placeholder="ABCDE1234F"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Working Hours */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Working Hours</CardTitle>
-            <CardDescription>Clinic operating schedule</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* Header row */}
-            <div className="hidden md:grid md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center text-xs font-medium text-muted-foreground px-1">
-              <span>Day</span>
-              <span>Opens at</span>
-              <span>Closes at</span>
-              <span className="text-center">Open</span>
-              <span />
-            </div>
-            <Separator />
-            {DAYS.map((day) => {
-              const d = schedule[day]
-              return (
-                <div
-                  key={day}
-                  className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center"
-                >
-                  <span className="text-sm font-medium">{DAY_LABELS[day]}</span>
-                  <Input
-                    type="time"
-                    value={d.closed ? '' : d.open}
-                    disabled={d.closed}
-                    onChange={(e) => updateDay(day, 'open', e.target.value)}
-                    className={d.closed ? 'opacity-40' : ''}
-                  />
-                  <Input
-                    type="time"
-                    value={d.closed ? '' : d.close}
-                    disabled={d.closed}
-                    onChange={(e) => updateDay(day, 'close', e.target.value)}
-                    className={d.closed ? 'opacity-40' : ''}
-                  />
-                  <div className="flex justify-center">
-                    <Switch
-                      checked={!d.closed}
-                      onCheckedChange={(checked) => updateDay(day, 'closed', !checked)}
+          <form ref={formRef} className="space-y-6" onSubmit={handleSave} noValidate>
+            {/* Clinic Logo */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Clinic logo</CardTitle>
+                <CardDescription>
+                  Upload your clinic logo to display in the sidebar and invoices
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-6">
+                  {/* Preview */}
+                  {logo ? (
+                    <img
+                      src={logo}
+                      alt="Clinic logo"
+                      className="h-20 w-20 rounded-lg object-cover border"
                     />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-primary text-primary-foreground text-2xl font-bold border">
+                      {formData.name?.charAt(0) || 'D'}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2">
+                    {/* Uploads at once, so choosing a file is not unsaved work. */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      data-form-guard="ignore"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingLogo}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploadingLogo ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-2 h-4 w-4" />
+                      )}
+                      {logo ? 'Change logo' : 'Upload logo'}
+                    </Button>
+                    {logo && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={uploadingLogo}
+                        onClick={handleLogoRemove}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Remove logo
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
+                    </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title="Copy to all days"
-                    onClick={() => copyToAll(day)}
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
-              )
-            })}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Bank Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Bank & Payment Details</CardTitle>
-            <CardDescription>For invoicing and payment collection</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="bankName">Bank Name</Label>
-                <Input
-                  id="bankName"
-                  value={formData.bankName}
-                  onChange={(e) => handleChange('bankName', e.target.value)}
-                  placeholder="State Bank of India"
-                />
-              </div>
+            {/* Basic Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Basic information</CardTitle>
+                <CardDescription>Primary clinic details</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    label="Clinic name"
+                    htmlFor="name"
+                    required
+                    error={errors.name}
+                    className="md:col-span-2"
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.name}
+                        onChange={(e) => handleChange('name', e.target.value)}
+                        placeholder="Your Dental Clinic"
+                      />
+                    )}
+                  </FormField>
 
-              <div>
-                <Label htmlFor="bankAccountNo">Account Number</Label>
-                <Input
-                  id="bankAccountNo"
-                  value={formData.bankAccountNo}
-                  onChange={(e) => handleChange('bankAccountNo', e.target.value)}
-                  placeholder="1234567890"
-                />
-              </div>
+                  <FormField label="Tagline / motto" htmlFor="tagline" className="md:col-span-2">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.tagline}
+                        onChange={(e) => handleChange('tagline', e.target.value)}
+                        placeholder="Your Smile, Our Priority"
+                      />
+                    )}
+                  </FormField>
+                </div>
+              </CardContent>
+            </Card>
 
-              <div>
-                <Label htmlFor="bankIban">IBAN</Label>
-                <Input
-                  id="bankIban"
-                  value={formData.bankIban}
-                  onChange={(e) => handleChange('bankIban', e.target.value)}
-                  placeholder="PK36SCBL0000001123456702"
-                />
-              </div>
+            {/* Contact Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Contact information</CardTitle>
+                <CardDescription>How patients can reach you</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField label="Primary phone" htmlFor="phone" required error={errors.phone}>
+                    {(control) => (
+                      <PhoneInput
+                        {...control}
+                        value={formData.phone}
+                        onChange={(value) => handleChange('phone', value)}
+                      />
+                    )}
+                  </FormField>
 
-              <div>
-                <Label htmlFor="mobileWalletId">Mobile Wallet</Label>
-                <Input
-                  id="mobileWalletId"
-                  value={formData.mobileWalletId}
-                  onChange={(e) => handleChange('mobileWalletId', e.target.value)}
-                  placeholder="JazzCash or Easypaisa number"
-                />
-              </div>
+                  <FormField label="Alternate phone" htmlFor="alternatePhone">
+                    {(control) => (
+                      <PhoneInput
+                        {...control}
+                        value={formData.alternatePhone}
+                        onChange={(value) => handleChange('alternatePhone', value)}
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="Email" htmlFor="email">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        placeholder="info@yourclinic.com"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="Website" htmlFor="website">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.website}
+                        onChange={(e) => handleChange('website', e.target.value)}
+                        placeholder="https://www.yourclinic.com"
+                      />
+                    )}
+                  </FormField>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Address */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Address</CardTitle>
+                <CardDescription>Clinic location details</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField label="Street address" htmlFor="address" required error={errors.address}>
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      value={formData.address}
+                      onChange={(e) => handleChange('address', e.target.value)}
+                      placeholder="123, Main Street, Ayanavaram"
+                      rows={2}
+                    />
+                  )}
+                </FormField>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField label="City" htmlFor="city" required error={errors.city}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.city}
+                        onChange={(e) => handleChange('city', e.target.value)}
+                        placeholder="Lahore"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="State" htmlFor="state" required error={errors.state}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.state}
+                        onChange={(e) => handleChange('state', e.target.value)}
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField
+                    label="Postal code"
+                    htmlFor="postalCode"
+                    required
+                    error={errors.postalCode}
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.postalCode}
+                        onChange={(e) => handleChange('postalCode', e.target.value)}
+                        placeholder="600023"
+                      />
+                    )}
+                  </FormField>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Registration & Tax */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Registration and tax information</CardTitle>
+                <CardDescription>Legal and tax registration details</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField label="Registration number" htmlFor="registrationNo">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.registrationNo}
+                        onChange={(e) => handleChange('registrationNo', e.target.value)}
+                        placeholder="REG123456"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="Sales tax registration (STRN)" htmlFor="taxRegistrationNo">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.taxRegistrationNo}
+                        onChange={(e) => handleChange('taxRegistrationNo', e.target.value)}
+                        placeholder="29XXXXX1234X1ZX"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="National tax number (NTN)" htmlFor="nationalTaxNo">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.nationalTaxNo}
+                        onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
+                        placeholder="ABCDE1234F"
+                      />
+                    )}
+                  </FormField>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Working Hours */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Working hours</CardTitle>
+                <CardDescription>Clinic operating schedule</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Header row */}
+                <div className="hidden md:grid md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center text-xs font-medium text-muted-foreground px-1">
+                  <span>Day</span>
+                  <span>Opens at</span>
+                  <span>Closes at</span>
+                  <span className="text-center">Open</span>
+                  <span />
+                </div>
+                <Separator />
+                {DAYS.map((day) => {
+                  const d = schedule[day]
+                  return (
+                    <div
+                      key={day}
+                      className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center"
+                    >
+                      <span className="text-sm font-medium">{DAY_LABELS[day]}</span>
+                      <Input
+                        type="time"
+                        aria-label={`${DAY_LABELS[day]} opens at`}
+                        value={d.closed ? '' : d.open}
+                        disabled={d.closed}
+                        onChange={(e) => updateDay(day, 'open', e.target.value)}
+                        className={d.closed ? 'opacity-40' : ''}
+                      />
+                      <Input
+                        type="time"
+                        aria-label={`${DAY_LABELS[day]} closes at`}
+                        value={d.closed ? '' : d.close}
+                        disabled={d.closed}
+                        onChange={(e) => updateDay(day, 'close', e.target.value)}
+                        className={d.closed ? 'opacity-40' : ''}
+                      />
+                      <div className="flex justify-center">
+                        <Switch
+                          aria-label={`Open on ${DAY_LABELS[day]}`}
+                          checked={!d.closed}
+                          onCheckedChange={(checked) => updateDay(day, 'closed', !checked)}
+                        />
+                      </div>
+                      <IconTooltip label="Copy to all days">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label={`Copy ${DAY_LABELS[day]}’s hours to all days`}
+                          onClick={() => copyToAll(day)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </IconTooltip>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+
+            {/* Bank Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Bank and payment details</CardTitle>
+                <CardDescription>For invoicing and payment collection</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField label="Bank name" htmlFor="bankName">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.bankName}
+                        onChange={(e) => handleChange('bankName', e.target.value)}
+                        placeholder="State Bank of India"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="Account number" htmlFor="bankAccountNo">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.bankAccountNo}
+                        onChange={(e) => handleChange('bankAccountNo', e.target.value)}
+                        placeholder="1234567890"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="IBAN" htmlFor="bankIban">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.bankIban}
+                        onChange={(e) => handleChange('bankIban', e.target.value)}
+                        placeholder="PK36SCBL0000001123456702"
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label="Mobile wallet" htmlFor="mobileWalletId">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.mobileWalletId}
+                        onChange={(e) => handleChange('mobileWalletId', e.target.value)}
+                        placeholder="JazzCash or Easypaisa number"
+                      />
+                    )}
+                  </FormField>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end">
+              <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+                Save changes
+              </SubmitButton>
             </div>
-          </CardContent>
-        </Card>
+          </form>
 
-        <OnlineBookingCard />
-
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving} size="lg">
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Clinic Information'}
-          </Button>
-        </div>
-      </div>
+          {/* Saves itself, and sits outside the form above: its fields are not
+              this page's unsaved work, and its own Save does not send them. */}
+          <OnlineBookingCard />
+        </>
+      )}
+      {ConfirmDialogComponent}
     </div>
   )
 }

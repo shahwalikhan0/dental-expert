@@ -5,6 +5,8 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { Badge } from '@/components/ui/badge'
 import {
   ClickableRow,
@@ -26,15 +28,15 @@ import { IconTooltip } from '@/components/ui/icon-action'
 import {
   Plus,
   MoreHorizontal,
-  Pencil,
   Trash2,
-  Eye,
   FileText,
   ClipboardCheck,
   MessageSquareText,
   FilePlus2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { displayDate } from '@/lib/dates'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 
 interface FormTemplate {
   id: string
@@ -56,7 +58,7 @@ const typeIcons: Record<string, React.ReactNode> = {
 }
 
 const typeLabels: Record<string, string> = {
-  MEDICAL_HISTORY: 'Medical History',
+  MEDICAL_HISTORY: 'Medical history',
   CONSENT: 'Consent',
   INTAKE: 'Intake',
   FEEDBACK: 'Feedback',
@@ -70,82 +72,84 @@ export default function FormsSettingsPage() {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [templates, setTemplates] = useState<FormTemplate[]>([])
   const [loading, setLoading] = useState(true)
+  // The fetch failed — said in the grid, with a retry, not as an empty list.
+  const [failed, setFailed] = useState(false)
   // The route hands back every template, so the paging is done here.
   const paged = usePagedRows(templates)
-
-  useEffect(() => {
-    fetchTemplates()
-  }, [])
 
   const fetchTemplates = async () => {
     try {
       const res = await fetch('/api/settings/forms')
+      if (!res.ok) throw new Error('Failed to load form templates')
       const data = await res.json()
       if (data.templates) setTemplates(data.templates)
+      setFailed(false)
     } catch {
-      toast({ variant: 'destructive', title: 'Failed to load form templates' })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchTemplates()
+  }, [])
 
   const handleSeedDefaults = async () => {
     try {
       const res = await fetch('/api/settings/forms/seed', { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
-        toast({ title: data.message })
+        toast(toastSuccess('Default templates loaded', data.message))
         fetchTemplates()
       } else {
-        toast({ variant: 'destructive', title: data.error || 'Failed to load defaults' })
+        toast(toastError('load the default templates', data))
       }
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to load defaults' })
+    } catch (error) {
+      toast(toastError('load the default templates', error))
     }
   }
 
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirm({
-      title: 'Delete Template',
-      description: `Delete "${name}"? Templates with submissions will be deactivated instead.`,
-      confirmLabel: 'Delete',
+      title: `Delete template “${name}”?`,
+      description: 'Templates with submissions will be deactivated instead.',
+      confirmLabel: 'Delete template',
     })
     if (!ok) return
 
     try {
       const res = await fetch(`/api/settings/forms/${id}`, { method: 'DELETE' })
       if (res.ok) {
-        toast({ title: 'Template removed' })
+        toast(toastSuccess('Template removed'))
         fetchTemplates()
       } else {
-        const data = await res.json()
-        toast({ variant: 'destructive', title: data.error || 'Failed to delete' })
+        const data = await res.json().catch(() => null)
+        toast(toastError(`delete template “${name}”`, data))
       }
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to delete template' })
+    } catch (error) {
+      toast(toastError(`delete template “${name}”`, error))
     }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Form Templates</h1>
-          <p className="text-muted-foreground">
-            Create and manage intake forms, consent forms, and custom forms
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/settings/forms/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New Template
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Form templates"
+        description="Create and manage intake forms, consent forms, and custom forms"
+        actions={
+          <Button asChild>
+            <Link href="/settings/forms/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New template
+            </Link>
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle>All Templates</CardTitle>
+          <CardTitle>All templates</CardTitle>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[800px]">
@@ -162,18 +166,23 @@ export default function FormsSettingsPage() {
             <GridBody
               columns={6}
               loading={loading}
+              failed={failed}
+              onRetry={() => {
+                setLoading(true)
+                fetchTemplates()
+              }}
               empty={templates.length === 0}
               emptyIcon={FileText}
               emptyTitle="No form templates yet"
               emptyDescription="Create one from scratch with the button above, or start from the standard set and edit from there."
-              emptyActionLabel="Load Default Templates"
+              emptyActionLabel="Load default templates"
               onEmptyAction={handleSeedDefaults}
             >
               {paged.rows.map((t) => (
                 <ClickableRow
                   key={t.id}
                   href={trail.to(`/settings/forms/${t.id}`)}
-                  label={`Open ${t.name}`}
+                  label={`Open template ${t.name}`}
                 >
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -197,14 +206,13 @@ export default function FormsSettingsPage() {
                     <Badge variant="outline">{typeLabels[t.type] || t.type}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={t.isActive ? 'default' : 'secondary'}>
-                      {t.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
+                    <StatusBadge kind="active" status={t.isActive} />
                   </TableCell>
                   <TableCell className="text-right">{t._count.submissions}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {new Date(t.createdAt).toLocaleDateString('en-PK')}
+                    {displayDate(t.createdAt)}
                   </TableCell>
+                  {/* GridActionsCell carries the `row-actions` class. */}
                   <GridActionsCell>
                     <DropdownMenu>
                       <IconTooltip label="More actions">
@@ -220,12 +228,7 @@ export default function FormsSettingsPage() {
                         </DropdownMenuTrigger>
                       </IconTooltip>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/settings/forms/${t.id}`}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View / Edit
-                          </Link>
-                        </DropdownMenuItem>
+                        {/* No "View / Edit": the row itself opens the template. */}
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => handleDelete(t.id, t.name)}

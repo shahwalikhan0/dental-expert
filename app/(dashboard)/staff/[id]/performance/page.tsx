@@ -1,29 +1,30 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { BackLink, useTrail } from '@/components/ui/trail'
 import {
-  ArrowLeft,
   Calendar,
   TrendingUp,
   Users,
   Stethoscope,
-  IndianRupee,
+  Banknote,
   Clock,
   FileText,
   UserCheck,
   UserX,
-  AlertCircle,
 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
-import { isoDay } from '@/lib/dates'
+import { BLANK, isoDay } from '@/lib/dates'
+import { formatCurrency } from '@/lib/i18n/format'
 import { LATES_PER_ABSENCE } from '@/lib/attendance'
 
 interface PerformanceData {
@@ -82,7 +83,7 @@ const categoryLabels: Record<string, string> = {
   PERIODONTIC: 'Periodontic',
   PROSTHODONTIC: 'Prosthodontic',
   ORTHODONTIC: 'Orthodontic',
-  ORAL_SURGERY: 'Oral Surgery',
+  ORAL_SURGERY: 'Oral surgery',
   COSMETIC: 'Cosmetic',
   DIAGNOSTIC: 'Diagnostic',
   EMERGENCY: 'Emergency',
@@ -90,10 +91,12 @@ const categoryLabels: Record<string, string> = {
 
 export default function PerformancePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
-  const router = useRouter()
-  const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<PerformanceData | null>(null)
+  // The figures could not be fetched (failed), or the person does not exist (missing).
+  const [failed, setFailed] = useState(false)
+  const [missing, setMissing] = useState(false)
+  const trail = useTrail(data ? `${data.staff.name} — performance` : null)
 
   // Date filters
   const [startDate, setStartDate] = useState(() => {
@@ -108,121 +111,117 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
   const fetchPerformance = async () => {
     try {
       setLoading(true)
+      setFailed(false)
+      setMissing(false)
       const params = new URLSearchParams({
         startDate,
         endDate,
       })
 
       const response = await fetch(`/api/staff/${resolvedParams.id}/performance?${params}`)
-      if (!response.ok) {
-        if (response.status === 404) {
-          toast({
-            variant: 'destructive',
-            title: 'Not Found',
-            description: 'Staff member not found',
-          })
-          router.push('/staff')
-          return
-        }
-        throw new Error('Failed to fetch performance data')
+      if (response.status === 404) {
+        setMissing(true)
+        return
       }
+      if (!response.ok) throw new Error('Failed to fetch performance data')
 
       const result = await response.json()
       setData(result)
     } catch (error) {
       console.error('Error fetching performance:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to fetch performance data',
-      })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // Loading the screen's data is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPerformance()
+    // Refetch when what is asked changes; `fetchPerformance` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedParams.id, startDate, endDate])
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
 
   const getCompletionRate = () => {
     if (!data || data.appointments.total === 0) return 0
     return Math.round((data.appointments.completed / data.appointments.total) * 100)
   }
 
-  if (loading) {
+  const back = (
+    <BackLink
+      trail={trail}
+      fallback={`/staff/${resolvedParams.id}`}
+      fallbackLabel={data?.staff.name ?? 'Staff member'}
+    />
+  )
+
+  // Only the first load: changing the dates keeps the page and its controls.
+  if (loading && !data) return <PageSkeleton variant="dashboard" />
+
+  if (missing) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10" />
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
+        {back}
+        <EmptyState
+          icon={UserX}
+          title="Staff member not found"
+          description="They may have been removed, or the link is wrong."
+          actionLabel="Back to staff"
+          actionHref="/staff"
+        />
       </div>
     )
   }
 
-  if (!data) {
+  if (failed || !data) {
     return (
-      <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Performance data not available</p>
-        <Button asChild>
-          <Link href="/staff">Back to Staff List</Link>
-        </Button>
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="the performance figures" onRetry={fetchPerformance} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-            <Link href={`/staff/${resolvedParams.id}`}>
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="page-title">Performance Dashboard</h1>
-            <p className="text-muted-foreground">
-              {data.staff.name} ({data.staff.employeeId})
-              {data.staff.specialization && ` - ${data.staff.specialization}`}
-            </p>
+    <div className="space-y-6" aria-busy={loading || undefined}>
+      <PageHeader
+        title="Performance"
+        back={back}
+        description={
+          <>
+            {data.staff.name} ({data.staff.employeeId})
+            {data.staff.specialization && ` — ${data.staff.specialization}`}
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="performance-from" className="sr-only">
+              From
+            </Label>
+            <Input
+              id="performance-from"
+              type="date"
+              value={startDate}
+              max={endDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-[160px]"
+            />
+            <span className="text-muted-foreground">to</span>
+            <Label htmlFor="performance-to" className="sr-only">
+              To
+            </Label>
+            <Input
+              id="performance-to"
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-[160px]"
+            />
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-[160px]"
-          />
-          <span className="text-muted-foreground">to</span>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-[160px]"
-          />
-        </div>
-      </div>
+        }
+      />
 
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -230,11 +229,11 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
+                <p className="text-sm text-muted-foreground">Total revenue</p>
                 <p className="text-2xl font-bold">{formatCurrency(data.revenue.total)}</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-950/40">
-                <IndianRupee className="h-6 w-6 text-green-600 dark:text-green-400" />
+                <Banknote className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
@@ -247,7 +246,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Patients Treated</p>
+                <p className="text-sm text-muted-foreground">Patients treated</p>
                 <p className="text-2xl font-bold">{data.patientsTreated}</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-950/40">
@@ -262,7 +261,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Treatments Done</p>
+                <p className="text-sm text-muted-foreground">Treatments done</p>
                 <p className="text-2xl font-bold">{data.treatments.completed}</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center dark:bg-purple-950/40">
@@ -303,7 +302,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm">Completion Rate</span>
+              <span className="text-sm">Completion rate</span>
               <span className="text-sm font-medium">{getCompletionRate()}%</span>
             </div>
             <Progress value={getCompletionRate()} className="h-2" />
@@ -326,7 +325,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 </p>
               </div>
               <div className="p-3 bg-yellow-50 rounded-lg dark:bg-yellow-950/30">
-                <p className="text-sm text-yellow-600 dark:text-yellow-400">No Show</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">No-show</p>
                 <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
                   {data.appointments.noShow}
                 </p>
@@ -361,9 +360,9 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
             ) : (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Attendance Rate</span>
+                  <span className="text-sm">Attendance rate</span>
                   <span className="text-sm font-medium">
-                    {data.attendance.rate === null ? '—' : `${data.attendance.rate}%`}
+                    {data.attendance.rate === null ? BLANK : `${data.attendance.rate}%`}
                   </span>
                 </div>
                 <Progress value={data.attendance.rate ?? 0} className="h-2" />
@@ -395,7 +394,9 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 <p className="text-xs text-muted-foreground">
                   Absent includes one day for every {LATES_PER_ABSENCE} lates.{' '}
                   <Link
-                    href={`/attendance/${data.attendance.userId}?start=${startDate}&end=${endDate}`}
+                    href={trail.to(
+                      `/attendance/${data.attendance.userId}?start=${startDate}&end=${endDate}`
+                    )}
                     className="underline underline-offset-2 hover:text-foreground"
                   >
                     Open the attendance record
@@ -413,13 +414,13 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
-              Procedure Breakdown
+              Procedure breakdown
             </CardTitle>
             <CardDescription>Revenue and count by procedure category</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {data.procedureBreakdown
+              {[...data.procedureBreakdown]
                 .sort((a, b) => b.revenue - a.revenue)
                 .map((proc) => {
                   const maxRevenue = Math.max(...data.procedureBreakdown.map((p) => p.revenue))

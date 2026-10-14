@@ -19,8 +19,14 @@ export function PageSkeleton({
   variant,
   rows,
   cols,
+  withHeader = true,
 }: {
   variant: 'table' | 'detail' | 'form' | 'dashboard'
+  /**
+   * `dashboard` only. False when the page has already drawn its real
+   * `PageHeader` above the skeleton, so the title is not drawn twice.
+   */
+  withHeader?: boolean
   /** `table` only. Default 5. */
   rows?: number
   /** `table` only. Default 4. */
@@ -36,7 +42,7 @@ export function PageSkeleton({
       ) : variant === 'form' ? (
         <FormPageSkeleton />
       ) : (
-        <DashboardSkeleton />
+        <DashboardSkeleton withHeader={withHeader} />
       )}
     </div>
   )
@@ -86,13 +92,15 @@ export function TablePageSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?
   )
 }
 
-export function DashboardSkeleton() {
+export function DashboardSkeleton({ withHeader = true }: { withHeader?: boolean }) {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-72" />
-      </div>
+      {withHeader && (
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+      )}
       {/* Stat cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (

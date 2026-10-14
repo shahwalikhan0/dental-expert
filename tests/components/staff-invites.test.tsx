@@ -155,9 +155,14 @@ describe('sending an invitation', () => {
 
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: 'destructive', title: 'Missing details' })
+        expect.objectContaining({
+          variant: 'destructive',
+          title: "Couldn't send the invitation",
+        })
       )
     )
+    // Said under the field that is missing, not only in the corner.
+    expect(screen.getByText('Choose the role they will have')).toBeInTheDocument()
 
     expect(vi.mocked(fetch).mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(0)
   })

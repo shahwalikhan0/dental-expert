@@ -5,10 +5,15 @@ import { useFormGuard } from '@/hooks/use-form-guard'
 import { CNIC_PLACEHOLDER, formatCNIC, formatCNICInput } from '@/lib/cnic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useTrail, BackLink } from '@/components/ui/trail'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { FormField } from '@/components/ui/form-field'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { PageHeader } from '@/components/ui/page-header'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -19,8 +24,13 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { ageInYears, birthDateForAge } from '@/lib/age'
-import { patientContactProblem, todayIso } from '@/lib/patient-validation'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import {
+  firstPatientError,
+  patientFormErrors,
+  type PatientFieldErrors,
+} from '@/components/patients/patient-form-errors'
+import { Save } from 'lucide-react'
 import { DuplicateDetector } from '@/components/patients/duplicate-detector'
 import { BLOOD_GROUP_OPTIONS } from '@/lib/labels'
 import { MedicalHistoryFields } from '@/components/patients/medical-history-fields'
@@ -35,6 +45,7 @@ export default function NewPatientPage() {
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard()
   const { toast } = useToast()
+  const trail = useTrail('New patient')
   const [submitting, setSubmitting] = useState(false)
 
   const [form, setForm] = useState({
@@ -67,8 +78,16 @@ export default function NewPatientPage() {
    */
   const [history, setHistory] = useState<MedicalHistoryInput>(EMPTY_MEDICAL_HISTORY)
 
+  // Said under each field (docs/UX_STANDARDS.md §5), not only in a toast.
+  const [errors, setErrors] = useState<PatientFieldErrors>({})
+
+  function clearError(field: string) {
+    setErrors((prev) => (field in prev ? { ...prev, [field]: undefined } : prev))
+  }
+
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
+    clearError(field)
   }
 
   // There is no age column — age is read from the date of birth — so an age
@@ -81,6 +100,7 @@ export default function NewPatientPage() {
     const age = ageInYears(value)
     setForm((prev) => ({ ...prev, dateOfBirth: value, age: age === null ? '' : String(age) }))
     setDobEstimated(false)
+    clearError('dateOfBirth')
   }
 
   function updateAge(value: string) {
@@ -91,35 +111,21 @@ export default function NewPatientPage() {
       dateOfBirth: estimate ?? (value === '' && dobEstimated ? '' : prev.dateOfBirth),
     }))
     setDobEstimated(estimate !== null || (value !== '' && dobEstimated))
+    clearError('dateOfBirth')
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!form.firstName || !form.lastName || !form.phone) {
-      toast({
-        variant: 'destructive',
-        title: 'Validation Error',
-        description: 'First name, last name, and phone are required.',
-      })
-      return
-    }
-
     // The same checks the server makes (lib/patient-validation.ts), asked
-    // here so the desk is told before the request rather than after it.
-    const problem = patientContactProblem(
-      {
-        phone: form.phone,
-        alternatePhone: form.alternatePhone,
-        emergencyContactPhone: form.emergencyContactPhone,
-        email: form.email,
-        dateOfBirth: form.dateOfBirth,
-      },
-      new Date(),
-      { today: todayIso() }
-    )
-    if (problem) {
-      toast({ variant: 'destructive', title: 'Validation Error', description: problem })
+    // here so the desk is told before the request rather than after it — and
+    // told under each field that needs fixing.
+    const found = patientFormErrors(form)
+    setErrors(found)
+    const first = firstPatientError(found)
+    if (first) {
+      toast(toastError('create the patient', 'Check the highlighted fields.'))
+      document.getElementById(first)?.focus()
       return
     }
 
@@ -160,25 +166,13 @@ export default function NewPatientPage() {
         body: JSON.stringify(payload),
       })
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(data.error || `Failed to create patient (${response.status})`)
-      }
+      const patient = await readJson<{ id: string }>(response)
 
-      const patient = await response.json()
-
-      toast({
-        title: 'Patient Created',
-        description: `Patient ${form.firstName} ${form.lastName} has been registered successfully.`,
-      })
+      toast(toastSuccess('Patient created', `${form.firstName} ${form.lastName} is registered.`))
 
       router.push(`/patients/${patient.id}`)
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to create patient',
-      })
+    } catch (error) {
+      toast(toastError('create the patient', error))
     } finally {
       setSubmitting(false)
     }
@@ -186,55 +180,50 @@ export default function NewPatientPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/patients">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Patient</h1>
-          <p className="text-muted-foreground">Register a new patient</p>
-        </div>
-      </div>
+      <PageHeader
+        title="New patient"
+        description="Register a new patient"
+        back={<BackLink trail={trail} fallback="/patients" fallbackLabel="Patients" />}
+      />
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Personal Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Personal Information</CardTitle>
+            <CardTitle>Personal information</CardTitle>
             <CardDescription>Basic details of the patient</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First Name *</Label>
-              <Input
-                id="firstName"
-                value={form.firstName}
-                onChange={(e) => updateField('firstName', e.target.value)}
-                placeholder="Enter first name"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name *</Label>
-              <Input
-                id="lastName"
-                value={form.lastName}
-                onChange={(e) => updateField('lastName', e.target.value)}
-                placeholder="Enter last name"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dateOfBirth">Date of Birth</Label>
-              <Input
-                id="dateOfBirth"
-                type="date"
-                value={form.dateOfBirth}
-                onChange={(e) => updateDateOfBirth(e.target.value)}
-              />
-            </div>
+            <FormField label="First name" required htmlFor="firstName" error={errors.firstName}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={form.firstName}
+                  onChange={(e) => updateField('firstName', e.target.value)}
+                  placeholder="Enter first name"
+                />
+              )}
+            </FormField>
+            <FormField label="Last name" required htmlFor="lastName" error={errors.lastName}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={form.lastName}
+                  onChange={(e) => updateField('lastName', e.target.value)}
+                  placeholder="Enter last name"
+                />
+              )}
+            </FormField>
+            <FormField label="Date of birth" htmlFor="dateOfBirth" error={errors.dateOfBirth}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  value={form.dateOfBirth}
+                  onChange={(e) => updateDateOfBirth(e.target.value)}
+                />
+              )}
+            </FormField>
             <div className="space-y-2">
               <Label htmlFor="age">Age</Label>
               <Input
@@ -256,7 +245,7 @@ export default function NewPatientPage() {
             <div className="space-y-2">
               <Label htmlFor="gender">Gender</Label>
               <Select value={form.gender} onValueChange={(v) => updateField('gender', v)}>
-                <SelectTrigger>
+                <SelectTrigger id="gender">
                   <SelectValue placeholder="Select gender" />
                 </SelectTrigger>
                 <SelectContent>
@@ -267,9 +256,9 @@ export default function NewPatientPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bloodGroup">Blood Group</Label>
+              <Label htmlFor="bloodGroup">Blood group</Label>
               <Select value={form.bloodGroup} onValueChange={(v) => updateField('bloodGroup', v)}>
-                <SelectTrigger>
+                <SelectTrigger id="bloodGroup">
                   <SelectValue placeholder="Select blood group" />
                 </SelectTrigger>
                 <SelectContent>
@@ -287,41 +276,43 @@ export default function NewPatientPage() {
         {/* Contact Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
+            <CardTitle>Contact information</CardTitle>
             <CardDescription>Phone, email, and address details</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone *</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => updateField('phone', e.target.value)}
-                placeholder="Enter phone number"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="alternatePhone">Alternate Phone</Label>
-              <Input
-                id="alternatePhone"
-                type="tel"
-                value={form.alternatePhone}
-                onChange={(e) => updateField('alternatePhone', e.target.value)}
-                placeholder="Alternate phone number"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(e) => updateField('email', e.target.value)}
-                placeholder="Enter email address"
-              />
-            </div>
+            <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  value={form.phone}
+                  onChange={(value) => updateField('phone', value)}
+                />
+              )}
+            </FormField>
+            <FormField
+              label="Alternate phone"
+              htmlFor="alternatePhone"
+              error={errors.alternatePhone}
+            >
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  value={form.alternatePhone}
+                  onChange={(value) => updateField('alternatePhone', value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Email" htmlFor="email" error={errors.email}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => updateField('email', e.target.value)}
+                  placeholder="Enter email address"
+                />
+              )}
+            </FormField>
             <div className="space-y-2 md:col-span-2 lg:col-span-3">
               <Label htmlFor="address">Address</Label>
               <Textarea
@@ -351,7 +342,7 @@ export default function NewPatientPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="postalCode">Postal Code</Label>
+              <Label htmlFor="postalCode">Postal code</Label>
               <Input
                 id="postalCode"
                 value={form.postalCode}
@@ -365,7 +356,7 @@ export default function NewPatientPage() {
         {/* Additional Details */}
         <Card>
           <CardHeader>
-            <CardTitle>Additional Details</CardTitle>
+            <CardTitle>Additional details</CardTitle>
             <CardDescription>ID, occupation, and referral information</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -392,7 +383,7 @@ export default function NewPatientPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="referredBy">Referred By</Label>
+              <Label htmlFor="referredBy">Referred by</Label>
               <Input
                 id="referredBy"
                 value={form.referredBy}
@@ -401,7 +392,7 @@ export default function NewPatientPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="referralCode">Referral Code</Label>
+              <Label htmlFor="referralCode">Referral code</Label>
               <Input
                 id="referralCode"
                 value={form.referralCode}
@@ -415,12 +406,12 @@ export default function NewPatientPage() {
         {/* Emergency Contact */}
         <Card>
           <CardHeader>
-            <CardTitle>Emergency Contact</CardTitle>
+            <CardTitle>Emergency contact</CardTitle>
             <CardDescription>Emergency contact information</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="emergencyContactName">Contact Name</Label>
+              <Label htmlFor="emergencyContactName">Contact name</Label>
               <Input
                 id="emergencyContactName"
                 value={form.emergencyContactName}
@@ -428,16 +419,19 @@ export default function NewPatientPage() {
                 placeholder="Emergency contact name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="emergencyContactPhone">Contact Phone</Label>
-              <Input
-                id="emergencyContactPhone"
-                type="tel"
-                value={form.emergencyContactPhone}
-                onChange={(e) => updateField('emergencyContactPhone', e.target.value)}
-                placeholder="Emergency contact phone"
-              />
-            </div>
+            <FormField
+              label="Contact phone"
+              htmlFor="emergencyContactPhone"
+              error={errors.emergencyContactPhone}
+            >
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  value={form.emergencyContactPhone}
+                  onChange={(value) => updateField('emergencyContactPhone', value)}
+                />
+              )}
+            </FormField>
             <div className="space-y-2">
               <Label htmlFor="emergencyContactRelation">Relation</Label>
               <Input
@@ -466,21 +460,11 @@ export default function NewPatientPage() {
         {/* Submit */}
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" asChild>
-            <Link href="/patients">Cancel</Link>
+            <Link href={trail.back('/patients')}>Cancel</Link>
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Create Patient
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={submitting} busyLabel="Creating patient…" icon={Save}>
+            Create patient
+          </SubmitButton>
         </div>
       </form>
     </div>

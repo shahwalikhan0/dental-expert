@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { minutesOf, timeOf } from '@/lib/working-hours'
+import { formatTime } from '@/lib/appointment-utils'
+import { appointmentBlockClass, appointmentStatusLabel } from './status-tone'
 
 /**
  * The appointment book.
@@ -43,16 +45,6 @@ export interface BookDoctor {
 /** How tall one slot is. Enough to read two lines in a 30-minute block. */
 const SLOT_HEIGHT = 28
 const SLOT_MINUTES = 15
-
-const STATUS_STYLES: Record<string, string> = {
-  SCHEDULED: 'bg-slate-500/20 border-slate-500/50 text-slate-900 dark:text-slate-100',
-  CONFIRMED: 'bg-blue-500/20 border-blue-500/50 text-blue-900 dark:text-blue-100',
-  CHECKED_IN: 'bg-amber-500/25 border-amber-500/60 text-amber-900 dark:text-amber-100',
-  IN_PROGRESS: 'bg-violet-500/25 border-violet-500/60 text-violet-900 dark:text-violet-100',
-  COMPLETED: 'bg-green-500/20 border-green-500/50 text-green-900 dark:text-green-100',
-  NO_SHOW: 'bg-red-500/15 border-red-500/40 text-red-900 dark:text-red-100 opacity-70',
-  CANCELLED: 'bg-muted border-border text-muted-foreground line-through opacity-60',
-}
 
 const subjectOf = (a: BookAppointment) =>
   a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : (a.visitor?.name ?? 'Unknown')
@@ -196,10 +188,14 @@ export function AppointmentBook({
                   <Link
                     key={appointment.id}
                     href={href(appointment)}
+                    aria-label={`${subjectOf(appointment)}, ${formatTime(appointment.scheduledTime)}, ${appointmentStatusLabel(appointment.status)}`}
                     className={cn(
                       'pointer-events-auto absolute left-1 right-1 rounded border px-1.5 py-0.5 overflow-hidden text-[11px] leading-tight',
                       'hover:ring-2 hover:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      STATUS_STYLES[appointment.status] ?? STATUS_STYLES.SCHEDULED
+                      appointmentBlockClass(appointment.status),
+                      // Over, and not going to happen: drawn faded, a cancelled one struck through.
+                      appointment.status === 'NO_SHOW' && 'opacity-70',
+                      appointment.status === 'CANCELLED' && 'line-through opacity-60'
                     )}
                     style={{ top, height }}
                   >
@@ -209,7 +205,7 @@ export function AppointmentBook({
                     </span>
                     {height > SLOT_HEIGHT && (
                       <span className="truncate block opacity-80">
-                        {appointment.scheduledTime} · {appointment.duration}m
+                        {formatTime(appointment.scheduledTime)} · {appointment.duration}m
                       </span>
                     )}
                   </Link>

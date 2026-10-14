@@ -3,7 +3,6 @@
 import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -13,10 +12,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatCurrency, formatDate } from '@/lib/i18n/format'
-import { ArrowLeft, Package, TriangleAlert } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { humanise } from '@/lib/labels'
+import { TONE_TEXT_CLASS } from '@/lib/status'
+import { formatPhone } from '@/lib/utils'
+import { ArrowLeftRight, Package, Pencil, TriangleAlert } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
 
 interface Batch {
@@ -73,25 +80,6 @@ interface Item {
   recentTransactions: Movement[]
 }
 
-const STOCK_STYLE: Record<string, { label: string; className: string }> = {
-  out_of_stock: {
-    label: 'Out of stock',
-    className: 'bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300',
-  },
-  low_stock: {
-    label: 'Low stock',
-    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
-  },
-  reorder: {
-    label: 'At reorder level',
-    className: 'bg-amber-100 text-amber-800 border-0 dark:bg-amber-950/40 dark:text-amber-300',
-  },
-  sufficient: {
-    label: 'In stock',
-    className: 'bg-green-100 text-green-800 border-0 dark:bg-green-950/40 dark:text-green-300',
-  },
-}
-
 /** Incoming movements read as a gain, outgoing as a loss. */
 const INBOUND = ['PURCHASE', 'ADJUSTMENT_IN', 'RETURNED']
 
@@ -108,77 +96,95 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(item?.name ?? null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
+  const [notFound, setNotFound] = useState(false)
 
   const fetchItem = useCallback(async () => {
     setLoading(true)
+    setFailed(false)
+    setNotFound(false)
     try {
       const response = await fetch(`/api/inventory/items/${id}`)
+      if (response.status === 404) {
+        setNotFound(true)
+        return
+      }
       const data = await response.json()
-      if (data.success) setItem(data.data)
+      if (!response.ok || !data.success) throw new Error(data.error || 'Failed to load the item')
+      setItem(data.data)
     } catch (err) {
       console.error('Error loading item:', err)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }, [id])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
     fetchItem()
   }, [fetchItem])
 
-  if (loading) {
+  const back = <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
+
+  if (loading && !item) return <PageSkeleton variant="detail" />
+
+  if (notFound) {
+    return (
+      <EmptyState
+        icon={Package}
+        title="Item not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to inventory"
+        actionHref="/inventory"
+      />
+    )
+  }
+
+  if (failed || !item) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 md:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-28 w-full" />
-          ))}
-        </div>
+        {back}
+        <LoadFailed what="this item" onRetry={fetchItem} />
       </div>
     )
   }
-
-  if (!item) {
-    return (
-      <div className="space-y-4">
-        <h1 className="page-title">Item not found</h1>
-        <Button variant="outline" asChild>
-          <Link href="/inventory">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Inventory
-          </Link>
-        </Button>
-      </div>
-    )
-  }
-
-  const stock = STOCK_STYLE[item.stockStatus] ?? STOCK_STYLE.sufficient
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">{item.name}</h1>
-            <Badge className={stock.className}>{stock.label}</Badge>
-            {!item.isActive && <Badge variant="outline">Inactive</Badge>}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
+      <PageHeader
+        title={item.name}
+        badges={
+          <>
+            <StatusBadge kind="inventory" status={item.stockStatus} />
+            {!item.isActive && <StatusBadge kind="inventory" status={false} />}
+          </>
+        }
+        description={
+          <>
             {item.sku}
             {item.categoryName && ` · ${item.categoryName}`}
             {item.manufacturer && ` · ${item.manufacturer}`}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
-          <Button variant="outline" asChild>
-            <Link href={trail.to(`/inventory/transactions?item=${item.id}&record=1`)}>
-              Record movement
-            </Link>
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+        back={back}
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/inventory/transactions?item=${item.id}&record=1`)}>
+                <ArrowLeftRight className="h-4 w-4 mr-2" />
+                Record movement
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/inventory/${item.id}/edit`)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {[
@@ -258,11 +264,9 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                           <TableCell className="text-sm">
                             {batch.expiryDate ? (
                               <span
-                                className={
-                                  expired ? 'text-red-700 font-medium dark:text-red-300' : ''
-                                }
+                                className={expired ? `font-medium ${TONE_TEXT_CLASS.danger}` : ''}
                               >
-                                {formatDate(batch.expiryDate)}
+                                {displayDate(batch.expiryDate)}
                                 <span className="block text-xs text-muted-foreground">
                                   {daysUntil(batch.expiryDate)}
                                 </span>
@@ -271,7 +275,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                               <span className="text-muted-foreground">—</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm">{batch.supplierName ?? '—'}</TableCell>
+                          <TableCell className="text-sm">{batch.supplierName ?? BLANK}</TableCell>
                           <TableCell className="text-right">
                             {formatCurrency(batch.purchasePrice)}
                           </TableCell>
@@ -310,11 +314,10 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                       return (
                         <TableRow key={move.id}>
                           <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(move.transactionDate)}
+                            {displayDate(move.transactionDate)}
                           </TableCell>
                           <TableCell className="text-sm">
-                            {move.type.charAt(0) +
-                              move.type.slice(1).toLowerCase().replace(/_/g, ' ')}
+                            {humanise(move.type)}
                             {move.supplierName && (
                               <span className="block text-xs text-muted-foreground">
                                 {move.supplierName}
@@ -322,15 +325,15 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                             )}
                           </TableCell>
                           <TableCell
-                            className={`text-right font-medium ${inbound ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
+                            className={`text-right font-medium ${inbound ? TONE_TEXT_CLASS.success : TONE_TEXT_CLASS.danger}`}
                           >
                             {inbound ? '+' : '−'}
                             {move.quantity}
                           </TableCell>
                           <TableCell className="text-right">{move.newStock}</TableCell>
-                          <TableCell className="text-sm">{move.batchNumber ?? '—'}</TableCell>
+                          <TableCell className="text-sm">{move.batchNumber ?? BLANK}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {move.performedByName ?? '—'}
+                            {move.performedByName ?? BLANK}
                           </TableCell>
                         </TableRow>
                       )
@@ -353,7 +356,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {[
-                  ['Type', item.itemType.replace(/_/g, ' ').toLowerCase()],
+                  ['Type', humanise(item.itemType)],
                   ['Unit', item.unit],
                   ['Manufacturer', item.manufacturer],
                   ['Description', item.description],
@@ -362,7 +365,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-4">
                     <span className="text-muted-foreground">{label}</span>
-                    <span className="text-right">{value || '—'}</span>
+                    <span className="text-right">{value || BLANK}</span>
                   </div>
                 ))}
               </CardContent>
@@ -382,11 +385,11 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                   ['Batch tracked', item.batchTracking ? 'Yes' : 'No'],
                   ['Expiry tracked', item.expiryTracking ? 'Yes' : 'No'],
                   ['Supplier', item.supplierName],
-                  ['Supplier phone', item.supplierPhone],
+                  ['Supplier phone', formatPhone(item.supplierPhone)],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-4">
                     <span className="text-muted-foreground">{label}</span>
-                    <span className="text-right">{value || '—'}</span>
+                    <span className="text-right">{value || BLANK}</span>
                   </div>
                 ))}
               </CardContent>

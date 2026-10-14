@@ -2,8 +2,14 @@
 
 import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -13,13 +19,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, formatDate } from '@/lib/i18n/format'
-import { ArrowLeft, FlaskConical, Phone, User } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate, displayDateTime } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { statusLabel } from '@/lib/status'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { FlaskConical, Phone, User } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
-import { nextStatuses } from '@/lib/lab-orders'
+import { nextStatuses, workTypeLabel } from '@/lib/lab-orders'
 import type { LabOrderStatus } from '@prisma/client'
 
 interface HistoryEntry {
@@ -77,109 +86,125 @@ interface LabOrder {
   history: HistoryEntry[]
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  CREATED: 'bg-muted text-foreground',
-  SENT_TO_LAB: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-  IN_PROGRESS: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-  QUALITY_CHECK: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
-  READY: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-  DELIVERED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-  FITTED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-  REMAKE_REQUIRED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-}
+/** A lab order status as the badge names it, or a dash. */
+const labOrderStatus = (value: string | null) => (value ? statusLabel('labOrder', value) : BLANK)
 
-function label(value: string | null) {
-  if (!value) return '—'
-  return value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ')
-}
+/** The quality check on arrival, as its badge names it, or a dash. */
+const qualityLabel = (value: string | null) => (value ? statusLabel('qualityCheck', value) : BLANK)
 
 export default function LabOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [order, setOrder] = useState<LabOrder | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(order?.orderNumber ?? null)
   const [loading, setLoading] = useState(true)
+  // The first load failed, or the record is not there — two different screens.
+  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing'>('ok')
   const [status, setStatus] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const fetchOrder = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await fetch(`/api/lab-orders/${id}`)
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'This lab case could not be loaded')
-      if (data.success) {
-        setOrder(data.data)
-        setStatus(data.data.status)
+  /**
+   * Load the case. `quiet` refreshes it in place after a status move, without
+   * putting the page back on its skeleton.
+   */
+  const fetchOrder = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true)
+      try {
+        const response = await fetch(`/api/lab-orders/${id}`)
+        if (response.status === 404) {
+          setOrder(null)
+          setLoadState('missing')
+          return
+        }
+        const data = await readJson<{ success?: boolean; data: LabOrder }>(response)
+        if (data.success) {
+          setOrder(data.data)
+          setStatus(data.data.status)
+          setLoadState('ok')
+        }
+      } catch (err) {
+        console.error('Error loading lab order:', err)
+        if (quiet) toast(toastError('refresh the lab order', err))
+        else setLoadState('failed')
+      } finally {
+        if (!quiet) setLoading(false)
       }
-    } catch (err) {
-      console.error('Error loading lab case:', err)
-      toast({
-        variant: 'destructive',
-        title: 'Could not load the case',
-        description: err instanceof Error ? err.message : 'This lab case could not be loaded',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [id, toast])
+    },
+    [id, toast]
+  )
 
   useEffect(() => {
+    // Loading is shown while the fetch is out; that render is the point.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchOrder()
   }, [fetchOrder])
 
   const moveTo = async () => {
     if (!order || status === order.status) return
+
+    // Cancelling is the end of the road (lib/lab-orders.ts): ask first.
+    if (
+      status === 'CANCELLED' &&
+      !(await confirm({
+        title: `Cancel lab order ${order.orderNumber}?`,
+        description:
+          'The case is marked cancelled and cannot be moved on again. Its details and trail are kept.',
+        confirmLabel: 'Cancel lab order',
+        cancelLabel: 'Keep lab order',
+      }))
+    )
+      return
+
     setSaving(true)
     try {
-      const response = await fetch(`/api/lab-orders/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, notes: note || undefined }),
-      })
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        // The refusal names the moves that are allowed, or the plan that is
-        // needed (findings 26 and 45) — shown as the API wrote it.
-        toast({
-          variant: 'destructive',
-          title: 'Could not update',
-          description: data.error || 'The status could not be changed',
+      // The refusal names the moves that are allowed, or the plan that is
+      // needed (findings 26 and 45) — shown as the API wrote it.
+      await readJson(
+        await fetch(`/api/lab-orders/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, notes: note || undefined }),
         })
-        return
-      }
+      )
 
-      toast({ title: 'Case updated', description: `Now ${label(status).toLowerCase()}.` })
+      toast(
+        toastSuccess(
+          status === 'CANCELLED' ? 'Lab order cancelled' : 'Lab order updated',
+          `${order.orderNumber} is now ${labOrderStatus(status).toLowerCase()}.`
+        )
+      )
       setNote('')
-      await fetchOrder()
+      await fetchOrder(true)
+    } catch (err) {
+      toast(toastError(`update lab order ${order.orderNumber}`, err))
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    )
-  }
+  if (loading) return <PageSkeleton variant="detail" />
+
+  if (loadState === 'failed')
+    return <LoadFailed what="this lab order" onRetry={() => fetchOrder()} />
 
   if (!order) {
     return (
-      <div className="space-y-4">
-        <h1 className="page-title">Lab case not found</h1>
-        <Button variant="outline" asChild>
-          <Link href="/lab">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Lab
-          </Link>
-        </Button>
+      <div className="space-y-6">
+        <PageHeader
+          title="Lab order not found"
+          back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
+        />
+        <EmptyState
+          icon={FlaskConical}
+          title="Lab order not found"
+          description="It may have been removed, or the link is wrong."
+          actionLabel="Back to lab orders"
+          actionHref="/lab"
+        />
       </div>
     )
   }
@@ -188,25 +213,17 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">{order.orderNumber}</h1>
-            <Badge className={`border-0 ${STATUS_STYLE[order.status] ?? ''}`}>
-              {label(order.status)}
-            </Badge>
-            {order.priority === 'URGENT' && (
-              <Badge className="bg-red-100 text-red-800 border-0 dark:bg-red-950/40 dark:text-red-300">
-                Urgent
-              </Badge>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {label(order.workType)} · {order.vendorName}
-          </p>
-        </div>
-        <BackLink trail={trail} fallback="/lab" fallbackLabel="Lab Orders" />
-      </div>
+      <PageHeader
+        title={order.orderNumber}
+        back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
+        badges={
+          <>
+            <StatusBadge kind="labOrder" status={order.status} />
+            {order.priority === 'URGENT' && <Badge variant="danger">Urgent</Badge>}
+          </>
+        }
+        description={`${workTypeLabel(order.workType)} · ${order.vendorName}`}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -219,7 +236,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
               {[
-                ['Work', label(order.workType)],
+                ['Work', workTypeLabel(order.workType)],
                 [
                   'Teeth',
                   order.toothNumbers
@@ -230,12 +247,12 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                 ['Description', order.description],
                 ['Special instructions', order.specialInstructions],
                 ['Notes', order.notes],
-                ['Quality check', label(order.qualityCheck)],
+                ['Quality check', qualityLabel(order.qualityCheck)],
                 ['Quality notes', order.qualityNotes],
               ].map(([k, v]) => (
                 <div key={k}>
                   <p className="text-muted-foreground text-xs">{k}</p>
-                  <p>{v || '—'}</p>
+                  <p>{v || BLANK}</p>
                 </div>
               ))}
             </CardContent>
@@ -252,26 +269,32 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                       stage, or the rework steps (finding 45). Offering every
                       status was how a case went from Created to Fitted. */}
                   <Select value={status} onValueChange={setStatus}>
-                    <SelectTrigger className="sm:w-64" aria-label="Status">
+                    <SelectTrigger className="sm:w-64" aria-label="Next status">
                       <SelectValue placeholder="Choose the next step" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={order.status} disabled>
-                        {label(order.status)} (now)
+                        {labOrderStatus(order.status)} (now)
                       </SelectItem>
                       {moves.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {label(s)}
+                          {labOrderStatus(s)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button onClick={moveTo} disabled={saving || status === order.status}>
-                    {saving ? 'Saving…' : 'Update status'}
-                  </Button>
+                  <SubmitButton
+                    type="button"
+                    onClick={moveTo}
+                    busy={saving}
+                    disabled={status === order.status}
+                  >
+                    Update status
+                  </SubmitButton>
                 </div>
                 <Textarea
                   id="status-note"
+                  aria-label="Note on this change"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={2}
@@ -301,11 +324,11 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                   {order.history.map((entry) => (
                     <li key={entry.id} className="flex gap-3 text-sm">
                       <span className="text-muted-foreground whitespace-nowrap">
-                        {formatDate(entry.createdAt)}
+                        {displayDateTime(entry.createdAt)}
                       </span>
                       <span>
-                        {entry.statusFrom ? `${label(entry.statusFrom)} → ` : ''}
-                        <span className="font-medium">{label(entry.statusTo)}</span>
+                        {entry.statusFrom ? `${labOrderStatus(entry.statusFrom)} → ` : ''}
+                        <span className="font-medium">{labOrderStatus(entry.statusTo)}</span>
                         {entry.changedByName && (
                           <span className="text-muted-foreground"> by {entry.changedByName}</span>
                         )}
@@ -342,7 +365,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
               <p className="text-muted-foreground">{order.patientCode}</p>
               <p className="flex items-center gap-2">
                 <Phone className="h-3 w-3 text-muted-foreground" />
-                {order.patientPhone}
+                {formatPhone(order.patientPhone) || BLANK}
               </p>
             </CardContent>
           </Card>
@@ -366,7 +389,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                       {describeTeethByQuadrant(parseTeeth(order.treatment.toothNumbers))}
                     </p>
                   )}
-                  <p className="text-muted-foreground">{formatDate(order.treatment.createdAt)}</p>
+                  <p className="text-muted-foreground">{displayDate(order.treatment.createdAt)}</p>
                   {/* Read-only (review 4.4). A lab case has no charge of its
                       own; the patient pays for it through the treatment, so
                       whether that is billed is whether this work is. */}
@@ -381,7 +404,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                           >
                             {order.treatment.invoice.invoiceNo}
                           </Link>
-                          <Badge variant="outline">{label(order.treatment.invoice.status)}</Badge>
+                          <StatusBadge kind="invoice" status={order.treatment.invoice.status} />
                         </>
                       ) : (
                         <span>Treatment not yet billed</span>
@@ -404,7 +427,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
               {order.vendorPhone && (
                 <p className="flex items-center gap-2">
                   <Phone className="h-3 w-3 text-muted-foreground" />
-                  {order.vendorPhone}
+                  {formatPhone(order.vendorPhone)}
                 </p>
               )}
               {order.avgTurnaroundDays != null && (
@@ -421,24 +444,25 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {[
-                ['Ordered', order.orderDate && formatDate(order.orderDate)],
-                ['Expected', order.expectedDate && formatDate(order.expectedDate)],
-                ['Sent', order.sentDate && formatDate(order.sentDate)],
-                ['Received', order.receivedDate && formatDate(order.receivedDate)],
-                ['Delivered', order.deliveredDate && formatDate(order.deliveredDate)],
+                ['Ordered', order.orderDate && displayDate(order.orderDate)],
+                ['Expected', order.expectedDate && displayDate(order.expectedDate)],
+                ['Sent', order.sentDate && displayDate(order.sentDate)],
+                ['Received', order.receivedDate && displayDate(order.receivedDate)],
+                ['Delivered', order.deliveredDate && displayDate(order.deliveredDate)],
                 ['Estimate', formatCurrency(order.estimatedCost)],
                 ['Actual', order.actualCost ? formatCurrency(order.actualCost) : null],
                 ['Raised by', order.createdByName],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4">
                   <span className="text-muted-foreground">{k}</span>
-                  <span>{v || '—'}</span>
+                  <span>{v || BLANK}</span>
                 </div>
               ))}
             </CardContent>
           </Card>
         </div>
       </div>
+      {ConfirmDialogComponent}
     </div>
   )
 }

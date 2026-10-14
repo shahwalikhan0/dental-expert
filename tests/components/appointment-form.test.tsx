@@ -16,7 +16,10 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/appointments/new',
 }))
 
-vi.mock('@/lib/utils', () => ({
+// The real module, with a simpler `cn`: the patient picker and the phone
+// field need `formatPhone` and `normalisePhone` from it too.
+vi.mock('@/lib/utils', async (importOriginal) => ({
+  ...((await importOriginal()) as any),
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }))
 
@@ -162,9 +165,15 @@ const mockSlots = [
 function setupFetchMock(options: { patients?: any[]; doctors?: any[]; slots?: any[] } = {}) {
   ;(global.fetch as any).mockImplementation((url: string) => {
     if (url.includes('/api/patients')) {
+      // The picker searches the server, so the mock narrows by `search` the
+      // way the route does.
+      const term = new URL(url, 'http://test').searchParams.get('search')?.toLowerCase() ?? ''
+      const patients = (options.patients ?? mockPatients).filter((p) =>
+        `${p.firstName} ${p.lastName} ${p.patientId}`.toLowerCase().includes(term)
+      )
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ patients: options.patients ?? mockPatients }),
+        json: () => Promise.resolve({ patients }),
       })
     }
     if (url.includes('/api/staff/doctors')) {
@@ -198,7 +207,7 @@ function setupFetchMock(options: { patients?: any[]; doctors?: any[]; slots?: an
  * with twenty thousand records needs and what these tests have to do too.
  */
 async function pickPatient(name = 'John Doe', term = 'John') {
-  fireEvent.change(screen.getByPlaceholderText(/Search patient/i), {
+  fireEvent.change(screen.getByPlaceholderText(/Search by name, ID or phone/i), {
     target: { value: term },
   })
   await waitFor(() => {
@@ -224,7 +233,8 @@ describe('NewAppointmentPage', () => {
     it('shows loading skeletons while fetching data', async () => {
       ;(global.fetch as any).mockImplementation(() => new Promise(() => {})) // never resolves
       render(<NewAppointmentPage />)
-      expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
+      // PageSkeleton: one status region, named for a screen reader.
+      expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     })
 
     it('renders the form after data loads', async () => {
@@ -232,10 +242,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
-      expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
     })
 
     it('renders doctor and date fields', async () => {
@@ -243,12 +253,13 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
-      expect(screen.getByText('Doctor *')).toBeInTheDocument()
-      expect(screen.getByText('Date *')).toBeInTheDocument()
-      expect(screen.getByText('Time Slot *')).toBeInTheDocument()
+      // The required marker is drawn by CSS (`label-required`), not typed.
+      expect(screen.getByText('Doctor')).toHaveClass('label-required')
+      expect(screen.getByText('Date')).toHaveClass('label-required')
+      expect(screen.getByText('Time slot')).toHaveClass('label-required')
     })
   })
 
@@ -258,10 +269,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText(/Search patient/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Search by name, ID or phone/i), {
         target: { value: 'John' },
       })
 
@@ -275,7 +286,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
       await pickPatient()
@@ -283,20 +294,20 @@ describe('NewAppointmentPage', () => {
       expect(screen.getByText('PAT001')).toBeInTheDocument()
     })
 
-    it('shows "No patients found" when no match', async () => {
+    it('says nobody matches when no patient matches', async () => {
       setupFetchMock()
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText(/Search patient/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Search by name, ID or phone/i), {
         target: { value: 'zzzzz' },
       })
 
       await waitFor(() => {
-        expect(screen.getByText('No patients found')).toBeInTheDocument()
+        expect(screen.getByText('No patients match “zzzzz”.')).toBeInTheDocument()
       })
     })
   })
@@ -307,13 +318,13 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText('Book Appointment'))
+      fireEvent.click(screen.getByText('Book appointment'))
 
       await waitFor(() => {
-        expect(screen.getByText('Please select a patient')).toBeInTheDocument()
+        expect(screen.getByText('Select a patient')).toBeInTheDocument()
       })
     })
 
@@ -322,15 +333,15 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
       await pickPatient()
 
-      fireEvent.click(screen.getByText('Book Appointment'))
+      fireEvent.click(screen.getByText('Book appointment'))
 
       await waitFor(() => {
-        expect(screen.getByText('Please select a doctor')).toBeInTheDocument()
+        expect(screen.getByText('Select a doctor')).toBeInTheDocument()
       })
     })
 
@@ -339,7 +350,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
       await pickPatient()
@@ -348,10 +359,10 @@ describe('NewAppointmentPage', () => {
       const doctorItem = screen.getByTestId('select-item-d1')
       fireEvent.click(doctorItem)
 
-      fireEvent.click(screen.getByText('Book Appointment'))
+      fireEvent.click(screen.getByText('Book appointment'))
 
       await waitFor(() => {
-        expect(screen.getByText('Please select a date')).toBeInTheDocument()
+        expect(screen.getByText('Select a date')).toBeInTheDocument()
       })
     })
 
@@ -360,7 +371,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
       await pickPatient()
@@ -377,10 +388,10 @@ describe('NewAppointmentPage', () => {
         fireEvent.change(dateInput, { target: { value: futureDateValue } })
       }
 
-      fireEvent.click(screen.getByText('Book Appointment'))
+      fireEvent.click(screen.getByText('Book appointment'))
 
       await waitFor(() => {
-        expect(screen.getByText('Please select a time slot')).toBeInTheDocument()
+        expect(screen.getByText('Select a time slot')).toBeInTheDocument()
       })
     })
   })
@@ -391,7 +402,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
       expect(screen.getByText('Select doctor and date to see available slots')).toBeInTheDocument()
@@ -404,10 +415,10 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
-      expect(screen.getByText('Appointment Type')).toBeInTheDocument()
+      expect(screen.getByText('Appointment type')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-CONSULTATION')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-PROCEDURE')).toBeInTheDocument()
       expect(screen.getByTestId('select-item-FOLLOW_UP')).toBeInTheDocument()
@@ -420,7 +431,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
       expect(screen.getByText('Priority')).toBeInTheDocument()
@@ -435,7 +446,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
       expect(screen.getByPlaceholderText(/Patient's main concern/)).toBeInTheDocument()
@@ -449,7 +460,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search patient/i)).toBeInTheDocument()
+        expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
       })
 
       await pickPatient()
@@ -465,7 +476,7 @@ describe('NewAppointmentPage', () => {
       // Wait for form to be ready and submit
       // Note: Date and time would need to be set for successful submission
       // This test verifies the form structure is correct
-      expect(screen.getByText('Book Appointment')).toBeInTheDocument()
+      expect(screen.getByText('Book appointment')).toBeInTheDocument()
     })
   })
 
@@ -498,7 +509,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
     })
   })
@@ -509,7 +520,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
       expect(screen.getByText('Cancel')).toBeInTheDocument()
@@ -520,7 +531,7 @@ describe('NewAppointmentPage', () => {
       render(<NewAppointmentPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('New Appointment')).toBeInTheDocument()
+        expect(screen.getByText('New appointment')).toBeInTheDocument()
       })
 
       const backLink = screen

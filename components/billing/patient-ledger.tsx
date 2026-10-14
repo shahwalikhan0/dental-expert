@@ -17,9 +17,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { EmptyState } from '@/components/ui/empty-state'
-import { AlertCircle, CreditCard, Printer, Users } from 'lucide-react'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { CreditCard, Printer, Users } from 'lucide-react'
 import { formatCurrency } from '@/lib/billing-utils'
-import { formatDate } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
 import { AGEING_BUCKETS, type Ageing } from '@/lib/ageing'
 import type { Ledger } from '@/lib/ledger'
 import { cn } from '@/lib/utils'
@@ -59,6 +60,9 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
   }, [patientId, family])
 
   useEffect(() => {
+    // Fetching on mount and on change is what this effect is for; the state it
+    // sets is the answer arriving.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
@@ -81,13 +85,7 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
     return (
       <Card className={className}>
         <CardContent className="p-0">
-          <EmptyState
-            icon={AlertCircle}
-            title="The account could not be loaded"
-            description="Nothing has been changed. Try again in a moment."
-            actionLabel="Try again"
-            onAction={load}
-          />
+          <LoadFailed what="the account" onRetry={load} />
         </CardContent>
       </Card>
     )
@@ -193,7 +191,7 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
                 entries.map((entry) => (
                   <TableRow key={`${entry.kind}-${entry.id}`}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatDate(entry.date)}
+                      {displayDate(entry.date)}
                     </TableCell>
                     <TableCell className="font-medium">
                       {entry.href ? (
@@ -224,10 +222,10 @@ export function PatientLedger({ patientId, className }: { patientId: string; cla
                         ? formatCurrency(entry.debit)
                         : entry.debit < 0
                           ? `−${formatCurrency(-entry.debit)}`
-                          : '—'}
+                          : BLANK}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {entry.credit > 0 ? formatCurrency(entry.credit) : '—'}
+                      {entry.credit > 0 ? formatCurrency(entry.credit) : BLANK}
                     </TableCell>
                     <TableCell
                       className={cn(

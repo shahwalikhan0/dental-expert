@@ -40,6 +40,8 @@ vi.mock('@/components/ui/button', () => ({
       {children}
     </button>
   ),
+  // The confirm dialog's buttons are styled with it.
+  buttonVariants: () => '',
 }))
 
 vi.mock('@/components/ui/input', () => ({
@@ -131,10 +133,10 @@ describe('ClinicSettingsPage', () => {
   })
 
   describe('Loading state', () => {
-    it('shows loading text while fetching', () => {
+    it('shows a skeleton while fetching', () => {
       ;(global.fetch as any).mockImplementation(() => new Promise(() => {}))
       render(<ClinicSettingsPage />)
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     })
 
     it('calls /api/settings/clinic on mount', () => {
@@ -157,7 +159,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('Clinic Information')).toBeInTheDocument()
+        expect(screen.getByText('Clinic information')).toBeInTheDocument()
       })
     })
 
@@ -180,19 +182,18 @@ describe('ClinicSettingsPage', () => {
       expect(screen.getByDisplayValue('REG001')).toBeInTheDocument()
     })
 
-    it('shows error toast on fetch failure', async () => {
+    it('says the settings could not be loaded, and offers a retry, on fetch failure', async () => {
+      // Not the form with its blank defaults, which could then be saved over
+      // the clinic's real details.
       ;(global.fetch as any).mockRejectedValue(new Error('Network error'))
 
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.objectContaining({
-            variant: 'destructive',
-            description: 'Failed to load clinic information',
-          })
-        )
+        expect(screen.getByText('The clinic settings could not be loaded')).toBeInTheDocument()
       })
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      expect(screen.queryByDisplayValue('Demo Dental Clinic')).not.toBeInTheDocument()
     })
   })
 
@@ -206,7 +207,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('Clinic Logo')).toBeInTheDocument()
+        expect(screen.getByText('Clinic logo')).toBeInTheDocument()
       })
     })
 
@@ -219,7 +220,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('Clinic Information')).toBeInTheDocument()
+        expect(screen.getByText('Clinic information')).toBeInTheDocument()
       })
     })
   })
@@ -378,14 +379,13 @@ describe('ClinicSettingsPage', () => {
       // form to the wrong endpoint.
       const saveButton = screen
         .getAllByRole('button')
-        .find((b) => b.textContent?.includes('Save Clinic Information'))
+        .find((b) => b.textContent?.includes('Save changes'))
       fireEvent.click(saveButton!)
 
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
-            title: 'Success',
-            description: 'Clinic information saved successfully',
+            title: 'Clinic settings saved',
           })
         )
       })
@@ -416,7 +416,7 @@ describe('ClinicSettingsPage', () => {
       // form to the wrong endpoint.
       const saveButton = screen
         .getAllByRole('button')
-        .find((b) => b.textContent?.includes('Save Clinic Information'))
+        .find((b) => b.textContent?.includes('Save changes'))
       fireEvent.click(saveButton!)
 
       await waitFor(() => {
@@ -439,7 +439,7 @@ describe('ClinicSettingsPage', () => {
       render(<ClinicSettingsPage />)
 
       await waitFor(() => {
-        expect(screen.getByText('Clinic Logo')).toBeInTheDocument()
+        expect(screen.getByText('Clinic logo')).toBeInTheDocument()
       })
 
       // Should have Upload Logo button

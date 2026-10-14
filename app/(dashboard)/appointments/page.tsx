@@ -1,21 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   ClickableRow,
   GridActionsCell,
@@ -24,8 +17,10 @@ import {
   GridPagination,
   SortableHeader,
   useSort,
+  type SortControl,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { useListParams } from '@/hooks/use-list-params'
 import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
 import { useCan } from '@/hooks/use-can'
@@ -34,8 +29,6 @@ import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
 import {
   Calendar,
   Plus,
-  Search,
-  Filter,
   Clock,
   User,
   Phone,
@@ -44,15 +37,14 @@ import {
   XCircle,
   LogIn,
   LogOut,
-  Eye,
-  Edit,
+  Pencil,
+  Trash2,
   CalendarDays,
   CalendarRange,
   Globe,
   ChevronLeft,
   ChevronRight,
   List,
-  Loader2,
 } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import {
@@ -63,15 +55,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { ActiveFilters } from '@/components/ui/active-filters'
-import { humanise } from '@/lib/labels'
-import {
-  appointmentStatusConfig,
-  appointmentTypeConfig,
-  formatTime,
-  formatDate,
-  getDoctorName,
-} from '@/lib/appointment-utils'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { DateRangeFilter, dateRangeLabel } from '@/components/ui/date-range-filter'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
+import { displayDate, isoDay } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { appointmentTypeConfig, formatTime, getDoctorName } from '@/lib/appointment-utils'
 import { subjectName } from '@/lib/visitors'
 import { formatToken } from '@/lib/tokens'
 import { ExportMenu } from '@/components/ui/export-menu'
@@ -81,10 +77,14 @@ import {
   type BookDoctor,
 } from '@/components/appointments/appointment-book'
 import { WeekView, type WeekAppointment } from '@/components/appointments/week-view'
+import {
+  cancelAppointmentConfirm,
+  noShowConfirm,
+} from '@/components/appointments/appointment-confirms'
 
-/** The clinic's today, as YYYY-MM-DD, from the browser's own clock. */
-function todayInClinic(): string {
-  return new Date().toLocaleDateString('en-CA')
+/** Today as YYYY-MM-DD, from the browser's own clock, until the server says. */
+function browserDay(): string {
+  return isoDay(new Date())
 }
 
 /** The Sunday the week containing `day` runs from — the week the API expects. */
@@ -97,8 +97,29 @@ function weekStartOf(day: string): string {
 function shiftDay(day: string, by: number): string {
   const date = new Date(`${day}T12:00:00`)
   date.setDate(date.getDate() + by)
-  return date.toLocaleDateString('en-CA')
+  return isoDay(date)
 }
+
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
+/** Sentence-case names for the appointment types, for the filter and the badge. */
+const TYPE_OPTIONS = [
+  { value: 'CONSULTATION', label: 'Consultation' },
+  { value: 'PROCEDURE', label: 'Procedure' },
+  { value: 'FOLLOW_UP', label: 'Follow-up' },
+  { value: 'EMERGENCY', label: 'Emergency' },
+  { value: 'CHECK_UP', label: 'Check-up' },
+]
+
+const STATUS_OPTIONS = statusOptions('appointment')
+
+type ViewMode = 'list' | 'calendar' | 'week'
+
+const VIEW_OPTIONS = [
+  { value: 'list', label: 'List', icon: List },
+  { value: 'calendar', label: 'Day', icon: CalendarDays },
+  { value: 'week', label: 'Week', icon: CalendarRange },
+] as const
 
 interface Appointment {
   id: string
@@ -133,49 +154,60 @@ interface Appointment {
   }
 }
 
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
-
 export default function AppointmentsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Appointments')
   const router = useRouter()
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   // Raising the bill after check-out is the desk's act (review 4.3).
   const canBill = useCan('billing:write') === true
   const searchParams = useSearchParams()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  })
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
+  // The clinic's calendar day, from the server, for the date presets.
+  const [clinicToday, setClinicToday] = useState<string | undefined>(undefined)
 
-  // Filters
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const sort = useSort()
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState('')
-  // Online bookings the desk has not yet dealt with — see the banner below.
-  const [needsReview, setNeedsReview] = useState(false)
+  /**
+   * Search, filters and page, kept in the address bar beside `view` and `day`,
+   * so opening an appointment and coming back keeps the list as it was.
+   * `needsReview` is the online-bookings banner's filter.
+   */
+  const list = useListParams({
+    defaults: { status: 'all', type: 'all', from: '', to: '', needsReview: false },
+  })
+  const range = { from: list.filters.from, to: list.filters.to }
+  const needsReview = list.filters.needsReview
+  const baseSort = useSort()
+  // A new order is a new question: back to page 1, as any filter change is.
+  const sort: SortControl = {
+    ...baseSort,
+    toggle: (column) => {
+      baseSort.toggle(column)
+      list.setPage(1)
+    },
+  }
+  const query = (() => {
+    const params = list.apiParams({ rename: { from: 'dateFrom', to: 'dateTo' } })
+    params.set('view', 'list')
+    if (baseSort.column) {
+      params.set('sort', baseSort.column)
+      params.set('direction', baseSort.direction)
+    }
+    return params.toString()
+  })()
+
   const [pendingReview, setPendingReview] = useState(0)
   // The view lives in the URL, so a book somebody is looking at can be sent to
   // a colleague and survives a refresh. It used to be state nothing read, which
   // is why the Calendar button highlighted itself and changed nothing.
   const requestedView = searchParams.get('view')
-  const viewMode = (
+  const viewMode: ViewMode =
     requestedView === 'calendar' ? 'calendar' : requestedView === 'week' ? 'week' : 'list'
-  ) as 'list' | 'calendar' | 'week'
-  const bookDay = searchParams.get('day') || todayInClinic()
+  const todayDay = clinicToday ?? browserDay()
+  const bookDay = searchParams.get('day') || todayDay
   const [book, setBook] = useState<{ appointments: BookAppointment[]; day: string } | null>(null)
   /**
    * The week the book is showing, as its Sunday.
@@ -188,7 +220,7 @@ export default function AppointmentsPage() {
   const [bookDoctors, setBookDoctors] = useState<BookDoctor[]>([])
   const [bookHours, setBookHours] = useState({ open: '09:00', close: '21:00' })
 
-  const setViewMode = (mode: 'list' | 'calendar' | 'week') => {
+  const setViewMode = (mode: ViewMode) => {
     const next = new URLSearchParams(searchParams.toString())
     if (mode === 'list') next.delete('view')
     else next.set('view', mode)
@@ -223,73 +255,30 @@ export default function AppointmentsPage() {
     const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-        view: 'list',
-      })
-
-      if (sort.column) {
-        params.append('sort', sort.column)
-        params.append('direction', sort.direction)
-      }
-      if (debouncedSearch) params.append('search', debouncedSearch)
-      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
-      if (typeFilter && typeFilter !== 'all') params.append('type', typeFilter)
-      if (dateFilter) params.append('date', dateFilter)
-      if (needsReview) params.append('needsReview', 'true')
-
-      const response = await fetch(`/api/appointments?${params}`)
+      setFailed(false)
+      const response = await fetch(`/api/appointments?${query}`)
       if (!response.ok) throw new Error('Failed to fetch appointments')
 
       const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setAppointments(data.appointments)
-      setPagination(data.pagination)
+      setTotal(data.pagination?.total ?? 0)
       setPendingReview(data.pendingReview ?? 0)
+      if (data.today) setClinicToday(data.today)
     } catch (error) {
       console.error('Error fetching appointments:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
-  /**
-   * Back to the first page whenever what we are filtering by changes.
-   *
-   * Without this, searching from page three asked the server for page three of
-   * the results for that search — which is usually empty, so the screen said
-   * there was nothing to find while the row sat in the list behind it.
-   */
-  useEffect(() => {
-    // The cascading render this causes is the point, and it is bounded: one
-    // extra pass, only when a filter changes while the list is off page one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [
-    debouncedSearch,
-    statusFilter,
-    typeFilter,
-    dateFilter,
-    needsReview,
-    sort.column,
-    sort.direction,
-  ])
-
   useEffect(() => {
     fetchAppointments()
-  }, [
-    pagination.page,
-    pagination.limit,
-    debouncedSearch,
-    statusFilter,
-    typeFilter,
-    dateFilter,
-    needsReview,
-    sort.column,
-    sort.direction,
-  ])
+    // The query string is the whole question; `fetchAppointments` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   /**
    * A week, read in one request.
@@ -348,9 +337,7 @@ export default function AppointmentsPage() {
         const settings = settingsRes?.ok ? await settingsRes.json().catch(() => null) : null
         const hours = settings?.clinic?.workingHours ?? settings?.workingHours
         const parsed = typeof hours === 'string' ? JSON.parse(hours) : hours
-        const weekday = new Date(`${bookDay}T12:00:00`)
-          .toLocaleDateString('en-US', { weekday: 'long' })
-          .toLowerCase()
+        const weekday = WEEKDAYS[new Date(`${bookDay}T12:00:00`).getDay()]
         const today = parsed?.[weekday]
         if (today?.open && today?.close) setBookHours({ open: today.open, close: today.close })
       } catch {
@@ -368,23 +355,26 @@ export default function AppointmentsPage() {
    * when it refuses. These used to log the failure to the console, so a
    * refused action looked like a menu item that did nothing.
    */
-  const act = async (request: Promise<Response>, failure: string, done?: () => void) => {
+  const act = async (request: Promise<Response>, action: string, done?: () => void) => {
     try {
       const response = await request
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        toast({ variant: 'destructive', title: failure, description: data.error })
+        toast(toastError(action, data))
         return
       }
       done?.()
       fetchAppointments()
-    } catch {
-      toast({ variant: 'destructive', title: failure })
+    } catch (error) {
+      toast(toastError(action, error))
     }
   }
 
-  const handleCheckIn = (id: string) =>
-    act(fetch(`/api/appointments/${id}/check-in`, { method: 'POST' }), 'Could not check in')
+  const handleCheckIn = (appointment: Appointment) =>
+    act(
+      fetch(`/api/appointments/${appointment.id}/check-in`, { method: 'POST' }),
+      `check in ${appointment.appointmentNo}`
+    )
 
   /**
    * Check out, then offer the bill (review 4.3). Check-out only closes the
@@ -394,15 +384,17 @@ export default function AppointmentsPage() {
   const handleCheckOut = (appointment: Appointment) =>
     act(
       fetch(`/api/appointments/${appointment.id}/check-out`, { method: 'POST' }),
-      'Could not check out',
+      `check out ${appointment.appointmentNo}`,
       () => {
         if (!appointment.patient || !canBill) return
         const href = trail.to(
           newInvoiceHref({ patientId: appointment.patient.id, appointmentId: appointment.id })
         )
         toast({
-          title: 'Checked out',
-          description: `${subjectName(appointment)} can be billed for this visit now.`,
+          ...toastSuccess(
+            'Checked out',
+            `${subjectName(appointment)} can be billed for this visit now.`
+          ),
           action: (
             <ToastAction altText="Create invoice" onClick={() => router.push(href)}>
               Create invoice
@@ -412,101 +404,108 @@ export default function AppointmentsPage() {
       }
     )
 
-  const handleStatusChange = (id: string, status: string) =>
+  const putStatus = (appointment: Appointment, body: Record<string, unknown>, action: string) =>
     act(
-      fetch(`/api/appointments/${id}`, {
+      fetch(`/api/appointments/${appointment.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(body),
       }),
-      'Could not update the appointment'
+      action
     )
 
-  const getStatusBadge = (status: string) => {
-    const config = appointmentStatusConfig[status] || {
-      label: status,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
+  const handleConfirm = (appointment: Appointment) =>
+    putStatus(
+      appointment,
+      { status: 'CONFIRMED' },
+      `confirm appointment ${appointment.appointmentNo}`
+    )
+
+  /** The same question, and the same reason, as the appointment page asks. */
+  const handleCancel = async (appointment: Appointment) => {
+    const { confirmed, reason } = await confirm(cancelAppointmentConfirm(appointment.appointmentNo))
+    if (!confirmed) return
+    await putStatus(
+      appointment,
+      { status: 'CANCELLED', ...(reason ? { cancellationReason: reason } : {}) },
+      `cancel appointment ${appointment.appointmentNo}`
+    )
+  }
+
+  const handleNoShow = async (appointment: Appointment) => {
+    if (!(await confirm(noShowConfirm(appointment.appointmentNo)))) return
+    await putStatus(
+      appointment,
+      { status: 'NO_SHOW' },
+      `mark appointment ${appointment.appointmentNo} as a no-show`
+    )
   }
 
   const getTypeBadge = (type: string) => {
     const config = appointmentTypeConfig[type] || {
-      label: type,
       color: 'text-muted-foreground',
       bgColor: 'bg-muted/50',
     }
     return (
       <Badge variant="outline" className={`${config.bgColor} ${config.color} border-0`}>
-        {config.label}
+        {filterValueLabel(TYPE_OPTIONS, type) ?? type}
       </Badge>
     )
   }
 
+  const bookSpinner = (
+    <div className="space-y-3 p-6" role="status" aria-label="Loading">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full" />
+      ))}
+    </div>
+  )
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="page-title">Appointments</h1>
-            <p className="text-muted-foreground">Manage and schedule patient appointments</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-4 w-4 mr-2" />
-              List
-            </Button>
-            <Button
-              variant={viewMode === 'calendar' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('calendar')}
-            >
-              <CalendarDays className="h-4 w-4 mr-2" />
-              Day
-            </Button>
-            <Button
-              variant={viewMode === 'week' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('week')}
-            >
-              <CalendarRange className="h-4 w-4 mr-2" />
-              Week
-            </Button>
-            <ExportMenu
-              filename="appointments"
-              getData={() =>
-                appointments.map((a) => ({
-                  'Appointment No': a.appointmentNo,
-                  Patient: subjectName(a),
-                  'Patient Phone': a.patient?.phone ?? a.visitor?.phone ?? '',
-                  Registered: a.patient ? 'Yes' : 'Walk-in',
-                  Doctor: getDoctorName(a.doctor),
-                  Specialization: a.doctor.specialization || '',
-                  Date: formatDate(a.scheduledDate),
-                  Time: formatTime(a.scheduledTime),
-                  'Duration (min)': a.duration,
-                  Token: a.tokenNumber || '',
-                  Type: a.appointmentType,
-                  Status: a.status,
-                  Priority: a.priority,
-                  'Chief Complaint': a.chiefComplaint || '',
-                }))
-              }
-            />
-            <Button asChild>
-              <Link href="/appointments/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New Appointment
-              </Link>
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="Appointments"
+          description="Manage and schedule patient appointments"
+          actions={
+            <>
+              <SegmentedControl
+                aria-label="View"
+                size="md"
+                value={viewMode}
+                onChange={setViewMode}
+                options={VIEW_OPTIONS}
+              />
+              <ExportMenu
+                filename="appointments"
+                getData={() =>
+                  appointments.map((a) => ({
+                    'Appointment No': a.appointmentNo,
+                    Patient: subjectName(a),
+                    'Patient Phone': a.patient?.phone ?? a.visitor?.phone ?? '',
+                    Registered: a.patient ? 'Yes' : 'Walk-in',
+                    Doctor: getDoctorName(a.doctor),
+                    Specialization: a.doctor.specialization || '',
+                    Date: displayDate(a.scheduledDate),
+                    Time: formatTime(a.scheduledTime),
+                    'Duration (min)': a.duration,
+                    Token: a.tokenNumber || '',
+                    Type: a.appointmentType,
+                    Status: a.status,
+                    Priority: a.priority,
+                    'Chief Complaint': a.chiefComplaint || '',
+                  }))
+                }
+              />
+              <Button asChild>
+                <Link href="/appointments/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New appointment
+                </Link>
+              </Button>
+            </>
+          }
+        />
 
         {/*
           What came in overnight.
@@ -530,7 +529,11 @@ export default function AppointmentsPage() {
                   the clinic would telephone to confirm.
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setNeedsReview(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => list.setFilter('needsReview', true)}
+              >
                 Show them
               </Button>
             </CardContent>
@@ -547,133 +550,128 @@ export default function AppointmentsPage() {
                   cancelling one takes it off this list.
                 </p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setNeedsReview(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => list.setFilter('needsReview', false)}
+              >
                 Show all appointments
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search by patient name, phone, or appointment number..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                    <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                    <SelectItem value="CHECKED_IN">Checked In</SelectItem>
-                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                    <SelectItem value="COMPLETED">Completed</SelectItem>
-                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                    <SelectItem value="NO_SHOW">No Show</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="CONSULTATION">Consultation</SelectItem>
-                    <SelectItem value="PROCEDURE">Procedure</SelectItem>
-                    <SelectItem value="FOLLOW_UP">Follow Up</SelectItem>
-                    <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                    <SelectItem value="CHECK_UP">Check Up</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value)}
-                  className="w-[160px]"
-                />
-              </div>
-            </div>
-
-            <ActiveFilters
-              className="mt-4"
-              noun="appointments"
-              onClearAll={() => {
-                setSearch('')
-                setStatusFilter('all')
-                setTypeFilter('all')
-                setDateFilter('')
-              }}
-              filters={[
-                { label: 'Search', value: search, onClear: () => setSearch('') },
-                {
-                  label: 'Status',
-                  value: statusFilter === 'all' ? null : humanise(statusFilter),
-                  onClear: () => setStatusFilter('all'),
-                },
-                {
-                  label: 'Type',
-                  value: typeFilter === 'all' ? null : humanise(typeFilter),
-                  onClear: () => setTypeFilter('all'),
-                },
-                { label: 'Date', value: dateFilter, onClear: () => setDateFilter('') },
-              ]}
+        <ListToolbar
+          search={
+            <SearchInput
+              value={list.search}
+              onChange={list.setSearch}
+              aria-label="Search appointments"
+              placeholder="Search by patient name, phone or appointment number…"
             />
-          </CardContent>
-        </Card>
+          }
+          filters={
+            <>
+              <FilterSelect
+                label="Status"
+                plural="statuses"
+                value={list.filters.status}
+                onValueChange={(status) => list.setFilter('status', status)}
+                options={STATUS_OPTIONS}
+              />
+              <FilterSelect
+                label="Type"
+                plural="types"
+                value={list.filters.type}
+                onValueChange={(type) => list.setFilter('type', type)}
+                options={TYPE_OPTIONS}
+              />
+            </>
+          }
+          date={
+            <DateRangeFilter
+              label="Scheduled"
+              value={range}
+              today={clinicToday}
+              onChange={(next) => list.setFilters(next)}
+            />
+          }
+          active={{
+            noun: 'appointments',
+            onClearAll: list.clear,
+            filters: [
+              { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+              {
+                label: 'Status',
+                value:
+                  list.filters.status === 'all'
+                    ? null
+                    : statusLabel('appointment', list.filters.status),
+                onClear: () => list.setFilter('status', 'all'),
+              },
+              {
+                label: 'Type',
+                value: filterValueLabel(TYPE_OPTIONS, list.filters.type),
+                onClear: () => list.setFilter('type', 'all'),
+              },
+              {
+                label: 'Scheduled',
+                value: dateRangeLabel(range, clinicToday),
+                onClear: () => list.setFilters({ from: '', to: '' }),
+              },
+              {
+                label: 'Only',
+                value: needsReview ? 'Online bookings to call' : null,
+                onClear: () => list.setFilter('needsReview', false),
+              },
+            ],
+          }}
+        />
 
         {viewMode === 'week' ? (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
               <div>
                 <CardTitle className="text-base">
-                  Week of {formatDate(weekStartOf(bookDay))}
+                  Week of {displayDate(weekStartOf(bookDay))}
                 </CardTitle>
                 <CardDescription>
                   Click a day to open it in the book. An empty column is a day with room on it.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Previous week"
-                  onClick={() => setBookDay(shiftDay(bookDay, -7))}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setBookDay(todayInClinic())}>
+                <IconTooltip label="Previous week">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Previous week"
+                    onClick={() => setBookDay(shiftDay(bookDay, -7))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </IconTooltip>
+                <Button variant="outline" size="sm" onClick={() => setBookDay(todayDay)}>
                   This week
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Next week"
-                  onClick={() => setBookDay(shiftDay(bookDay, 7))}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                <IconTooltip label="Next week">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Next week"
+                    onClick={() => setBookDay(shiftDay(bookDay, 7))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </IconTooltip>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               {week === null ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
+                bookSpinner
               ) : (
                 <WeekView
                   weekStart={weekStartOf(bookDay)}
-                  today={todayInClinic()}
+                  today={todayDay}
                   appointments={week}
                   href={(a) => trail.to(`/appointments/${a.id}`)}
                   onPickDay={(day) => setBookDay(day, 'calendar')}
@@ -685,31 +683,35 @@ export default function AppointmentsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
               <div>
-                <CardTitle className="text-base">{formatDate(bookDay)}</CardTitle>
+                <CardTitle className="text-base">{displayDate(bookDay)}</CardTitle>
                 <CardDescription>
                   Click an empty slot to book it. Colours follow the appointment&rsquo;s status.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Previous day"
-                  onClick={() => setBookDay(shiftDay(bookDay, -1))}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setBookDay(todayInClinic())}>
+                <IconTooltip label="Previous day">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Previous day"
+                    onClick={() => setBookDay(shiftDay(bookDay, -1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </IconTooltip>
+                <Button variant="outline" size="sm" onClick={() => setBookDay(todayDay)}>
                   Today
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Next day"
-                  onClick={() => setBookDay(shiftDay(bookDay, 1))}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                <IconTooltip label="Next day">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Next day"
+                    onClick={() => setBookDay(shiftDay(bookDay, 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </IconTooltip>
                 <Input
                   type="date"
                   value={bookDay}
@@ -721,12 +723,10 @@ export default function AppointmentsPage() {
             </CardHeader>
             <CardContent className="p-0">
               {book === null ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
+                bookSpinner
               ) : (
                 <AppointmentBook
-                  day={formatDate(bookDay)}
+                  day={displayDate(bookDay)}
                   appointments={book.appointments}
                   doctors={bookDoctors}
                   openFrom={bookHours.open}
@@ -750,24 +750,39 @@ export default function AppointmentsPage() {
               <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Appointment</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Doctor</TableHead>
-                    <TableHead>Date & Time</TableHead>
+                    <SortableHeader column="appointmentNo" sort={sort}>
+                      Appointment
+                    </SortableHeader>
+                    <SortableHeader column="patient" sort={sort}>
+                      Patient
+                    </SortableHeader>
+                    <SortableHeader column="doctor" sort={sort}>
+                      Doctor
+                    </SortableHeader>
+                    <SortableHeader column="startsAt" sort={sort}>
+                      Date and time
+                    </SortableHeader>
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
                     <GridActionsHead />
                   </TableRow>
                 </TableHeader>
                 <GridBody
-                  columns={8}
+                  columns={7}
                   loading={loading}
+                  failed={failed}
+                  onRetry={fetchAppointments}
                   empty={appointments.length === 0}
                   emptyIcon={Calendar}
                   emptyTitle="No appointments found"
-                  emptyDescription="Nothing is booked under these filters. Widen the date range, or book the first one."
-                  emptyActionLabel="Book New Appointment"
-                  emptyActionHref="/appointments/new"
+                  emptyDescription={
+                    list.isFiltered
+                      ? 'Nothing is booked under these filters. Widen the date range, or clear the filters.'
+                      : 'No appointment has been booked yet.'
+                  }
+                  emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New appointment'}
+                  emptyActionHref={list.isFiltered ? undefined : '/appointments/new'}
+                  onEmptyAction={list.isFiltered ? list.clear : undefined}
                 >
                   {appointments.map((appointment) => (
                     <ClickableRow
@@ -799,7 +814,9 @@ export default function AppointmentsPage() {
                             </div>
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Phone className="h-3 w-3" />
-                              {appointment.patient?.phone ?? appointment.visitor?.phone ?? '—'}
+                              {formatPhone(
+                                appointment.patient?.phone ?? appointment.visitor?.phone
+                              ) || '—'}
                             </div>
                           </div>
                         </div>
@@ -817,7 +834,7 @@ export default function AppointmentsPage() {
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <div>
                             <div className="font-medium">
-                              {formatDate(appointment.scheduledDate)}
+                              {displayDate(appointment.scheduledDate)}
                             </div>
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Clock className="h-3 w-3" />
@@ -828,7 +845,9 @@ export default function AppointmentsPage() {
                         </div>
                       </TableCell>
                       <TableCell>{getTypeBadge(appointment.appointmentType)}</TableCell>
-                      <TableCell>{getStatusBadge(appointment.status)}</TableCell>
+                      <TableCell>
+                        <StatusBadge kind="appointment" status={appointment.status} />
+                      </TableCell>
                       <GridActionsCell>
                         <DropdownMenu>
                           <IconTooltip label="More actions">
@@ -839,35 +858,29 @@ export default function AppointmentsPage() {
                             </DropdownMenuTrigger>
                           </IconTooltip>
                           <DropdownMenuContent align="end">
+                            {/* No "View details": the row itself opens the appointment. */}
                             <DropdownMenuItem
-                              onClick={() => router.push(`/appointments/${appointment.id}`)}
+                              onClick={() =>
+                                router.push(trail.to(`/appointments/${appointment.id}/edit`))
+                              }
                             >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/appointments/${appointment.id}/edit`)}
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
+                              <Pencil className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
-                              <DropdownMenuItem onClick={() => handleCheckIn(appointment.id)}>
+                              <DropdownMenuItem onClick={() => handleCheckIn(appointment)}>
                                 <LogIn className="h-4 w-4 mr-2" />
-                                Check In
+                                Check in
                               </DropdownMenuItem>
                             )}
                             {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
                               <DropdownMenuItem onClick={() => handleCheckOut(appointment)}>
                                 <LogOut className="h-4 w-4 mr-2" />
-                                Check Out
+                                Check out
                               </DropdownMenuItem>
                             )}
                             {appointment.status === 'SCHEDULED' && (
-                              <DropdownMenuItem
-                                onClick={() => handleStatusChange(appointment.id, 'CONFIRMED')}
-                              >
+                              <DropdownMenuItem onClick={() => handleConfirm(appointment)}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
                                 Confirm
                               </DropdownMenuItem>
@@ -883,21 +896,19 @@ export default function AppointmentsPage() {
                                     canMoveTo(appointment.status, 'NO_SHOW') &&
                                     !noShowTooEarly(appointment.startsAt) && (
                                       <DropdownMenuItem
-                                        onClick={() =>
-                                          handleStatusChange(appointment.id, 'NO_SHOW')
-                                        }
-                                        className="text-amber-600 dark:text-amber-400"
+                                        onClick={() => handleNoShow(appointment)}
+                                        className="text-destructive"
                                       >
                                         <XCircle className="h-4 w-4 mr-2" />
-                                        Mark No Show
+                                        Mark no-show…
                                       </DropdownMenuItem>
                                     )}
                                   <DropdownMenuItem
-                                    onClick={() => handleStatusChange(appointment.id, 'CANCELLED')}
-                                    className="text-red-600 dark:text-red-400"
+                                    onClick={() => handleCancel(appointment)}
+                                    className="text-destructive"
                                   >
-                                    <XCircle className="h-4 w-4 mr-2" />
-                                    Cancel
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Cancel appointment…
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -910,17 +921,18 @@ export default function AppointmentsPage() {
               </Table>
 
               <GridPagination
-                page={pagination.page}
-                pageSize={pagination.limit}
-                total={pagination.total}
+                page={list.page}
+                pageSize={list.pageSize}
+                total={total}
                 noun="appointments"
-                onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-                onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+                onPageChange={list.setPage}
+                onPageSizeChange={list.setPageSize}
               />
             </CardContent>
           </Card>
         )}
       </div>
+      {ConfirmDialogComponent}
     </TooltipProvider>
   )
 }

@@ -5,8 +5,8 @@ test.describe('Settings', () => {
     test('should display settings page with categories', async ({ adminPage: page }) => {
       await page.goto('/settings')
       // Exact title — /setting/i also matches all six category card headings
-      // ("Appointment Settings", "Billing Settings", ...).
-      await expect(page.getByRole('heading', { name: 'Settings & Configuration' })).toBeVisible()
+      // ("Appointment settings", "Billing settings", ...).
+      await expect(page.getByRole('heading', { name: 'Settings & configuration' })).toBeVisible()
       // Should show settings categories
       await expect(page.getByText(/clinic|billing|communication|security/i).first()).toBeVisible()
     })

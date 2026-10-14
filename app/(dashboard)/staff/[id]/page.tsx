@@ -2,31 +2,34 @@
 
 import { useState, useEffect, use } from 'react'
 import { formatCNIC } from '@/lib/cnic'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCan } from '@/hooks/use-can'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
-  ArrowLeft,
-  Edit,
+  BarChart3,
+  Pencil,
   Phone,
-  Mail,
   MapPin,
-  Calendar,
-  Shield,
   User,
   Briefcase,
   Clock,
   FileText,
-  AlertCircle,
+  UserX,
 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { roleColor, roleLabel } from '@/lib/rbac'
+import { BLANK, displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { genderLabel } from '@/lib/labels'
 
 interface StaffDetail {
   id: string
@@ -75,22 +78,6 @@ interface StaffDetail {
   }
 }
 
-const roleColors: Record<string, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
-  DOCTOR: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  RECEPTIONIST: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
-  LAB_TECH: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
-  ACCOUNTANT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
-}
-
-const roleLabels: Record<string, string> = {
-  ADMIN: 'Administrator',
-  DOCTOR: 'Doctor',
-  RECEPTIONIST: 'Receptionist',
-  LAB_TECH: 'Lab Technician',
-  ACCOUNTANT: 'Accountant',
-}
-
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function StaffDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -99,94 +86,67 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   // `staffChangeRefusal` in lib/rbac.ts for why an administrator's is apart.
   const canWrite = useCan('staff:write') === true
   const canManageAdmins = useCan('users:manage') === true
-  const router = useRouter()
-  const { toast } = useToast()
+  const canSeePerformance = useCan('staff:hr') === true
   const [staff, setStaff] = useState<StaffDetail | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(staff ? `${staff.firstName} ${staff.lastName}` : null)
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchStaff()
-  }, [resolvedParams.id])
+  // The record could not be fetched (failed), or does not exist (missing).
+  const [failed, setFailed] = useState(false)
+  const [missing, setMissing] = useState(false)
 
   const fetchStaff = async () => {
     try {
       setLoading(true)
+      setFailed(false)
+      setMissing(false)
       const response = await fetch(`/api/staff/${resolvedParams.id}`)
-      if (!response.ok) {
-        if (response.status === 404) {
-          toast({
-            variant: 'destructive',
-            title: 'Not Found',
-            description: 'Staff member not found',
-          })
-          router.push('/staff')
-          return
-        }
-        throw new Error('Failed to fetch staff')
+      if (response.status === 404) {
+        setMissing(true)
+        return
       }
+      if (!response.ok) throw new Error('Failed to fetch staff')
 
       const data = await response.json()
       setStaff(data)
     } catch (error) {
       console.error('Error fetching staff:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to fetch staff details',
-      })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }
 
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('en-PK', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-  }
+  useEffect(() => {
+    // Loading the screen's data is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStaff()
+    // Refetch when what is asked changes; `fetchStaff` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedParams.id])
 
-  if (loading) {
+  const back = <BackLink trail={trail} fallback="/staff" fallbackLabel="Staff" />
+
+  if (loading) return <PageSkeleton variant="detail" />
+
+  if (failed) return <LoadFailed what="this staff member" onRetry={fetchStaff} />
+
+  if (missing || !staff) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10" />
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-32" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-32 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {back}
+        <EmptyState
+          icon={UserX}
+          title="Staff member not found"
+          description="They may have been removed, or the link is wrong."
+          actionLabel="Back to staff"
+          actionHref="/staff"
+        />
       </div>
     )
   }
 
-  if (!staff) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Staff member not found</p>
-        <Button asChild>
-          <Link href="/staff">Back to Staff List</Link>
-        </Button>
-      </div>
-    )
-  }
+  const canEdit = canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins)
 
   // Withheld, not empty: the server leaves these out for anybody without
   // `staff:hr`, and the screen says so rather than show a row of dashes.
@@ -195,48 +155,45 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex items-start gap-4">
-          <BackLink trail={trail} fallback="/staff" fallbackLabel="Staff" />
-          <div className="flex items-start gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <User className="h-8 w-8 text-primary" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="page-title">
-                  {staff.firstName} {staff.lastName}
-                </h1>
-                <Badge variant={staff.isActive ? 'default' : 'secondary'}>
-                  {staff.isActive ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-4 mt-1 text-muted-foreground">
-                <span>{staff.employeeId}</span>
-                <Badge className={`${roleColors[staff.user.role]} border-0`}>
-                  {roleLabels[staff.user.role]}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-        {canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins) && (
-          <div className="flex gap-2">
-            <Button asChild>
-              <Link href={`/staff/${staff.id}/edit`}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Profile
-              </Link>
-            </Button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title={`${staff.firstName} ${staff.lastName}`}
+        back={back}
+        badges={
+          <>
+            <StatusBadge kind="staff" status={staff.isActive} />
+            {/* A role, not a status: coloured per role from lib/rbac. */}
+            <Badge className={`${roleColor(staff.user.role)} border-0`}>
+              {roleLabel(staff.user.role)}
+            </Badge>
+          </>
+        }
+        description={staff.employeeId}
+        actions={
+          <>
+            {canSeePerformance && staff.user.role === 'DOCTOR' && (
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/staff/${staff.id}/performance`)}>
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Performance
+                </Link>
+              </Button>
+            )}
+            {canEdit && (
+              <Button asChild>
+                <Link href={trail.to(`/staff/${staff.id}/edit`)}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit profile
+                </Link>
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="schedule">Work Schedule</TabsTrigger>
+          <TabsTrigger value="schedule">Work schedule</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
 
@@ -247,18 +204,18 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Phone className="h-4 w-4" />
-                  Contact Information
+                  Contact information
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Primary Phone</p>
-                    <p className="font-medium">{staff.phone}</p>
+                    <p className="text-sm text-muted-foreground">Primary phone</p>
+                    <p className="font-medium">{formatPhone(staff.phone) || BLANK}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Alternate Phone</p>
-                    <p className="font-medium">{staff.alternatePhone || '-'}</p>
+                    <p className="text-sm text-muted-foreground">Alternate phone</p>
+                    <p className="font-medium">{formatPhone(staff.alternatePhone) || BLANK}</p>
                   </div>
                 </div>
                 <div>
@@ -282,7 +239,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                         {staff.postalCode && ` - ${staff.postalCode}`}
                       </>
                     ) : (
-                      '-'
+                      BLANK
                     )}
                   </p>
                 </div>
@@ -294,20 +251,22 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <User className="h-4 w-4" />
-                  Personal Details
+                  Personal details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Date of Birth</p>
+                    <p className="text-sm text-muted-foreground">Date of birth</p>
                     <p className="font-medium">
-                      {hasHrFields ? formatDate(staff.dateOfBirth) : '—'}
+                      {hasHrFields ? displayDate(staff.dateOfBirth) : BLANK}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Gender</p>
-                    <p className="font-medium">{staff.gender || '-'}</p>
+                    <p className="font-medium">
+                      {staff.gender ? genderLabel(staff.gender) : BLANK}
+                    </p>
                   </div>
                 </div>
                 {!hasHrFields && (
@@ -324,20 +283,20 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">CNIC</p>
-                        <p className="font-medium">{formatCNIC(staff.cnic) || '-'}</p>
+                        <p className="font-medium">{formatCNIC(staff.cnic) || BLANK}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">National Tax Number (NTN)</p>
-                        <p className="font-medium">{staff.nationalTaxNo || '-'}</p>
+                        <p className="text-sm text-muted-foreground">National tax number (NTN)</p>
+                        <p className="font-medium">{staff.nationalTaxNo || BLANK}</p>
                       </div>
                     </div>
                     <Separator />
                     <div>
-                      <p className="text-sm text-muted-foreground">Emergency Contact</p>
+                      <p className="text-sm text-muted-foreground">Emergency contact</p>
                       <p className="font-medium">
                         {staff.emergencyContact
-                          ? `${staff.emergencyContact} (${staff.emergencyPhone || 'No phone'})`
-                          : '-'}
+                          ? `${staff.emergencyContact} (${formatPhone(staff.emergencyPhone) || 'No phone'})`
+                          : BLANK}
                       </p>
                     </div>
                   </>
@@ -350,28 +309,28 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Briefcase className="h-4 w-4" />
-                  Professional Details
+                  Professional details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Qualification</p>
-                    <p className="font-medium">{staff.qualification || '-'}</p>
+                    <p className="font-medium">{staff.qualification || BLANK}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Specialization</p>
-                    <p className="font-medium">{staff.specialization || '-'}</p>
+                    <p className="font-medium">{staff.specialization || BLANK}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">License Number</p>
-                    <p className="font-medium">{staff.licenseNumber || '-'}</p>
+                    <p className="text-sm text-muted-foreground">License number</p>
+                    <p className="font-medium">{staff.licenseNumber || BLANK}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Joining Date</p>
-                    <p className="font-medium">{formatDate(staff.joiningDate)}</p>
+                    <p className="text-sm text-muted-foreground">Joining date</p>
+                    <p className="font-medium">{displayDate(staff.joiningDate)}</p>
                   </div>
                 </div>
                 {staff.user.role === 'DOCTOR' && (
@@ -411,7 +370,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                Work Schedule
+                Work schedule
               </CardTitle>
               <CardDescription>Weekly work schedule for {staff.firstName}</CardDescription>
             </CardHeader>
@@ -420,9 +379,9 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="text-center py-8 text-muted-foreground">
                   <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No work schedule configured</p>
-                  {canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins) && (
+                  {canEdit && (
                     <Button variant="outline" className="mt-4" asChild>
-                      <Link href={`/staff/${staff.id}/edit`}>Configure Schedule</Link>
+                      <Link href={trail.to(`/staff/${staff.id}/edit`)}>Configure schedule</Link>
                     </Button>
                   )}
                 </div>
@@ -447,9 +406,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                               : 'text-muted-foreground'
                           }
                         >
-                          {shift && shift.isActive
-                            ? `${shift.startTime} - ${shift.endTime}`
-                            : 'Off'}
+                          {shift && shift.isActive ? `${shift.startTime}–${shift.endTime}` : 'Off'}
                         </span>
                       </div>
                     )

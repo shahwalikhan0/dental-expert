@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,10 +14,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { GridBody, GridPagination } from '@/components/ui/data-grid'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useListParams } from '@/hooks/use-list-params'
+import { readJson, toastError } from '@/lib/toast-utils'
+import { BLANK } from '@/lib/dates'
 import { ALL_ROLES, ROLE_LABELS } from '@/lib/rbac'
 import {
   DEFAULT_REGISTER_PAGE_SIZE,
@@ -29,7 +32,7 @@ import {
 } from '@/lib/attendance'
 import { DownloadMenu, RangeControls } from '@/components/attendance/range-controls'
 import { cn } from '@/lib/utils'
-import { ChevronDown, FileSpreadsheet, Search } from 'lucide-react'
+import { ChevronDown, FileSpreadsheet } from 'lucide-react'
 
 /**
  * The attendance report: any range, any roles, and the file to keep.
@@ -67,64 +70,73 @@ export default function AttendanceReportPage() {
   const trail = useTrail('Report')
   const { toast } = useToast()
 
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [roles, setRoles] = useState<RoleKey[]>([])
-  const [search, setSearch] = useState('')
-  const debouncedSearch = useDebouncedValue(search)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(DEFAULT_REGISTER_PAGE_SIZE)
+  /**
+   * Range, roles, search and page, kept in the address bar, so opening
+   * somebody's record from the report and coming back keeps the report. The
+   * roles are one comma-separated value, as the route takes them.
+   */
+  const list = useListParams({
+    defaults: { from: '', to: '', role: '' },
+    pageSize: DEFAULT_REGISTER_PAGE_SIZE,
+  })
+  const roles = useMemo(
+    () =>
+      list.filters.role
+        .split(',')
+        .filter((role): role is RoleKey => (ALL_ROLES as readonly string[]).includes(role)),
+    [list.filters.role]
+  )
 
   const [data, setData] = useState<ReportResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const latestRequest = useRef(0)
 
-  /** The query both the preview and the download are built from. */
-  const query = useMemo(() => {
-    const params = new URLSearchParams()
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
-    if (roles.length) params.set('role', roles.join(','))
-    if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
-    return params
-  }, [from, to, roles, debouncedSearch])
+  // The whole question, as a string, so the fetch runs once per question.
+  const listQuery = list.apiParams().toString()
 
   const load = useCallback(async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams(query)
-      params.set('page', String(page))
-      params.set('limit', String(limit))
-      const res = await fetch(`/api/attendance/report?${params}`)
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'The report could not be built')
+      const body = await readJson<ReportResponse>(
+        await fetch(`/api/attendance/report?${listQuery}`)
+      )
       if (requestId !== latestRequest.current) return
       setData(body)
-      // The server fills in the month so far when no range was asked for.
-      // Adopt it, so the date fields show what the preview is showing.
-      if (!from) setFrom(body.from)
-      if (!to) setTo(body.to)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'The report could not be built',
-        variant: 'destructive',
-      })
+      if (requestId !== latestRequest.current) return
+      setFailed(true)
+      toast(toastError('build the report', err))
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [query, page, limit, from, to, toast])
+  }, [listQuery, toast])
 
   useEffect(() => {
     load()
   }, [load])
 
+  // The server fills in the month so far when no range was asked for. The
+  // date fields show that range, and the download asks for it by name, so the
+  // file is the range the preview is showing.
+  const from = list.filters.from || data?.from || ''
+  const to = list.filters.to || data?.to || ''
+
+  /** The query the download is built from: the preview's, without the page. */
+  const downloadQuery = useMemo(() => {
+    const params = new URLSearchParams()
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (roles.length) params.set('role', roles.join(','))
+    if (list.query) params.set('search', list.query)
+    return params
+  }, [from, to, roles, list.query])
+
   const toggleRole = (role: RoleKey) => {
-    setRoles((current) =>
-      current.includes(role) ? current.filter((r) => r !== role) : [...current, role]
-    )
-    setPage(1)
+    const next = roles.includes(role) ? roles.filter((r) => r !== role) : [...roles, role]
+    list.setFilter('role', next.join(','))
   }
 
   const rows = data?.rows ?? []
@@ -142,97 +154,92 @@ export default function AttendanceReportPage() {
 
   return (
     <div className="space-y-6">
-      <BackLink fallback="/attendance" fallbackLabel="Attendance" trail={trail} />
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">Attendance report</h1>
-          <p className="text-muted-foreground">
-            {data ? rangeLabel(data.from, data.to) : 'Choose a range and the roles to include.'}
-          </p>
-        </div>
-        {data?.canExport && (
-          <DownloadMenu
-            href={`/api/attendance/report?${query}`}
-            disabled={!data || data.pagination.total === 0}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Attendance report"
+        description={
+          data ? rangeLabel(data.from, data.to) : 'Choose a range and the roles to include.'
+        }
+        back={<BackLink fallback="/attendance" fallbackLabel="Attendance" trail={trail} />}
+        actions={
+          data?.canExport && (
+            <DownloadMenu
+              href={`/api/attendance/report?${downloadQuery}`}
+              disabled={!data || data.pagination.total === 0}
+            />
+          )
+        }
+      />
 
       <RangeControls
         from={from}
         to={to}
         today={data?.today ?? ''}
-        onChange={(start, end) => {
-          setFrom(start)
-          setTo(end)
-          setPage(1)
-        }}
+        onChange={(start, end) => list.setFilters({ from: start, to: end })}
       />
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setPage(1)
-            }}
-            placeholder="Search by name, email or employee ID…"
-            className="pl-9"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
             aria-label="Search the report"
+            placeholder="Search by name, email or employee ID…"
           />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-[220px] justify-between">
-              <span className="truncate">
-                {roles.length === 0
-                  ? 'All roles'
-                  : roles.length === 1
-                    ? ROLE_LABELS[roles[0]]
-                    : `${roles.length} roles`}
-              </span>
-              <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[220px]">
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              Include these roles
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {ALL_ROLES.map((role) => (
-              <DropdownMenuCheckboxItem
-                key={role}
-                checked={roles.includes(role)}
-                // Keep the menu open: choosing three roles is three ticks, not
-                // three trips back to the button.
-                onSelect={(event) => event.preventDefault()}
-                onCheckedChange={() => toggleRole(role)}
+        }
+        filters={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-between sm:w-[220px]"
+                aria-label="Roles"
               >
-                {ROLE_LABELS[role]}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <ActiveFilters
-        noun="people"
-        onClearAll={() => {
-          setSearch('')
-          setRoles([])
-          setPage(1)
-        }}
-        filters={[
-          { label: 'Search', value: search, onClear: () => setSearch('') },
-          {
-            label: 'Roles',
-            value: roles.length ? roles.map((role) => ROLE_LABELS[role]).join(', ') : null,
-            onClear: () => setRoles([]),
+                <span className="truncate">
+                  {roles.length === 0
+                    ? 'All roles'
+                    : roles.length === 1
+                      ? ROLE_LABELS[roles[0]]
+                      : `${roles.length} roles`}
+                </span>
+                <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[220px]">
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                Include these roles
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {ALL_ROLES.map((role) => (
+                <DropdownMenuCheckboxItem
+                  key={role}
+                  checked={roles.includes(role)}
+                  // Keep the menu open: choosing three roles is three ticks, not
+                  // three trips back to the button.
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={() => toggleRole(role)}
+                >
+                  {ROLE_LABELS[role]}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+        active={{
+          noun: 'people',
+          // The range is not a filter to clear: there is always one.
+          onClearAll: () => {
+            list.setSearch('')
+            list.setFilter('role', '')
           },
-        ]}
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Roles',
+              value: roles.length ? roles.map((role) => ROLE_LABELS[role]).join(', ') : null,
+              onClear: () => list.setFilter('role', ''),
+            },
+          ],
+        }}
       />
 
       {data && (
@@ -282,6 +289,8 @@ export default function AttendanceReportPage() {
             <GridBody
               columns={9}
               loading={loading && !data}
+              failed={failed && !data}
+              onRetry={load}
               empty={rows.length === 0}
               emptyIcon={FileSpreadsheet}
               emptyTitle="Nobody matches"
@@ -348,7 +357,7 @@ export default function AttendanceReportPage() {
                       {row.summary.unmarked}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
-                      {row.summary.rate === null ? '—' : `${row.summary.rate}%`}
+                      {row.summary.rate === null ? BLANK : `${row.summary.rate}%`}
                     </TableCell>
                   </TableRow>
                 )
@@ -358,16 +367,13 @@ export default function AttendanceReportPage() {
 
           {data && (
             <GridPagination
-              page={page}
-              pageSize={limit}
+              page={list.page}
+              pageSize={list.pageSize}
               total={data.pagination.total}
               noun="people"
               pageSizeOptions={REGISTER_PAGE_SIZES}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => {
-                setLimit(size)
-                setPage(1)
-              }}
+              onPageChange={list.setPage}
+              onPageSizeChange={list.setPageSize}
             />
           )}
         </CardContent>

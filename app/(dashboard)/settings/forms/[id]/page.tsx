@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,36 +16,46 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   GripVertical,
   Eye,
+  Pencil,
   Save,
-  Loader2,
   ChevronUp,
   ChevronDown,
+  FileQuestion,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useFormGuard } from '@/hooks/use-form-guard'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { FormField as Field } from '@/components/ui/form-field'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { toastError, toastInfo, toastSuccess } from '@/lib/toast-utils'
 import { FormRenderer, type FormField } from '@/components/forms/form-renderer'
 
 const FIELD_TYPES = [
-  { value: 'text', label: 'Text Input' },
-  { value: 'textarea', label: 'Text Area' },
+  { value: 'text', label: 'Text input' },
+  { value: 'textarea', label: 'Text area' },
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },
   { value: 'select', label: 'Dropdown' },
   { value: 'checkbox', label: 'Checkbox' },
-  { value: 'radio', label: 'Radio Buttons' },
+  { value: 'radio', label: 'Radio buttons' },
   { value: 'signature', label: 'Signature' },
-  { value: 'heading', label: 'Section Heading' },
-  { value: 'paragraph', label: 'Paragraph Text' },
+  { value: 'heading', label: 'Section heading' },
+  { value: 'paragraph', label: 'Paragraph text' },
 ] as const
 
 const FORM_TYPES = [
-  { value: 'MEDICAL_HISTORY', label: 'Medical History' },
-  { value: 'CONSENT', label: 'Consent Form' },
-  { value: 'INTAKE', label: 'Intake Form' },
+  { value: 'MEDICAL_HISTORY', label: 'Medical history' },
+  { value: 'CONSENT', label: 'Consent form' },
+  { value: 'INTAKE', label: 'Intake form' },
   { value: 'FEEDBACK', label: 'Feedback' },
   { value: 'CUSTOM', label: 'Custom' },
 ]
@@ -58,27 +67,39 @@ function generateId() {
 export default function EditFormTemplatePage({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast()
   const { id } = use(params)
-  const router = useRouter()
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState<string>()
   const [description, setDescription] = useState('')
   const [type, setType] = useState('CUSTOM')
   const [isActive, setIsActive] = useState(true)
   const [fields, setFields] = useState<FormField[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  // What the first load came to, when it did not come to the template.
+  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing'>('ok')
+  // This page's crumb is the template's name, once it is known.
+  const trail = useTrail(loading ? null : name || null)
+  // Edits to the template are work the guard asks about before leaving. The
+  // ref sits on the wrapper drawn in every state, so it is there from the
+  // first render, skeleton included.
+  const formRef = useFormGuard(saving)
   const [showPreview, setShowPreview] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [submissionCount, setSubmissionCount] = useState(0)
 
-  useEffect(() => {
-    fetchTemplate()
-  }, [id])
-
   const fetchTemplate = async () => {
     try {
       const res = await fetch(`/api/settings/forms/${id}`)
+      // A template that is not there is said as such, with a way back; any
+      // other failure is a load that can be retried.
+      if (res.status === 404) {
+        setLoadState('missing')
+        return
+      }
+      if (!res.ok) throw new Error('Failed to load template')
       const data = await res.json()
       if (data.template) {
+        setLoadState('ok')
         setName(data.template.name)
         setDescription(data.template.description || '')
         setType(data.template.type)
@@ -86,15 +107,20 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
         setFields(data.template.fields as FormField[])
         setSubmissionCount(data.template._count?.submissions || 0)
       } else {
-        toast({ variant: 'destructive', title: 'Template not found' })
-        router.push('/settings/forms')
+        setLoadState('missing')
       }
     } catch {
-      toast({ variant: 'destructive', title: 'Failed to load template' })
+      setLoadState('failed')
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchTemplate()
+    // Once per template; `fetchTemplate` reads the id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
   const addField = (fieldType: string) => {
     const newField: FormField = {
@@ -102,7 +128,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
       type: fieldType as FormField['type'],
       label:
         fieldType === 'heading'
-          ? 'Section Title'
+          ? 'Section title'
           : fieldType === 'paragraph'
             ? 'Enter informational text here'
             : '',
@@ -156,11 +182,12 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast({ variant: 'destructive', title: 'Template name is required' })
+      setNameError('Enter a name for the template.')
+      toast(toastError('save the template', 'Check the highlighted fields.'))
       return
     }
     if (fields.length === 0) {
-      toast({ variant: 'destructive', title: 'Add at least one field' })
+      toast(toastError('save the template', 'Add at least one field.'))
       return
     }
 
@@ -173,123 +200,101 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
       })
       const data = await res.json()
       if (res.ok) {
-        toast({ title: 'Template updated' })
+        toast(toastSuccess('Template updated'))
+        // Saved, and the page stays open: nothing left to lose.
+        formRef.reset()
       } else {
-        toast({ variant: 'destructive', title: data.error || 'Failed to save' })
+        toast(toastError('save the template', data))
       }
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to save template' })
+    } catch (error) {
+      toast(toastError('save the template', error))
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  const back = <BackLink trail={trail} fallback="/settings/forms" fallbackLabel="Form templates" />
 
-  if (showPreview) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Go back"
-              onClick={() => setShowPreview(false)}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <h1 className="page-title">Preview: {name}</h1>
-              <p className="text-muted-foreground">This is how the form will appear to patients</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={() => setShowPreview(false)}>
-            Back to Editor
-          </Button>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>{name}</CardTitle>
-            {description && <p className="text-sm text-muted-foreground">{description}</p>}
-          </CardHeader>
-          <CardContent>
-            <FormRenderer
-              fields={fields}
-              onSubmit={() => toast({ title: 'Preview mode — form not submitted' })}
-              submitLabel="Submit (Preview)"
-            />
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
+  const preview = (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Go back"
-            onClick={() => router.push('/settings/forms')}
-          >
-            <ArrowLeft className="h-4 w-4" />
+      <PageHeader
+        title={<>Preview: {name}</>}
+        description="This is how the form will appear to patients"
+        actions={
+          <Button variant="outline" onClick={() => setShowPreview(false)}>
+            Back to editor
           </Button>
-          <div>
-            <h1 className="page-title">Edit: {name}</h1>
-            <p className="text-muted-foreground">
-              {submissionCount} submission{submissionCount !== 1 ? 's' : ''}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 mr-4">
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
-            <Label className="text-sm">{isActive ? 'Active' : 'Inactive'}</Label>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => setShowPreview(true)}
-            disabled={fields.length === 0}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Preview
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Save Changes
-          </Button>
-        </div>
-      </div>
+        }
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>{name}</CardTitle>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </CardHeader>
+        <CardContent>
+          <FormRenderer
+            fields={fields}
+            onSubmit={() => toast(toastInfo('Preview mode — form not submitted'))}
+            submitLabel="Submit (preview)"
+          />
+        </CardContent>
+      </Card>
+    </div>
+  )
+
+  const editor = (
+    <div className="space-y-6">
+      <PageHeader
+        back={back}
+        title={`Edit: ${name}`}
+        description={`${submissionCount} submission${submissionCount !== 1 ? 's' : ''}`}
+        actions={
+          <>
+            <div className="flex items-center gap-2 mr-4">
+              <Switch id="template-active" checked={isActive} onCheckedChange={setIsActive} />
+              <Label htmlFor="template-active" className="text-sm">
+                {isActive ? 'Active' : 'Inactive'}
+              </Label>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowPreview(true)}
+              disabled={fields.length === 0}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview
+            </Button>
+            <SubmitButton type="button" onClick={handleSave} busy={saving} icon={Save}>
+              Save changes
+            </SubmitButton>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Form Details</CardTitle>
+              <CardTitle>Form details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Template name" required error={nameError}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value)
+                        setNameError(undefined)
+                      }}
+                    />
+                  )}
+                </Field>
                 <div className="space-y-2">
-                  <Label htmlFor="name">Template Name *</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Form Type</Label>
+                  <Label htmlFor="form-type">Form type</Label>
                   <Select value={type} onValueChange={setType}>
-                    <SelectTrigger>
+                    <SelectTrigger id="form-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -316,7 +321,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
 
           <Card>
             <CardHeader>
-              <CardTitle>Form Fields ({fields.length})</CardTitle>
+              <CardTitle>Form fields ({fields.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {fields.length === 0 && (
@@ -344,44 +349,58 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       </Badge>
                     )}
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Collapse"
-                        className="h-7 w-7"
-                        onClick={() => moveField(index, -1)}
-                        disabled={index === 0}
+                      <IconTooltip label="Move field up">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Move field up"
+                          className="h-7 w-7"
+                          onClick={() => moveField(index, -1)}
+                          disabled={index === 0}
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Move field down">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Move field down"
+                          className="h-7 w-7"
+                          onClick={() => moveField(index, 1)}
+                          disabled={index === fields.length - 1}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip
+                        label={editingField === field.id ? 'Close field settings' : 'Edit field'}
                       >
-                        <ChevronUp className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Expand"
-                        className="h-7 w-7"
-                        onClick={() => moveField(index, 1)}
-                        disabled={index === fields.length - 1}
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="View"
-                        className="h-7 w-7"
-                        onClick={() => setEditingField(editingField === field.id ? null : field.id)}
-                      >
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete"
-                        className="h-7 w-7 text-destructive"
-                        onClick={() => removeField(field.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={
+                            editingField === field.id ? 'Close field settings' : 'Edit field'
+                          }
+                          className="h-7 w-7"
+                          onClick={() =>
+                            setEditingField(editingField === field.id ? null : field.id)
+                          }
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip label="Remove field">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove field"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeField(field.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </IconTooltip>
                     </div>
                   </div>
 
@@ -420,20 +439,22 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                                 onChange={(e) => updateOption(field.id, oi, e.target.value)}
                                 className="flex-1"
                               />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Delete"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => removeOption(field.id, oi)}
-                                disabled={(field.options?.length || 0) <= 1}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                              <IconTooltip label="Remove option">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Remove option"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={() => removeOption(field.id, oi)}
+                                  disabled={(field.options?.length || 0) <= 1}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </IconTooltip>
                             </div>
                           ))}
                           <Button variant="outline" size="sm" onClick={() => addOption(field.id)}>
-                            <Plus className="h-3 w-3 mr-1" /> Add Option
+                            <Plus className="h-3 w-3 mr-1" /> Add option
                           </Button>
                         </div>
                       )}
@@ -441,12 +462,15 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                       {!['heading', 'paragraph'].includes(field.type) && (
                         <div className="flex items-center gap-2">
                           <Switch
+                            id={`required-${field.id}`}
                             checked={field.required || false}
                             onCheckedChange={(checked) =>
                               updateField(field.id, { required: checked })
                             }
                           />
-                          <Label className="text-xs">Required</Label>
+                          <Label htmlFor={`required-${field.id}`} className="text-xs">
+                            Required
+                          </Label>
                         </div>
                       )}
                     </div>
@@ -460,7 +484,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
         <div>
           <Card className="sticky top-6">
             <CardHeader>
-              <CardTitle className="text-base">Add Field</CardTitle>
+              <CardTitle className="text-base">Add field</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {FIELD_TYPES.map((ft) => (
@@ -478,6 +502,34 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
           </Card>
         </div>
       </div>
+    </div>
+  )
+
+  return (
+    <div ref={formRef}>
+      {loading ? (
+        <PageSkeleton variant="form" />
+      ) : loadState === 'missing' ? (
+        <EmptyState
+          icon={FileQuestion}
+          title="Template not found"
+          description="It may have been deleted, or the link is wrong."
+          actionLabel="Back to form templates"
+          actionHref="/settings/forms"
+        />
+      ) : loadState === 'failed' ? (
+        <LoadFailed
+          what="this template"
+          onRetry={() => {
+            setLoading(true)
+            fetchTemplate()
+          }}
+        />
+      ) : showPreview ? (
+        preview
+      ) : (
+        editor
+      )}
     </div>
   )
 }

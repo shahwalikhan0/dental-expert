@@ -1,13 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useState, useEffect, useRef } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useListParams } from '@/hooks/use-list-params'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { BLANK } from '@/lib/dates'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import {
   GridActionsCell,
   GridActionsHead,
@@ -38,10 +48,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Pill, Plus, Search, Pencil, Trash2, Loader2, MoreHorizontal } from 'lucide-react'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { Pill, Plus, Pencil, Trash2, MoreHorizontal, RotateCcw } from 'lucide-react'
 
 const FORMS = [
   'Tablet',
@@ -93,6 +101,9 @@ interface Medication {
   isActive: boolean
 }
 
+/** Active and inactive, as the badge names them. */
+const STATUS_OPTIONS = statusOptions('active')
+
 const emptyForm = {
   name: '',
   genericName: '',
@@ -131,17 +142,32 @@ export default function MedicationsPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES)
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 })
+  const [total, setTotal] = useState(0)
+
+  /**
+   * Search, category, status and page, kept in the address bar. The catalogue
+   * has always listed active drugs only; that is the default here, and the
+   * status filter can now show the deactivated ones (and put one back).
+   */
+  const list = useListParams({ defaults: { category: 'all', status: 'ACTIVE' } })
+  const statusParam =
+    list.filters.status === 'ACTIVE' ? 'true' : list.filters.status === 'INACTIVE' ? 'false' : ''
+  const query = (() => {
+    const params = list.apiParams()
+    params.delete('status')
+    params.delete('category')
+    if (list.filters.category !== 'all') params.set('category', list.filters.category)
+    if (statusParam) params.set('active', statusParam)
+    return params.toString()
+  })()
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Medication | null>(null)
   const [formData, setFormData] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  // Inline errors, from the first attempt to save.
+  const [nameError, setNameError] = useState<string | null>(null)
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -150,22 +176,11 @@ export default function MedicationsPage() {
    */
   const latestRequest = useRef(0)
 
-  const fetchMedications = useCallback(async () => {
+  const fetchMedications = async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setLoadFailed(false)
     try {
-      const params = new URLSearchParams({
-        page: String(pagination.page),
-        limit: String(pagination.limit),
-        active: 'true',
-      })
-      if (debouncedSearch) params.set('search', debouncedSearch)
-      if (categoryFilter) params.set('category', categoryFilter)
-
-      const res = await fetch(`/api/medications?${params}`)
-      const result = await res.json()
-      // A newer request has been sent since; this answer is out of date.
-      if (requestId !== latestRequest.current) return
       /*
        * A response that is not a success is reported, not dropped.
        *
@@ -177,29 +192,22 @@ export default function MedicationsPage() {
        * is exactly the state you land in after adding a drug and going looking
        * for it.
        */
-      if (!res.ok || !result.success) {
-        throw new Error(result.error || 'Failed to load medications')
-      }
-      setMedications(result.data)
-      setLoadFailed(false)
-      setPagination((prev) => ({
-        ...prev,
-        total: result.pagination.total,
-        pages: result.pagination.pages,
-      }))
-    } catch (err: any) {
+      const result = await readJson<{ data: Medication[]; pagination?: { total: number } }>(
+        await fetch(`/api/medications?${query}`)
+      )
+      // A newer request has been sent since; this answer is out of date.
+      if (requestId !== latestRequest.current) return
+      setMedications(result.data ?? [])
+      setTotal(result.pagination?.total ?? 0)
+    } catch (error) {
+      console.error('Error loading medications:', error)
       if (requestId !== latestRequest.current) return
       setMedications([])
       setLoadFailed(true)
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: err?.message || 'Failed to load medications',
-      })
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [debouncedSearch, categoryFilter, pagination.page, pagination.limit])
+  }
 
   const fetchCategories = async () => {
     try {
@@ -216,7 +224,9 @@ export default function MedicationsPage() {
 
   useEffect(() => {
     fetchMedications()
-  }, [fetchMedications])
+    // The query string is the whole question; `fetchMedications` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
   useEffect(() => {
     fetchCategories()
   }, [])
@@ -224,11 +234,13 @@ export default function MedicationsPage() {
   const openAdd = () => {
     setEditing(null)
     setFormData(emptyForm)
+    setNameError(null)
     setDialogOpen(true)
   }
 
   const openEdit = (med: Medication) => {
     setEditing(med)
+    setNameError(null)
     setFormData({
       name: med.name,
       genericName: med.genericName || '',
@@ -245,194 +257,195 @@ export default function MedicationsPage() {
     setDialogOpen(true)
   }
 
-  const handleSave = async () => {
+  const handleSave = async (event?: React.FormEvent) => {
+    event?.preventDefault()
+    const action = editing ? `save ${editing.name}` : 'create the medication'
     if (!formData.name.trim()) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Medication name is required' })
+      setNameError('Give the medication a name.')
+      toast(toastError(action, 'Check the highlighted fields.'))
       return
     }
+    setNameError(null)
     setSaving(true)
     try {
       const url = editing ? `/api/medications/${editing.id}` : '/api/medications'
       const method = editing ? 'PUT' : 'POST'
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error)
+      await readJson(
+        await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        })
+      )
 
-      toast({
-        title: editing ? 'Updated' : 'Created',
-        description: `${formData.name} saved successfully`,
-      })
+      toast(toastSuccess(editing ? 'Medication updated' : 'Medication created', formData.name))
       setDialogOpen(false)
       fetchMedications()
       fetchCategories()
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message })
+    } catch (error) {
+      toast(toastError(action, error))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async (med: Medication) => {
+  const handleDeactivate = async (med: Medication) => {
     const ok = await confirm({
-      title: 'Deactivate Medication',
-      description: `Deactivate "${med.name}"? It will no longer appear in prescription search.`,
-      confirmLabel: 'Deactivate',
+      title: `Deactivate medication “${med.name}”?`,
+      description:
+        'It will no longer appear in prescription search. Prescriptions already written keep it.',
+      confirmLabel: 'Deactivate medication',
     })
     if (!ok) return
     try {
-      const res = await fetch(`/api/medications/${med.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed')
-      toast({ title: 'Deactivated', description: `${med.name} has been deactivated` })
+      await readJson(await fetch(`/api/medications/${med.id}`, { method: 'DELETE' }))
+      toast(toastSuccess('Medication deactivated', med.name))
       fetchMedications()
-    } catch {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to deactivate medication',
-      })
+    } catch (error) {
+      toast(toastError(`deactivate ${med.name}`, error))
+    }
+  }
+
+  // The route's PUT takes `isActive`; the server refuses a reactivation that
+  // would duplicate a drug already in the catalogue, and the toast says so.
+  const handleReactivate = async (med: Medication) => {
+    try {
+      await readJson(
+        await fetch(`/api/medications/${med.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isActive: true }),
+        })
+      )
+      toast(toastSuccess('Medication reactivated', med.name))
+      fetchMedications()
+    } catch (error) {
+      toast(toastError(`reactivate ${med.name}`, error))
     }
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Pill className="h-6 w-6" />
-            Drug Catalog
-          </h1>
-          <p className="text-muted-foreground">Manage your medication database</p>
-        </div>
-        {canEditCatalog && (
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Medication
-          </Button>
-        )}
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <PageHeader
+        title="Drug catalogue"
+        description="Manage your medication database"
+        actions={
+          canEditCatalog && (
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-2" />
+              New medication
+            </Button>
+          )
+        }
+      />
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search medications..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setPagination((p) => ({ ...p, page: 1 }))
-                }}
-                className="pl-9"
-              />
-            </div>
-            <Select
-              value={categoryFilter}
-              onValueChange={(v) => {
-                setCategoryFilter(v === 'all' ? '' : v)
-                setPagination((p) => ({ ...p, page: 1 }))
-              }}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="medications"
-            onClearAll={() => {
-              setSearch('')
-              setCategoryFilter('')
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-            filters={[
-              {
-                label: 'Search',
-                value: search,
-                onClear: () => {
-                  setSearch('')
-                  setPagination((p) => ({ ...p, page: 1 }))
-                },
-              },
-              {
-                label: 'Category',
-                value: categoryFilter,
-                onClear: () => {
-                  setCategoryFilter('')
-                  setPagination((p) => ({ ...p, page: 1 }))
-                },
-              },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search medications"
+            placeholder="Search by name, generic name or manufacturer…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Category"
+              plural="categories"
+              value={list.filters.category}
+              onValueChange={(category) => list.setFilter('category', category)}
+              options={categories.map((c) => ({ value: c, label: c }))}
+              className="w-full sm:w-[200px]"
+            />
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={list.filters.status}
+              onValueChange={(status) => list.setFilter('status', status)}
+              options={STATUS_OPTIONS}
+            />
+          </>
+        }
+        active={{
+          noun: 'medications',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Category',
+              value: list.filters.category === 'all' ? null : list.filters.category,
+              onClear: () => list.setFilter('category', 'all'),
+            },
+            {
+              label: 'Status',
+              value:
+                list.filters.status === 'ACTIVE'
+                  ? null
+                  : list.filters.status === 'all'
+                    ? 'All statuses'
+                    : statusLabel('active', list.filters.status),
+              onClear: () => list.setFilter('status', 'ACTIVE'),
+            },
+          ],
+        }}
+      />
 
-      {/* Table */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[800px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Generic Name</TableHead>
+                <TableHead>Generic name</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Form / Strength</TableHead>
-                <TableHead>Default Dosage</TableHead>
+                <TableHead>Form / strength</TableHead>
+                <TableHead>Default dosage</TableHead>
                 <TableHead>Stock</TableHead>
+                <TableHead>Status</TableHead>
                 <GridActionsHead />
               </TableRow>
             </TableHeader>
             <GridBody
-              columns={7}
+              columns={8}
               loading={loading}
               failed={loadFailed}
               onRetry={fetchMedications}
               empty={medications.length === 0}
               emptyIcon={Pill}
               emptyTitle={
-                search || categoryFilter
-                  ? 'No medications match those filters'
-                  : 'No medications yet'
+                list.isFiltered ? 'No medications match those filters' : 'No medications yet'
               }
               emptyDescription={
-                search || categoryFilter
-                  ? 'Clear the filters above to see the whole catalog.'
-                  : 'Add your first medication to build your drug catalog.'
+                list.isFiltered
+                  ? 'Clear the filters to see the whole catalogue.'
+                  : 'Add your first medication to build your drug catalogue.'
               }
               emptyActionLabel={
-                canEditCatalog && !search && !categoryFilter ? 'Add Medication' : undefined
+                list.isFiltered
+                  ? 'Clear the filters'
+                  : canEditCatalog
+                    ? 'New medication'
+                    : undefined
               }
-              onEmptyAction={canEditCatalog && !search && !categoryFilter ? openAdd : undefined}
+              onEmptyAction={list.isFiltered ? list.clear : canEditCatalog ? openAdd : undefined}
             >
               {medications.map((med) => (
                 <TableRow key={med.id}>
                   <TableCell className="font-medium">{med.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{med.genericName || '—'}</TableCell>
-                  <TableCell>
-                    {med.category ? <Badge variant="secondary">{med.category}</Badge> : '—'}
+                  <TableCell className="text-muted-foreground">
+                    {med.genericName || BLANK}
                   </TableCell>
                   <TableCell>
-                    {[med.form, med.strength].filter(Boolean).join(' · ') || '—'}
+                    {med.category ? <Badge variant="secondary">{med.category}</Badge> : BLANK}
+                  </TableCell>
+                  <TableCell>
+                    {[med.form, med.strength].filter(Boolean).join(' · ') || BLANK}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {[med.defaultDosage, med.defaultFrequency, med.defaultDuration]
                       .filter(Boolean)
-                      .join(', ') || '—'}
+                      .join(', ') || BLANK}
                   </TableCell>
                   {/*
                     Stock, now that InventoryItem can point at a drug. A
@@ -458,8 +471,11 @@ export default function MedicationsPage() {
                       )
                     })()}
                   </TableCell>
+                  <TableCell>
+                    <StatusBadge kind="active" status={med.isActive} />
+                  </TableCell>
                   <GridActionsCell>
-                    {/* The menu holds nothing but Edit and Delete, so a reader
+                    {/* The menu holds only catalogue changes, so a reader
                         without the capability gets no menu rather than an
                         empty one. */}
                     {canEditCatalog && (
@@ -474,16 +490,23 @@ export default function MedicationsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEdit(med)}>
                             <Pencil className="h-4 w-4 mr-2" />
-                            Edit
+                            Edit medication
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600 dark:text-red-400"
-                            onClick={() => handleDelete(med)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {med.isActive ? (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDeactivate(med)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Deactivate medication
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => handleReactivate(med)}>
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Reactivate medication
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
@@ -493,166 +516,196 @@ export default function MedicationsPage() {
             </GridBody>
           </Table>
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="medications"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Medication' : 'Add Medication'}</DialogTitle>
-            <DialogDescription>
-              {editing ? 'Update medication details' : 'Add a new medication to your catalog'}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent size="lg">
+          <form onSubmit={handleSave} noValidate>
+            <DialogHeader>
+              <DialogTitle>{editing ? 'Edit medication' : 'New medication'}</DialogTitle>
+              <DialogDescription>
+                {editing ? 'Update medication details' : 'Add a new medication to your catalogue'}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Label>Medication Name *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Amoxicillin"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Generic Name</Label>
-                <Input
-                  value={formData.genericName}
-                  onChange={(e) => setFormData((f) => ({ ...f, genericName: e.target.value }))}
-                  placeholder="Amoxicillin Trihydrate"
-                />
-              </div>
-              <div>
-                <Label>Category</Label>
-                <Select
-                  value={formData.category || undefined}
-                  onValueChange={(v) => setFormData((f) => ({ ...f, category: v }))}
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  label="Medication name"
+                  required
+                  error={nameError}
+                  className="md:col-span-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={formData.name}
+                      onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
+                      placeholder="Amoxicillin"
+                    />
+                  )}
+                </FormField>
+                <FormField label="Generic name" className="md:col-span-2">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={formData.genericName}
+                      onChange={(e) => setFormData((f) => ({ ...f, genericName: e.target.value }))}
+                      placeholder="Amoxicillin Trihydrate"
+                    />
+                  )}
+                </FormField>
+                <FormField label="Category">
+                  {(control) => (
+                    <Select
+                      value={formData.category || undefined}
+                      onValueChange={(v) => setFormData((f) => ({ ...f, category: v }))}
+                    >
+                      <SelectTrigger id={control.id}>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </FormField>
+                <FormField label="Form">
+                  {(control) => (
+                    <Select
+                      value={formData.form || undefined}
+                      onValueChange={(v) => setFormData((f) => ({ ...f, form: v }))}
+                    >
+                      <SelectTrigger id={control.id}>
+                        <SelectValue placeholder="Select form" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FORMS.map((f) => (
+                          <SelectItem key={f} value={f}>
+                            {f}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </FormField>
+                <FormField label="Strength">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={formData.strength}
+                      onChange={(e) => setFormData((f) => ({ ...f, strength: e.target.value }))}
+                      placeholder="500mg"
+                    />
+                  )}
+                </FormField>
+                <FormField label="Manufacturer">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={formData.manufacturer}
+                      onChange={(e) => setFormData((f) => ({ ...f, manufacturer: e.target.value }))}
+                      placeholder="Cipla"
+                    />
+                  )}
+                </FormField>
               </div>
-              <div>
-                <Label>Form</Label>
-                <Select
-                  value={formData.form || undefined}
-                  onValueChange={(v) => setFormData((f) => ({ ...f, form: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select form" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FORMS.map((f) => (
-                      <SelectItem key={f} value={f}>
-                        {f}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-3">Default prescription values</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField label="Dosage">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.defaultDosage}
+                        onChange={(e) =>
+                          setFormData((f) => ({ ...f, defaultDosage: e.target.value }))
+                        }
+                        placeholder="1 tablet"
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Frequency">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.defaultFrequency}
+                        onChange={(e) =>
+                          setFormData((f) => ({ ...f, defaultFrequency: e.target.value }))
+                        }
+                        placeholder="3 times a day"
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Duration">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={formData.defaultDuration}
+                        onChange={(e) =>
+                          setFormData((f) => ({ ...f, defaultDuration: e.target.value }))
+                        }
+                        placeholder="5 days"
+                      />
+                    )}
+                  </FormField>
+                </div>
               </div>
-              <div>
-                <Label>Strength</Label>
-                <Input
-                  value={formData.strength}
-                  onChange={(e) => setFormData((f) => ({ ...f, strength: e.target.value }))}
-                  placeholder="500mg"
-                />
-              </div>
-              <div>
-                <Label>Manufacturer</Label>
-                <Input
-                  value={formData.manufacturer}
-                  onChange={(e) => setFormData((f) => ({ ...f, manufacturer: e.target.value }))}
-                  placeholder="Cipla"
-                />
+
+              <div className="border-t pt-4">
+                <div className="grid gap-4">
+                  <FormField label="Contraindications">
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        value={formData.contraindications}
+                        onChange={(e) =>
+                          setFormData((f) => ({ ...f, contraindications: e.target.value }))
+                        }
+                        placeholder="Known allergies, drug interactions…"
+                        rows={2}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Side effects">
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        value={formData.sideEffects}
+                        onChange={(e) =>
+                          setFormData((f) => ({ ...f, sideEffects: e.target.value }))
+                        }
+                        placeholder="Nausea, dizziness…"
+                        rows={2}
+                      />
+                    )}
+                  </FormField>
+                </div>
               </div>
             </div>
 
-            <div className="border-t pt-4">
-              <h4 className="text-sm font-medium mb-3">Default Prescription Values</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label>Dosage</Label>
-                  <Input
-                    value={formData.defaultDosage}
-                    onChange={(e) => setFormData((f) => ({ ...f, defaultDosage: e.target.value }))}
-                    placeholder="1 tablet"
-                  />
-                </div>
-                <div>
-                  <Label>Frequency</Label>
-                  <Input
-                    value={formData.defaultFrequency}
-                    onChange={(e) =>
-                      setFormData((f) => ({ ...f, defaultFrequency: e.target.value }))
-                    }
-                    placeholder="3 times a day"
-                  />
-                </div>
-                <div>
-                  <Label>Duration</Label>
-                  <Input
-                    value={formData.defaultDuration}
-                    onChange={(e) =>
-                      setFormData((f) => ({ ...f, defaultDuration: e.target.value }))
-                    }
-                    placeholder="5 days"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t pt-4">
-              <div className="grid gap-4">
-                <div>
-                  <Label>Contraindications</Label>
-                  <Textarea
-                    value={formData.contraindications}
-                    onChange={(e) =>
-                      setFormData((f) => ({ ...f, contraindications: e.target.value }))
-                    }
-                    placeholder="Known allergies, drug interactions..."
-                    rows={2}
-                  />
-                </div>
-                <div>
-                  <Label>Side Effects</Label>
-                  <Textarea
-                    value={formData.sideEffects}
-                    onChange={(e) => setFormData((f) => ({ ...f, sideEffects: e.target.value }))}
-                    placeholder="Nausea, dizziness..."
-                    rows={2}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editing ? 'Update' : 'Add Medication'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <SubmitButton busy={saving} busyLabel={editing ? 'Saving…' : 'Creating medication…'}>
+                {editing ? 'Save changes' : 'Create medication'}
+              </SubmitButton>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
       {ConfirmDialogComponent}

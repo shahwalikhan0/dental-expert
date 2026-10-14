@@ -6,7 +6,7 @@ test.describe('Billing & Invoices', () => {
       await page.goto('/billing')
       // Exact title — /billing|invoice/i also matches the "Invoice Status"
       // summary card heading.
-      await expect(page.getByRole('heading', { name: 'Billing & Finance' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Billing & finance' })).toBeVisible()
       // Summary metrics should be visible
       await expect(
         page.getByText(/total|revenue|billed|collected|outstanding/i).first()

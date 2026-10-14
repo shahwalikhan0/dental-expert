@@ -27,7 +27,7 @@ const clinicInfoSchema = z.object({
   address: z.string().min(1),
   city: z.string().min(1),
   state: z.string().min(1),
-  postalCode: z.string().min(6),
+  postalCode: z.string().min(5, 'Enter the 5-digit postal code'),
   registrationNo: optionalString,
   taxRegistrationNo: optionalString,
   nationalTaxNo: optionalString,

@@ -20,6 +20,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { formatCurrency } from '@/lib/i18n/format'
+import { readJson, toastError } from '@/lib/toast-utils'
 import {
   BarChart3,
   Mail,
@@ -28,7 +36,6 @@ import {
   TrendingDown,
   DollarSign,
   Eye,
-  Loader2,
   RefreshCw,
   Send,
   XCircle,
@@ -67,16 +74,20 @@ export default function CampaignAnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('30d')
   const [data, setData] = useState<AnalyticsData | null>(null)
+  const [failed, setFailed] = useState(false)
+  const trail = useTrail('Campaign analytics')
 
   const fetchAnalytics = async (p: string) => {
     setLoading(true)
+    setFailed(false)
     try {
       const res = await fetch(`/api/communications/analytics?period=${p}`)
-      if (!res.ok) throw new Error('Failed to fetch analytics')
-      const json = await res.json()
-      setData(json)
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' })
+      setData(await readJson<AnalyticsData>(res))
+    } catch (err) {
+      // With figures already on screen, a failed refresh is a toast; with
+      // nothing yet, the page says so with a retry (LoadFailed below).
+      setFailed(true)
+      toast(toastError('load the analytics', err))
     } finally {
       setLoading(false)
     }
@@ -92,51 +103,53 @@ export default function CampaignAnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Campaign Analytics</h2>
-          <p className="text-muted-foreground">SMS delivery rates and email engagement</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Refresh"
-            onClick={() => fetchAnalytics(period)}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Campaign analytics"
+        description="SMS delivery rates and email engagement"
+        back={<BackLink trail={trail} fallback="/communications" fallbackLabel="Communications" />}
+        actions={
+          <>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-[130px]" aria-label="Period">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            <IconTooltip label="Refresh">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Refresh"
+                onClick={() => fetchAnalytics(period)}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </IconTooltip>
+          </>
+        }
+      />
 
       {loading && !data ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <PageSkeleton variant="dashboard" />
+      ) : failed && !data ? (
+        <LoadFailed what="the analytics" onRetry={() => fetchAnalytics(period)} />
       ) : data ? (
         <>
           {/* SMS Stats Cards */}
           <div>
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              SMS Overview
+              SMS overview
             </h3>
             <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Sent</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total sent</CardTitle>
                   <Send className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -150,7 +163,7 @@ export default function CampaignAnalyticsPage() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Delivery Rate</CardTitle>
+                  <CardTitle className="text-sm font-medium">Delivery rate</CardTitle>
                   <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
                 </CardHeader>
                 <CardContent>
@@ -178,14 +191,14 @@ export default function CampaignAnalyticsPage() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Cost</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total cost</CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">Rs {data.sms.totalCost.toFixed(2)}</div>
+                  <div className="text-2xl font-bold">{formatCurrency(data.sms.totalCost)}</div>
                   <p className="text-xs text-muted-foreground">
                     {data.sms.total > 0
-                      ? `Rs ${(data.sms.totalCost / data.sms.total).toFixed(4)}/msg`
+                      ? `${formatCurrency(data.sms.totalCost / data.sms.total, { maximumFractionDigits: 4 })}/msg`
                       : 'No cost data'}
                   </p>
                 </CardContent>
@@ -197,12 +210,12 @@ export default function CampaignAnalyticsPage() {
           <div>
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <Mail className="h-5 w-5" />
-              Email Overview
+              Email overview
             </h3>
             <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Sent</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total sent</CardTitle>
                   <Send className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -214,7 +227,7 @@ export default function CampaignAnalyticsPage() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
+                  <CardTitle className="text-sm font-medium">Open rate</CardTitle>
                   <Eye className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                 </CardHeader>
                 <CardContent>
@@ -249,7 +262,7 @@ export default function CampaignAnalyticsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Daily Message Volume
+                  Daily message volume
                 </CardTitle>
                 <CardDescription>SMS and email messages sent per day</CardDescription>
               </CardHeader>
@@ -313,7 +326,7 @@ export default function CampaignAnalyticsPage() {
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
                     <MessageSquare className="h-4 w-4" />
-                    Top SMS Templates
+                    Top SMS templates
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -342,7 +355,7 @@ export default function CampaignAnalyticsPage() {
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
                     <Mail className="h-4 w-4" />
-                    Top Email Templates
+                    Top email templates
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -369,15 +382,11 @@ export default function CampaignAnalyticsPage() {
 
           {/* Empty state */}
           {data.sms.total === 0 && data.email.total === 0 && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold">No analytics data yet</h3>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Start sending SMS and emails to see campaign analytics here
-                </p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={BarChart3}
+              title="No analytics data yet"
+              description="Start sending SMS and emails to see campaign analytics here."
+            />
           )}
         </>
       ) : null}

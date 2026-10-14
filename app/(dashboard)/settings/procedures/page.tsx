@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { holderCan } from '@/lib/rbac'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useListParams } from '@/hooks/use-list-params'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -34,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Stethoscope } from 'lucide-react'
+import { Plus, MoreHorizontal, Pencil, Trash2, Stethoscope } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +43,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput, parseMoney } from '@/components/ui/money-input'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { statusLabel } from '@/lib/status'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 
 interface Procedure {
   id: string
@@ -68,13 +78,6 @@ interface Procedure {
   }
 }
 
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
-
 const categories = [
   'PREVENTIVE',
   'RESTORATIVE',
@@ -88,15 +91,29 @@ const categories = [
   'EMERGENCY',
 ]
 
+const CATEGORY_OPTIONS = categories.map((cat) => ({
+  value: cat,
+  label: procedureCategoryConfig[cat]?.label || cat,
+}))
+
+/** The route reads `isActive=true|false`; the labels are the badge's. */
+const STATUS_OPTIONS = [
+  { value: 'true', label: statusLabel('active', true) },
+  { value: 'false', label: statusLabel('active', false) },
+]
+
+type FormErrors = Partial<Record<'code' | 'name' | 'category' | 'basePrice', string>>
+
 export default function ProceduresSettingsPage() {
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   /**
    * Whether this person may change the catalogue, as opposed to read it.
    *
    * The page is open to `masters:read` so a dentist can look up what a
    * procedure costs and what it involves, but the API guards every write with
-   * `settings:write`. Without this check a dentist would see "Add Procedure",
+   * `settings:write`. Without this check a dentist would see "New procedure",
    * fill the whole dialog in and get a 403 at the end — a control that
    * pretends to work. The server remains the authority; this only stops us
    * offering an action we already know it will refuse.
@@ -108,26 +125,27 @@ export default function ProceduresSettingsPage() {
   )
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
-  })
+  // The fetch failed — said in the grid, with a retry, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
 
-  // Filters
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [activeFilter, setActiveFilter] = useState('all')
+  /**
+   * Search, filters and page in the address bar, so they survive a refresh or
+   * a shared link. The hook debounces the search and goes back to page 1 on
+   * any change.
+   */
+  const list = useListParams({
+    defaults: { category: 'all', status: 'all' },
+  })
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const query = list.apiParams({ rename: { status: 'isActive' } }).toString()
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [errors, setErrors] = useState<FormErrors>({})
 
   // Form state
   const [formData, setFormData] = useState({
@@ -160,52 +178,28 @@ export default function ProceduresSettingsPage() {
     const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-      })
-
-      if (debouncedSearch) params.append('search', debouncedSearch)
-      if (categoryFilter && categoryFilter !== 'all') params.append('category', categoryFilter)
-      if (activeFilter && activeFilter !== 'all') params.append('isActive', activeFilter)
-
-      const response = await fetch(`/api/settings/procedures?${params}`)
+      setFailed(false)
+      const response = await fetch(`/api/settings/procedures?${query}`)
       if (!response.ok) throw new Error('Failed to fetch procedures')
 
       const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setProcedures(data.data || [])
-      setPagination(data.pagination)
+      setTotal(data.pagination?.total ?? 0)
     } catch (error) {
       console.error('Error fetching procedures:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch procedures',
-        variant: 'destructive',
-      })
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
-  /**
-   * Back to the first page whenever what we are filtering by changes.
-   *
-   * Without this, searching from page three asked the server for page three of
-   * the results for that search — which is usually empty, so the screen said
-   * there was nothing to find while the row sat in the list behind it.
-   */
-  useEffect(() => {
-    // The cascading render this causes is the point, and it is bounded: one
-    // extra pass, only when a filter changes while the list is off page one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [debouncedSearch, categoryFilter, activeFilter])
-
   useEffect(() => {
     fetchProcedures()
-  }, [pagination.page, pagination.limit, debouncedSearch, categoryFilter, activeFilter])
+    // The query string is the whole question; `fetchProcedures` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   const resetForm = () => {
     setFormData({
@@ -228,12 +222,14 @@ export default function ProceduresSettingsPage() {
 
   const openCreateDialog = () => {
     resetForm()
+    setErrors({})
     setDialogMode('create')
     setDialogOpen(true)
   }
 
   const openEditDialog = (procedure: Procedure) => {
     setSelectedProcedure(procedure)
+    setErrors({})
     setFormData({
       code: procedure.code,
       name: procedure.name,
@@ -259,18 +255,25 @@ export default function ProceduresSettingsPage() {
     setDialogOpen(true)
   }
 
-  const handleSubmit = async () => {
-    const incomplete = (description: string) =>
-      toast({ variant: 'destructive', title: 'Procedure not saved', description })
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
 
-    // Validation
-    if (dialogMode === 'create' && !formData.code) {
-      incomplete('Code is required')
-      return
-    }
+    // The price as typed, read once: blank or unreadable is missing, never 0.
+    const basePrice = parseMoney(formData.basePrice)
 
-    if (!formData.name || !formData.category || !formData.basePrice) {
-      incomplete('Name, category, and base price are required')
+    const found: FormErrors = {}
+    if (dialogMode === 'create' && !formData.code) found.code = 'Enter a code.'
+    if (!formData.name) found.name = 'Enter a name.'
+    if (!formData.category) found.category = 'Choose a category.'
+    if (basePrice === null) found.basePrice = 'Enter the base price.'
+    setErrors(found)
+    if (Object.keys(found).length > 0) {
+      toast(
+        toastError(
+          dialogMode === 'create' ? 'create the procedure' : 'save the procedure',
+          'Check the highlighted fields.'
+        )
+      )
       return
     }
 
@@ -289,7 +292,7 @@ export default function ProceduresSettingsPage() {
           ...formData,
           code: formData.code.toUpperCase(),
           defaultDuration: parseInt(formData.defaultDuration),
-          basePrice: parseFloat(formData.basePrice),
+          basePrice,
           // The number input holds a string, and '' is how an empty one reads.
           // Spreading formData alone would post '' where the API's schema wants
           // a number or null, and the whole save would fail validation on a
@@ -305,34 +308,32 @@ export default function ProceduresSettingsPage() {
         throw new Error(data.error || 'Failed to save procedure')
       }
 
-      toast({
-        title: 'Success',
-        description:
-          dialogMode === 'create'
-            ? 'Procedure created successfully'
-            : 'Procedure updated successfully',
-      })
+      toast(toastSuccess(dialogMode === 'create' ? 'Procedure created' : 'Procedure updated'))
 
       setDialogOpen(false)
       fetchProcedures()
-    } catch (error: any) {
-      toast({
-        title: 'Could not save the procedure',
-        description: error.message,
-        variant: 'destructive',
-      })
+    } catch (error) {
+      toast(
+        toastError(dialogMode === 'create' ? 'create the procedure' : 'save the procedure', error)
+      )
     } finally {
       setActionLoading(false)
     }
   }
 
-  const handleDelete = async () => {
-    if (!selectedProcedure) return
-
-    setActionLoading(true)
+  const handleDelete = async (procedure: Procedure) => {
+    if (
+      !(await confirm({
+        title: `Delete procedure “${procedure.name}”?`,
+        description:
+          'It will be deactivated. Treatments and plans that used it keep it; it is no longer offered for new ones. You can switch it back on later.',
+        confirmLabel: 'Delete procedure',
+      }))
+    )
+      return
 
     try {
-      const response = await fetch(`/api/settings/procedures/${selectedProcedure.id}`, {
+      const response = await fetch(`/api/settings/procedures/${procedure.id}`, {
         method: 'DELETE',
       })
 
@@ -345,22 +346,16 @@ export default function ProceduresSettingsPage() {
       // This route deactivates rather than deletes, so treatments and plans
       // that used the procedure keep naming it; it is no longer offered for
       // new ones.
-      toast({
-        title: 'Procedure deactivated',
-        description: `${selectedProcedure.name} is no longer offered for new treatments or plans.`,
-      })
+      toast(
+        toastSuccess(
+          'Procedure deactivated',
+          `${procedure.name} is no longer offered for new treatments or plans.`
+        )
+      )
 
-      setDeleteDialogOpen(false)
-      setSelectedProcedure(null)
       fetchProcedures()
-    } catch (error: any) {
-      toast({
-        title: 'Could not delete the procedure',
-        description: error.message,
-        variant: 'destructive',
-      })
-    } finally {
-      setActionLoading(false)
+    } catch (error) {
+      toast(toastError(`delete procedure “${procedure.name}”`, error))
     }
   }
 
@@ -377,105 +372,74 @@ export default function ProceduresSettingsPage() {
         throw new Error(data.error || 'Failed to update procedure status')
       }
 
-      toast({
-        title: 'Success',
-        description: `Procedure ${!procedure.isActive ? 'activated' : 'deactivated'} successfully`,
-      })
+      toast(toastSuccess(`Procedure ${!procedure.isActive ? 'activated' : 'deactivated'}`))
 
       fetchProcedures()
-    } catch (error: any) {
-      toast({
-        title: 'Could not update the procedure',
-        description: error.message,
-        variant: 'destructive',
-      })
+    } catch (error) {
+      toast(toastError(`update procedure “${procedure.name}”`, error))
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="page-title">Procedures</h1>
-          <p className="text-muted-foreground">Manage dental procedures catalog</p>
-        </div>
-        {canEditCatalog && (
-          <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Procedure
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Procedures"
+        description="Manage dental procedures catalog"
+        actions={
+          canEditCatalog && (
+            <Button onClick={openCreateDialog}>
+              <Plus className="h-4 w-4 mr-2" />
+              New procedure
+            </Button>
+          )
+        }
+      />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search procedures..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {procedureCategoryConfig[cat]?.label || cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={activeFilter} onValueChange={setActiveFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="true">Active</SelectItem>
-                  <SelectItem value="false">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="procedures"
-            onClearAll={() => {
-              setSearch('')
-              setCategoryFilter('all')
-              setActiveFilter('all')
-            }}
-            filters={[
-              { label: 'Search', value: search, onClear: () => setSearch('') },
-              {
-                label: 'Category',
-                value:
-                  categoryFilter === 'all'
-                    ? null
-                    : (procedureCategoryConfig[categoryFilter]?.label ?? categoryFilter),
-                onClear: () => setCategoryFilter('all'),
-              },
-              {
-                label: 'Status',
-                value:
-                  activeFilter === 'all' ? null : activeFilter === 'true' ? 'Active' : 'Inactive',
-                onClear: () => setActiveFilter('all'),
-              },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search procedures"
+            placeholder="Search by code or name…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Category"
+              plural="categories"
+              value={list.filters.category}
+              onValueChange={(category) => list.setFilter('category', category)}
+              options={CATEGORY_OPTIONS}
+            />
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={list.filters.status}
+              onValueChange={(status) => list.setFilter('status', status)}
+              options={STATUS_OPTIONS}
+            />
+          </>
+        }
+        active={{
+          noun: 'procedures',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Category',
+              value: filterValueLabel(CATEGORY_OPTIONS, list.filters.category),
+              onClear: () => list.setFilter('category', 'all'),
+            },
+            {
+              label: 'Status',
+              value: filterValueLabel(STATUS_OPTIONS, list.filters.status),
+              onClear: () => list.setFilter('status', 'all'),
+            },
+          ],
+        }}
+      />
 
       {/* Procedures Table */}
       <Card>
@@ -495,12 +459,22 @@ export default function ProceduresSettingsPage() {
             <GridBody
               columns={7}
               loading={loading}
+              failed={failed}
+              onRetry={fetchProcedures}
               empty={procedures.length === 0}
               emptyIcon={Stethoscope}
-              emptyTitle="No procedures yet"
-              emptyDescription="The catalogue is what a treatment is written from — its name, duration, price and default notes. Add the ones this clinic performs."
-              emptyActionLabel={canEditCatalog ? 'Add Procedure' : undefined}
-              onEmptyAction={canEditCatalog ? openCreateDialog : undefined}
+              emptyTitle={list.isFiltered ? 'No procedures found' : 'No procedures yet'}
+              emptyDescription={
+                list.isFiltered
+                  ? 'No procedure matches these filters.'
+                  : 'The catalogue is what a treatment is written from — its name, duration, price and default notes. Add the ones this clinic performs.'
+              }
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canEditCatalog ? 'New procedure' : undefined
+              }
+              onEmptyAction={
+                list.isFiltered ? list.clear : canEditCatalog ? openCreateDialog : undefined
+              }
             >
               {procedures.map((procedure) => (
                 <TableRow key={procedure.id} className={!procedure.isActive ? 'opacity-50' : ''}>
@@ -525,11 +499,20 @@ export default function ProceduresSettingsPage() {
                     {formatCurrency(procedure.basePrice)}
                   </TableCell>
                   <TableCell>
-                    <Switch
-                      checked={procedure.isActive}
-                      onCheckedChange={() => handleToggleActive(procedure)}
-                    />
+                    {/* A switch only for someone who may flip it; anyone else
+                        reads the status, rather than a toggle that comes back
+                        403. */}
+                    {canEditCatalog ? (
+                      <Switch
+                        checked={procedure.isActive}
+                        onCheckedChange={() => handleToggleActive(procedure)}
+                        aria-label={`${procedure.name} is ${procedure.isActive ? 'active' : 'inactive'}`}
+                      />
+                    ) : (
+                      <StatusBadge kind="active" status={procedure.isActive} />
+                    )}
                   </TableCell>
+                  {/* GridActionsCell carries the `row-actions` class. */}
                   <GridActionsCell>
                     {/* The menu holds nothing but Edit and Delete, so a
                           reader gets an empty menu rather than no menu unless
@@ -545,16 +528,13 @@ export default function ProceduresSettingsPage() {
                         </IconTooltip>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEditDialog(procedure)}>
-                            <Edit className="h-4 w-4 mr-2" />
+                            <Pencil className="h-4 w-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-red-600 dark:text-red-400"
-                            onClick={() => {
-                              setSelectedProcedure(procedure)
-                              setDeleteDialogOpen(true)
-                            }}
+                            className="text-destructive"
+                            onClick={() => handleDelete(procedure)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
@@ -569,79 +549,85 @@ export default function ProceduresSettingsPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="procedures"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {dialogMode === 'create' ? 'Add New Procedure' : 'Edit Procedure'}
-            </DialogTitle>
-            <DialogDescription>
-              {dialogMode === 'create'
-                ? 'Add a new procedure to your catalog'
-                : 'Update procedure details'}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent size="lg">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>
+                {dialogMode === 'create' ? 'New procedure' : 'Edit procedure'}
+              </DialogTitle>
+              <DialogDescription>
+                {dialogMode === 'create'
+                  ? 'Add a new procedure to your catalog'
+                  : 'Update procedure details'}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="code">Code *</Label>
-                <Input
-                  id="code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                  placeholder="e.g., PRV001"
-                  maxLength={10}
-                  disabled={dialogMode === 'edit'}
-                  className="uppercase"
-                />
-                {dialogMode === 'edit' && (
-                  <p className="text-xs text-muted-foreground">Code cannot be changed</p>
+              <FormField
+                label="Code"
+                required
+                error={errors.code}
+                hint={dialogMode === 'edit' ? 'Code cannot be changed' : undefined}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={formData.code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                    }
+                    placeholder="e.g., PRV001"
+                    maxLength={10}
+                    disabled={dialogMode === 'edit'}
+                    className="uppercase"
+                  />
                 )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {procedureCategoryConfig[cat]?.label || cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              </FormField>
+              <FormField label="Category" required error={errors.category}>
+                {(control) => (
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Procedure name"
-              />
-            </div>
+            <FormField label="Name" required error={errors.name}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Procedure name"
+                />
+              )}
+            </FormField>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <FormField label="Description" htmlFor="description">
               <Textarea
                 id="description"
                 value={formData.description}
@@ -649,34 +635,30 @@ export default function ProceduresSettingsPage() {
                 placeholder="Brief description of the procedure"
                 rows={2}
               />
-            </div>
+            </FormField>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="defaultDuration">Duration (minutes)</Label>
+              <FormField label="Duration (minutes)" htmlFor="defaultDuration">
                 <Input
                   id="defaultDuration"
                   type="number"
                   value={formData.defaultDuration}
                   onChange={(e) => setFormData({ ...formData, defaultDuration: e.target.value })}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="basePrice">Base Price *</Label>
-                <Input
-                  id="basePrice"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={formData.basePrice}
-                  onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
-                  placeholder="0.00"
-                />
-              </div>
+              </FormField>
+              <FormField label="Base price" required error={errors.basePrice}>
+                {(control) => (
+                  <MoneyInput
+                    {...control}
+                    value={formData.basePrice}
+                    onChange={(raw) => setFormData({ ...formData, basePrice: raw })}
+                    placeholder="0.00"
+                  />
+                )}
+              </FormField>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="materials">Materials</Label>
+            <FormField label="Materials" htmlFor="materials">
               <Textarea
                 id="materials"
                 value={formData.materials}
@@ -684,10 +666,9 @@ export default function ProceduresSettingsPage() {
                 placeholder="List of materials used"
                 rows={2}
               />
-            </div>
+            </FormField>
 
-            <div className="space-y-2">
-              <Label htmlFor="preInstructions">Pre-procedure Instructions</Label>
+            <FormField label="Pre-procedure instructions" htmlFor="preInstructions">
               <Textarea
                 id="preInstructions"
                 value={formData.preInstructions}
@@ -695,10 +676,9 @@ export default function ProceduresSettingsPage() {
                 placeholder="Instructions for patients before the procedure"
                 rows={2}
               />
-            </div>
+            </FormField>
 
-            <div className="space-y-2">
-              <Label htmlFor="postInstructions">Post-procedure Instructions</Label>
+            <FormField label="Post-procedure instructions" htmlFor="postInstructions">
               <Textarea
                 id="postInstructions"
                 value={formData.postInstructions}
@@ -706,7 +686,7 @@ export default function ProceduresSettingsPage() {
                 placeholder="Instructions for patients after the procedure"
                 rows={2}
               />
-            </div>
+            </FormField>
 
             {/* The "treatment template": the wording a dentist would otherwise
                 retype for every case of this procedure. Copied onto the note
@@ -722,18 +702,16 @@ export default function ProceduresSettingsPage() {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="defaultDiagnosis">Default diagnosis</Label>
+              <FormField label="Default diagnosis" htmlFor="defaultDiagnosis">
                 <Input
                   id="defaultDiagnosis"
                   value={formData.defaultDiagnosis}
                   onChange={(e) => setFormData({ ...formData, defaultDiagnosis: e.target.value })}
                   placeholder="e.g. Irreversible pulpitis"
                 />
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label htmlFor="defaultFindings">Default findings</Label>
+              <FormField label="Default findings" htmlFor="defaultFindings">
                 <Textarea
                   id="defaultFindings"
                   value={formData.defaultFindings}
@@ -741,10 +719,9 @@ export default function ProceduresSettingsPage() {
                   placeholder="What is typically observed"
                   rows={2}
                 />
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label htmlFor="defaultProcedureNotes">Default procedure notes</Label>
+              <FormField label="Default procedure notes" htmlFor="defaultProcedureNotes">
                 <Textarea
                   id="defaultProcedureNotes"
                   value={formData.defaultProcedureNotes}
@@ -754,24 +731,25 @@ export default function ProceduresSettingsPage() {
                   placeholder="The steps you write out every time"
                   rows={3}
                 />
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label htmlFor="defaultFollowUpDays">Default follow-up (days)</Label>
-                <Input
-                  id="defaultFollowUpDays"
-                  type="number"
-                  min={0}
-                  value={formData.defaultFollowUpDays}
-                  onChange={(e) =>
-                    setFormData({ ...formData, defaultFollowUpDays: e.target.value })
-                  }
-                  placeholder="Leave blank for no follow-up"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Counted from the treatment date. 0 means the same day.
-                </p>
-              </div>
+              <FormField
+                label="Default follow-up (days)"
+                hint="Counted from the treatment date. 0 means the same day."
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    min={0}
+                    value={formData.defaultFollowUpDays}
+                    onChange={(e) =>
+                      setFormData({ ...formData, defaultFollowUpDays: e.target.value })
+                    }
+                    placeholder="Leave blank for no follow-up"
+                  />
+                )}
+              </FormField>
             </div>
 
             <div className="flex items-center space-x-2">
@@ -782,43 +760,23 @@ export default function ProceduresSettingsPage() {
               />
               <Label htmlFor="isActive">Active</Label>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={actionLoading}>
-              {actionLoading
-                ? 'Saving...'
-                : dialogMode === 'create'
-                  ? 'Add Procedure'
-                  : 'Save Changes'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <SubmitButton
+                busy={actionLoading}
+                busyLabel={dialogMode === 'create' ? 'Creating…' : 'Saving…'}
+              >
+                {dialogMode === 'create' ? 'Create procedure' : 'Save changes'}
+              </SubmitButton>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Procedure</DialogTitle>
-            <DialogDescription>
-              "{selectedProcedure?.name}" will be deactivated. Treatments and plans that used it
-              keep it; it is no longer offered for new ones. You can switch it back on later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={actionLoading}>
-              {actionLoading ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {ConfirmDialogComponent}
     </div>
   )
 }

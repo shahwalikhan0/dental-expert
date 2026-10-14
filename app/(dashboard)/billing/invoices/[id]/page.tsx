@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
   Table,
@@ -33,19 +32,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SubmitButton } from '@/components/ui/submit-button'
 import {
-  ArrowLeft,
   User,
   Phone,
   Mail,
   MapPin,
   Printer,
   CreditCard,
-  FileText,
   Calendar,
   Clock,
-  CheckCircle,
   AlertCircle,
   IndianRupee,
   Banknote,
@@ -58,15 +59,7 @@ import {
   ShieldAlert,
   XCircle,
 } from 'lucide-react'
-import {
-  invoiceStatusConfig,
-  paymentMethodConfig,
-  paymentStatusConfig,
-  formatCurrency,
-  formatDate,
-  formatDateTime,
-  numberToWords,
-} from '@/lib/billing-utils'
+import { paymentMethodConfig, formatCurrency, numberToWords } from '@/lib/billing-utils'
 import { invoiceDueState } from '@/lib/invoice-figures'
 import { localDay } from '@/lib/appointment-time'
 import { BackLink, useTrail } from '@/components/ui/trail'
@@ -74,7 +67,8 @@ import { useSession } from 'next-auth/react'
 import { useCan } from '@/hooks/use-can'
 import { billTo } from '@/lib/invoice-links'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { isoDay } from '@/lib/dates'
+import { displayDate, displayDateTime, isoDay } from '@/lib/dates'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 import { useToast } from '@/hooks/use-toast'
 import { useOpenTill } from '@/hooks/use-open-till'
 import { ToastAction } from '@/components/ui/toast'
@@ -204,6 +198,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<Invoice | null>(null)
+  // A dropped connection is not the same as an invoice that does not exist:
+  // the first offers a retry, the second a way back.
+  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing'>('ok')
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(invoice?.invoiceNo ?? null)
   const { toast } = useToast()
@@ -234,7 +231,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const fetchInvoice = async () => {
     try {
       setLoading(true)
+      setLoadState('ok')
       const response = await fetch(`/api/invoices/${id}`)
+      if (response.status === 404) {
+        setInvoice(null)
+        setLoadState('missing')
+        return
+      }
       if (!response.ok) throw new Error('Failed to fetch invoice')
       const data = await response.json()
       setInvoice(data)
@@ -242,18 +245,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setPaymentAmount(String(Number(data.balanceAmount)))
     } catch (error) {
       console.error('Error fetching invoice:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Could not load the invoice',
-        description: 'Failed to load invoice',
-      })
+      setLoadState('failed')
+      // Already on screen (a reload after an issue or a payment): the page
+      // stays, and says the figures may be out of date.
+      if (invoice) toast(toastError('reload the invoice', error))
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // Fetching on mount and on change is what this effect is for; the state it
+    // sets is the answer arriving.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchInvoice()
+    // Once per invoice; `fetchInvoice` reads the id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   // Once, after the invoice has rendered — printing on arrival would print the
@@ -342,10 +349,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const handleIssue = async () => {
     if (!invoice) return
     const ok = await confirm({
-      title: 'Issue invoice',
+      title: `Issue invoice ${invoice.invoiceNo}?`,
       description: `${invoice.invoiceNo} will be issued for ${formatCurrency(invoice.totalAmount)}. Its lines cannot be edited once a payment is recorded against it.`,
       confirmLabel: 'Issue invoice',
-      variant: 'default',
+      tone: 'default',
     })
     if (!ok) return
     try {
@@ -360,12 +367,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         throw new Error(data.error || 'Failed to issue the invoice')
       }
       await fetchInvoice()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not issue the invoice',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError(`issue invoice ${invoice.invoiceNo}`, error))
     } finally {
       setIssuing(false)
     }
@@ -401,39 +404,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Failed to record the decision')
-      toast({
-        title: decision === 'APPROVE' ? 'Discount approved' : 'Discount rejected',
-        description: data.message,
-      })
+      toast(
+        toastSuccess(
+          decision === 'APPROVE' ? 'Discount approved' : 'Discount rejected',
+          data.message
+        )
+      )
       setDecisionNote('')
       await fetchInvoice()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not record the decision',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError('record the discount decision', error))
     } finally {
       setDeciding(null)
     }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const config = invoiceStatusConfig[status as keyof typeof invoiceStatusConfig] || {
-      label: status,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
-  }
-
-  const getPaymentStatusBadge = (status: string) => {
-    const config = paymentStatusConfig[status as keyof typeof paymentStatusConfig] || {
-      label: status,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
   }
 
   const getPaymentMethodIcon = (method: string) => {
@@ -451,29 +434,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-96" />
-          </div>
-          <Skeleton className="h-96" />
-        </div>
-      </div>
-    )
+  if (loading && !invoice) return <PageSkeleton variant="detail" />
+
+  if (loadState === 'failed' && !invoice) {
+    return <LoadFailed what="this invoice" onRetry={fetchInvoice} />
   }
 
   if (!invoice) {
     return (
-      <div className="flex flex-col items-center justify-center h-96">
-        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-lg text-muted-foreground">Invoice not found</p>
-        <Button variant="outline" className="mt-4" asChild>
-          <Link href="/billing/invoices">Back to Invoices</Link>
-        </Button>
+      <div className="space-y-6">
+        <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
+        <EmptyState
+          icon={AlertCircle}
+          title="Invoice not found"
+          description="It may have been removed, or the link is wrong."
+          actionLabel="Back to invoices"
+          actionHref={trail.back('/billing/invoices')}
+        />
       </div>
     )
   }
@@ -546,67 +523,67 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               {invoice.status === 'DRAFT' ? ' (draft)' : ''}
               {invoice.status === 'CANCELLED' ? ' (cancelled)' : ''}
             </p>
-            <p>Date: {formatDate(invoiceDate)}</p>
-            {invoice.dueDate && <p>Due: {formatDate(invoice.dueDate)}</p>}
+            <p>Date: {displayDate(invoiceDate)}</p>
+            {invoice.dueDate && <p>Due: {displayDate(invoice.dueDate)}</p>}
           </div>
         </div>
       </div>
 
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
-        <div className="flex min-w-0 items-center gap-4">
-          <BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="page-title">{invoice.invoiceNo}</h1>
-              {getStatusBadge(invoice.status)}
-            </div>
-            <p className="text-muted-foreground">
-              {invoice.issuedAt
-                ? `Issued on ${formatDate(invoice.issuedAt)}`
-                : `Draft started on ${formatDate(invoice.createdAt)}`}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
-          {invoice.status === 'DRAFT' && (
-            <>
+      <PageHeader
+        className="print:hidden"
+        back={<BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />}
+        title={invoice.invoiceNo}
+        badges={<StatusBadge kind="invoice" status={invoice.status} />}
+        description={
+          invoice.issuedAt
+            ? `Issued on ${displayDate(invoice.issuedAt)}`
+            : `Draft started on ${displayDate(invoice.createdAt)}`
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="h-4 w-4 mr-2" />
+              Print
+            </Button>
+            {invoice.status === 'DRAFT' && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Link>
+                </Button>
+                <SubmitButton
+                  type="button"
+                  onClick={handleIssue}
+                  busy={issuing}
+                  busyLabel="Issuing…"
+                  icon={Send}
+                  disabled={!!issueBlocked}
+                  title={issueBlocked ?? undefined}
+                >
+                  Issue invoice
+                </SubmitButton>
+              </>
+            )}
+            {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
               <Button variant="outline" asChild>
                 <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
                   <Pencil className="h-4 w-4 mr-2" />
-                  Edit
+                  Notes &amp; due date
                 </Link>
               </Button>
-              <Button
-                onClick={handleIssue}
-                disabled={issuing || !!issueBlocked}
-                title={issueBlocked ?? undefined}
-              >
-                <Send className="h-4 w-4 mr-2" />
-                {issuing ? 'Issuing…' : 'Issue invoice'}
+            )}
+            {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+              <Button onClick={() => setPaymentDialogOpen(true)}>
+                <CreditCard className="h-4 w-4 mr-2" />
+                Record Payment
               </Button>
-            </>
-          )}
-          {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-            <Button variant="outline" asChild>
-              <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Notes &amp; due date
-              </Link>
-            </Button>
-          )}
-          {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-            <Button onClick={() => setPaymentDialogOpen(true)}>
-              <CreditCard className="h-4 w-4 mr-2" />
-              Record Payment
-            </Button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       {invoice.status === 'DRAFT' && issueBlocked && (
         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
@@ -621,7 +598,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Patient Info */}
           <Card>
             <CardHeader>
-              <CardTitle>Bill To</CardTitle>
+              <CardTitle>Bill to</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-start gap-4">
@@ -690,7 +667,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.appointment && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              For the visit on {formatDateTime(invoice.appointment.startsAt)}
+              For the visit on {displayDateTime(invoice.appointment.startsAt)}
               {invoice.appointment.doctor
                 ? ` with Dr. ${invoice.appointment.doctor.firstName} ${invoice.appointment.doctor.lastName}`
                 : ''}{' '}
@@ -708,7 +685,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Invoice Items */}
           <Card>
             <CardHeader>
-              <CardTitle>Invoice Items</CardTitle>
+              <CardTitle>Invoice items</CardTitle>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table className="min-w-[700px]">
@@ -716,7 +693,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   <TableRow>
                     <TableHead className="w-[50%]">Description</TableHead>
                     <TableHead className="text-center">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Unit price</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -830,7 +807,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       <span>{formatCurrency(invoice.paidAmount)}</span>
                     </div>
                     <div className="flex justify-between font-bold">
-                      <span>Balance Due</span>
+                      <span>Balance due</span>
                       <span
                         className={
                           Number(invoice.balanceAmount) > 0 ? 'text-red-600 dark:text-red-400' : ''
@@ -859,7 +836,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.payments.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Payment History</CardTitle>
+                <CardTitle>Payment history</CardTitle>
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
                 <Table className="min-w-[700px]">
@@ -891,7 +868,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                           )}
                         </TableCell>
-                        <TableCell>{formatDate(payment.paymentDate)}</TableCell>
+                        <TableCell>{displayDate(payment.paymentDate)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {getPaymentMethodIcon(payment.paymentMethod)}
@@ -903,7 +880,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         <TableCell className="text-right font-medium">
                           {formatCurrency(payment.amount)}
                         </TableCell>
-                        <TableCell>{getPaymentStatusBadge(payment.status)}</TableCell>
+                        <TableCell>
+                          <StatusBadge kind="payment" status={payment.status} />
+                        </TableCell>
                       </TableRow>,
                       ...(payment.refunds ?? []).map((refund) => (
                         <TableRow key={refund.id} className="text-purple-700 dark:text-purple-300">
@@ -913,7 +892,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                               Refund of {payment.paymentNo}: {refund.reason}
                             </div>
                           </TableCell>
-                          <TableCell>{formatDate(refund.refundedAt)}</TableCell>
+                          <TableCell>{displayDate(refund.refundedAt)}</TableCell>
                           <TableCell>
                             {paymentMethodConfig[
                               refund.refundMethod as keyof typeof paymentMethodConfig
@@ -954,7 +933,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 {invoice.termsAndConditions && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground mb-1">
-                      Terms & Conditions
+                      Terms &amp; conditions
                     </div>
                     <p className="text-sm whitespace-pre-line">{invoice.termsAndConditions}</p>
                   </div>
@@ -1001,15 +980,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Approval</span>
-                  <span>
-                    {approval === 'NOT_REQUIRED'
-                      ? 'Not needed'
-                      : approval === 'PENDING'
-                        ? 'Awaiting a manager'
-                        : approval === 'APPROVED'
-                          ? 'Approved'
-                          : 'Rejected'}
-                  </span>
+                  <StatusBadge kind="discountApproval" status={approval} />
                 </div>
                 {invoice.discountRequestedBy && (
                   <div className="flex justify-between">
@@ -1025,7 +996,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     <span>
                       {invoice.discountApprovedBy.name}
                       {invoice.discountDecidedAt
-                        ? `, ${formatDate(invoice.discountDecidedAt)}`
+                        ? `, ${displayDate(invoice.discountDecidedAt)}`
                         : ''}
                     </span>
                   </div>
@@ -1048,21 +1019,27 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         onChange={(e) => setDecisionNote(e.target.value)}
                       />
                       <div className="flex gap-2">
-                        <Button
+                        <SubmitButton
+                          type="button"
                           size="sm"
                           onClick={() => handleDecision('APPROVE')}
+                          busy={deciding === 'APPROVE'}
+                          busyLabel="Approving…"
                           disabled={deciding !== null}
                         >
-                          {deciding === 'APPROVE' ? 'Approving…' : 'Approve'}
-                        </Button>
-                        <Button
+                          Approve
+                        </SubmitButton>
+                        <SubmitButton
+                          type="button"
                           size="sm"
                           variant="outline"
                           onClick={() => handleDecision('REJECT')}
+                          busy={deciding === 'REJECT'}
+                          busyLabel="Rejecting…"
                           disabled={deciding !== null}
                         >
-                          {deciding === 'REJECT' ? 'Rejecting…' : 'Reject'}
-                        </Button>
+                          Reject
+                        </SubmitButton>
                       </div>
                     </div>
                   ) : (
@@ -1079,22 +1056,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Status Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Invoice Status</CardTitle>
+              <CardTitle>Invoice status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Status</span>
-                {getStatusBadge(invoice.status)}
+                <StatusBadge kind="invoice" status={invoice.status} />
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Invoice Date</span>
-                <span>{formatDate(invoiceDate)}</span>
+                <span className="text-muted-foreground">Invoice date</span>
+                <span>{displayDate(invoiceDate)}</span>
               </div>
               {invoice.dueDate && (
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Due Date</span>
+                  <span className="text-muted-foreground">Due date</span>
                   <div className="text-right">
-                    <div>{formatDate(invoice.dueDate)}</div>
+                    <div>{displayDate(invoice.dueDate)}</div>
                     {dueDays?.overdue && (
                       <div className="text-xs text-red-600 flex items-center justify-end gap-1 dark:text-red-400">
                         <Clock className="h-3 w-3" />
@@ -1106,17 +1083,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               )}
               <Separator />
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Total Amount</span>
+                <span className="text-muted-foreground">Total amount</span>
                 <span className="font-semibold">{formatCurrency(invoice.totalAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Amount Paid</span>
+                <span className="text-muted-foreground">Amount paid</span>
                 <span className="text-green-600 font-semibold dark:text-green-400">
                   {formatCurrency(invoice.paidAmount)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Balance Due</span>
+                <span className="text-muted-foreground">Balance due</span>
                 <span
                   className={`font-semibold ${Number(invoice.balanceAmount) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}
                 >
@@ -1138,7 +1115,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 onClick={() => window.print()}
               >
                 <Printer className="h-4 w-4 mr-2" />
-                Print Invoice
+                Print invoice
               </Button>
               {/* "Send via Email" was here with no handler and no route behind
                   it — there is no endpoint that emails an invoice. Removed
@@ -1147,7 +1124,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <Button variant="outline" className="w-full justify-start" asChild>
                 <Link href={trail.to(`/patients/${invoice.patient.id}`)} className="block">
                   <User className="h-4 w-4 mr-2" />
-                  View Patient
+                  View patient
                 </Link>
               </Button>
             </CardContent>

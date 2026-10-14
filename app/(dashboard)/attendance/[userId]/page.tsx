@@ -2,7 +2,6 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -24,10 +23,17 @@ import {
   usePagedRows,
 } from '@/components/ui/data-grid'
 import { IconTooltip } from '@/components/ui/icon-action'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { ROLE_LABELS } from '@/lib/rbac'
-import { displayDateTime } from '@/lib/dates'
+import { BLANK, displayDate, displayDateTime } from '@/lib/dates'
 import {
   ATTENDANCE_STATUSES,
   REGISTER_PAGE_SIZES,
@@ -35,7 +41,6 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
   blankCode,
-  fullDay,
   isEditable,
   rangeLabel,
   weekdayIndex,
@@ -46,7 +51,7 @@ import {
 } from '@/lib/attendance'
 import { DownloadMenu, RangeControls } from '@/components/attendance/range-controls'
 import { cn } from '@/lib/utils'
-import { CalendarDays, Loader2, Pencil } from 'lucide-react'
+import { CalendarDays, Pencil, Save, UserX } from 'lucide-react'
 
 /**
  * One person's attendance.
@@ -98,6 +103,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
   const [data, setData] = useState<RecordResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [editing, setEditing] = useState<RecordDay | null>(null)
   const latestRequest = useRef(0)
 
@@ -113,24 +119,22 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
   const load = useCallback(async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
       const res = await fetch(`/api/attendance/${userId}?${query}`)
       if (res.status === 404) {
         setMissing(true)
         return
       }
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'The record could not be loaded')
+      const body = await readJson<RecordResponse>(res)
       if (requestId !== latestRequest.current) return
       setData(body)
       if (!from) setFrom(body.from)
       if (!to) setTo(body.to)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'The record could not be loaded',
-        variant: 'destructive',
-      })
+      if (requestId !== latestRequest.current) return
+      setFailed(true)
+      toast(toastError('load the attendance record', err))
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
@@ -147,43 +151,58 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
   )
   const paged = usePagedRows(listed, 50)
 
+  const backLink = <BackLink fallback="/attendance" fallbackLabel="Attendance" trail={trail} />
+
   if (missing) {
     return (
       <div className="space-y-4">
-        <BackLink fallback="/attendance" fallbackLabel="Attendance" trail={trail} />
-        <p className="text-muted-foreground">
-          That person is not on this clinic’s attendance register.
-        </p>
+        {backLink}
+        <EmptyState
+          icon={UserX}
+          title="Not on the register"
+          description="That person is not on this clinic’s attendance register."
+          actionLabel="Open the register"
+          actionHref={trail.back('/attendance')}
+        />
       </div>
     )
   }
 
-  const person = data?.person
-  const summary = data?.summary
+  if (!data) {
+    if (failed) {
+      return (
+        <div className="space-y-4">
+          {backLink}
+          <LoadFailed what="this attendance record" onRetry={load} />
+        </div>
+      )
+    }
+    return <PageSkeleton variant="detail" />
+  }
+
+  const person = data.person
+  const summary = data.summary
 
   return (
     <div className="space-y-6">
-      <BackLink fallback="/attendance" fallbackLabel="Attendance" trail={trail} />
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title flex flex-wrap items-center gap-2">
-            {person?.name ?? 'Attendance'}
-            {person && !person.isActive && <Badge variant="outline">Left</Badge>}
-          </h1>
-          {person && (
-            <p className="text-muted-foreground">
-              {ROLE_LABELS[person.role]}
-              {person.clinicalRole ? ` + ${ROLE_LABELS[person.clinicalRole]}` : ''}
-              {person.employeeId ? ` · ${person.employeeId}` : ''}
-              {` · joined ${fullDay(person.joinedOn)}`}
-            </p>
-          )}
-        </div>
-        {data?.canExport && (
-          <DownloadMenu href={`/api/attendance/${userId}/export?${query}`} disabled={!data} />
-        )}
-      </div>
+      <PageHeader
+        title={person.name}
+        badges={!person.isActive && <StatusBadge kind="staff" status={false} label="Left" />}
+        description={
+          <>
+            {ROLE_LABELS[person.role]}
+            {person.clinicalRole ? ` + ${ROLE_LABELS[person.clinicalRole]}` : ''}
+            {person.employeeId ? ` · ${person.employeeId}` : ''}
+            {` · joined ${displayDate(person.joinedOn)}`}
+          </>
+        }
+        back={backLink}
+        actions={
+          data.canExport && (
+            <DownloadMenu href={`/api/attendance/${userId}/export?${query}`} disabled={!data} />
+          )
+        }
+      />
 
       <RangeControls
         from={from}
@@ -211,7 +230,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
           />
           <Figure label="Off" value={summary.off} />
           <Figure label="Not marked" value={summary.unmarked} />
-          <Figure label="Attendance" value={summary.rate === null ? '—' : `${summary.rate}%`} />
+          <Figure label="Attendance" value={summary.rate === null ? BLANK : `${summary.rate}%`} />
         </dl>
       )}
 
@@ -257,7 +276,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
               {paged.rows.map((day) => (
                 <TableRow key={day.date}>
                   <TableCell className="whitespace-nowrap">
-                    <span className="font-medium">{fullDay(day.date)}</span>
+                    <span className="font-medium">{displayDate(day.date)}</span>
                     <span className="ml-2 text-xs text-muted-foreground">
                       {weekdayShort(day.date)}
                     </span>
@@ -277,7 +296,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
                         </div>
                       </>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">{BLANK}</span>
                     )}
                   </TableCell>
                   {data?.canWrite && (
@@ -287,7 +306,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
                           <Button
                             size="sm"
                             variant="ghost"
-                            aria-label={`Correct ${fullDay(day.date)}`}
+                            aria-label={`Correct ${displayDate(day.date)}`}
                             onClick={() => setEditing(day)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -412,7 +431,7 @@ function MonthGrid({ days, onChoose }: { days: RecordDay[]; onChoose?: (day: Rec
                     type="button"
                     disabled={!clickable}
                     onClick={() => onChoose?.(day)}
-                    title={`${fullDay(day.date)} — ${
+                    title={`${displayDate(day.date)} — ${
                       marked
                         ? STATUS_LABEL[day.status!]
                         : day.state === 'DEFAULT'
@@ -483,26 +502,19 @@ function EditDayDialog({
     if (!day) return
     setSaving(true)
     try {
-      const res = await fetch('/api/attendance', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          marks: [{ userId: personId, date: day.date, status, note: note.trim() || null }],
-        }),
-      })
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'Not saved')
-      toast({
-        title: 'Day saved',
-        description: `${personName} · ${fullDay(day.date)}`,
-      })
+      await readJson(
+        await fetch('/api/attendance', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            marks: [{ userId: personId, date: day.date, status, note: note.trim() || null }],
+          }),
+        })
+      )
+      toast(toastSuccess('Day saved', `${personName} · ${displayDate(day.date)}`))
       await onSaved()
     } catch (err) {
-      toast({
-        title: 'Not saved',
-        description: err instanceof Error ? err.message : 'Not saved',
-        variant: 'destructive',
-      })
+      toast(toastError(`save ${displayDate(day.date)}`, err))
     } finally {
       setSaving(false)
     }
@@ -513,10 +525,10 @@ function EditDayDialog({
 
   return (
     <Dialog open={!!day} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>
-            {personName} — {day ? fullDay(day.date) : ''}
+            {personName} — {day ? displayDate(day.date) : ''}
           </DialogTitle>
           <DialogDescription>
             {day?.state === 'MARKED' && day.markedBy
@@ -576,13 +588,19 @@ function EditDayDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving || (status === null && !offerOff)}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save
-          </Button>
+          <SubmitButton
+            type="button"
+            busy={saving}
+            busyLabel="Saving…"
+            icon={Save}
+            onClick={save}
+            disabled={status === null && !offerOff}
+          >
+            Save changes
+          </SubmitButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

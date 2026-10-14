@@ -1,7 +1,9 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatDate } from '@/lib/utils'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { displayDate, isoDay } from '@/lib/dates'
+import { prescriptionStatus } from '@/lib/status'
 import { groupTeeth } from '@/lib/teeth'
 import { PortalEmpty, PortalState, usePortalData } from '@/components/portal/portal-data'
 
@@ -31,6 +33,9 @@ export default function PortalPrescriptionsPage() {
   const { data, loading, failed, reload } = usePortalData<Prescription[]>(
     '/api/portal/prescriptions'
   )
+  // The route does not send the clinic's day; the patient's own is the day
+  // they are reading on, which is the one that matters for "can I still use it".
+  const today = isoDay(new Date())
 
   return (
     <div className="space-y-4">
@@ -51,9 +56,17 @@ export default function PortalPrescriptionsPage() {
             {data.map((rx) => (
               <Card key={rx.id}>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">
-                    {formatDate(rx.date)} &middot; {rx.dentist}
-                  </CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-base">
+                      {displayDate(rx.date)} &middot; {rx.dentist}
+                    </CardTitle>
+                    {rx.validUntil && (
+                      <StatusBadge
+                        kind="prescription"
+                        status={prescriptionStatus(rx.validUntil, today)}
+                      />
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {rx.prescriptionNo}
                     {rx.teeth.length > 0 &&

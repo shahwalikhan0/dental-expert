@@ -166,7 +166,7 @@ export function MedicalHistoryFields({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Medical History</CardTitle>
+        <CardTitle>Medical history</CardTitle>
         <CardDescription>
           What a clinician needs to know before treating this patient. An allergy recorded here is
           checked against every prescription written for them.
@@ -185,7 +185,7 @@ export function MedicalHistoryFields({
         />
         <ListField
           id="conditions"
-          label="Medical Conditions"
+          label="Medical conditions"
           description="Ongoing conditions. The first few change what happens in the chair."
           placeholder="e.g. Diabetes"
           suggestions={COMMON_CONDITIONS}
@@ -194,7 +194,7 @@ export function MedicalHistoryFields({
         />
         <ListField
           id="currentMedications"
-          label="Current Medications"
+          label="Current medications"
           description="What the patient is already taking, with the dose if they know it."
           placeholder="e.g. Metformin 500mg"
           values={values.currentMedications}

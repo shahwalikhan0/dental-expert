@@ -1,19 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   GridActionsCell,
   GridActionsHead,
   GridBody,
   GridPagination,
-  usePagedRows,
 } from '@/components/ui/data-grid'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -29,15 +25,25 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { useListParams } from '@/hooks/use-list-params'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Clock, Plus, Trash2, Users, Bell, CheckCircle2, Loader2, Search } from 'lucide-react'
-import { format } from 'date-fns'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { FormField } from '@/components/ui/form-field'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
+import { Clock, Plus, Trash2, Users, Bell, CheckCircle2 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
 interface WaitlistEntry {
   id: string
@@ -69,66 +75,91 @@ interface Summary {
   booked: number
 }
 
+interface Doctor {
+  id: string
+  firstName: string
+  lastName: string
+}
+
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 const TIME_SLOTS = [
-  { value: 'MORNING', label: 'Morning (Before 12 PM)' },
-  { value: 'AFTERNOON', label: 'Afternoon (12-5 PM)' },
-  { value: 'EVENING', label: 'Evening (After 5 PM)' },
+  { value: 'MORNING', label: 'Morning (before 12 pm)' },
+  { value: 'AFTERNOON', label: 'Afternoon (12–5 pm)' },
+  { value: 'EVENING', label: 'Evening (after 5 pm)' },
 ]
-
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-  NOTIFIED: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
-  BOOKED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-  CANCELLED: 'bg-muted text-foreground',
-  EXPIRED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+const TIME_LABEL: Record<string, string> = {
+  MORNING: 'Morning',
+  AFTERNOON: 'Afternoon',
+  EVENING: 'Evening',
 }
+
+/** The statuses somebody filters by. Expired entries are not offered, as before. */
+const STATUS_OPTIONS = statusOptions('waitlist', ['ACTIVE', 'NOTIFIED', 'BOOKED', 'CANCELLED'])
 
 export default function WaitlistPage() {
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [entries, setEntries] = useState<WaitlistEntry[]>([])
-  // The route hands back the whole waiting list, so the paging is done here.
-  const paged = usePagedRows(entries)
+  const [total, setTotal] = useState(0)
   const [summary, setSummary] = useState<Summary>({ active: 0, notified: 0, booked: 0 })
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState('ACTIVE')
+  const [failed, setFailed] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [adding, setAdding] = useState(false)
 
+  /**
+   * Search, status and page in the address bar. The list opens on who is
+   * still waiting, as it always did; "All statuses" asks for every entry.
+   */
+  const list = useListParams({ defaults: { status: 'ACTIVE' } })
+  const query = (() => {
+    const params = list.apiParams()
+    // `apiParams` leaves out a filter at its default, but the route reads no
+    // status as "every status" — so the default is sent, and "all" is not.
+    if (list.filters.status === 'all') params.delete('status')
+    else params.set('status', list.filters.status)
+    return params.toString()
+  })()
+
   // Form state
-  const [patientSearch, setPatientSearch] = useState('')
-  const debouncedPatientSearch = useDebouncedValue(patientSearch)
-  const [patientResults, setPatientResults] = useState<any[]>([])
-  const [selectedPatient, setSelectedPatient] = useState<any>(null)
-  const [searchingPatients, setSearchingPatients] = useState(false)
-  const [doctors, setDoctors] = useState<any[]>([])
+  const [selectedPatient, setSelectedPatient] = useState<PickedPatient | null>(null)
+  const [patientError, setPatientError] = useState<string | undefined>()
+  const [doctors, setDoctors] = useState<Doctor[]>([])
   const [selectedDoctor, setSelectedDoctor] = useState('')
   const [selectedDays, setSelectedDays] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState('')
   const [notes, setNotes] = useState('')
 
-  const fetchWaitlist = useCallback(async () => {
+  /** The newest request wins; an older answer arriving late is dropped. */
+  const latestRequest = useRef(0)
+
+  const fetchWaitlist = async () => {
+    const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams()
-      if (statusFilter) params.set('status', statusFilter)
-
-      const response = await fetch(`/api/appointments/waitlist?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch')
-      const data = await response.json()
+      setFailed(false)
+      const data = await readJson<{
+        entries: WaitlistEntry[]
+        total: number
+        summary: Summary
+      }>(await fetch(`/api/appointments/waitlist?${query}`))
+      if (requestId !== latestRequest.current) return
       setEntries(data.entries)
+      setTotal(data.total ?? data.entries.length)
       setSummary(data.summary)
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load waitlist' })
+    } catch (error) {
+      console.error('Error fetching waitlist:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [statusFilter, toast])
+  }
 
   useEffect(() => {
     fetchWaitlist()
-  }, [fetchWaitlist])
+    // The query string is the whole question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   // Load doctors on mount. `/api/staff/doctors`, as every other booking screen
   // uses: the staff list needs `staff:read`, which the front desk — the people
@@ -140,99 +171,60 @@ export default function WaitlistPage() {
       .catch(() => {})
   }, [])
 
-  /**
-   * Patient search.
-   *
-   * The wait was a `setTimeout` of its own here; it is `useDebouncedValue` now,
-   * which every other search box in the application uses. Clearing the timer on
-   * cleanup covered a request that had not been sent yet but not one already in
-   * flight, so a slow answer for a shorter term could still land last — hence
-   * the `current` guard.
-   */
-  useEffect(() => {
-    const term = debouncedPatientSearch.trim()
-    if (term.length < 2) {
-      setPatientResults([])
-      return
-    }
-
-    let current = true
-    setSearchingPatients(true)
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/patients?search=${encodeURIComponent(term)}&limit=5`)
-        const data = await res.json()
-        if (!current) return
-        setPatientResults(data.patients || [])
-      } catch {
-        if (current) setPatientResults([])
-      } finally {
-        if (current) setSearchingPatients(false)
-      }
-    })()
-
-    return () => {
-      current = false
-    }
-  }, [debouncedPatientSearch])
-
   const handleAdd = async () => {
     if (!selectedPatient) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Please select a patient' })
+      setPatientError('Select a patient')
+      toast(toastError('add to the waitlist', 'Check the highlighted fields.'))
       return
     }
 
     try {
       setAdding(true)
-      const response = await fetch('/api/appointments/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: selectedPatient.id,
-          doctorId: selectedDoctor || null,
-          preferredDays: selectedDays.length > 0 ? selectedDays : null,
-          preferredTime: selectedTime || null,
-          notes: notes || null,
-        }),
-      })
+      await readJson(
+        await fetch('/api/appointments/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: selectedPatient.id,
+            doctorId: selectedDoctor && selectedDoctor !== 'any' ? selectedDoctor : null,
+            preferredDays: selectedDays.length > 0 ? selectedDays : null,
+            preferredTime: selectedTime && selectedTime !== 'any' ? selectedTime : null,
+            notes: notes || null,
+          }),
+        })
+      )
 
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || 'Failed to add')
-      }
-
-      toast({ title: 'Added to waitlist' })
+      toast(toastSuccess('Added to the waitlist'))
       setDialogOpen(false)
       resetForm()
       fetchWaitlist()
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message })
+    } catch (err) {
+      toast(toastError('add to the waitlist', err))
     } finally {
       setAdding(false)
     }
   }
 
-  const handleRemove = async (id: string) => {
+  const handleRemove = async (entry: WaitlistEntry) => {
+    const name = entry.patient?.name ?? 'this patient'
     const ok = await confirm({
-      title: 'Remove from waitlist?',
-      description: 'Remove this patient from the waitlist?',
-      confirmLabel: 'Delete',
+      title: `Remove ${name} from the waitlist?`,
+      description: 'They will no longer be told when a matching slot opens up.',
+      confirmLabel: 'Remove from waitlist',
     })
     if (!ok) return
     try {
-      const response = await fetch(`/api/appointments/waitlist?id=${id}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Failed to remove')
-      toast({ title: 'Removed from waitlist' })
+      await readJson(await fetch(`/api/appointments/waitlist?id=${entry.id}`, { method: 'DELETE' }))
+      toast(toastSuccess('Removed from the waitlist'))
       fetchWaitlist()
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to remove' })
+    } catch (err) {
+      toast(toastError(`remove ${name} from the waitlist`, err))
     }
   }
 
   const resetForm = () => {
-    setPatientSearch('')
-    setPatientResults([])
     setSelectedPatient(null)
+    setPatientError(undefined)
     setSelectedDoctor('')
     setSelectedDays([])
     setSelectedTime('')
@@ -245,167 +237,132 @@ export default function WaitlistPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Waitlist</h1>
-          <p className="text-muted-foreground">Manage patients waiting for appointment slots</p>
-        </div>
-        <Dialog
-          open={dialogOpen}
-          onOpenChange={(open) => {
-            setDialogOpen(open)
-            if (!open) resetForm()
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add to Waitlist
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add to Waitlist</DialogTitle>
-              <DialogDescription>
-                Add a patient to the waitlist for the next available slot
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              {/* Patient Search */}
-              <div className="space-y-2">
-                <Label>Patient *</Label>
-                {selectedPatient ? (
-                  <div className="flex items-center justify-between bg-muted p-2 rounded">
-                    <span className="text-sm font-medium">
-                      {selectedPatient.firstName} {selectedPatient.lastName} (
-                      {selectedPatient.patientId})
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedPatient(null)}>
-                      Change
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search patient by name or ID..."
-                      className="pl-9"
-                      value={patientSearch}
-                      onChange={(e) => setPatientSearch(e.target.value)}
-                    />
-                    {searchingPatients && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />
-                    )}
-                    {/*
-                      A search that matched nothing used to render nothing at
-                      all, which on a box with a spinner in it reads as "still
-                      looking" — so the answer "there is no such patient" was
-                      indistinguishable from no answer yet.
-                    */}
-                    {debouncedPatientSearch.trim().length >= 2 && !searchingPatients && (
-                      <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                        {patientResults.length === 0 ? (
-                          <p className="px-3 py-2 text-sm text-muted-foreground">
-                            No patients found for &ldquo;{debouncedPatientSearch.trim()}&rdquo;
-                          </p>
-                        ) : (
-                          patientResults.map((p: any) => (
-                            <button
-                              key={p.id}
-                              className="w-full text-left px-3 py-2 hover:bg-muted text-sm"
-                              onClick={() => {
-                                setSelectedPatient(p)
-                                setPatientSearch('')
-                                setPatientResults([])
-                              }}
-                            >
-                              {p.firstName} {p.lastName} ({p.patientId})
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+      <PageHeader
+        title="Waitlist"
+        description="Manage patients waiting for appointment slots"
+        actions={
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add to waitlist
+          </Button>
+        }
+      />
 
-              {/* Doctor Preference */}
-              <div className="space-y-2">
-                <Label>Preferred Doctor (optional)</Label>
-                <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Any doctor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any doctor</SelectItem>
-                    {doctors.map((d: any) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        Dr. {d.firstName} {d.lastName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Preferred Days */}
-              <div className="space-y-2">
-                <Label>Preferred Days (optional)</Label>
-                <div className="flex flex-wrap gap-1">
-                  {DAYS.map((day) => (
-                    <Button
-                      key={day}
-                      type="button"
-                      variant={selectedDays.includes(day) ? 'default' : 'outline'}
-                      size="sm"
-                      className="text-xs h-7"
-                      onClick={() => toggleDay(day)}
-                    >
-                      {day.slice(0, 3)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Preferred Time */}
-              <div className="space-y-2">
-                <Label>Preferred Time (optional)</Label>
-                <Select value={selectedTime} onValueChange={setSelectedTime}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Any time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any time</SelectItem>
-                    {TIME_SLOTS.map((slot) => (
-                      <SelectItem key={slot.value} value={slot.value}>
-                        {slot.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <Label>Notes (optional)</Label>
-                <Textarea
-                  placeholder="Any additional notes..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open)
+          if (!open) resetForm()
+        }}
+      >
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Add to waitlist</DialogTitle>
+            <DialogDescription>
+              Add a patient to the waitlist for the next available slot
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <FormField label="Patient" required htmlFor="waitlist-patient" error={patientError}>
+              {(control) => (
+                <PatientPicker
+                  id={control.id}
+                  aria-describedby={control['aria-describedby']}
+                  aria-invalid={control['aria-invalid']}
+                  value={selectedPatient}
+                  onChange={(patient) => {
+                    setSelectedPatient(patient)
+                    if (patient) setPatientError(undefined)
+                  }}
                 />
+              )}
+            </FormField>
+
+            {/* Doctor Preference */}
+            <div className="space-y-2">
+              <Label htmlFor="waitlist-doctor">Preferred doctor (optional)</Label>
+              <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                <SelectTrigger id="waitlist-doctor">
+                  <SelectValue placeholder="Any doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any doctor</SelectItem>
+                  {doctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      Dr. {d.firstName} {d.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Preferred Days */}
+            <div className="space-y-2" role="group" aria-labelledby="waitlist-days-label">
+              <p id="waitlist-days-label" className="text-sm font-medium">
+                Preferred days (optional)
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {DAYS.map((day) => (
+                  <Button
+                    key={day}
+                    type="button"
+                    variant={selectedDays.includes(day) ? 'default' : 'outline'}
+                    size="sm"
+                    className="text-xs h-7"
+                    aria-pressed={selectedDays.includes(day)}
+                    onClick={() => toggleDay(day)}
+                  >
+                    {day.charAt(0) + day.slice(1, 3).toLowerCase()}
+                  </Button>
+                ))}
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAdd} disabled={adding || !selectedPatient}>
-                {adding && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Add to Waitlist
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+
+            {/* Preferred Time */}
+            <div className="space-y-2">
+              <Label htmlFor="waitlist-time">Preferred time (optional)</Label>
+              <Select value={selectedTime} onValueChange={setSelectedTime}>
+                <SelectTrigger id="waitlist-time">
+                  <SelectValue placeholder="Any time" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any time</SelectItem>
+                  {TIME_SLOTS.map((slot) => (
+                    <SelectItem key={slot.value} value={slot.value}>
+                      {slot.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="waitlist-notes">Notes (optional)</Label>
+              <Textarea
+                id="waitlist-notes"
+                placeholder="Any additional notes…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <SubmitButton
+              type="button"
+              onClick={handleAdd}
+              busy={adding}
+              busyLabel="Adding…"
+              disabled={!selectedPatient}
+            >
+              Add to waitlist
+            </SubmitButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -450,26 +407,50 @@ export default function WaitlistPage() {
         </Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2">
-        {['ACTIVE', 'NOTIFIED', 'BOOKED', 'CANCELLED'].map((s) => (
-          <Button
-            key={s}
-            variant={statusFilter === s ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setStatusFilter(s)}
-          >
-            {s.charAt(0) + s.slice(1).toLowerCase()}
-          </Button>
-        ))}
-      </div>
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search the waitlist"
+            placeholder="Search by name, ID or phone…"
+          />
+        }
+        filters={
+          <FilterSelect
+            label="Status"
+            plural="statuses"
+            value={list.filters.status}
+            onValueChange={(status) => list.setFilter('status', status)}
+            options={STATUS_OPTIONS}
+          />
+        }
+        active={{
+          noun: 'waiting patients',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              // The default is "Waiting", so only another choice is a filter.
+              label: 'Status',
+              value:
+                list.filters.status === 'ACTIVE'
+                  ? null
+                  : list.filters.status === 'all'
+                    ? 'All statuses'
+                    : statusLabel('waitlist', list.filters.status),
+              onClear: () => list.setFilter('status', 'ACTIVE'),
+            },
+          ],
+        }}
+      />
 
       {/* Waitlist Table */}
       <Card>
         <CardHeader>
           <CardTitle>
             <Users className="h-5 w-5 inline mr-2" />
-            Waitlist Entries
+            Waitlist entries
           </CardTitle>
           <CardDescription>
             Patients are automatically notified when matching slots open up
@@ -480,8 +461,8 @@ export default function WaitlistPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Patient</TableHead>
-                <TableHead>Doctor Preference</TableHead>
-                <TableHead>Preferred Days</TableHead>
+                <TableHead>Doctor preference</TableHead>
+                <TableHead>Preferred days</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Added</TableHead>
@@ -491,30 +472,46 @@ export default function WaitlistPage() {
             <GridBody
               columns={7}
               loading={loading}
+              failed={failed}
+              onRetry={fetchWaitlist}
               empty={entries.length === 0}
               emptyIcon={Clock}
               emptyTitle="No waitlist entries"
-              emptyDescription="Add a patient here and they are told as soon as a slot matching their preferences opens up."
+              emptyDescription={
+                list.isFiltered
+                  ? 'Nobody on the waitlist matches these filters.'
+                  : 'Add a patient here and they are told as soon as a slot matching their preferences opens up.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'Add to waitlist'}
+              onEmptyAction={list.isFiltered ? list.clear : () => setDialogOpen(true)}
             >
-              {paged.rows.map((entry) => (
+              {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell>
                     <div>
                       <p className="font-medium">{entry.patient?.name || 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
-                        {entry.patient?.patientId} | {entry.patient?.phone}
+                        {[entry.patient?.patientId, formatPhone(entry.patient?.phone)]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
                     </div>
                   </TableCell>
                   <TableCell>{entry.doctor?.name || 'Any'}</TableCell>
                   <TableCell>
-                    {entry.preferredDays && (entry.preferredDays as string[]).length > 0
-                      ? (entry.preferredDays as string[]).map((d) => d.slice(0, 3)).join(', ')
+                    {entry.preferredDays && entry.preferredDays.length > 0
+                      ? entry.preferredDays
+                          .map((d) => d.charAt(0) + d.slice(1, 3).toLowerCase())
+                          .join(', ')
                       : 'Any'}
                   </TableCell>
-                  <TableCell>{entry.preferredTime || 'Any'}</TableCell>
                   <TableCell>
-                    <Badge className={STATUS_COLORS[entry.status] || ''}>{entry.status}</Badge>
+                    {entry.preferredTime
+                      ? (TIME_LABEL[entry.preferredTime] ?? entry.preferredTime)
+                      : 'Any'}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge kind="waitlist" status={entry.status} />
                   </TableCell>
                   <TableCell>{displayDate(entry.createdAt)}</TableCell>
                   <GridActionsCell>
@@ -524,7 +521,7 @@ export default function WaitlistPage() {
                           variant="ghost"
                           size="icon"
                           aria-label="Remove from the waitlist"
-                          onClick={() => handleRemove(entry.id)}
+                          onClick={() => handleRemove(entry)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -547,12 +544,12 @@ export default function WaitlistPage() {
           </Table>
 
           <GridPagination
-            page={paged.page}
-            pageSize={paged.pageSize}
-            total={paged.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="waiting patients"
-            onPageChange={paged.setPage}
-            onPageSizeChange={paged.setPageSize}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

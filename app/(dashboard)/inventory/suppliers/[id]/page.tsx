@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -15,10 +14,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { formatCurrency } from '@/lib/billing-utils'
-import { Edit, Loader2, Package, Phone, Mail, MapPin } from 'lucide-react'
-import { displayDate } from '@/lib/dates'
-import { useToast } from '@/hooks/use-toast'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { formatCurrency } from '@/lib/i18n/format'
+import { formatPhone } from '@/lib/utils'
+import { Pencil, Package, Phone, Mail, MapPin, Truck } from 'lucide-react'
+import { BLANK, displayDate } from '@/lib/dates'
 
 /**
  * A supplier's record.
@@ -75,73 +79,78 @@ export default function SupplierDetailPage() {
 
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  const [failed, setFailed] = useState(false)
+  const [notFound, setNotFound] = useState(false)
 
   const trail = useTrail(supplier?.name ?? null)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/inventory/suppliers/${supplierId}`)
-        const data = await res.json()
-        if (!res.ok || !data.success) throw new Error(data.error || 'Supplier not found')
-        setSupplier(data.data)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load the supplier'
-        // The page still says so in place of the supplier; the toast makes sure
-        // the failure is noticed rather than read as an empty page.
-        setError(message)
-        toast({
-          variant: 'destructive',
-          title: 'Could not load the supplier',
-          description: message,
-        })
-      } finally {
-        setLoading(false)
+  const load = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
+    setNotFound(false)
+    try {
+      const res = await fetch(`/api/inventory/suppliers/${supplierId}`)
+      if (res.status === 404) {
+        setNotFound(true)
+        return
       }
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load the supplier')
+      setSupplier(data.data)
+    } catch (err) {
+      console.error('Error loading supplier:', err)
+      setFailed(true)
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [supplierId, toast])
+  }, [supplierId])
 
-  if (loading) {
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
+    load()
+  }, [load])
+
+  const back = <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
+
+  if (loading && !supplier) return <PageSkeleton variant="detail" />
+
+  if (notFound) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <EmptyState
+        icon={Truck}
+        title="Supplier not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to suppliers"
+        actionHref="/inventory/suppliers"
+      />
     )
   }
 
-  if (error || !supplier) {
+  if (failed || !supplier) {
     return (
-      <div className="space-y-4">
-        <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
-        <p className="text-sm text-muted-foreground">{error ?? 'Supplier not found.'}</p>
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="this supplier" onRetry={load} />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
-
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">{supplier.name}</h1>
-            <Badge variant={supplier.status === 'ACTIVE' ? 'default' : 'outline'}>
-              {supplier.status.toLowerCase()}
-            </Badge>
-          </div>
-          <p className="text-muted-foreground">{supplier.code}</p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
-            <Edit className="h-4 w-4 mr-2" />
-            Edit
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title={supplier.name}
+        description={supplier.code}
+        badges={<StatusBadge kind="supplier" status={supplier.status} />}
+        back={back}
+        actions={
+          <Button variant="outline" asChild>
+            <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -188,8 +197,8 @@ export default function SupplierDetailPage() {
             {supplier.phone && (
               <p className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
-                {supplier.phone}
-                {supplier.alternatePhone ? ` · ${supplier.alternatePhone}` : ''}
+                {formatPhone(supplier.phone)}
+                {supplier.alternatePhone ? ` · ${formatPhone(supplier.alternatePhone)}` : ''}
               </p>
             )}
             {supplier.email && (
@@ -221,25 +230,23 @@ export default function SupplierDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Payment terms</span>
-              <span>{supplier.paymentTerms || '—'}</span>
+              <span>{supplier.paymentTerms || BLANK}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Credit limit</span>
-              <span>
-                {supplier.creditLimit ? formatCurrency(Number(supplier.creditLimit)) : '—'}
-              </span>
+              <span>{supplier.creditLimit ? formatCurrency(supplier.creditLimit) : BLANK}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Sales tax number</span>
-              <span>{supplier.taxRegistrationNo || '—'}</span>
+              <span>{supplier.taxRegistrationNo || BLANK}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">National tax number</span>
-              <span>{supplier.nationalTaxNo || '—'}</span>
+              <span>{supplier.nationalTaxNo || BLANK}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Rating</span>
-              <span>{supplier.rating ? `${supplier.rating} / 5` : '—'}</span>
+              <span>{supplier.rating ? `${supplier.rating} / 5` : BLANK}</span>
             </div>
             {supplier.notes && <p className="pt-2 text-muted-foreground">{supplier.notes}</p>}
           </CardContent>
@@ -276,7 +283,7 @@ export default function SupplierDetailPage() {
                     </TableCell>
                     <TableCell className="text-right">{item.currentStock}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(Number(item.purchasePrice))}
+                      {formatCurrency(item.purchasePrice)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -321,12 +328,10 @@ export default function SupplierDetailPage() {
                     <TableCell>{displayDate(order.orderDate)}</TableCell>
                     <TableCell>{displayDate(order.expectedDate)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {order.status.toLowerCase().replace('_', ' ')}
-                      </Badge>
+                      <StatusBadge kind="purchaseOrder" status={order.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(Number(order.totalAmount))}
+                      {formatCurrency(order.totalAmount)}
                     </TableCell>
                   </TableRow>
                 ))}

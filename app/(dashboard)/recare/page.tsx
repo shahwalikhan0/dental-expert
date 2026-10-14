@@ -1,14 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import Link from 'next/link'
-import { Badge } from '@/components/ui/badge'
+import { useListParams } from '@/hooks/use-list-params'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -23,9 +21,17 @@ import {
   GridBody,
   GridPagination,
   SortableHeader,
-  useSort,
+  type SortControl,
+  type SortDirection,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { useToast } from '@/hooks/use-toast'
 import { DUE_BAND_LABELS, RECALL_COOLDOWN_DAYS, daysUntil, type DueBand } from '@/lib/recare'
 import type { RecallRun } from '@/lib/recall'
@@ -36,13 +42,13 @@ import {
   Check,
   Clock,
   Loader2,
-  Search,
   Send,
   Settings2,
   X,
 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { formatPhone } from '@/lib/utils'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
 /**
  * The recall list — who should be in the chair and is not booked.
@@ -99,10 +105,11 @@ const CHANNEL_LABELS: Record<Channel, string> = {
   WHATSAPP: 'WhatsApp',
 }
 
-const CONTACTED_LABELS: Record<string, string> = {
-  no: 'Not contacted recently',
-  yes: `Contacted in the last ${RECALL_COOLDOWN_DAYS} days`,
-}
+/** The contacted filter; the values are what the route reads as `contacted`. */
+const CONTACTED_OPTIONS = [
+  { value: 'no', label: 'Not contacted recently' },
+  { value: 'yes', label: `Contacted in the last ${RECALL_COOLDOWN_DAYS} days` },
+]
 
 function dueLabel(dueDate: string): string {
   const days = daysUntil(dueDate)
@@ -135,21 +142,71 @@ function contactRefusal(recare: Recare, channel: Channel): string | null {
 export default function RecarePage() {
   const trail = useTrail('Recare')
   const { toast } = useToast()
-  const sort = useSort({ column: 'dueDate', direction: 'asc' })
+
+  /**
+   * The band, search, filters, sort and page, kept in the address bar, so
+   * opening a patient and coming back — or refreshing, or sharing the link —
+   * keeps the place in the list. The hook debounces the search and goes back
+   * to page 1 on any change.
+   */
+  const list = useListParams({
+    defaults: {
+      band: 'OVERDUE',
+      typeId: 'all',
+      contacted: 'all',
+      sort: 'dueDate',
+      direction: 'asc',
+    },
+  })
+  const band: DueBand = (BANDS as string[]).includes(list.filters.band)
+    ? (list.filters.band as DueBand)
+    : 'OVERDUE'
+  const { typeId, contacted } = list.filters
+
+  /**
+   * Column sorting, in the URL with the rest. Ascending, descending, then back
+   * to the list's own order — due date, soonest first.
+   */
+  const sortColumn = list.filters.sort || 'dueDate'
+  const sortDirection: SortDirection = list.filters.direction === 'desc' ? 'desc' : 'asc'
+  const sort: SortControl = {
+    column: sortColumn,
+    direction: sortDirection,
+    toggle: (column) => {
+      if (column !== sortColumn) list.setFilters({ sort: column, direction: 'asc' })
+      else if (sortDirection === 'asc') list.setFilters({ direction: 'desc' })
+      else list.setFilters({ sort: 'dueDate', direction: 'asc' })
+    },
+    params: { sort: sortColumn, direction: sortDirection },
+  }
+
+  // The search and the two filters — not the band or the sort, which are the
+  // view rather than a narrowing of it.
+  const filtered = list.query !== '' || typeId !== 'all' || contacted !== 'all'
+  const clearFilters = () => {
+    list.clear()
+    // `clear` puts every filter back, the band and sort included; keep those.
+    list.setFilters({ band, sort: sortColumn, direction: sortDirection })
+  }
+
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const query = (() => {
+    const params = list.apiParams()
+    params.set('band', band)
+    params.set('sort', sortColumn)
+    params.set('direction', sortDirection)
+    return params.toString()
+  })()
 
   const [recares, setRecares] = useState<Recare[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [types, setTypes] = useState<{ id: string; name: string }[]>([])
   const [performance, setPerformance] = useState<Performance | null>(null)
-  const [band, setBand] = useState<DueBand>('OVERDUE')
-  const [typeId, setTypeId] = useState('all')
-  const [contacted, setContacted] = useState('all')
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
   const [loading, setLoading] = useState(true)
+  // The fetch failed — said in the grid, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0 })
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [channel, setChannel] = useState<Channel>('SMS')
@@ -165,53 +222,30 @@ export default function RecarePage() {
   const load = useCallback(async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        band,
-        page: String(pagination.page),
-        limit: String(pagination.limit),
-        sort: sort.column ?? 'dueDate',
-        direction: sort.direction,
-      })
-      if (typeId !== 'all') params.set('typeId', typeId)
-      if (contacted !== 'all') params.set('contacted', contacted)
-      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
-
-      const res = await fetch(`/api/recare?${params}`)
+      const res = await fetch(`/api/recare?${query}`)
       if (!res.ok) throw new Error('The recall list could not be loaded')
       const data = await res.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setRecares(data.recares ?? [])
       setCounts(data.counts ?? {})
-      setPagination((p) => ({ ...p, total: data.pagination?.total ?? 0 }))
+      setTotal(data.pagination?.total ?? 0)
       // Selection belongs to the list that was on screen. Keeping ticks across
       // a filter change is how somebody messages a patient they cannot see.
       setSelected(new Set())
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to load the recall list',
-        variant: 'destructive',
-      })
+      console.error('Error loading the recall list:', err)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [
-    band,
-    typeId,
-    contacted,
-    debouncedSearch,
-    pagination.page,
-    pagination.limit,
-    sort.column,
-    sort.direction,
-    toast,
-  ])
+  }, [query])
 
   useEffect(() => {
-    // The wait now lives in `useDebouncedValue` above, which `load` depends on.
-    // This used to hold a second timer of its own, so a keystroke waited twice.
+    // Loading is the effect's job: it fetches and stores what comes back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
@@ -221,6 +255,11 @@ export default function RecarePage() {
       .then((data) => setTypes(data.types ?? []))
       .catch(() => setTypes([]))
   }, [])
+
+  const typeOptions = useMemo(
+    () => types.map((type) => ({ value: type.id, label: type.name })),
+    [types]
+  )
 
   const loadPerformance = useCallback(() => {
     // Reports are a separate permission from the list. Somebody who may work
@@ -237,6 +276,7 @@ export default function RecarePage() {
 
   const act = async (recare: Recare, action: 'complete' | 'snooze' | 'unsnooze') => {
     setBusyId(recare.id)
+    const who = `${recare.patient.firstName} ${recare.patient.lastName}`
     try {
       const body: Record<string, unknown> = { action }
 
@@ -249,30 +289,36 @@ export default function RecarePage() {
         body.reason = 'Deferred from the recall list'
       }
 
-      const res = await fetch(`/api/recare/${recare.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'That did not work')
+      await readJson(
+        await fetch(`/api/recare/${recare.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      )
 
-      toast({
-        title:
+      toast(
+        toastSuccess(
           action === 'complete'
             ? 'Marked as done'
             : action === 'snooze'
               ? 'Deferred a month'
               : 'Back on the list',
-        description: `${recare.patient.firstName} ${recare.patient.lastName} · ${recare.recareType.name}`,
-      })
+          `${who} · ${recare.recareType.name}`
+        )
+      )
       await load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'That did not work',
-        variant: 'destructive',
-      })
+      toast(
+        toastError(
+          action === 'complete'
+            ? `mark ${who}'s recare as done`
+            : action === 'snooze'
+              ? `defer ${who}'s recare`
+              : `put ${who}'s recare back on the list`,
+          err
+        )
+      )
     } finally {
       setBusyId(null)
     }
@@ -316,13 +362,13 @@ export default function RecarePage() {
   const send = async (force = false) => {
     setSending(true)
     try {
-      const res = await fetch('/api/recare/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recareIds: effective, channel, force }),
-      })
-      const data: RecallRun & { error?: string } = await res.json()
-      if (!res.ok) throw new Error(data.error || 'The messages were not queued')
+      const data = await readJson<RecallRun>(
+        await fetch('/api/recare/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recareIds: effective, channel, force }),
+        })
+      )
 
       // A cooling-off skip is the one worth offering to override: the desk
       // usually knows the first message did not land.
@@ -347,11 +393,7 @@ export default function RecarePage() {
       await load()
       loadPerformance()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'The messages were not queued',
-        variant: 'destructive',
-      })
+      toast(toastError('queue the recall messages', err))
     } finally {
       setSending(false)
     }
@@ -359,20 +401,18 @@ export default function RecarePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">Recare</h1>
-          <p className="text-muted-foreground">
-            Patients due to be seen again who have nothing booked.
-          </p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href={trail.to('/settings/recare')}>
-            <Settings2 className="h-4 w-4 mr-2" />
-            Recare types
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Recare"
+        description="Patients due to be seen again who have nothing booked."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href={trail.to('/settings/recare')}>
+              <Settings2 className="h-4 w-4 mr-2" />
+              Recare types
+            </Link>
+          </Button>
+        }
+      />
 
       {performance && performance.due > 0 && (
         <Card>
@@ -393,111 +433,64 @@ export default function RecarePage() {
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {BANDS.map((option) => (
-          <Button
-            key={option}
-            size="sm"
-            variant={band === option ? 'default' : 'outline'}
-            onClick={() => {
-              setBand(option)
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-          >
-            {DUE_BAND_LABELS[option]}
-            <Badge variant="secondary" className="ml-2">
-              {counts[option] ?? 0}
-            </Badge>
-          </Button>
-        ))}
-      </div>
+      <SegmentedControl<DueBand>
+        aria-label="Due"
+        size="md"
+        value={band}
+        onChange={(next) => list.setFilter('band', next)}
+        options={BANDS.map((option) => ({
+          value: option,
+          label: DUE_BAND_LABELS[option],
+          badge: counts[option] ?? 0,
+        }))}
+      />
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-            placeholder="Search by name, patient ID or phone…"
-            className="pl-9"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
             aria-label="Search the recall list"
+            placeholder="Search by name, patient ID or phone…"
           />
-        </div>
-        <Select
-          value={typeId}
-          onValueChange={(value) => {
-            setTypeId(value)
-            setPagination((p) => ({ ...p, page: 1 }))
-          }}
-        >
-          <SelectTrigger className="w-[220px]" aria-label="Filter by recare type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All recare types</SelectItem>
-            {types.map((type) => (
-              <SelectItem key={type.id} value={type.id}>
-                {type.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={contacted}
-          onValueChange={(value) => {
-            setContacted(value)
-            setPagination((p) => ({ ...p, page: 1 }))
-          }}
-        >
-          <SelectTrigger className="w-[220px]" aria-label="Filter by whether they were contacted">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Contacted or not</SelectItem>
-            <SelectItem value="no">{CONTACTED_LABELS.no}</SelectItem>
-            <SelectItem value="yes">{CONTACTED_LABELS.yes}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <ActiveFilters
-        noun="patients"
-        onClearAll={() => {
-          setSearch('')
-          setTypeId('all')
-          setContacted('all')
-          setPagination((p) => ({ ...p, page: 1 }))
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Recare type"
+              plural="recare types"
+              value={typeId}
+              onValueChange={(value) => list.setFilter('typeId', value)}
+              options={typeOptions}
+              className="w-full sm:w-[220px]"
+            />
+            <FilterSelect
+              label="Contacted"
+              plural="patients"
+              value={contacted}
+              onValueChange={(value) => list.setFilter('contacted', value)}
+              options={CONTACTED_OPTIONS}
+              className="w-full sm:w-[260px]"
+            />
+          </>
+        }
+        active={{
+          noun: 'patients',
+          onClearAll: clearFilters,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Recare type',
+              value: typeId === 'all' ? null : (filterValueLabel(typeOptions, typeId) ?? 'Unknown'),
+              onClear: () => list.setFilter('typeId', 'all'),
+            },
+            {
+              label: 'Contact',
+              value: filterValueLabel(CONTACTED_OPTIONS, contacted),
+              onClear: () => list.setFilter('contacted', 'all'),
+            },
+          ],
         }}
-        filters={[
-          {
-            label: 'Search',
-            value: search,
-            onClear: () => {
-              setSearch('')
-              setPagination((p) => ({ ...p, page: 1 }))
-            },
-          },
-          {
-            label: 'Recare type',
-            value:
-              typeId === 'all' ? null : (types.find((t) => t.id === typeId)?.name ?? 'Unknown'),
-            onClear: () => {
-              setTypeId('all')
-              setPagination((p) => ({ ...p, page: 1 }))
-            },
-          },
-          {
-            label: 'Contact',
-            value: contacted === 'all' ? null : CONTACTED_LABELS[contacted],
-            onClear: () => {
-              setContacted('all')
-              setPagination((p) => ({ ...p, page: 1 }))
-            },
-          },
-        ]}
       />
 
       {effective.length > 0 && (
@@ -515,17 +508,20 @@ export default function RecarePage() {
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" disabled={sending} onClick={() => send(false)}>
-            {sending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="mr-2 h-3.5 w-3.5" />
-            )}
+          <SubmitButton
+            type="button"
+            size="sm"
+            busy={sending}
+            busyLabel="Sending…"
+            icon={Send}
+            onClick={() => send(false)}
+          >
             Send reminder
-          </Button>
+          </SubmitButton>
+          {/* Clears the ticks, not the search: that has its own X in the box. */}
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             <X className="mr-1.5 h-3.5 w-3.5" />
-            Clear
+            Clear selection
           </Button>
           <span className="text-xs text-muted-foreground">
             Queued for the clinic’s next send window. Anyone contacted in the last{' '}
@@ -564,22 +560,26 @@ export default function RecarePage() {
             <GridBody
               columns={7}
               loading={loading}
+              failed={failed}
+              onRetry={load}
               empty={recares.length === 0}
               emptyIcon={CalendarClock}
               emptyTitle={
-                debouncedSearch || typeId !== 'all' || contacted !== 'all'
-                  ? 'No records found'
+                filtered
+                  ? 'No patients found'
                   : band === 'OVERDUE'
                     ? 'Nobody is overdue'
                     : 'Nothing in this band'
               }
               emptyDescription={
-                debouncedSearch || typeId !== 'all' || contacted !== 'all'
-                  ? 'Nothing in this band matches that search.'
+                filtered
+                  ? 'Nothing in this band matches these filters.'
                   : band === 'OVERDUE'
                     ? 'That is the number to keep at zero.'
                     : 'Recare falling due in this window will appear here.'
               }
+              emptyActionLabel={filtered ? 'Clear the filters' : undefined}
+              onEmptyAction={filtered ? clearFilters : undefined}
             >
               {recares.map((recare) => {
                 const refusal = contactRefusal(recare, channel)
@@ -607,7 +607,7 @@ export default function RecarePage() {
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {recare.patient.patientId}
-                        {recare.patient.phone ? ` · ${recare.patient.phone}` : ''}
+                        {recare.patient.phone ? ` · ${formatPhone(recare.patient.phone)}` : ''}
                       </div>
                       {refusal && (
                         <div className="text-xs text-muted-foreground italic">{refusal}</div>
@@ -620,14 +620,9 @@ export default function RecarePage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div
-                        className={
-                          recare.band === 'OVERDUE'
-                            ? 'text-red-600 font-medium dark:text-red-400'
-                            : ''
-                        }
-                      >
-                        {displayDate(recare.dueDate)}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{displayDate(recare.dueDate)}</span>
+                        <StatusBadge kind="recare" status={recare.band} />
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {dueLabel(recare.dueDate)}
@@ -720,12 +715,12 @@ export default function RecarePage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="patients"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

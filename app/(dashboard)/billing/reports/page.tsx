@@ -1,8 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/hooks/use-toast'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -12,37 +10,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClickableRow } from '@/components/ui/data-grid'
+import { ClickableRow, GridBody, GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { PageHeader } from '@/components/ui/page-header'
 import {
-  BarChart3,
-  Download,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
   Users,
   Stethoscope,
   Calendar,
-  Clock,
   AlertCircle,
-  IndianRupee,
   CreditCard,
   Banknote,
+  FileText,
 } from 'lucide-react'
-import { dateRangePresets, formatCurrency, formatDate } from '@/lib/billing-utils'
+import { dateRangePresets, formatCurrency } from '@/lib/billing-utils'
 import { AGEING_BUCKETS, type AgeingBucketKey } from '@/lib/ageing'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { displayDate } from '@/lib/dates'
+import { BLANK, displayDate } from '@/lib/dates'
 
 interface OutstandingInvoice {
   id: string
@@ -60,6 +46,8 @@ interface OutstandingInvoice {
     phone: string
   }
 }
+
+const EMPTY_INVOICES: OutstandingInvoice[] = []
 
 type AgingData = Record<AgeingBucketKey, { amount: number; count: number }>
 
@@ -95,9 +83,11 @@ interface DoctorRevenue {
 
 export default function FinancialReportsPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
-  const trail = useTrail('Billing Reports')
-  const { toast } = useToast()
+  const trail = useTrail('Financial reports')
   const [loading, setLoading] = useState(true)
+  // The report on screen could not be fetched — said in its grid, with a
+  // retry, rather than as an empty one.
+  const [failed, setFailed] = useState(false)
   const [datePreset, setDatePreset] = useState('this_month')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -136,6 +126,7 @@ export default function FinancialReportsPage() {
   const fetchReport = async (type: string) => {
     try {
       setLoading(true)
+      setFailed(false)
       const params = new URLSearchParams({ type })
 
       if (dateFrom && dateTo) {
@@ -165,19 +156,25 @@ export default function FinancialReportsPage() {
       }
     } catch (error) {
       console.error(`Error fetching ${type} report:`, error)
-      toast({
-        variant: 'destructive',
-        title: 'Could not load the report',
-        description: error instanceof Error ? error.message : undefined,
-      })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // Fetching on mount and on change is what this effect is for; the state it
+    // sets is the answer arriving.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchReport(activeTab)
+    // The tab and the period are the whole question; `fetchReport` reads them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, datePreset, dateFrom, dateTo])
+
+  const retry = () => fetchReport(activeTab)
+
+  // Every outstanding invoice comes back at once; paged here.
+  const outstandingRows = usePagedRows(outstandingData?.invoices ?? EMPTY_INVOICES)
 
   /**
    * The rows of whichever report is on screen.
@@ -238,51 +235,52 @@ export default function FinancialReportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="page-title">Financial Reports</h1>
-          <p className="text-muted-foreground">View detailed financial analytics and reports</p>
-        </div>
-        <div className="flex gap-2">
-          <Select
-            value={datePreset}
-            onValueChange={(v) => {
-              setDatePreset(v)
-              setDateFrom('')
-              setDateTo('')
-            }}
-          >
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Select period" />
-            </SelectTrigger>
-            <SelectContent>
-              {dateRangePresets.map((preset) => (
-                <SelectItem key={preset.value} value={preset.value}>
-                  {preset.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {datePreset === 'custom' && (
-            <>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-[140px]"
-              />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-[140px]"
-              />
-            </>
-          )}
-          <ExportMenu filename={`billing-${activeTab}`} getData={exportRows} />
-        </div>
-      </div>
+      <PageHeader
+        title="Financial reports"
+        description="View detailed financial analytics and reports"
+        actions={
+          <>
+            <Select
+              value={datePreset}
+              onValueChange={(v) => {
+                setDatePreset(v)
+                setDateFrom('')
+                setDateTo('')
+              }}
+            >
+              <SelectTrigger className="w-[160px]" aria-label="Period">
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                {dateRangePresets.map((preset) => (
+                  <SelectItem key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {datePreset === 'custom' && (
+              <>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  aria-label="From"
+                  className="w-[140px]"
+                />
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  aria-label="To"
+                  className="w-[140px]"
+                />
+              </>
+            )}
+            <ExportMenu filename={`billing-${activeTab}`} getData={exportRows} />
+          </>
+        }
+      />
 
       {/* Report Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -293,15 +291,15 @@ export default function FinancialReportsPage() {
           </TabsTrigger>
           <TabsTrigger value="procedure_revenue" className="flex items-center gap-2">
             <Stethoscope className="h-4 w-4" />
-            By Procedure
+            By procedure
           </TabsTrigger>
           <TabsTrigger value="doctor_revenue" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
-            By Doctor
+            By doctor
           </TabsTrigger>
           <TabsTrigger value="daily_collection" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Daily Collection
+            Daily collection
           </TabsTrigger>
         </TabsList>
 
@@ -346,7 +344,7 @@ export default function FinancialReportsPage() {
           {/* Outstanding Invoices Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Outstanding Invoices</CardTitle>
+              <CardTitle>Outstanding invoices</CardTitle>
               <CardDescription>
                 Total: {formatCurrency(outstandingData?.totals.totalOutstanding || 0)} from{' '}
                 {outstandingData?.totals.invoiceCount || 0} invoices
@@ -358,66 +356,56 @@ export default function FinancialReportsPage() {
                   <TableRow>
                     <TableHead>Invoice</TableHead>
                     <TableHead>Patient</TableHead>
-                    <TableHead>Invoice Date</TableHead>
-                    <TableHead>Due Date</TableHead>
+                    <TableHead>Invoice date</TableHead>
+                    <TableHead>Due date</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : outstandingData?.invoices.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        No outstanding invoices
+                <GridBody
+                  columns={6}
+                  skeletonRows={5}
+                  loading={loading}
+                  failed={failed}
+                  onRetry={retry}
+                  empty={outstandingRows.total === 0}
+                  emptyIcon={FileText}
+                  emptyTitle="No outstanding invoices"
+                  emptyDescription="Every issued invoice has been paid."
+                >
+                  {outstandingRows.rows.map((invoice) => (
+                    <ClickableRow
+                      key={invoice.id}
+                      href={trail.to(`/billing/invoices/${invoice.id}`)}
+                      label={`Open invoice ${invoice.invoiceNo}`}
+                    >
+                      <TableCell className="font-medium">{invoice.invoiceNo}</TableCell>
+                      <TableCell>
+                        {invoice.patient.firstName} {invoice.patient.lastName}
                       </TableCell>
-                    </TableRow>
-                  ) : (
-                    outstandingData?.invoices.map((invoice) => (
-                      <ClickableRow
-                        key={invoice.id}
-                        href={trail.to(`/billing/invoices/${invoice.id}`)}
-                        label={`Open invoice ${invoice.invoiceNo}`}
-                      >
-                        <TableCell className="font-medium">{invoice.invoiceNo}</TableCell>
-                        <TableCell>
-                          {invoice.patient.firstName} {invoice.patient.lastName}
-                        </TableCell>
-                        <TableCell>{formatDate(invoice.createdAt)}</TableCell>
-                        <TableCell>{invoice.dueDate ? formatDate(invoice.dueDate) : '-'}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(invoice.totalAmount)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-red-600 dark:text-red-400">
-                          {formatCurrency(invoice.balanceAmount)}
-                        </TableCell>
-                      </ClickableRow>
-                    ))
-                  )}
-                </TableBody>
+                      <TableCell>{displayDate(invoice.createdAt)}</TableCell>
+                      <TableCell>
+                        {invoice.dueDate ? displayDate(invoice.dueDate) : BLANK}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(invoice.totalAmount)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-red-600 dark:text-red-400">
+                        {formatCurrency(invoice.balanceAmount)}
+                      </TableCell>
+                    </ClickableRow>
+                  ))}
+                </GridBody>
               </Table>
+
+              <GridPagination
+                page={outstandingRows.page}
+                pageSize={outstandingRows.pageSize}
+                total={outstandingRows.total}
+                noun="invoices"
+                onPageChange={outstandingRows.setPage}
+                onPageSizeChange={outstandingRows.setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -427,7 +415,7 @@ export default function FinancialReportsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Invoiced</CardTitle>
+                <CardTitle className="text-sm font-medium">Total invoiced</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -441,7 +429,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Treatments Billed</CardTitle>
+                <CardTitle className="text-sm font-medium">Treatments billed</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -457,10 +445,10 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Invoiced by Procedure</CardTitle>
+              <CardTitle>Invoiced by procedure</CardTitle>
               <CardDescription>
                 Invoice lines less their share of any discount, before tax, on invoices issued in
-                the period. Not cash collected — see Daily Collection.
+                the period. Not cash collected — see Daily collection.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
@@ -470,56 +458,38 @@ export default function FinancialReportsPage() {
                     <TableHead>Procedure</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead className="text-center">Billed</TableHead>
-                    <TableHead className="text-right">Avg. Invoiced</TableHead>
+                    <TableHead className="text-right">Avg. invoiced</TableHead>
                     <TableHead className="text-right">Invoiced</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : procedureData?.byProcedure.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                        No procedure data available
+                <GridBody
+                  columns={5}
+                  skeletonRows={5}
+                  loading={loading}
+                  failed={failed}
+                  onRetry={retry}
+                  empty={(procedureData?.byProcedure.length ?? 0) === 0}
+                  emptyIcon={Stethoscope}
+                  emptyTitle="No procedures invoiced"
+                  emptyDescription="Nothing was invoiced for a procedure in this period."
+                >
+                  {procedureData?.byProcedure.map((proc) => (
+                    <TableRow key={proc.procedureId}>
+                      <TableCell>
+                        <div className="font-medium">{proc.name}</div>
+                        <div className="text-sm text-muted-foreground">{proc.code}</div>
+                      </TableCell>
+                      <TableCell>{proc.category}</TableCell>
+                      <TableCell className="text-center">{proc.count}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(proc.avgRevenue)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(proc.totalRevenue)}
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    procedureData?.byProcedure.map((proc) => (
-                      <TableRow key={proc.procedureId}>
-                        <TableCell>
-                          <div className="font-medium">{proc.name}</div>
-                          <div className="text-sm text-muted-foreground">{proc.code}</div>
-                        </TableCell>
-                        <TableCell>{proc.category}</TableCell>
-                        <TableCell className="text-center">{proc.count}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(proc.avgRevenue)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(proc.totalRevenue)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
+                  ))}
+                </GridBody>
               </Table>
             </CardContent>
           </Card>
@@ -530,7 +500,7 @@ export default function FinancialReportsPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Invoiced</CardTitle>
+                <CardTitle className="text-sm font-medium">Total invoiced</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -544,7 +514,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Treatments Billed</CardTitle>
+                <CardTitle className="text-sm font-medium">Treatments billed</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -558,7 +528,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Active Doctors</CardTitle>
+                <CardTitle className="text-sm font-medium">Active doctors</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -572,7 +542,7 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Invoiced by Doctor</CardTitle>
+              <CardTitle>Invoiced by doctor</CardTitle>
               <CardDescription>
                 The same invoice lines, by the doctor on the treatment each one bills.
               </CardDescription>
@@ -583,56 +553,39 @@ export default function FinancialReportsPage() {
                   <TableRow>
                     <TableHead>Doctor</TableHead>
                     <TableHead className="text-center">Treatments billed</TableHead>
-                    <TableHead className="text-right">Avg. Invoiced</TableHead>
+                    <TableHead className="text-right">Avg. invoiced</TableHead>
                     <TableHead className="text-right">Invoiced</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : doctorData?.byDoctor.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        No doctor data available
+                <GridBody
+                  columns={4}
+                  skeletonRows={3}
+                  loading={loading}
+                  failed={failed}
+                  onRetry={retry}
+                  empty={(doctorData?.byDoctor.length ?? 0) === 0}
+                  emptyIcon={Users}
+                  emptyTitle="No doctors invoiced"
+                  emptyDescription="No treatment by a doctor was invoiced in this period."
+                >
+                  {doctorData?.byDoctor.map((doc) => (
+                    <TableRow key={doc.doctorId}>
+                      <TableCell>
+                        <div className="font-medium">Dr. {doc.name}</div>
+                        {doc.specialization && (
+                          <div className="text-sm text-muted-foreground">{doc.specialization}</div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">{doc.treatmentCount}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(doc.avgPerTreatment)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(doc.totalRevenue)}
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    doctorData?.byDoctor.map((doc) => (
-                      <TableRow key={doc.doctorId}>
-                        <TableCell>
-                          <div className="font-medium">Dr. {doc.name}</div>
-                          {doc.specialization && (
-                            <div className="text-sm text-muted-foreground">
-                              {doc.specialization}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">{doc.treatmentCount}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(doc.avgPerTreatment)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(doc.totalRevenue)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
+                  ))}
+                </GridBody>
               </Table>
             </CardContent>
           </Card>
@@ -643,7 +596,7 @@ export default function FinancialReportsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Collection</CardTitle>
+                <CardTitle className="text-sm font-medium">Total collection</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -657,7 +610,7 @@ export default function FinancialReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total Payments</CardTitle>
+                <CardTitle className="text-sm font-medium">Total payments</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -671,7 +624,7 @@ export default function FinancialReportsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Daily Collection Breakdown</CardTitle>
+              <CardTitle>Daily collection breakdown</CardTitle>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table className="min-w-[800px]">
@@ -695,63 +648,39 @@ export default function FinancialReportsPage() {
                       zero. The wallet total was already being computed by the
                       report and thrown away for want of a column to put it in.
                     */}
-                    <TableHead className="text-right">Mobile Wallet</TableHead>
-                    <TableHead className="text-right">Bank Transfer</TableHead>
+                    <TableHead className="text-right">Mobile wallet</TableHead>
+                    <TableHead className="text-right">Bank transfer</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-center">Count</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-12" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : dailyData?.dailyData.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                        No collection data available
+                <GridBody
+                  columns={7}
+                  skeletonRows={5}
+                  loading={loading}
+                  failed={failed}
+                  onRetry={retry}
+                  empty={(dailyData?.dailyData.length ?? 0) === 0}
+                  emptyIcon={Calendar}
+                  emptyTitle="No payments collected"
+                  emptyDescription="No payment was taken in this period."
+                >
+                  {dailyData?.dailyData.map((day) => (
+                    <TableRow key={day.date}>
+                      <TableCell className="font-medium">{displayDate(day.date)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(day.cash)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(day.card)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(day.wallet)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(day.bankTransfer)}
                       </TableCell>
+                      <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                        {formatCurrency(day.total)}
+                      </TableCell>
+                      <TableCell className="text-center">{day.count}</TableCell>
                     </TableRow>
-                  ) : (
-                    dailyData?.dailyData.map((day) => (
-                      <TableRow key={day.date}>
-                        <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(day.cash)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(day.card)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(day.wallet)}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(day.bankTransfer)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
-                          {formatCurrency(day.total)}
-                        </TableCell>
-                        <TableCell className="text-center">{day.count}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
+                  ))}
+                </GridBody>
               </Table>
             </CardContent>
           </Card>

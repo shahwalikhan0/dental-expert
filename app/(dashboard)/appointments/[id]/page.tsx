@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { medicalAlerts } from '@/lib/medical-history'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
-  ArrowLeft,
   Calendar,
   Clock,
   User,
@@ -19,37 +22,30 @@ import {
   Phone,
   Mail,
   MapPin,
-  Edit,
+  Pencil,
   LogIn,
   LogOut,
   CheckCircle,
-  XCircle,
+  Trash2,
   AlertTriangle,
   Stethoscope,
   FileText,
-  History,
-  Video,
   Receipt,
 } from 'lucide-react'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  appointmentStatusConfig,
   appointmentTypeConfig,
   priorityConfig,
   formatTime,
-  formatDate,
   getPatientName,
   getDoctorName,
 } from '@/lib/appointment-utils'
+import { displayDate, displayDateTime, displayTime } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { toastError } from '@/lib/toast-utils'
+import {
+  cancelAppointmentConfirm,
+  noShowConfirm,
+} from '@/components/appointments/appointment-confirms'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -57,7 +53,7 @@ import { useToast } from '@/hooks/use-toast'
 import { canMoveTo, noShowTooEarly } from '@/lib/appointment-status'
 import { useCan } from '@/hooks/use-can'
 import { newInvoiceHref } from '@/lib/invoice-links'
-import { formatCurrency } from '@/lib/billing-utils'
+import { formatCurrency } from '@/lib/i18n/format'
 
 interface Appointment {
   id: string
@@ -146,6 +142,8 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(appointment?.appointmentNo ?? null)
   const [loading, setLoading] = useState(true)
+  // A fetch that failed is not the same as an appointment that is not there.
+  const [failed, setFailed] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const { toast } = useToast()
@@ -157,24 +155,26 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
    * the console and carry on, so a refused check-in or no-show looked like a
    * button that did nothing.
    */
-  const refused = async (response: Response, fallback: string) => {
+  const refused = async (response: Response, action: string) => {
     const data = await response.json().catch(() => ({}))
-    toast({ variant: 'destructive', title: fallback, description: data.error })
+    toast(toastError(action, data))
   }
-
-  // Cancel dialog
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [cancellationReason, setCancellationReason] = useState('')
 
   const fetchAppointment = async () => {
     try {
       setLoading(true)
+      setFailed(false)
       const response = await fetch(`/api/appointments/${id}`)
+      if (response.status === 404) {
+        setAppointment(null)
+        return
+      }
       if (!response.ok) throw new Error('Failed to fetch appointment')
       const data = await response.json()
       setAppointment(data)
     } catch (error) {
       console.error('Error fetching appointment:', error)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
@@ -191,12 +191,12 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         method: 'POST',
       })
       if (!response.ok) {
-        await refused(response, 'Could not check in')
+        await refused(response, 'check in')
         return
       }
       fetchAppointment()
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not check in' })
+    } catch (error) {
+      toast(toastError('check in', error))
     } finally {
       setActionLoading(false)
     }
@@ -209,13 +209,13 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         method: 'POST',
       })
       if (!response.ok) {
-        await refused(response, 'Could not check out')
+        await refused(response, 'check out')
         return
       }
       // Reloaded as COMPLETED, the header offers Create invoice for the visit.
       fetchAppointment()
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not check out' })
+    } catch (error) {
+      toast(toastError('check out', error))
     } finally {
       setActionLoading(false)
     }
@@ -230,20 +230,31 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
    * row somebody meant to check in.
    */
   const handleNoShow = async () => {
-    const ok = await confirm({
-      title: 'Mark this appointment as a no-show?',
-      description:
-        'This records that the patient did not attend, and counts towards their no-show rate.',
-      confirmLabel: 'Mark no-show',
-    })
-    if (!ok) return
+    if (!appointment) return
+    if (!(await confirm(noShowConfirm(appointment.appointmentNo)))) return
     await handleStatusChange('NO_SHOW')
   }
 
-  const handleStatusChange = async (status: string) => {
+  /** The same question, and the same optional reason, as the list's row menu asks. */
+  const handleCancel = async () => {
+    if (!appointment) return
+    const { confirmed, reason } = await confirm(cancelAppointmentConfirm(appointment.appointmentNo))
+    if (!confirmed) return
+    await handleStatusChange('CANCELLED', reason)
+  }
+
+  const STATUS_ACTION: Record<string, string> = {
+    CANCELLED: 'cancel the appointment',
+    NO_SHOW: 'mark the appointment as a no-show',
+    CONFIRMED: 'confirm the appointment',
+    IN_PROGRESS: 'call the patient in',
+  }
+
+  const handleStatusChange = async (status: string, cancellationReason?: string) => {
+    const action = STATUS_ACTION[status] ?? 'update the appointment'
     try {
       setActionLoading(true)
-      const body: any = { status }
+      const body: Record<string, unknown> = { status }
       if (status === 'CANCELLED' && cancellationReason) {
         body.cancellationReason = cancellationReason
       }
@@ -254,30 +265,15 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         body: JSON.stringify(body),
       })
       if (!response.ok) {
-        await refused(response, 'Could not update the appointment')
+        await refused(response, action)
         return
       }
       fetchAppointment()
-      setShowCancelDialog(false)
-      setCancellationReason('')
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not update the appointment' })
+    } catch (error) {
+      toast(toastError(action, error))
     } finally {
       setActionLoading(false)
     }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const config = appointmentStatusConfig[status] || {
-      label: status,
-      color: 'text-muted-foreground',
-      bgColor: 'bg-muted',
-    }
-    return (
-      <Badge className={`${config.bgColor} ${config.color} border-0 text-base px-3 py-1`}>
-        {config.label}
-      </Badge>
-    )
   }
 
   const getTypeBadge = (type: string) => {
@@ -306,40 +302,28 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
     )
   }
 
-  if (loading) {
+  if (loading && !appointment) return <PageSkeleton variant="detail" />
+
+  if (failed && !appointment) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10" />
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardContent className="pt-6">
-              <Skeleton className="h-32 w-full" />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <Skeleton className="h-32 w-full" />
-            </CardContent>
-          </Card>
-        </div>
+        <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
+        <LoadFailed what="this appointment" onRetry={fetchAppointment} />
       </div>
     )
   }
 
   if (!appointment) {
     return (
-      <div className="flex flex-col items-center justify-center h-96">
-        <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold">Appointment not found</h2>
-        <p className="text-muted-foreground mb-4">
-          The appointment you&apos;re looking for doesn&apos;t exist.
-        </p>
-        <Button asChild>
-          <Link href="/appointments">Back to Appointments</Link>
-        </Button>
+      <div className="space-y-6">
+        <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
+        <EmptyState
+          icon={AlertTriangle}
+          title="Appointment not found"
+          description="The appointment you're looking for doesn't exist, or has been removed."
+          actionLabel="Back to appointments"
+          actionHref="/appointments"
+        />
       </div>
     )
   }
@@ -358,76 +342,76 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="page-title">{appointment.appointmentNo}</h1>
-              {getStatusBadge(appointment.status)}
-            </div>
-            <p className="text-muted-foreground">Created on {formatDate(appointment.createdAt)}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
-            <Button onClick={handleCheckIn} disabled={actionLoading}>
-              <LogIn className="h-4 w-4 mr-2" />
-              Check In
-            </Button>
-          )}
-          {/* Called in from the waiting room. This is when the patient's wait
+      <PageHeader
+        title={appointment.appointmentNo}
+        badges={
+          <StatusBadge
+            kind="appointment"
+            status={appointment.status}
+            className="text-base px-3 py-1"
+          />
+        }
+        description={`Created on ${displayDate(appointment.createdAt)}`}
+        back={<BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />}
+        actions={
+          <>
+            {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
+              <Button onClick={handleCheckIn} disabled={actionLoading}>
+                <LogIn className="h-4 w-4 mr-2" />
+                Check in
+              </Button>
+            )}
+            {/* Called in from the waiting room. This is when the patient's wait
               ends and is recorded; checking out straight from the waiting room
               leaves the wait unknown. */}
-          {appointment.status === 'CHECKED_IN' && (
-            <Button
-              variant="outline"
-              onClick={() => handleStatusChange('IN_PROGRESS')}
-              disabled={actionLoading}
-            >
-              <Stethoscope className="h-4 w-4 mr-2" />
-              Call In
-            </Button>
-          )}
-          {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
-            <Button onClick={handleCheckOut} disabled={actionLoading}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Check Out
-            </Button>
-          )}
-          {canBillVisit && appointment.patient && (
-            <Button asChild>
-              <Link
-                href={trail.to(
-                  newInvoiceHref({
-                    patientId: appointment.patient.id,
-                    appointmentId: appointment.id,
-                  })
-                )}
+            {appointment.status === 'CHECKED_IN' && (
+              <Button
+                variant="outline"
+                onClick={() => handleStatusChange('IN_PROGRESS')}
+                disabled={actionLoading}
               >
-                <Receipt className="h-4 w-4 mr-2" />
-                Create invoice
+                <Stethoscope className="h-4 w-4 mr-2" />
+                Call in
+              </Button>
+            )}
+            {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
+              <Button onClick={handleCheckOut} disabled={actionLoading}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Check out
+              </Button>
+            )}
+            {canBillVisit && appointment.patient && (
+              <Button asChild>
+                <Link
+                  href={trail.to(
+                    newInvoiceHref({
+                      patientId: appointment.patient.id,
+                      appointmentId: appointment.id,
+                    })
+                  )}
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Create invoice
+                </Link>
+              </Button>
+            )}
+            {appointment.status === 'SCHEDULED' && (
+              <Button
+                variant="outline"
+                onClick={() => handleStatusChange('CONFIRMED')}
+                disabled={actionLoading}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Confirm
+              </Button>
+            )}
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/appointments/${id}/edit`)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
               </Link>
             </Button>
-          )}
-          {appointment.status === 'SCHEDULED' && (
-            <Button
-              variant="outline"
-              onClick={() => handleStatusChange('CONFIRMED')}
-              disabled={actionLoading}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Confirm
-            </Button>
-          )}
-          <Button variant="outline" asChild>
-            <Link href={`/appointments/${id}/edit`}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Link>
-          </Button>
-          {/*
+            {/*
             Marking somebody absent belongs here as much as cancelling does.
             It was only ever on the list screen, so a receptionist who had
             opened the appointment to deal with a patient who had not arrived
@@ -435,28 +419,25 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             this application uses to decide who gets an extra reminder is built
             from exactly this action.
           */}
-          {/* Not before the appointment has started: nobody has failed to
+            {/* Not before the appointment has started: nobody has failed to
               attend something that has not begun. */}
-          {canMoveTo(appointment.status, 'NO_SHOW') &&
-            appointment.status !== 'NO_SHOW' &&
-            !noShowTooEarly(appointment.startsAt) && (
-              <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
-                <UserX className="h-4 w-4 mr-2" />
-                No-show
+            {canMoveTo(appointment.status, 'NO_SHOW') &&
+              appointment.status !== 'NO_SHOW' &&
+              !noShowTooEarly(appointment.startsAt) && (
+                <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
+                  <UserX className="h-4 w-4 mr-2" />
+                  No-show
+                </Button>
+              )}
+            {appointment.status !== 'CANCELLED' && canMoveTo(appointment.status, 'CANCELLED') && (
+              <Button variant="destructive" onClick={handleCancel} disabled={actionLoading}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Cancel appointment
               </Button>
             )}
-          {appointment.status !== 'CANCELLED' && canMoveTo(appointment.status, 'CANCELLED') && (
-            <Button
-              variant="destructive"
-              onClick={() => setShowCancelDialog(true)}
-              disabled={actionLoading}
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Appointment Details */}
@@ -464,14 +445,14 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Appointment Details
+              Appointment details
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Date</p>
-                <p className="font-medium">{formatDate(appointment.scheduledDate)}</p>
+                <p className="font-medium">{displayDate(appointment.scheduledDate)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Time</p>
@@ -512,23 +493,19 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <div className="grid grid-cols-2 gap-4">
                   {appointment.checkedInAt && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Checked In</p>
-                      <p className="font-medium">
-                        {new Date(appointment.checkedInAt).toLocaleTimeString()}
-                      </p>
+                      <p className="text-sm text-muted-foreground">Checked in</p>
+                      <p className="font-medium">{displayTime(appointment.checkedInAt)}</p>
                     </div>
                   )}
                   {appointment.checkedOutAt && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Checked Out</p>
-                      <p className="font-medium">
-                        {new Date(appointment.checkedOutAt).toLocaleTimeString()}
-                      </p>
+                      <p className="text-sm text-muted-foreground">Checked out</p>
+                      <p className="font-medium">{displayTime(appointment.checkedOutAt)}</p>
                     </div>
                   )}
                   {appointment.waitTime !== null && appointment.waitTime > 0 && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Wait Time</p>
+                      <p className="text-sm text-muted-foreground">Wait time</p>
                       <p className="font-medium">{appointment.waitTime} minutes</p>
                     </div>
                   )}
@@ -540,7 +517,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               <>
                 <Separator />
                 <div>
-                  <p className="text-sm text-muted-foreground">Chief Complaint</p>
+                  <p className="text-sm text-muted-foreground">Chief complaint</p>
                   <p className="font-medium">{appointment.chiefComplaint}</p>
                 </div>
               </>
@@ -558,7 +535,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <Separator />
                 <div className="rounded-lg bg-red-50 p-4 dark:bg-red-950/30">
                   <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                    Cancelled on {new Date(appointment.cancelledAt!).toLocaleString()}
+                    Cancelled on {displayDateTime(appointment.cancelledAt)}
                   </p>
                   {appointment.cancellationReason && (
                     <p className="text-sm text-red-600 mt-1 dark:text-red-400">
@@ -579,7 +556,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
-                Patient Information
+                Patient information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -596,7 +573,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{appointment.patient.phone}</span>
+                  <span>{formatPhone(appointment.patient.phone)}</span>
                 </div>
                 {appointment.patient.email && (
                   <div className="flex items-center gap-2 text-sm">
@@ -620,7 +597,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <>
                   <Separator />
                   <div>
-                    <h4 className="font-medium mb-2">Medical Alerts</h4>
+                    <h4 className="font-medium mb-2">Medical alerts</h4>
                     {/*
                     Named the alerts rather than four hardcoded badges. Those
                     badges could only ever show the four conditions somebody
@@ -651,7 +628,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
               <div className="pt-2">
                 <Button variant="outline" className="w-full" asChild>
                   <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
-                    View Full Patient Profile
+                    View full patient profile
                   </Link>
                 </Button>
               </div>
@@ -674,7 +651,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 {appointment.visitor?.phone && (
                   <p className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                     <Phone className="h-4 w-4" />
-                    {appointment.visitor.phone}
+                    {formatPhone(appointment.visitor.phone)}
                   </p>
                 )}
               </div>
@@ -711,7 +688,9 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                   </p>
                 )}
                 {appointment.doctor.phone && (
-                  <p className="text-sm text-muted-foreground">{appointment.doctor.phone}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatPhone(appointment.doctor.phone)}
+                  </p>
                 )}
               </div>
             </div>
@@ -745,7 +724,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                       <p className="font-medium">{treatment.procedure.name}</p>
                       <p className="text-sm text-muted-foreground">{treatment.treatmentNo}</p>
                     </div>
-                    <Badge>{treatment.status}</Badge>
+                    <StatusBadge kind="treatment" status={treatment.status} />
                   </Link>
                 ))}
               </div>
@@ -783,7 +762,7 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                             : ''}
                         </p>
                       </div>
-                      <Badge variant="outline">{invoice.status}</Badge>
+                      <StatusBadge kind="invoice" status={invoice.status} />
                     </Link>
                   ))}
                 </div>
@@ -793,39 +772,6 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
         )}
       </div>
 
-      {/* Cancel Dialog */}
-      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Appointment</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this appointment? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="reason">Cancellation Reason</Label>
-            <Input
-              id="reason"
-              placeholder="Enter reason for cancellation"
-              value={cancellationReason}
-              onChange={(e) => setCancellationReason(e.target.value)}
-              className="mt-2"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
-              Keep Appointment
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => handleStatusChange('CANCELLED')}
-              disabled={actionLoading}
-            >
-              Cancel Appointment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {ConfirmDialogComponent}
     </div>
   )

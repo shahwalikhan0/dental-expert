@@ -6,13 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -22,11 +15,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { GridBody, GridPagination } from '@/components/ui/data-grid'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useListParams } from '@/hooks/use-list-params'
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { BLANK, displayDate, displayDateShort } from '@/lib/dates'
 import { ALL_ROLES, ROLE_LABELS } from '@/lib/rbac'
 import {
   ATTENDANCE_STATUSES,
@@ -38,7 +39,6 @@ import {
   STATUS_TONE,
   addDays,
   blankCode,
-  dayMonth,
   isEditable,
   rangeLabel,
   weekStartOf,
@@ -55,9 +55,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
-  Loader2,
   Save,
-  Search,
   UserCheck,
   Undo2,
 } from 'lucide-react'
@@ -112,7 +110,12 @@ type Edits = Record<string, AttendanceMark | null>
 
 const cellKey = (userId: string, date: string) => `${userId}|${date}`
 
-const DISCARD_PROMPT = 'You have changes on this page that have not been saved. Discard them?'
+const VIEW_OPTIONS = [
+  { value: 'week', label: 'Week' },
+  { value: 'day', label: 'Day' },
+] as const satisfies readonly { value: View; label: string }[]
+
+const ROLE_OPTIONS = ALL_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))
 
 /**
  * The marks a save would send, from the page as it stands.
@@ -153,52 +156,55 @@ function pendingMarks(rows: Row[], edits: Edits) {
 export default function AttendancePage() {
   const trail = useTrail('Attendance')
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   const [view, setView] = useState<View>('week')
   /** The day the register is looking at; the week around it in week view. Null is today. */
   const [anchor, setAnchor] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const debouncedSearch = useDebouncedValue(search)
-  const [role, setRole] = useState('all')
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(DEFAULT_REGISTER_PAGE_SIZE)
+
+  /**
+   * Search, role and page, kept in the address bar, so opening somebody's
+   * record and coming back keeps the register where it was. The week on
+   * screen and the view stay in the page: moving a week is not a filter, and
+   * does not send the reader back to page 1.
+   */
+  const list = useListParams({
+    defaults: { role: 'all' },
+    pageSize: DEFAULT_REGISTER_PAGE_SIZE,
+  })
 
   const [data, setData] = useState<RegisterResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [edits, setEdits] = useState<Edits>({})
 
   const latestRequest = useRef(0)
 
+  // The whole question, as a string, so the fetch runs once per question.
+  const listQuery = list.apiParams().toString()
+
   const load = useCallback(async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        days: view === 'week' ? '7' : '1',
-        page: String(page),
-        limit: String(limit),
-      })
+      const params = new URLSearchParams(listQuery)
+      params.set('days', view === 'week' ? '7' : '1')
       if (anchor) params.set('start', anchor)
-      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
-      if (role !== 'all') params.set('role', role)
 
-      const res = await fetch(`/api/attendance?${params}`)
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'The register could not be loaded')
+      const body = await readJson<RegisterResponse>(await fetch(`/api/attendance?${params}`))
       if (requestId !== latestRequest.current) return
       setData(body)
       setEdits({})
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'The register could not be loaded',
-        variant: 'destructive',
-      })
+      if (requestId !== latestRequest.current) return
+      setFailed(true)
+      toast(toastError('load the register', err))
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [view, anchor, page, limit, debouncedSearch, role, toast])
+  }, [view, anchor, listQuery, toast])
 
   useEffect(() => {
     load()
@@ -211,9 +217,24 @@ export default function AttendancePage() {
 
   useUnsavedChanges(dirty && !saving)
 
-  /** Anything that replaces the page asks first when there are edits on it. */
-  const leaving = (next: () => void) => {
-    if (dirty && !window.confirm(DISCARD_PROMPT)) return
+  /**
+   * Anything that replaces the page asks first when there are edits on it.
+   * Agreeing discards them at once, so a second keystroke in the search box
+   * does not ask again while the new page loads.
+   */
+  const leaving = async (next: () => void) => {
+    if (dirty) {
+      const count = pending.changed
+      const ok = await confirm({
+        title: `Discard ${count} unsaved ${count === 1 ? 'mark' : 'marks'}?`,
+        description:
+          'The marks changed on this page have not been saved. Moving on loses them; the saved register is not touched.',
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+      })
+      if (!ok) return
+      setEdits({})
+    }
     next()
   }
 
@@ -245,33 +266,36 @@ export default function AttendancePage() {
     if (pending.marks.length === 0) return
     setSaving(true)
     try {
-      const res = await fetch('/api/attendance', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ marks: pending.marks }),
-      })
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'The register was not saved')
+      const body = await readJson<{
+        created: number
+        updated: number
+        cleared: number
+        altered: number
+      }>(
+        await fetch('/api/attendance', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ marks: pending.marks }),
+        })
+      )
 
       const saved = body.created + body.updated + body.cleared
-      toast({
-        title: 'Register saved',
-        description: [
-          `${saved} day${saved === 1 ? '' : 's'} recorded.`,
-          body.altered > 0 &&
-            `${body.altered} earlier mark${body.altered === 1 ? ' was' : 's were'} changed.`,
-        ]
-          .filter(Boolean)
-          .join(' '),
-      })
+      toast(
+        toastSuccess(
+          'Register saved',
+          [
+            `${saved} day${saved === 1 ? '' : 's'} recorded.`,
+            body.altered > 0 &&
+              `${body.altered} earlier mark${body.altered === 1 ? ' was' : 's were'} changed.`,
+          ]
+            .filter(Boolean)
+            .join(' ')
+        )
+      )
       setEdits({})
       await load()
     } catch (err) {
-      toast({
-        title: 'Not saved',
-        description: err instanceof Error ? err.message : 'The register was not saved',
-        variant: 'destructive',
-      })
+      toast(toastError('save the register', err))
     } finally {
       setSaving(false)
     }
@@ -287,45 +311,37 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">Attendance</h1>
-          <p className="text-muted-foreground">
-            Every past working day starts as Present. Change the exceptions, then save.
-          </p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href={trail.to('/attendance/report')}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Report
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Attendance"
+        description="Every past working day starts as Present. Change the exceptions, then save."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href={trail.to('/attendance/report')}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Report
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-lg border p-0.5" role="group" aria-label="View">
-          {(['week', 'day'] as const).map((option) => (
-            <Button
-              key={option}
-              size="sm"
-              variant={view === option ? 'default' : 'ghost'}
-              aria-pressed={view === option}
-              onClick={() =>
-                leaving(() => {
-                  setView(option)
-                  setPage(1)
-                  // Switching to the day view lands on today when today is in
-                  // the week on screen, and on the week's Monday otherwise.
-                  if (option === 'day' && data) {
-                    setAnchor(today >= data.from && today <= data.to ? today : data.from)
-                  }
-                })
+        <SegmentedControl
+          aria-label="View"
+          size="md"
+          options={VIEW_OPTIONS}
+          value={view}
+          onChange={(option) =>
+            leaving(() => {
+              setView(option)
+              list.setPage(1)
+              // Switching to the day view lands on today when today is in
+              // the week on screen, and on the week's Monday otherwise.
+              if (option === 'day' && data) {
+                setAnchor(today >= data.from && today <= data.to ? today : data.from)
               }
-            >
-              {option === 'week' ? 'Week' : 'Day'}
-            </Button>
-          ))}
-        </div>
+            })
+          }
+        />
 
         <div className="flex items-center gap-1">
           <Button
@@ -341,7 +357,7 @@ export default function AttendancePage() {
             {data
               ? view === 'week'
                 ? rangeLabel(data.from, data.to)
-                : `${weekdayLong(data.from)}, ${rangeLabel(data.from, data.from)}`
+                : `${weekdayLong(data.from)}, ${displayDate(data.from)}`
               : '…'}
           </span>
           <Button
@@ -380,66 +396,41 @@ export default function AttendancePage() {
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) =>
-              leaving(() => {
-                setSearch(event.target.value)
-                setPage(1)
-              })
-            }
-            placeholder="Search by name, email or employee ID…"
-            className="pl-9"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={(value) => leaving(() => list.setSearch(value))}
             aria-label="Search the register"
+            placeholder="Search by name, email or employee ID…"
           />
-        </div>
-        <Select
-          value={role}
-          onValueChange={(value) =>
-            leaving(() => {
-              setRole(value)
-              setPage(1)
-            })
-          }
-        >
-          <SelectTrigger className="w-[200px]" aria-label="Filter by role">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
-            {ALL_ROLES.map((option) => (
-              <SelectItem key={option} value={option}>
-                {ROLE_LABELS[option]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <ActiveFilters
-        noun="people"
-        onClearAll={() =>
-          leaving(() => {
-            setSearch('')
-            setRole('all')
-            setPage(1)
-          })
         }
-        filters={[
-          {
-            label: 'Search',
-            value: search,
-            onClear: () => leaving(() => setSearch('')),
-          },
-          {
-            label: 'Role',
-            value: role === 'all' ? null : ROLE_LABELS[role as keyof typeof ROLE_LABELS],
-            onClear: () => leaving(() => setRole('all')),
-          },
-        ]}
+        filters={
+          <FilterSelect
+            label="Role"
+            plural="roles"
+            value={list.filters.role}
+            onValueChange={(value) => leaving(() => list.setFilter('role', value))}
+            options={ROLE_OPTIONS}
+            className="w-full sm:w-[200px]"
+          />
+        }
+        active={{
+          noun: 'people',
+          onClearAll: () => leaving(list.clear),
+          filters: [
+            {
+              label: 'Search',
+              value: list.query,
+              onClear: () => leaving(() => list.setSearch('')),
+            },
+            {
+              label: 'Role',
+              value: filterValueLabel(ROLE_OPTIONS, list.filters.role),
+              onClear: () => leaving(() => list.setFilter('role', 'all')),
+            },
+          ],
+        }}
       />
 
       <Legend />
@@ -467,14 +458,18 @@ export default function AttendancePage() {
             <GridBody
               columns={days.length + (view === 'week' ? 2 : 1)}
               loading={loading && !data}
+              failed={failed && !data}
+              onRetry={load}
               empty={rows.length === 0}
               emptyIcon={UserCheck}
-              emptyTitle={debouncedSearch || role !== 'all' ? 'Nobody matches' : 'Nobody to mark'}
+              emptyTitle={list.isFiltered ? 'Nobody matches' : 'Nobody to mark'}
               emptyDescription={
-                debouncedSearch || role !== 'all'
+                list.isFiltered
                   ? 'Nobody on the register matches that search.'
                   : 'Staff appear here once they have accepted their invitation. Your own attendance is marked by somebody else.'
               }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : undefined}
+              onEmptyAction={list.isFiltered ? () => leaving(list.clear) : undefined}
             >
               {rows.map((row) => (
                 <TableRow key={row.id}>
@@ -533,18 +528,13 @@ export default function AttendancePage() {
 
           {data && (
             <GridPagination
-              page={page}
-              pageSize={limit}
+              page={list.page}
+              pageSize={list.pageSize}
               total={data.pagination.total}
               noun="people"
               pageSizeOptions={REGISTER_PAGE_SIZES}
-              onPageChange={(next) => leaving(() => setPage(next))}
-              onPageSizeChange={(size) =>
-                leaving(() => {
-                  setLimit(size)
-                  setPage(1)
-                })
-              }
+              onPageChange={(next) => leaving(() => list.setPage(next))}
+              onPageSizeChange={(size) => leaving(() => list.setPageSize(size))}
             />
           )}
         </CardContent>
@@ -569,17 +559,21 @@ export default function AttendancePage() {
                 Discard changes
               </Button>
             )}
-            <Button size="sm" disabled={saving} onClick={save}>
-              {saving ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="mr-1.5 h-3.5 w-3.5" />
-              )}
+            <SubmitButton
+              type="button"
+              size="sm"
+              busy={saving}
+              busyLabel="Saving…"
+              icon={Save}
+              onClick={save}
+            >
               Save {pending.marks.length} day{pending.marks.length === 1 ? '' : 's'}
-            </Button>
+            </SubmitButton>
           </div>
         </div>
       )}
+
+      {ConfirmDialogComponent}
     </div>
   )
 }
@@ -588,7 +582,7 @@ export default function AttendancePage() {
  * A day's column heading: the date, whether it is done, and — for somebody who
  * may write — a way to set the whole column at once.
  *
- * The text is kept to "Mon 28 Sep" with nothing else readable in it, because
+ * The text is kept to "Mon 28 Sept" with nothing else readable in it, because
  * the table copies each heading onto its cells as the label a phone's card
  * layout draws.
  */
@@ -631,11 +625,13 @@ function DayHeading({
         <span className={cn('text-xs uppercase tracking-wide', isToday && 'text-primary')}>
           {weekdayShort(day.date)}
         </span>{' '}
-        <span className={cn('font-medium', isToday && 'text-primary')}>{dayMonth(day.date)}</span>
+        <span className={cn('font-medium', isToday && 'text-primary')}>
+          {displayDateShort(day.date)}
+        </span>
         {/*
           Drawn from a data attribute rather than written as text: the table
           copies each heading's text onto its cells as the phone layout's
-          label, and "Mon 28 Sep3" is not a label.
+          label, and "Mon 28 Sept3" is not a label.
         */}
         <span className="flex h-4 items-center" aria-hidden>
           {future ? null : day.closed ? (
@@ -659,14 +655,14 @@ function DayHeading({
                 variant="ghost"
                 size="sm"
                 className="h-5 px-1 text-muted-foreground"
-                aria-label={`Set everyone on ${dayMonth(day.date)}`}
+                aria-label={`Set everyone on ${displayDateShort(day.date)}`}
               >
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Everyone on this page, {weekdayShort(day.date)} {dayMonth(day.date)}
+                Everyone on this page, {weekdayShort(day.date)} {displayDateShort(day.date)}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {ATTENDANCE_STATUSES.map((status) => (
@@ -720,7 +716,9 @@ function lockedReason(cell: RegisterCell): string | undefined {
  * Native rather than the styled Select, because a week for two hundred people
  * is fourteen hundred of them, and a portalled menu per cell is a page that
  * takes seconds to paint. The native control is also the one a keyboard user
- * can work down a column fastest — tab, type the letter, tab.
+ * can work down a column fastest — tab, type the letter, tab. A deliberate
+ * exception to the Radix `Select` standard (docs/UX_STANDARDS.md): it stays
+ * 32px high, so the grid keeps its row height, and costs nothing per cell.
  */
 function MarkSelect({ name, cell, value, edited, disabled, onChange }: MarkControlProps) {
   if (!isEditable(cell)) {
@@ -741,7 +739,7 @@ function MarkSelect({ name, cell, value, edited, disabled, onChange }: MarkContr
 
   return (
     <select
-      aria-label={`${name}, ${weekdayLong(cell.date)} ${dayMonth(cell.date)}`}
+      aria-label={`${name}, ${weekdayLong(cell.date)} ${displayDateShort(cell.date)}`}
       title={
         provisional
           ? `${cell.reason ? `${cell.reason} · ` : ''}Not saved yet`
@@ -785,7 +783,7 @@ function MarkButtons({ name, cell, value, edited, disabled, onChange }: MarkCont
     <div
       className={cn('inline-flex gap-1 rounded-lg p-0.5', provisional && 'opacity-60')}
       role="radiogroup"
-      aria-label={`${name}, ${weekdayLong(cell.date)} ${dayMonth(cell.date)}`}
+      aria-label={`${name}, ${weekdayLong(cell.date)} ${displayDateShort(cell.date)}`}
     >
       {ATTENDANCE_STATUSES.map((status) => (
         <button
@@ -832,7 +830,7 @@ function RowTotals({ values }: { values: (AttendanceMark | null)[] }) {
     count: values.filter((value) => value === status).length,
   })).filter(({ count }) => count > 0)
 
-  if (counts.length === 0) return <span className="text-sm text-muted-foreground">—</span>
+  if (counts.length === 0) return <span className="text-sm text-muted-foreground">{BLANK}</span>
 
   return (
     <span className="inline-flex gap-1">

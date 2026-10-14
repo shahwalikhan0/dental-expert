@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -14,9 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
 import { useToast } from '@/hooks/use-toast'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
-import { Loader2, Search, UserMinus, Users, Wallet } from 'lucide-react'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { UserMinus, Users, Wallet } from 'lucide-react'
 
 interface Member {
   id: string
@@ -31,14 +34,6 @@ interface Family {
   guarantorId: string
   members: Member[]
   isShared: boolean
-}
-
-interface Candidate {
-  id: string
-  patientId: string
-  firstName: string
-  lastName: string
-  phone: string
 }
 
 /**
@@ -66,6 +61,7 @@ export function FamilyCard({
   const [family, setFamily] = useState<Family | null>(null)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
 
   const load = useCallback(async () => {
     try {
@@ -89,26 +85,37 @@ export function FamilyCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guarantorId }),
       })
-      const data = await res.json()
-
-      if (!res.ok) {
-        toast({ title: 'Not changed', description: data.error, variant: 'destructive' })
-        return
-      }
+      const data = await readJson<Family>(res)
 
       setFamily(data)
       setOpen(false)
-      toast({
-        title: guarantorId ? 'Account updated' : 'Now pays for themselves',
-        description: guarantorId
-          ? `${patientName}’s bills will be settled on somebody else’s account.`
-          : `${patientName} is responsible for their own bills again.`,
-      })
-    } catch {
-      toast({ title: 'Not changed', description: 'Please try again.', variant: 'destructive' })
+      toast(
+        toastSuccess(
+          guarantorId ? 'Payer changed' : 'Now pays for themselves',
+          guarantorId
+            ? `${patientName}’s bills will be settled on somebody else’s account.`
+            : `${patientName} is responsible for their own bills again.`
+        )
+      )
+    } catch (err) {
+      toast(toastError('change who pays', err))
     } finally {
       setSaving(false)
     }
+  }
+
+  // Taking a patient off somebody else's account moves their unpaid bills
+  // back onto their own statement — asked first, like every other removal.
+  const payForThemselves = async () => {
+    const payer = family?.members.find((member) => member.isGuarantor)
+    setOpen(false)
+    const ok = await confirm({
+      title: `Take ${patientName} off ${payer ? `${payer.firstName} ${payer.lastName}’s` : 'this'} account?`,
+      description: `${patientName}’s bills will appear on their own statement again, and the clinic will ask them for payment.`,
+      confirmLabel: 'They pay for themselves',
+      cancelLabel: 'Keep the payer',
+    })
+    if (ok) await setGuarantor(null)
   }
 
   if (!family) return null
@@ -192,7 +199,9 @@ export function FamilyCard({
         currentGuarantorId={paysForThemselves ? null : family.guarantorId}
         saving={saving}
         onChoose={setGuarantor}
+        onPayForThemselves={payForThemselves}
       />
+      {ConfirmDialogComponent}
     </>
   )
 }
@@ -205,6 +214,7 @@ function GuarantorDialog({
   currentGuarantorId,
   saving,
   onChoose,
+  onPayForThemselves,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -212,48 +222,22 @@ function GuarantorDialog({
   patientName: string
   currentGuarantorId: string | null
   saving: boolean
-  onChoose: (guarantorId: string | null) => void
+  onChoose: (guarantorId: string) => void
+  onPayForThemselves: () => void
 }) {
-  const [search, setSearch] = useState('')
-  const debounced = useDebouncedValue(search, 300)
-  const [results, setResults] = useState<Candidate[]>([])
-  const [searching, setSearching] = useState(false)
+  const [payer, setPayer] = useState<PickedPatient | null>(null)
 
-  useEffect(() => {
-    if (!open || debounced.trim().length < 2) {
-      setResults([])
-      return
-    }
-
-    let cancelled = false
-    setSearching(true)
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `/api/patients?search=${encodeURIComponent(debounced.trim())}&limit=8`
-        )
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        // The patient themselves is never an option; the database refuses it
-        // and offering it would be a control that only produces an error.
-        if (!cancelled) {
-          setResults((data.patients ?? []).filter((row: Candidate) => row.id !== patientId))
-        }
-      } catch {
-        if (!cancelled) setResults([])
-      } finally {
-        if (!cancelled) setSearching(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [debounced, open, patientId])
+  // Closing — by Cancel, or after a save — clears the choice, so the dialog
+  // opens empty next time. Adjusted during render, not in an effect.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (!open) setPayer(null)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Who settles {patientName}’s bills?</DialogTitle>
           <DialogDescription>
@@ -262,66 +246,45 @@ function GuarantorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name, patient number or phone"
-              className="pl-9"
+        {/* The patient themselves is never an option; the database refuses it
+            and offering it would be a control that only produces an error. */}
+        <FormField label="Billed to" htmlFor="guarantor-picker">
+          {(control) => (
+            <PatientPicker
+              {...control}
+              value={payer}
+              onChange={setPayer}
+              excludeId={patientId}
+              filter={(candidate) => candidate.id !== currentGuarantorId}
+              aria-label="Who pays"
             />
-          </div>
+          )}
+        </FormField>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto">
-            {searching && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">
-                <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" />
-                Searching…
-              </p>
-            )}
-
-            {!searching && debounced.trim().length >= 2 && results.length === 0 && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">
-                Nobody on the register matches “{debounced.trim()}”.
-              </p>
-            )}
-
-            {results.map((candidate) => (
-              <button
-                key={candidate.id}
-                type="button"
-                disabled={saving}
-                onClick={() => onChoose(candidate.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:opacity-50"
-              >
-                <span>
-                  <span className="font-medium">
-                    {candidate.firstName} {candidate.lastName}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">{candidate.phone}</span>
-                </span>
-                <Badge variant="outline" className="shrink-0">
-                  {candidate.patientId}
-                </Badge>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <DialogFooter className="sm:justify-between">
-          {currentGuarantorId ? (
-            <Button variant="outline" disabled={saving} onClick={() => onChoose(null)}>
+        <DialogFooter className="gap-2">
+          {currentGuarantorId && (
+            <Button
+              variant="ghost"
+              className="sm:mr-auto"
+              disabled={saving}
+              onClick={onPayForThemselves}
+            >
               <UserMinus className="mr-2 h-4 w-4" />
               They pay for themselves
             </Button>
-          ) : (
-            <span />
           )}
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
+          <SubmitButton
+            type="button"
+            disabled={!payer}
+            busy={saving}
+            busyLabel="Saving…"
+            onClick={() => payer && onChoose(payer.id)}
+          >
+            {payer ? `Bill to ${payer.firstName} ${payer.lastName}` : 'Choose a payer'}
+          </SubmitButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

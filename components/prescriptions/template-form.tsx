@@ -10,21 +10,26 @@
  * No teeth here, deliberately. A template says "post-extraction analgesia"; it
  * cannot know it is tooth 46. Teeth belong to the prescription issued from it.
  */
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { templateRefusal } from '@/lib/prescription-templates'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import {
+  MedicationPicker,
+  medicationLabel,
+  type MedicationRow,
+} from '@/components/catalogue/medication-picker'
+import { toastError, toastSuccess } from '@/lib/toast-utils'
 
 export interface TemplateItemDraft {
   key: number
@@ -79,9 +84,53 @@ interface TemplateFormProps {
   /** Present when editing. */
   templateId?: string
   submitLabel: string
+  /** Where Cancel and a successful save go. Default the template list. */
+  backHref?: string
 }
 
-export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormProps) {
+/** What is wrong with each field, for the inline errors. */
+interface DraftErrors {
+  name?: string
+  items: Record<number, { medication?: string; dosage?: string; frequency?: string }>
+}
+
+/**
+ * The inline errors for a draft. The same rules `templateRefusal` applies (and
+ * the server runs), said per field; `templateRefusal` stays the last word for
+ * anything these do not cover.
+ */
+function draftErrors(draft: TemplateDraft): DraftErrors {
+  const errors: DraftErrors = { items: {} }
+  if (!draft.name.trim()) errors.name = 'Give the template a name.'
+  draft.items.forEach((item, index) => {
+    const blank =
+      !item.medicationName.trim() &&
+      !item.dosage.trim() &&
+      !item.frequency.trim() &&
+      !item.duration.trim() &&
+      !item.instructions.trim()
+    // An untouched extra row is ignored; the only row is not.
+    if (blank && draft.items.length > 1) return
+    const row: DraftErrors['items'][number] = {}
+    if (!item.medicationName.trim()) row.medication = 'Choose a medicine from the catalogue.'
+    else if (item.inactive) row.medication = 'Deactivated in the catalogue. Choose another.'
+    if (!item.dosage.trim()) row.dosage = 'Give a dosage.'
+    if (!item.frequency.trim()) row.frequency = 'Give a frequency.'
+    if (Object.keys(row).length) errors.items[index] = row
+  })
+  return errors
+}
+
+function hasErrors(errors: DraftErrors) {
+  return Boolean(errors.name) || Object.keys(errors.items).length > 0
+}
+
+export function TemplateForm({
+  initial,
+  templateId,
+  submitLabel,
+  backHref = '/prescriptions/templates',
+}: TemplateFormProps) {
   // The label ↔ input ids. Not `item.key`: that counter is module state, and
   // the server's copy has been counting since it started while the browser's
   // starts at zero — so the ids never matched and React reported a hydration
@@ -90,52 +139,16 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
   const idBase = useId()
   const router = useRouter()
   const { toast } = useToast()
-  const formRef = useFormGuard()
   const [draft, setDraft] = useState<TemplateDraft>(initial)
   const [saving, setSaving] = useState(false)
+  // Not during the navigation a successful save performs.
+  const formRef = useFormGuard(saving)
+  // Inline errors from the first attempt to save, then live as they are fixed.
+  const [showErrors, setShowErrors] = useState(false)
+  const errors: DraftErrors = showErrors ? draftErrors(draft) : { items: {} }
 
   const setField = (field: keyof TemplateDraft, value: string) =>
     setDraft((d) => ({ ...d, [field]: value }))
-
-  // The drug catalogue, searched server-side as the user types. The same
-  // endpoint and the same debounce as the prescription form, so the two fields
-  // behave identically — they are the same question asked twice.
-  const [medSearch, setMedSearch] = useState('')
-  const debouncedMedSearch = useDebouncedValue(medSearch)
-  const [medOptions, setMedOptions] = useState<SearchOption[]>([])
-  const [searchingMeds, setSearchingMeds] = useState(false)
-
-  useEffect(() => {
-    const term = debouncedMedSearch.trim()
-    if (term.length < 2) {
-      setMedOptions([])
-      return
-    }
-    let current = true
-    setSearchingMeds(true)
-    fetch(`/api/medications?search=${encodeURIComponent(term)}&limit=10&active=true&sort=name`)
-      .then((res) => res.json())
-      .then((result) => {
-        if (!current) return
-        setMedOptions(
-          (result.data || []).map((med: any) => ({
-            id: med.id,
-            label: `${med.name}${med.strength ? ` ${med.strength}` : ''}`,
-            hint: med.form || undefined,
-            detail: med.genericName || undefined,
-          }))
-        )
-      })
-      .catch(() => {
-        if (current) setMedOptions([])
-      })
-      .finally(() => {
-        if (current) setSearchingMeds(false)
-      })
-    return () => {
-      current = false
-    }
-  }, [debouncedMedSearch])
 
   const setItem = (index: number, field: keyof TemplateItemDraft, value: string) =>
     setDraft((d) => ({
@@ -146,15 +159,15 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
   /** Attach a line to a catalogue entry. The name is stored too, because a
       template is copied onto prescriptions and the copy has to read correctly
       even if the catalogue entry is retired later. */
-  const selectMedicine = (index: number, option: SearchOption) =>
+  const selectMedicine = (index: number, med: MedicationRow) =>
     setDraft((d) => ({
       ...d,
       items: d.items.map((item, i) =>
         i === index
           ? {
               ...item,
-              medicationId: option.id,
-              medicationName: `${option.label}${option.hint ? ` (${option.hint})` : ''}`,
+              medicationId: med.id,
+              medicationName: `${medicationLabel(med)}${med.form ? ` (${med.form})` : ''}`,
               // The search only offers active drugs, so a new choice is one.
               inactive: false,
             }
@@ -180,9 +193,21 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
     }))
 
   const save = async () => {
+    setShowErrors(true)
+    const action = templateId ? 'save the template' : 'create the template'
+    if (hasErrors(draftErrors(draft))) {
+      toast(toastError(action, 'Check the highlighted fields.'))
+      // After the errors have rendered, go to the first one.
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[aria-invalid="true"]')
+        first?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+        first?.focus({ preventScroll: true })
+      })
+      return
+    }
     const refusal = templateRefusal(draft)
     if (refusal) {
-      toast({ variant: 'destructive', title: 'Not saved', description: refusal })
+      toast(toastError(action, refusal))
       return
     }
 
@@ -202,16 +227,18 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Failed to save template')
 
-      toast({
-        title: templateId ? 'Template updated' : 'Template created',
-        description: templateId
-          ? 'Prescriptions already issued from it are unchanged.'
-          : `${draft.name} is ready to use.`,
-      })
-      router.push('/prescriptions/templates')
+      toast(
+        toastSuccess(
+          templateId ? 'Template updated' : 'Template created',
+          templateId
+            ? 'Prescriptions already issued from it are unchanged.'
+            : `${draft.name} is ready to use.`
+        )
+      )
+      router.push(backHref)
       router.refresh()
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Not saved', description: err.message })
+    } catch (error) {
+      toast(toastError(action, error))
     } finally {
       setSaving(false)
     }
@@ -226,61 +253,65 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="form-grid">
-            <div className="space-y-2">
-              <Label htmlFor="template-name" className="label-required">
-                Name
-              </Label>
+            <FormField label="Name" required htmlFor="template-name" error={errors.name}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={draft.name}
+                  onChange={(e) => setField('name', e.target.value)}
+                  placeholder="Post-extraction"
+                />
+              )}
+            </FormField>
+            <FormField label="Category" htmlFor="template-category">
+              {(control) => (
+                <Input
+                  {...control}
+                  value={draft.category}
+                  onChange={(e) => setField('category', e.target.value)}
+                  placeholder="Surgical, Endodontic, Paediatric…"
+                />
+              )}
+            </FormField>
+          </div>
+
+          <FormField label="Description" htmlFor="template-description">
+            {(control) => (
               <Input
-                id="template-name"
-                value={draft.name}
-                onChange={(e) => setField('name', e.target.value)}
-                placeholder="Post-extraction"
+                {...control}
+                value={draft.description}
+                onChange={(e) => setField('description', e.target.value)}
+                placeholder="When to reach for this one"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="template-category">Category</Label>
+            )}
+          </FormField>
+
+          <FormField
+            label="Default diagnosis"
+            htmlFor="template-diagnosis"
+            hint="Filled in on the prescription and editable there — never locked."
+          >
+            {(control) => (
               <Input
-                id="template-category"
-                value={draft.category}
-                onChange={(e) => setField('category', e.target.value)}
-                placeholder="Surgical, Endodontic, Paediatric…"
+                {...control}
+                value={draft.diagnosis}
+                onChange={(e) => setField('diagnosis', e.target.value)}
+                placeholder="e.g. Post-surgical extraction site"
               />
-            </div>
-          </div>
+            )}
+          </FormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="template-description">Description</Label>
-            <Input
-              id="template-description"
-              value={draft.description}
-              onChange={(e) => setField('description', e.target.value)}
-              placeholder="When to reach for this one"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="template-diagnosis">Default diagnosis</Label>
-            <Input
-              id="template-diagnosis"
-              value={draft.diagnosis}
-              onChange={(e) => setField('diagnosis', e.target.value)}
-              placeholder="e.g. Post-surgical extraction site"
-            />
-            <p className="text-muted-foreground text-xs">
-              Filled in on the prescription and editable there — never locked.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="template-notes">Default notes to the patient</Label>
-            <Textarea
-              id="template-notes"
-              value={draft.notes}
-              onChange={(e) => setField('notes', e.target.value)}
-              rows={3}
-              placeholder="Rinse with warm salt water from tomorrow…"
-            />
-          </div>
+          <FormField label="Default notes to the patient" htmlFor="template-notes">
+            {(control) => (
+              <Textarea
+                {...control}
+                value={draft.notes}
+                onChange={(e) => setField('notes', e.target.value)}
+                rows={3}
+                placeholder="Rinse with warm salt water from tomorrow…"
+              />
+            )}
+          </FormField>
         </CardContent>
       </Card>
 
@@ -293,120 +324,121 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {draft.items.map((item, index) => (
-            <div key={item.key} className="space-y-3 rounded-xl border border-border/60 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm font-medium">
-                  Medicine {index + 1}
-                </span>
-                <IconTooltip label="Remove this medicine">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove this medicine"
-                    onClick={() => removeItem(index)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
-                  </Button>
-                </IconTooltip>
-              </div>
+          {draft.items.map((item, index) => {
+            const itemError = errors.items[index] ?? {}
+            return (
+              <div key={item.key} className="space-y-3 rounded-xl border border-border/60 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Medicine {index + 1}
+                  </span>
+                  <IconTooltip label={`Remove medicine ${index + 1}`}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove medicine ${index + 1}`}
+                      onClick={() => removeItem(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </IconTooltip>
+                </div>
 
-              <div className="form-grid">
-                <div className="space-y-2">
-                  <Label className="label-required" htmlFor={`${idBase}-medicine-${index}`}>
-                    Medicine
-                  </Label>
-                  {/*
-                    This was a plain text box with no catalogue behind it at
-                    all, so every template line was saved with `medicationId`
-                    null — templates referenced the drug catalogue in the
-                    schema and never in practice. A template is copied onto
-                    real prescriptions, so an unlinked line here became an
-                    unlinked line on every prescription made from it.
-                  */}
-                  <SearchSelect
-                    id={`${idBase}-medicine-${index}`}
-                    value={item.medicationId}
-                    selectedLabel={item.medicationName}
-                    options={medOptions}
-                    loading={searchingMeds}
-                    onSearchChange={setMedSearch}
-                    onSelect={(option) => selectMedicine(index, option)}
-                    onClear={() => clearMedicine(index)}
-                    placeholder="Search the drug catalogue…"
-                    emptyMessage={
-                      debouncedMedSearch.trim().length < 2
-                        ? 'Type at least two letters to search.'
-                        : `Nothing in the catalogue matches “${debouncedMedSearch.trim()}”.`
-                    }
-                    emptyAction={
-                      debouncedMedSearch.trim().length >= 2 ? (
-                        <Link
-                          href="/medications"
-                          target="_blank"
-                          className="text-sm text-primary hover:underline"
-                        >
-                          Add it to the drug catalogue
-                        </Link>
-                      ) : null
-                    }
-                    aria-label="Medicine"
-                  />
-                  {item.inactive && (
-                    <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                      Inactive — this medicine has been deactivated in the drug catalogue and is
-                      left out when the template is used. Choose another or remove the line.
-                    </p>
+                <div className="form-grid">
+                  <div className="space-y-2">
+                    {/*
+                      This was a plain text box with no catalogue behind it at
+                      all, so every template line was saved with `medicationId`
+                      null — templates referenced the drug catalogue in the
+                      schema and never in practice. A template is copied onto
+                      real prescriptions, so an unlinked line here became an
+                      unlinked line on every prescription made from it.
+                    */}
+                    <FormField
+                      label="Medicine"
+                      required
+                      htmlFor={`${idBase}-medicine-${index}`}
+                      error={itemError.medication}
+                    >
+                      {(control) => (
+                        <MedicationPicker
+                          id={control.id}
+                          aria-label="Medicine"
+                          aria-describedby={control['aria-describedby']}
+                          aria-invalid={control['aria-invalid']}
+                          value={item.medicationId}
+                          selectedLabel={item.medicationName}
+                          onSelect={(med) => selectMedicine(index, med)}
+                          onClear={() => clearMedicine(index)}
+                        />
+                      )}
+                    </FormField>
+                    {item.inactive && !itemError.medication && (
+                      <p className="text-xs font-medium text-destructive" role="alert">
+                        Inactive — this medicine has been deactivated in the drug catalogue and is
+                        left out when the template is used. Choose another or remove the line.
+                      </p>
+                    )}
+                  </div>
+                  <FormField label="Dosage" required error={itemError.dosage}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={item.dosage}
+                        onChange={(e) => setItem(index, 'dosage', e.target.value)}
+                        placeholder="1 capsule"
+                      />
+                    )}
+                  </FormField>
+                </div>
+
+                <div className="form-grid-3">
+                  <FormField label="Frequency" required error={itemError.frequency}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={item.frequency}
+                        onChange={(e) => setItem(index, 'frequency', e.target.value)}
+                        placeholder="Three times a day"
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Duration">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={item.duration}
+                        onChange={(e) => setItem(index, 'duration', e.target.value)}
+                        placeholder="5 days"
+                      />
+                    )}
+                  </FormField>
+                  <FormField label="Timing">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={item.timing}
+                        onChange={(e) => setItem(index, 'timing', e.target.value)}
+                        placeholder="After food"
+                      />
+                    )}
+                  </FormField>
+                </div>
+
+                <FormField label="Instructions">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={item.instructions}
+                      onChange={(e) => setItem(index, 'instructions', e.target.value)}
+                      placeholder="Finish the course even if the pain settles"
+                    />
                   )}
-                </div>
-                <div className="space-y-2">
-                  <Label className="label-required">Dosage</Label>
-                  <Input
-                    value={item.dosage}
-                    onChange={(e) => setItem(index, 'dosage', e.target.value)}
-                    placeholder="1 capsule"
-                  />
-                </div>
+                </FormField>
               </div>
-
-              <div className="form-grid-3">
-                <div className="space-y-2">
-                  <Label className="label-required">Frequency</Label>
-                  <Input
-                    value={item.frequency}
-                    onChange={(e) => setItem(index, 'frequency', e.target.value)}
-                    placeholder="Three times a day"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Duration</Label>
-                  <Input
-                    value={item.duration}
-                    onChange={(e) => setItem(index, 'duration', e.target.value)}
-                    placeholder="5 days"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Timing</Label>
-                  <Input
-                    value={item.timing}
-                    onChange={(e) => setItem(index, 'timing', e.target.value)}
-                    placeholder="After food"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Instructions</Label>
-                <Input
-                  value={item.instructions}
-                  onChange={(e) => setItem(index, 'instructions', e.target.value)}
-                  placeholder="Finish the course even if the pain settles"
-                />
-              </div>
-            </div>
-          ))}
+            )
+          })}
 
           <Button type="button" variant="outline" onClick={addItem} className="w-full">
             <Plus className="mr-2 h-4 w-4" />
@@ -417,12 +449,16 @@ export function TemplateForm({ initial, templateId, submitLabel }: TemplateFormP
 
       <div className="page-actions justify-end">
         <Button asChild variant="outline">
-          <Link href="/prescriptions/templates">Cancel</Link>
+          <Link href={backHref}>Cancel</Link>
         </Button>
-        <Button onClick={save} disabled={saving}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        <SubmitButton
+          type="button"
+          onClick={save}
+          busy={saving}
+          busyLabel={templateId ? 'Saving…' : 'Creating template…'}
+        >
           {submitLabel}
-        </Button>
+        </SubmitButton>
       </div>
     </div>
   )

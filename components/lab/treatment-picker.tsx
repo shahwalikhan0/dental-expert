@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatDate } from '@/lib/i18n/format'
+import { displayDate } from '@/lib/dates'
 
 interface TreatmentOption {
   id: string
@@ -50,7 +50,6 @@ export function LabTreatmentPicker({
 
     let cancelled = false
     // A new patient is a new list; the bounded extra render is the point.
-     
     setLoading(true)
     setFailed(null)
 
@@ -77,7 +76,7 @@ export function LabTreatmentPicker({
       t.treatmentNo,
       t.procedureName,
       t.toothNumbers ? `tooth ${t.toothNumbers}` : null,
-      formatDate(t.createdAt),
+      displayDate(t.createdAt),
     ]
       .filter(Boolean)
       .join(' · ')

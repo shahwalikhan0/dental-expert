@@ -1,21 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useListParams } from '@/hooks/use-list-params'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import {
   ClickableRow,
   GridActionsCell,
@@ -23,35 +14,24 @@ import {
   GridBody,
   GridPagination,
 } from '@/components/ui/data-grid'
-import { useTrail } from '@/components/ui/trail'
+import { BackLink, useTrail } from '@/components/ui/trail'
 import { Progress } from '@/components/ui/progress'
-import {
-  Plus,
-  Search,
-  User,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  FileText,
-  CheckCircle,
-  ArrowLeft,
-} from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { Plus, User, MoreHorizontal, Pencil, FileText, CheckCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { ActiveFilters } from '@/components/ui/active-filters'
-import { humanise } from '@/lib/labels'
-import {
-  treatmentPlanStatusConfig,
-  formatCurrency,
-  formatDate,
-  calculatePlanProgress,
-} from '@/lib/treatment-utils'
+import { TONE_TEXT_CLASS, statusLabel, statusOptions } from '@/lib/status'
+import { formatCurrency } from '@/lib/i18n/format'
+import { calculatePlanProgress } from '@/lib/treatment-utils'
 
 interface TreatmentPlanItem {
   id: string
@@ -91,32 +71,33 @@ interface TreatmentPlan {
   }
 }
 
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
+/** What the status filter offers: every plan status, as the badge names it. */
+const STATUS_OPTIONS = statusOptions('treatmentPlan')
+
+/** The consent filter; the values are what the route reads as `consentGiven`. */
+const CONSENT_OPTIONS = [
+  { value: 'true', label: 'Consent given' },
+  { value: 'false', label: 'Consent pending' },
+]
 
 export default function TreatmentPlansPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
-  const trail = useTrail('Treatment Plans')
+  const trail = useTrail('Treatment plans')
   const router = useRouter()
   const [plans, setPlans] = useState<TreatmentPlan[]>([])
   const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  })
+  // The fetch failed — said in the grid, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
 
-  // Filters
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [consentFilter, setConsentFilter] = useState('all')
+  /**
+   * Search, filters and page, kept in the address bar, so opening a plan and
+   * coming back — or refreshing, or sharing the link — keeps the view. The hook
+   * debounces the search and goes back to page 1 on any change.
+   */
+  const list = useListParams({ defaults: { status: 'all', consent: 'all' } })
+  // What the route is asked, as a string, so the fetch runs once per question.
+  const query = list.apiParams({ rename: { consent: 'consentGiven' } }).toString()
 
   /**
    * Which request is the current one.
@@ -131,152 +112,96 @@ export default function TreatmentPlansPage() {
     const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-      })
-
-      if (debouncedSearch) params.append('search', debouncedSearch)
-      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
-      if (consentFilter && consentFilter !== 'all') params.append('consentGiven', consentFilter)
-
-      const response = await fetch(`/api/treatment-plans?${params}`)
+      setFailed(false)
+      const response = await fetch(`/api/treatment-plans?${query}`)
       if (!response.ok) throw new Error('Failed to fetch treatment plans')
 
       const data = await response.json()
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
-      setPlans(data.treatmentPlans)
-      setPagination(data.pagination)
+      setPlans(data.treatmentPlans ?? [])
+      setTotal(data.pagination?.total ?? 0)
     } catch (error) {
       console.error('Error fetching treatment plans:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
-  /**
-   * Back to the first page whenever what we are filtering by changes.
-   *
-   * Without this, searching from page three asked the server for page three of
-   * the results for that search — which is usually empty, so the screen said
-   * there was nothing to find while the row sat in the list behind it.
-   */
   useEffect(() => {
-    // The cascading render this causes is the point, and it is bounded: one
-    // extra pass, only when a filter changes while the list is off page one.
+    // Loading is the effect's job: it fetches and stores what comes back.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [debouncedSearch, statusFilter, consentFilter])
-
-  useEffect(() => {
     fetchPlans()
-  }, [pagination.page, pagination.limit, debouncedSearch, statusFilter, consentFilter])
-
-  const getStatusBadge = (status: string) => {
-    const config = treatmentPlanStatusConfig[status] || {
-      label: status,
-      color: 'text-foreground',
-      bgColor: 'bg-muted',
-    }
-    return <Badge className={`${config.bgColor} ${config.color} border-0`}>{config.label}</Badge>
-  }
+    // The query string is the whole question; `fetchPlans` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-            <Link href="/treatments">
-              <ArrowLeft className="h-4 w-4" />
+      <PageHeader
+        title="Treatment plans"
+        description="Create and manage comprehensive treatment plans"
+        back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
+        actions={
+          <Button asChild>
+            <Link href="/treatments/plans/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New treatment plan
             </Link>
           </Button>
-          <div>
-            <h1 className="page-title">Treatment Plans</h1>
-            <p className="text-muted-foreground">Create and manage comprehensive treatment plans</p>
-          </div>
-        </div>
-        <Button asChild>
-          <Link href="/treatments/plans/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New Treatment Plan
-          </Link>
-        </Button>
-      </div>
+        }
+      />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by patient name, plan number, or title..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="DRAFT">Draft</SelectItem>
-                  <SelectItem value="PROPOSED">Proposed</SelectItem>
-                  <SelectItem value="ACCEPTED">Accepted</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={consentFilter} onValueChange={setConsentFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Consent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Plans</SelectItem>
-                  <SelectItem value="true">Consent Given</SelectItem>
-                  <SelectItem value="false">Pending Consent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="treatment plans"
-            onClearAll={() => {
-              setSearch('')
-              setStatusFilter('all')
-              setConsentFilter('all')
-            }}
-            filters={[
-              { label: 'Search', value: search, onClear: () => setSearch('') },
-              {
-                label: 'Status',
-                value: statusFilter === 'all' ? null : humanise(statusFilter),
-                onClear: () => setStatusFilter('all'),
-              },
-              {
-                label: 'Consent',
-                value:
-                  consentFilter === 'all'
-                    ? null
-                    : consentFilter === 'true'
-                      ? 'Consent given'
-                      : 'Pending consent',
-                onClear: () => setConsentFilter('all'),
-              },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search treatment plans"
+            placeholder="Search by plan number, patient or title…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={list.filters.status}
+              onValueChange={(status) => list.setFilter('status', status)}
+              options={STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Consent"
+              plural="plans"
+              value={list.filters.consent}
+              onValueChange={(consent) => list.setFilter('consent', consent)}
+              options={CONSENT_OPTIONS}
+            />
+          </>
+        }
+        active={{
+          noun: 'treatment plans',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Status',
+              value:
+                list.filters.status === 'all'
+                  ? null
+                  : statusLabel('treatmentPlan', list.filters.status),
+              onClear: () => list.setFilter('status', 'all'),
+            },
+            {
+              label: 'Consent',
+              value: filterValueLabel(CONSENT_OPTIONS, list.filters.consent),
+              onClear: () => list.setFilter('consent', 'all'),
+            },
+          ],
+        }}
+      />
 
-      {/* Treatment Plans Table */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[800px]">
@@ -286,7 +211,7 @@ export default function TreatmentPlansPage() {
                 <TableHead>Patient</TableHead>
                 <TableHead>Procedures</TableHead>
                 <TableHead>Progress</TableHead>
-                <TableHead>Estimated Cost</TableHead>
+                <TableHead>Estimated cost</TableHead>
                 <TableHead>Status</TableHead>
                 <GridActionsHead />
               </TableRow>
@@ -294,12 +219,19 @@ export default function TreatmentPlansPage() {
             <GridBody
               columns={7}
               loading={loading}
+              failed={failed}
+              onRetry={fetchPlans}
               empty={plans.length === 0}
               emptyIcon={FileText}
               emptyTitle="No treatment plans found"
-              emptyDescription="No plan matches these filters."
-              emptyActionLabel="Create Treatment Plan"
-              emptyActionHref="/treatments/plans/new"
+              emptyDescription={
+                list.isFiltered
+                  ? 'No plan matches these filters.'
+                  : 'No treatment plan has been drawn up yet.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New treatment plan'}
+              emptyActionHref={list.isFiltered ? undefined : '/treatments/plans/new'}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {plans.map((plan) => {
                 const progress = calculatePlanProgress(plan.items)
@@ -340,13 +272,17 @@ export default function TreatmentPlansPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium">{formatCurrency(plan.estimatedCost)}</div>
+                      <div className="font-medium tabular-nums">
+                        {formatCurrency(plan.estimatedCost)}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {getStatusBadge(plan.status)}
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge kind="treatmentPlan" status={plan.status} />
                         {plan.consentGiven && (
-                          <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                          <div
+                            className={`flex items-center gap-1 text-xs ${TONE_TEXT_CLASS.success}`}
+                          >
                             <CheckCircle className="h-3 w-3" />
                             Consent
                           </div>
@@ -354,31 +290,30 @@ export default function TreatmentPlansPage() {
                       </div>
                     </TableCell>
                     <GridActionsCell>
-                      <DropdownMenu>
-                        <IconTooltip label="More actions">
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </IconTooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/treatments/plans/${plan.id}`)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
+                      {/* `row-actions` comes with GridActionsCell. No "View
+                          details": the row itself opens the plan. A finished or
+                          cancelled plan has nothing left to edit. */}
+                      {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
+                        <DropdownMenu>
+                          <IconTooltip label="More actions">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More actions">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </IconTooltip>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => router.push(`/treatments/plans/${plan.id}/edit`)}
+                              onClick={() =>
+                                router.push(trail.to(`/treatments/plans/${plan.id}/edit`))
+                              }
                             >
-                              <Edit className="h-4 w-4 mr-2" />
+                              <Pencil className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </GridActionsCell>
                   </ClickableRow>
                 )
@@ -387,12 +322,12 @@ export default function TreatmentPlansPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="treatment plans"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

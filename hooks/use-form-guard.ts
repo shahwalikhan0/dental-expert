@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useUnsavedChanges } from './use-unsaved-changes'
 
 /**
@@ -27,13 +27,25 @@ import { useUnsavedChanges } from './use-unsaved-changes'
  * side to err on: what this exists to protect is typing, and a guard that
  * cried wolf over a touched dropdown would be dismissed out of hand.
  */
-export function useFormGuard(saving = false) {
-  const ref = useRef<HTMLElement | null>(null)
+export interface FormGuardRef {
+  (node: HTMLElement | null): void
+  /** The work is safe — after a save that stays on the page — so stop asking. */
+  reset: () => void
+}
+
+export function useFormGuard(saving = false): FormGuardRef {
   const [dirty, setDirty] = useState(false)
 
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return
+  // A callback ref rather than an object ref read in a mount-only effect. Most
+  // edit pages render a skeleton first and the form only once the record has
+  // loaded; an effect that ran on mount found no form, attached nothing, and
+  // the guard silently never worked on those pages. A callback ref is told
+  // about the form whenever it appears or is replaced.
+  // Made once and kept: a new function each render would detach and
+  // re-attach on every keystroke.
+  const [guard] = useState<FormGuardRef>(() => {
+    // How to stop listening to the element currently listened to.
+    let detach: (() => void) | null = null
 
     const onInput = (event: Event) => {
       const target = event.target as HTMLElement | null
@@ -44,15 +56,18 @@ export function useFormGuard(saving = false) {
       setDirty(true)
     }
 
-    node.addEventListener('input', onInput)
-    return () => node.removeEventListener('input', onInput)
-  }, [])
+    const attach = (node: HTMLElement | null) => {
+      detach?.()
+      detach = null
+      if (!node) return
+      node.addEventListener('input', onInput)
+      detach = () => node.removeEventListener('input', onInput)
+    }
+
+    return Object.assign(attach, { reset: () => setDirty(false) })
+  })
 
   useUnsavedChanges(dirty && !saving)
 
-  // The ref itself, not an object holding it. Reading `guard.ref` in the
-  // middle of a render is what the React lint rules call accessing a ref
-  // during render, and they are right to: it reads as a value being consulted
-  // rather than a box being handed to the DOM.
-  return ref as React.RefObject<never>
+  return guard
 }

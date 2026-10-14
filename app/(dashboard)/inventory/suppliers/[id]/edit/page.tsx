@@ -1,340 +1,124 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useFormGuard } from '@/hooks/use-form-guard'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { Loader2, Save } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import {
+  EMPTY_SUPPLIER,
+  SupplierForm,
+  supplierPayload,
+  type SupplierFormValues,
+} from '@/components/inventory/supplier-form'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
 /**
  * Edit a supplier.
  *
- * Paired with the detail page; both addresses were linked from the suppliers
- * list and neither existed. The PUT route has always been here.
+ * Paired with the detail page and the new-supplier page, which share the form
+ * (components/inventory/supplier-form.tsx).
  */
-
-const STATUSES = [
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'INACTIVE', label: 'Inactive' },
-  { value: 'BLACKLISTED', label: 'Blacklisted' },
-]
-
-const EMPTY = {
-  code: '',
-  name: '',
-  contactPerson: '',
-  phone: '',
-  alternatePhone: '',
-  email: '',
-  address: '',
-  city: '',
-  state: '',
-  postalCode: '',
-  taxRegistrationNo: '',
-  nationalTaxNo: '',
-  paymentTerms: '',
-  creditLimit: '',
-  rating: '',
-  status: 'ACTIVE',
-  notes: '',
-}
-
 export default function EditSupplierPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
   const params = useParams()
   const supplierId = params.id as string
   const { toast } = useToast()
 
-  const [form, setForm] = useState(EMPTY)
+  const [initial, setInitial] = useState<SupplierFormValues | null>(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const trail = useTrail(form.name || null)
+  const trail = useTrail(initial?.name || null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
+    try {
+      const data = await readJson<{ data: Record<string, unknown> & Partial<SupplierFormValues> }>(
+        await fetch(`/api/inventory/suppliers/${supplierId}`)
+      )
+      const s = data.data
+      const text = (value: unknown) => (value == null ? '' : String(value))
+      setInitial({
+        ...EMPTY_SUPPLIER,
+        code: text(s.code),
+        name: text(s.name),
+        contactPerson: text(s.contactPerson),
+        phone: text(s.phone),
+        alternatePhone: text(s.alternatePhone),
+        email: text(s.email),
+        address: text(s.address),
+        city: text(s.city),
+        state: text(s.state),
+        postalCode: text(s.postalCode),
+        taxRegistrationNo: text(s.taxRegistrationNo),
+        nationalTaxNo: text(s.nationalTaxNo),
+        paymentTerms: text(s.paymentTerms),
+        creditLimit: text(s.creditLimit),
+        rating: text(s.rating),
+        status: text(s.status) || 'ACTIVE',
+        notes: text(s.notes),
+      })
+    } catch (err) {
+      console.error('Error loading supplier:', err)
+      setFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [supplierId])
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/inventory/suppliers/${supplierId}`)
-        const data = await res.json()
-        if (!res.ok || !data.success) throw new Error(data.error || 'Supplier not found')
-
-        const s = data.data
-        setForm({
-          code: s.code ?? '',
-          name: s.name ?? '',
-          contactPerson: s.contactPerson ?? '',
-          phone: s.phone ?? '',
-          alternatePhone: s.alternatePhone ?? '',
-          email: s.email ?? '',
-          address: s.address ?? '',
-          city: s.city ?? '',
-          state: s.state ?? '',
-          postalCode: s.postalCode ?? '',
-          taxRegistrationNo: s.taxRegistrationNo ?? '',
-          nationalTaxNo: s.nationalTaxNo ?? '',
-          paymentTerms: s.paymentTerms ?? '',
-          creditLimit: s.creditLimit == null ? '' : String(s.creditLimit),
-          rating: s.rating == null ? '' : String(s.rating),
-          status: s.status ?? 'ACTIVE',
-          notes: s.notes ?? '',
-        })
-      } catch (err) {
-        toast({
-          title: 'Error',
-          description: err instanceof Error ? err.message : 'Failed to load the supplier',
-          variant: 'destructive',
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
     load()
-  }, [supplierId, toast])
+  }, [load])
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((current) => ({ ...current, [field]: value }))
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-
-    if (!form.name.trim() || !form.code.trim()) {
-      toast({
-        title: 'Name and code are required',
-        description: 'A supplier without a code cannot be matched to its orders.',
-        variant: 'destructive',
-      })
-      return
-    }
-
+  const save = async (form: SupplierFormValues) => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          // Payment terms are free text — clinics write "Net 30", "On
-          // delivery", "50% advance". Coercing to a number would have turned
-          // every one of those into NaN.
-          paymentTerms: form.paymentTerms.trim() || null,
-          // Empty means "not set", not zero — a blank credit limit is not a
-          // limit of nothing.
-          creditLimit: form.creditLimit === '' ? null : Number(form.creditLimit),
-          rating: form.rating === '' ? null : Number(form.rating),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save the supplier')
-
-      toast({ title: 'Saved', description: `${form.name} has been updated.` })
+      await readJson(
+        await fetch(`/api/inventory/suppliers/${supplierId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(supplierPayload(form)),
+        })
+      )
+      toast(toastSuccess('Supplier saved', form.name))
       router.push(`/inventory/suppliers/${supplierId}`)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to save the supplier',
-        variant: 'destructive',
-      })
-    } finally {
+      toast(toastError(`save supplier ${form.name}`, err))
       setSaving(false)
     }
   }
 
-  if (loading) {
+  const back = <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
+
+  if (loading && !initial) return <PageSkeleton variant="form" />
+
+  if (failed || !initial) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="this supplier" onRetry={load} />
       </div>
     )
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
-      <BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />
-
-      <h1 className="page-title">Edit {form.name || 'supplier'}</h1>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Identity</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="code">Supplier code *</Label>
-            <Input id="code" value={form.code} onChange={(e) => set('code', e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
-            <Input id="name" value={form.name} onChange={(e) => set('name', e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
-            <Select value={form.status} onValueChange={(v) => set('status', v)}>
-              <SelectTrigger id="status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="rating">Rating (out of 5)</Label>
-            <Input
-              id="rating"
-              type="number"
-              min="0"
-              max="5"
-              step="1"
-              value={form.rating}
-              onChange={(e) => set('rating', e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Contact</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="contactPerson">Contact person</Label>
-            <Input
-              id="contactPerson"
-              value={form.contactPerson}
-              onChange={(e) => set('contactPerson', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={form.email}
-              onChange={(e) => set('email', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input id="phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="alternatePhone">Alternate phone</Label>
-            <Input
-              id="alternatePhone"
-              value={form.alternatePhone}
-              onChange={(e) => set('alternatePhone', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2 col-span-2">
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              value={form.address}
-              onChange={(e) => set('address', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="city">City</Label>
-            <Input id="city" value={form.city} onChange={(e) => set('city', e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="postalCode">Postal code</Label>
-            <Input
-              id="postalCode"
-              value={form.postalCode}
-              onChange={(e) => set('postalCode', e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Trading terms</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="paymentTerms">Payment terms</Label>
-            <Input
-              id="paymentTerms"
-              value={form.paymentTerms}
-              onChange={(e) => set('paymentTerms', e.target.value)}
-              placeholder="e.g. Net 30 days, On delivery"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="creditLimit">Credit limit</Label>
-            <Input
-              id="creditLimit"
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.creditLimit}
-              onChange={(e) => set('creditLimit', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="taxRegistrationNo">Sales tax number</Label>
-            <Input
-              id="taxRegistrationNo"
-              value={form.taxRegistrationNo}
-              onChange={(e) => set('taxRegistrationNo', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="nationalTaxNo">National tax number</Label>
-            <Input
-              id="nationalTaxNo"
-              value={form.nationalTaxNo}
-              onChange={(e) => set('nationalTaxNo', e.target.value)}
-            />
-          </div>
-          <div className="space-y-2 col-span-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              rows={3}
-              value={form.notes}
-              onChange={(e) => set('notes', e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" asChild>
-          <Link href={`/inventory/suppliers/${supplierId}`}>Cancel</Link>
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-2" />
-          )}
-          Save changes
-        </Button>
-      </div>
-    </form>
+    <div className="max-w-3xl space-y-6">
+      <PageHeader title={`Edit ${initial.name || 'supplier'}`} back={back} />
+      <SupplierForm
+        initial={initial}
+        submitLabel="Save changes"
+        busyLabel="Saving…"
+        cancelHref={trail.back(`/inventory/suppliers/${supplierId}`)}
+        saving={saving}
+        onSubmit={save}
+        onInvalid={() => toast(toastError('save the supplier', 'Check the highlighted fields.'))}
+      />
+    </div>
   )
 }

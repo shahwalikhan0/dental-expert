@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
+import { MoneyInput } from '@/components/ui/money-input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,7 @@ import {
   type SellableProduct,
 } from '@/lib/invoice-form'
 import { round2 } from '@/lib/till'
+import { BLANK } from '@/lib/dates'
 import { Plus, Trash2 } from 'lucide-react'
 
 /**
@@ -160,20 +162,18 @@ export function InvoiceLinesEditor({
                       />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="0.01"
-                        value={line.unitPrice}
-                        onChange={(e) => update(line.key, { unitPrice: e.target.value })}
-                        className="w-28 text-right"
+                      {/* Money, so "Rs" in the field, a decimal keypad, and
+                          "1,500" tidied rather than refused (MoneyInput). */}
+                      <MoneyInput
+                        value={String(line.unitPrice)}
+                        onChange={(raw) => update(line.key, { unitPrice: raw })}
+                        className="w-32"
                         aria-label={`Line ${index + 1} unit price`}
                         aria-invalid={price === null && (showErrors || typedWrong)}
                       />
                     </TableCell>
                     <TableCell className="text-right font-medium pt-4">
-                      {amount === null ? '—' : formatCurrency(amount)}
+                      {amount === null ? BLANK : formatCurrency(amount)}
                     </TableCell>
                     <TableCell className="text-center pt-4">
                       <Checkbox

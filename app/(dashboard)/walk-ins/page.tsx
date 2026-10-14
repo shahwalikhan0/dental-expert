@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { useListParams } from '@/hooks/use-list-params'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ClickableRow,
@@ -19,9 +21,10 @@ import {
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Search, Trash2, UserPlus } from 'lucide-react'
+import { Loader2, Plus, Trash2, UserPlus } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
-import { ActiveFilters } from '@/components/ui/active-filters'
+import { formatPhone } from '@/lib/utils'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 
@@ -67,11 +70,18 @@ export default function WalkInsPage() {
 
   const [visitors, setVisitors] = useState<Visitor[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
   const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 })
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
+
+  // Search and page in the address bar, so opening a walk-in and coming back
+  // keeps the list as it was.
+  const list = useListParams({ defaults: {} })
+  const query = (() => {
+    const params = list.apiParams()
+    params.set('state', STATE)
+    return params.toString()
+  })()
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -80,40 +90,32 @@ export default function WalkInsPage() {
    */
   const latestRequest = useRef(0)
 
-  const load = useCallback(async () => {
+  const load = async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        state: STATE,
-        page: String(pagination.page),
-        limit: String(pagination.limit),
-      })
-      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
-
-      const res = await fetch(`/api/visitors?${params}`)
-      if (!res.ok) throw new Error('Walk-ins could not be loaded')
-      const data = await res.json()
+      const data = await readJson<{ visitors?: Visitor[]; pagination?: { total: number } }>(
+        await fetch(`/api/visitors?${query}`)
+      )
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
       setVisitors(data.visitors ?? [])
-      setPagination((p) => ({ ...p, total: data.pagination?.total ?? 0 }))
+      setTotal(data.pagination?.total ?? 0)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to load walk-ins',
-        variant: 'destructive',
-      })
+      console.error('Error fetching walk-ins:', err)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }, [debouncedSearch, pagination.page, pagination.limit, toast])
+  }
 
   useEffect(() => {
-    // The wait now lives in `useDebouncedValue` above, which `load` depends on.
-    // This used to hold a second timer of its own, so a keystroke waited twice.
+    // The search is debounced by `useListParams`; the query string is the
+    // whole question.
     load()
-  }, [load])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   /**
    * Discard, from the row.
@@ -130,27 +132,20 @@ export default function WalkInsPage() {
       title: `Discard ${visitor.name}?`,
       description:
         'Their visits stay on the record. They will leave the list of walk-ins to decide on.',
-      confirmLabel: 'Discard',
-      variant: 'destructive',
+      confirmLabel: 'Discard walk-in',
     })
     if (!ok) return
 
     setBusyId(visitor.id)
     try {
-      const res = await fetch(`/api/visitors/${visitor.id}`, { method: 'DELETE' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Could not discard this walk-in')
+      await readJson(await fetch(`/api/visitors/${visitor.id}`, { method: 'DELETE' }))
 
-      toast({ title: 'Discarded', description: `${visitor.name} is off the list.` })
+      toast(toastSuccess('Walk-in discarded', `${visitor.name} is off the list.`))
       // Re-read rather than dropping the row locally: the count in the pager
       // and the badge in the menu are both now one lower.
       load()
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Could not discard this walk-in',
-        variant: 'destructive',
-      })
+      toast(toastError(`discard ${visitor.name}`, err))
     } finally {
       setBusyId(null)
     }
@@ -166,53 +161,33 @@ export default function WalkInsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">Walk-ins</h1>
-          <p className="text-muted-foreground">
-            Seen but not registered. Register the ones who come back; discard the rest.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href={trail.to('/appointments/new?walkIn=1')}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            New walk-in
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Walk-ins"
+        description="Seen but not registered. Register the ones who come back; discard the rest."
+        actions={
+          <Button asChild>
+            <Link href={trail.to('/appointments/new?walkIn=1')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New walk-in
+            </Link>
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-            placeholder="Search by name or phone…"
-            className="pl-9"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
             aria-label="Search walk-ins"
+            placeholder="Search by name or phone…"
           />
-        </div>
-      </div>
-
-      <ActiveFilters
-        noun="walk-ins"
-        onClearAll={() => {
-          setSearch('')
-          setPagination((p) => ({ ...p, page: 1 }))
+        }
+        active={{
+          noun: 'walk-ins',
+          onClearAll: list.clear,
+          filters: [{ label: 'Search', value: list.query, onClear: () => list.setSearch('') }],
         }}
-        filters={[
-          {
-            label: 'Search',
-            value: search,
-            onClear: () => {
-              setSearch('')
-              setPagination((p) => ({ ...p, page: 1 }))
-            },
-          },
-        ]}
       />
 
       <Card>
@@ -237,14 +212,19 @@ export default function WalkInsPage() {
             <GridBody
               columns={6}
               loading={loading}
+              failed={failed}
+              onRetry={load}
               empty={rows.length === 0}
               emptyIcon={UserPlus}
-              emptyTitle={debouncedSearch ? 'No records found' : 'Nobody is waiting on a decision'}
+              emptyTitle={list.isFiltered ? 'No walk-ins found' : 'Nobody is waiting on a decision'}
               emptyDescription={
-                debouncedSearch
+                list.isFiltered
                   ? 'No walk-in matches that search.'
                   : 'Walk-ins stay here until they are registered as a patient or discarded.'
               }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New walk-in'}
+              emptyActionHref={list.isFiltered ? undefined : trail.to('/appointments/new?walkIn=1')}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {rows.map((visitor) => (
                 <ClickableRow
@@ -253,7 +233,7 @@ export default function WalkInsPage() {
                   label={`Open ${visitor.name}`}
                 >
                   <TableCell className="font-medium">{visitor.name}</TableCell>
-                  <TableCell>{visitor.phone || '—'}</TableCell>
+                  <TableCell>{formatPhone(visitor.phone) || '—'}</TableCell>
                   <TableCell>{visitor._count.appointments}</TableCell>
                   <TableCell>{displayDate(visitor.createdAt)}</TableCell>
                   <TableCell>
@@ -301,12 +281,12 @@ export default function WalkInsPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="walk-ins"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { useListParams } from '@/hooks/use-list-params'
 import {
   ClickableRow,
   GridActionsCell,
@@ -14,7 +13,6 @@ import {
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,10 +20,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { MoreHorizontal, Pencil, Truck } from 'lucide-react'
-import { ActiveFilters } from '@/components/ui/active-filters'
-import { humanise } from '@/lib/labels'
-import { formatCurrency } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { MoreHorizontal, Pencil, Plus, Truck } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { formatPhone } from '@/lib/utils'
+import { BLANK } from '@/lib/dates'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { readJson } from '@/lib/toast-utils'
 
 interface Supplier {
   id: number
@@ -41,25 +47,18 @@ interface Supplier {
   totalBusiness: number
 }
 
+/** ACTIVE, INACTIVE, BLOCKED, as the badge names them. */
+const STATUS_OPTIONS = statusOptions('supplier')
+
 export default function SuppliersPage() {
-  const router = useRouter()
+  const trail = useTrail('Suppliers')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    pages: 0,
-  })
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
 
-  useEffect(() => {
-    fetchSuppliers()
-  }, [debouncedSearch, statusFilter, pagination.page, pagination.limit])
+  const list = useListParams({ defaults: { status: 'all' } })
+  const query = list.apiParams().toString()
 
   /**
    * Which request is the current one. Responses are not guaranteed to arrive in
@@ -68,124 +67,80 @@ export default function SuppliersPage() {
    */
   const latestRequest = useRef(0)
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-        ...(debouncedSearch && { search: debouncedSearch }),
-        ...(statusFilter !== 'all' && { status: statusFilter }),
-      })
-
-      const response = await fetch(`/api/inventory/suppliers?${params}`)
-      const data = await response.json()
+      const data = await readJson<{ data: Supplier[]; pagination: { total: number } }>(
+        await fetch(`/api/inventory/suppliers?${query}`)
+      )
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
-
-      if (data.success) {
-        setSuppliers(data.data)
-        setPagination(data.pagination)
-      }
+      setSuppliers(data.data)
+      setTotal(data.pagination?.total ?? 0)
     } catch (error) {
       console.error('Error fetching suppliers:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
-  }
+  }, [query])
 
-  /**
-   * Was a hand-rolled `<span>` with its own colour table, and its own currency
-   * formatter hard-coded to en-PK beside it. Both exist already — `Badge`, and
-   * `formatCurrency` in lib/utils.ts, which follows the clinic's locale rather
-   * than assuming one.
-   */
-  const getStatusBadge = (status: string) => (
-    <Badge variant={status === 'BLOCKED' ? 'destructive' : 'secondary'}>{humanise(status)}</Badge>
-  )
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
+    fetchSuppliers()
+  }, [fetchSuppliers])
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="page-title">Supplier Management</h1>
-        <div className="flex gap-2">
-          <Link
-            href="/inventory"
-            className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
-          >
-            Back to Inventory
-          </Link>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            + Add Supplier
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Suppliers"
+        description="Who stock is ordered from."
+        back={<BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />}
+        actions={
+          <Button asChild>
+            <Link href={trail.to('/inventory/suppliers/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New supplier
+            </Link>
+          </Button>
+        }
+      />
 
-      {/* Filters */}
-      <div className="bg-background rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            type="text"
-            placeholder="Search by name, code, contact person..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              // A new filter is a new list; page three of the old one means nothing.
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search suppliers"
+            placeholder="Search by name, code or contact person…"
           />
-
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value)
-              // A new filter is a new list; page three of the old one means nothing.
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Status</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="BLOCKED">Blocked</option>
-          </select>
-        </div>
-
-        <ActiveFilters
-          className="mt-4"
-          noun="suppliers"
-          onClearAll={() => {
-            setSearch('')
-            setStatusFilter('all')
-            setPagination((p) => ({ ...p, page: 1 }))
-          }}
-          filters={[
-            {
-              label: 'Search',
-              value: search,
-              onClear: () => {
-                setSearch('')
-                setPagination((p) => ({ ...p, page: 1 }))
-              },
-            },
+        }
+        filters={
+          <FilterSelect
+            label="Status"
+            plural="statuses"
+            value={list.filters.status}
+            onValueChange={(status) => list.setFilter('status', status)}
+            options={STATUS_OPTIONS}
+          />
+        }
+        active={{
+          noun: 'suppliers',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
             {
               label: 'Status',
-              value: statusFilter === 'all' ? null : humanise(statusFilter),
-              onClear: () => {
-                setStatusFilter('all')
-                setPagination((p) => ({ ...p, page: 1 }))
-              },
+              value:
+                list.filters.status === 'all' ? null : statusLabel('supplier', list.filters.status),
+              onClear: () => list.setFilter('status', 'all'),
             },
-          ]}
-        />
-      </div>
+          ],
+        }}
+      />
 
-      {/* Suppliers Table */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[800px]">
@@ -193,42 +148,52 @@ export default function SuppliersPage() {
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Contact Person</TableHead>
+                <TableHead>Contact person</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Items</TableHead>
-                <TableHead>Total Business</TableHead>
+                <TableHead>Total business</TableHead>
                 <GridActionsHead />
               </TableRow>
             </TableHeader>
             <GridBody
               columns={9}
               loading={loading}
+              failed={failed}
+              onRetry={fetchSuppliers}
               empty={suppliers.length === 0}
               emptyIcon={Truck}
               emptyTitle="No suppliers found"
-              emptyDescription="Suppliers are who stock is ordered from. Add one to raise a purchase order against it."
+              emptyDescription={
+                list.isFiltered
+                  ? 'No supplier matches these filters.'
+                  : 'Suppliers are who stock is ordered from. Add one to raise a purchase order against it.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New supplier'}
+              emptyActionHref={list.isFiltered ? undefined : '/inventory/suppliers/new'}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {suppliers.map((supplier) => (
                 <ClickableRow
                   key={supplier.id}
-                  href={`/inventory/suppliers/${supplier.id}`}
+                  href={trail.to(`/inventory/suppliers/${supplier.id}`)}
                   label={`Open ${supplier.name}`}
                 >
                   <TableCell className="font-medium">{supplier.code}</TableCell>
                   <TableCell>{supplier.name}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {supplier.contactPerson || '—'}
+                    {supplier.contactPerson || BLANK}
                   </TableCell>
-                  <TableCell>{supplier.phone}</TableCell>
-                  <TableCell className="text-muted-foreground">{supplier.email || '—'}</TableCell>
-                  <TableCell>{getStatusBadge(supplier.status)}</TableCell>
+                  <TableCell>{formatPhone(supplier.phone) || BLANK}</TableCell>
+                  <TableCell className="text-muted-foreground">{supplier.email || BLANK}</TableCell>
+                  <TableCell>
+                    <StatusBadge kind="supplier" status={supplier.status} />
+                  </TableCell>
                   <TableCell>{supplier.itemsSupplied}</TableCell>
                   <TableCell>{formatCurrency(supplier.totalBusiness)}</TableCell>
                   <GridActionsCell>
-                    {/* View has gone: the row itself is the link now, which is
-                        what every other grid in the application does. */}
+                    {/* No "View details": the row itself opens the supplier. */}
                     <DropdownMenu>
                       <IconTooltip label="More actions">
                         <DropdownMenuTrigger asChild>
@@ -239,7 +204,7 @@ export default function SuppliersPage() {
                       </IconTooltip>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                          <Link href={`/inventory/suppliers/${supplier.id}/edit`}>
+                          <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
                             <Pencil className="h-4 w-4 mr-2" />
                             Edit
                           </Link>
@@ -253,34 +218,15 @@ export default function SuppliersPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
             noun="suppliers"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>
-
-      {/* Add Supplier Modal - Placeholder */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-background rounded-lg p-6 max-w-2xl w-full max-h-screen overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-4">Add New Supplier</h2>
-            <p className="text-muted-foreground mb-4">
-              Supplier form will be implemented here. For now, please use the API directly or create
-              a dedicated page.
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

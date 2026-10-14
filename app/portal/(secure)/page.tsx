@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { Calendar, CreditCard, Phone, Pill, Stethoscope } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency } from '@/lib/i18n/format'
+import { displayDate, displayTime } from '@/lib/dates'
 import { PortalState, usePortalData } from '@/components/portal/portal-data'
 
 interface Me {
@@ -71,7 +72,8 @@ export default function PortalOverviewPage() {
                 {next ? (
                   <>
                     <p className="text-lg font-semibold">
-                      {formatDate(next.scheduledDate)} at {next.scheduledTime}
+                      {displayDate(next.scheduledDate)} at{' '}
+                      {displayTime(`${next.scheduledDate.slice(0, 10)}T${next.scheduledTime}`)}
                     </p>
                     <p className="text-sm text-muted-foreground">{next.dentist}</p>
                   </>

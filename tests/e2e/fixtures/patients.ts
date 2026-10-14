@@ -3,11 +3,10 @@ import { Page, expect } from '@playwright/test'
 /**
  * Open the first patient's detail page from the patients list.
  *
- * Rows in app/(dashboard)/patients/page.tsx are not links — they navigate via
- * router.push() from a per-row dropdown. The only <a href*="/patients/"> on
- * that page is the "Add Patient" button (/patients/new), so the older
- * `locator('a[href*="/patients/"]').first()` approach landed on the creation
- * form instead of a patient, where none of the detail tabs exist.
+ * Rows in app/(dashboard)/patients/page.tsx are ClickableRows (role="link",
+ * not <a>). The only <a href*="/patients/"> on that page is the "New patient"
+ * button (/patients/new), so `locator('a[href*="/patients/"]').first()` would
+ * land on the creation form instead of a patient.
  */
 export async function openFirstPatientDetail(page: Page) {
   await page.goto('/patients')
@@ -15,8 +14,9 @@ export async function openFirstPatientDetail(page: Page) {
   const firstRow = page.locator('tbody tr').first()
   await expect(firstRow).toBeVisible({ timeout: 10000 })
 
-  await firstRow.getByRole('button').last().click()
-  await page.getByRole('menuitem', { name: /view details/i }).click()
+  // The row opens the record (ClickableRow); the menu no longer repeats it
+  // with "View details". The first cell holds no control of its own.
+  await firstRow.locator('td').first().click()
 
   // Detail route is /patients/<cuid>; exclude /patients/new.
   await page.waitForURL(/\/patients\/(?!new)[^/]+$/, { timeout: 10000 })

@@ -1,21 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useListParams } from '@/hooks/use-list-params'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ClickableRow,
   GridActionsCell,
@@ -24,15 +16,17 @@ import {
   GridPagination,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Plus,
-  Search,
   MoreHorizontal,
-  Eye,
-  Edit,
+  Pencil,
   FlaskConical,
   Clock,
-  AlertCircle,
   CheckCircle,
   XCircle,
   Package,
@@ -43,16 +37,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
-import { ActiveFilters } from '@/components/ui/active-filters'
-import { humanise } from '@/lib/labels'
-import { useToast } from '@/hooks/use-toast'
+import { statusLabel, statusOptions } from '@/lib/status'
+import { displayDate } from '@/lib/dates'
+import { formatCurrency } from '@/lib/i18n/format'
+import { formatPhone } from '@/lib/utils'
 
 interface LabOrder {
   id: string
@@ -89,66 +82,55 @@ interface LabVendor {
   code: string
 }
 
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  pages: number
-}
+/** What the status filter offers: every lab order status, as the badge names it. */
+const STATUS_OPTIONS = statusOptions('labOrder')
 
-interface Stats {
-  total: number
-  created: number
-  sentToLab: number
-  inProgress: number
-  ready: number
-  delivered: number
-  cancelled: number
-}
+/**
+ * `LabOrderPriority` has two values. The filter offered lower-case
+ * normal/urgent/rush, which the route passed straight to an enum column.
+ */
+const PRIORITY_OPTIONS = [
+  { value: 'NORMAL', label: 'Normal' },
+  { value: 'URGENT', label: 'Urgent' },
+]
+
+const WORK_TYPE_OPTIONS = WORK_TYPES.map((type) => ({ value: type.value, label: type.label }))
 
 export default function LabWorkPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
-  const trail = useTrail('Lab Orders')
+  const trail = useTrail('Lab orders')
   const router = useRouter()
-  const { toast } = useToast()
   const [orders, setOrders] = useState<LabOrder[]>([])
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<Stats>({
-    total: 0,
-    created: 0,
-    sentToLab: 0,
-    inProgress: 0,
-    ready: 0,
-    delivered: 0,
-    cancelled: 0,
-  })
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 20,
-    total: 0,
-    pages: 0,
-  })
+  // The fetch failed — said in the grid, not as an empty list.
+  const [failed, setFailed] = useState(false)
+  const [total, setTotal] = useState(0)
 
-  // Filters
-  const [search, setSearch] = useState('')
-  // What is in the box, and what we are willing to ask the server about.
-  const debouncedSearch = useDebouncedValue(search)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [vendorFilter, setVendorFilter] = useState('all')
-  const [workTypeFilter, setWorkTypeFilter] = useState('all')
-  const [priorityFilter, setPriorityFilter] = useState('all')
+  /**
+   * Search, filters and page, kept in the address bar, so opening a lab order
+   * and coming back — or refreshing, or sharing the link — keeps the view.
+   */
+  const list = useListParams({
+    defaults: { status: 'all', vendor: 'all', workType: 'all', priority: 'all' },
+  })
+  // What the route is asked, as a string, so the fetch runs once per question.
+  // The route reads `vendorId`; a filter left on "all" is not sent.
+  const query = list.apiParams({ rename: { vendor: 'vendorId' } }).toString()
 
-  const fetchVendors = async () => {
-    try {
-      const response = await fetch('/api/lab-vendors?status=active&sort=name')
-      if (!response.ok) throw new Error('Failed to fetch vendors')
-      const data = await response.json()
-      setVendors(data.data)
-    } catch (error) {
-      console.error('Error fetching vendors:', error)
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const response = await fetch('/api/lab-vendors?status=active&sort=name')
+        if (!response.ok) throw new Error('Failed to fetch vendors')
+        const data = await response.json()
+        setVendors(data.data ?? [])
+      } catch (error) {
+        console.error('Error fetching vendors:', error)
+      }
     }
-  }
+    fetchVendors()
+  }, [])
 
   /**
    * Which request is the current one.
@@ -163,44 +145,34 @@ export default function LabWorkPage() {
     const requestId = ++latestRequest.current
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
-      })
-
-      if (debouncedSearch) params.append('search', debouncedSearch)
-      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
-      if (vendorFilter && vendorFilter !== 'all') params.append('vendorId', vendorFilter)
-      if (workTypeFilter && workTypeFilter !== 'all') params.append('workType', workTypeFilter)
-      if (priorityFilter && priorityFilter !== 'all') params.append('priority', priorityFilter)
-
-      const response = await fetch(`/api/lab-orders?${params}`)
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch lab orders')
+      setFailed(false)
+      const response = await fetch(`/api/lab-orders?${query}`)
+      if (!response.ok) throw new Error('Failed to fetch lab orders')
+      const data = await response.json()
 
       // A newer request has been sent since; this answer is out of date.
       if (requestId !== latestRequest.current) return
-      setOrders(data.data)
-      setPagination(data.pagination)
-
-      // Calculate stats
-      calculateStats(data.data)
+      setOrders(data.data ?? [])
+      setTotal(data.pagination?.total ?? 0)
     } catch (error) {
       console.error('Error fetching lab orders:', error)
-      if (requestId === latestRequest.current) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to fetch lab orders',
-        })
-      }
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
       if (requestId === latestRequest.current) setLoading(false)
     }
   }
 
-  const calculateStats = (orders: LabOrder[]) => {
-    const newStats = {
+  useEffect(() => {
+    // Loading is shown while the fetch is out; that render is the point.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchOrders()
+    // The query string is the whole question; `fetchOrders` reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
+
+  // Counted from the page on screen, as they always have been.
+  const stats = useMemo(
+    () => ({
       total: orders.length,
       created: orders.filter((o) => o.status === 'CREATED').length,
       sentToLab: orders.filter((o) => o.status === 'SENT_TO_LAB').length,
@@ -208,413 +180,265 @@ export default function LabWorkPage() {
       ready: orders.filter((o) => o.status === 'READY').length,
       delivered: orders.filter((o) => o.status === 'DELIVERED').length,
       cancelled: orders.filter((o) => o.status === 'CANCELLED').length,
-    }
-    setStats(newStats)
-  }
+    }),
+    [orders]
+  )
 
-  useEffect(() => {
-    fetchVendors()
-  }, [])
+  const vendorOptions = useMemo(
+    () => vendors.map((vendor) => ({ value: vendor.id, label: vendor.name })),
+    [vendors]
+  )
 
-  /**
-   * Back to the first page whenever what we are filtering by changes.
-   *
-   * Without this, searching from page three asked the server for page three of
-   * the results for that search — which is usually empty, so the screen said
-   * there was nothing to find while the row sat in the list behind it.
-   */
-  useEffect(() => {
-    // The cascading render this causes is the point, and it is bounded: one
-    // extra pass, only when a filter changes while the list is off page one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }))
-  }, [debouncedSearch, statusFilter, vendorFilter, workTypeFilter, priorityFilter])
+  const priorityLabel = (priority: string) =>
+    PRIORITY_OPTIONS.find((p) => p.value === priority)?.label ?? priority
 
-  useEffect(() => {
-    fetchOrders()
-  }, [
-    pagination.page,
-    pagination.limit,
-    debouncedSearch,
-    statusFilter,
-    vendorFilter,
-    workTypeFilter,
-    priorityFilter,
-  ])
-
-  const getStatusBadge = (status: string) => {
-    const configs: Record<string, { label: string; className: string; icon: any }> = {
-      CREATED: {
-        label: 'Created',
-        className: 'bg-muted text-foreground',
-        icon: Package,
-      },
-      SENT_TO_LAB: {
-        label: 'Sent to Lab',
-        className: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-        icon: Truck,
-      },
-      IN_PROGRESS: {
-        label: 'In Progress',
-        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300',
-        icon: Clock,
-      },
-      QUALITY_CHECK: {
-        label: 'Quality Check',
-        className: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
-        icon: FlaskConical,
-      },
-      READY: {
-        label: 'Ready',
-        className: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-        icon: CheckCircle,
-      },
-      DELIVERED: {
-        label: 'Delivered',
-        className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
-        icon: CheckCircle,
-      },
-      FITTED: {
-        label: 'Fitted',
-        className: 'bg-teal-100 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300',
-        icon: CheckCircle,
-      },
-      REMAKE_REQUIRED: {
-        label: 'Remake Required',
-        className: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
-        icon: AlertCircle,
-      },
-      CANCELLED: {
-        label: 'Cancelled',
-        className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-        icon: XCircle,
-      },
-    }
-
-    const config = configs[status] || configs.CREATED
-    const Icon = config.icon
-
-    return (
-      <Badge className={config.className}>
-        <Icon className="mr-1 h-3 w-3" />
-        {config.label}
-      </Badge>
-    )
-  }
-
-  const getPriorityBadge = (priority: string) => {
-    const configs: Record<string, { label: string; className: string }> = {
-      normal: { label: 'Normal', className: 'bg-muted text-foreground' },
-      urgent: {
-        label: 'Urgent',
-        className: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
-      },
-      rush: {
-        label: 'Rush',
-        className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-      },
-    }
-
-    const config = configs[priority] || configs.normal
-    return <Badge className={config.className}>{config.label}</Badge>
-  }
-
-  const formatWorkType = workTypeLabel
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('en-PK', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
+  const statCards = [
+    { title: 'Total orders', value: stats.total, icon: Package, tone: 'text-muted-foreground' },
+    {
+      title: 'Sent to lab',
+      value: stats.sentToLab,
+      icon: Truck,
+      tone: 'text-blue-600 dark:text-blue-400',
+    },
+    {
+      title: 'In progress',
+      value: stats.inProgress,
+      icon: Clock,
+      tone: 'text-yellow-600 dark:text-yellow-400',
+    },
+    {
+      title: 'Ready',
+      value: stats.ready,
+      icon: CheckCircle,
+      tone: 'text-green-600 dark:text-green-400',
+    },
+    {
+      title: 'Delivered',
+      value: stats.delivered,
+      icon: CheckCircle,
+      tone: 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
+      title: 'Cancelled',
+      value: stats.cancelled,
+      icon: XCircle,
+      tone: 'text-red-600 dark:text-red-400',
+    },
+    { title: 'Created', value: stats.created, icon: Package, tone: 'text-muted-foreground' },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Lab Work Management</h1>
-          <p className="text-muted-foreground">
-            Manage lab orders, vendors, and track work progress
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <ExportMenu
-            filename="lab-orders"
-            getData={() =>
-              orders.map((o) => ({
-                'Order No': o.orderNumber,
-                Patient: o.patientName,
-                'Patient Phone': o.patientPhone,
-                Vendor: o.vendorName,
-                'Work Type': formatWorkType(o.workType),
-                Description: o.description || '',
-                'Tooth Numbers': o.toothNumbers || '',
-                'Shade Guide': o.shadeGuide || '',
-                'Order Date': formatDate(o.orderDate),
-                'Expected Date': formatDate(o.expectedDate),
-                'Sent Date': formatDate(o.sentDate),
-                'Received Date': formatDate(o.receivedDate),
-                'Delivered Date': formatDate(o.deliveredDate),
-                'Estimated Cost': o.estimatedCost,
-                'Actual Cost': o.actualCost || '',
-                Status: o.status,
-                Priority: o.priority,
-                'Quality Check': o.qualityCheck,
-                Notes: o.notes || '',
-              }))
-            }
-          />
-          <Button variant="outline" onClick={() => router.push('/lab/vendors')}>
-            <Users className="mr-2 h-4 w-4" />
-            Manage Vendors
-          </Button>
-          <Button onClick={() => router.push('/lab/orders/new')}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Lab Order
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Lab orders"
+        description="Manage lab orders and vendors, and track work in progress"
+        actions={
+          <>
+            <ExportMenu
+              filename="lab-orders"
+              getData={() =>
+                orders.map((o) => ({
+                  'Order no': o.orderNumber,
+                  Patient: o.patientName,
+                  'Patient phone': formatPhone(o.patientPhone),
+                  Vendor: o.vendorName,
+                  'Work type': workTypeLabel(o.workType),
+                  Description: o.description || '',
+                  'Tooth numbers': o.toothNumbers || '',
+                  'Shade guide': o.shadeGuide || '',
+                  'Order date': displayDate(o.orderDate),
+                  'Expected date': displayDate(o.expectedDate),
+                  'Sent date': displayDate(o.sentDate),
+                  'Received date': displayDate(o.receivedDate),
+                  'Delivered date': displayDate(o.deliveredDate),
+                  'Estimated cost': o.estimatedCost,
+                  'Actual cost': o.actualCost ?? '',
+                  Status: statusLabel('labOrder', o.status),
+                  Priority: priorityLabel(o.priority),
+                  'Quality check': o.qualityCheck,
+                  Notes: o.notes || '',
+                }))
+              }
+            />
+            <Button variant="outline" asChild>
+              <Link href="/lab/vendors">
+                <Users className="mr-2 h-4 w-4" />
+                Manage vendors
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/lab/orders/new">
+                <Plus className="mr-2 h-4 w-4" />
+                New lab order
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      {/* Stats Cards */}
+      {/* Stats cards — counts of the page on screen. */}
       <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sent to Lab</CardTitle>
-            <Truck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.sentToLab}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ready</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.ready}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Delivered</CardTitle>
-            <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.delivered}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cancelled</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.cancelled}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Created</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.created}</div>
-          </CardContent>
-        </Card>
+        {statCards.map(({ title, value, icon: Icon, tone }) => (
+          <Card key={title}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{title}</CardTitle>
+              <Icon className={`h-4 w-4 ${tone}`} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{value}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search orders, patients..."
-                className="pl-8"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="CREATED">Created</SelectItem>
-                <SelectItem value="SENT_TO_LAB">Sent to Lab</SelectItem>
-                <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                <SelectItem value="QUALITY_CHECK">Quality Check</SelectItem>
-                <SelectItem value="READY">Ready</SelectItem>
-                <SelectItem value="DELIVERED">Delivered</SelectItem>
-                <SelectItem value="FITTED">Fitted</SelectItem>
-                <SelectItem value="REMAKE_REQUIRED">Remake Required</SelectItem>
-                <SelectItem value="CANCELLED">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={vendorFilter} onValueChange={setVendorFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Vendors" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Vendors</SelectItem>
-                {vendors.map((vendor) => (
-                  <SelectItem key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={workTypeFilter} onValueChange={setWorkTypeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Work Types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Work Types</SelectItem>
-                {WORK_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Priorities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="urgent">Urgent</SelectItem>
-                <SelectItem value="rush">Rush</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="lab orders"
-            onClearAll={() => {
-              setSearch('')
-              setStatusFilter('all')
-              setVendorFilter('all')
-              setWorkTypeFilter('all')
-              setPriorityFilter('all')
-            }}
-            filters={[
-              { label: 'Search', value: search, onClear: () => setSearch('') },
-              {
-                label: 'Status',
-                value: statusFilter === 'all' ? null : humanise(statusFilter),
-                onClear: () => setStatusFilter('all'),
-              },
-              {
-                label: 'Vendor',
-                value:
-                  vendorFilter === 'all'
-                    ? null
-                    : (vendors.find((v) => v.id === vendorFilter)?.name ?? 'Unknown'),
-                onClear: () => setVendorFilter('all'),
-              },
-              {
-                label: 'Work type',
-                value: workTypeFilter === 'all' ? null : workTypeLabel(workTypeFilter),
-                onClear: () => setWorkTypeFilter('all'),
-              },
-              {
-                label: 'Priority',
-                value: priorityFilter === 'all' ? null : humanise(priorityFilter),
-                onClear: () => setPriorityFilter('all'),
-              },
-            ]}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={list.search}
+            onChange={list.setSearch}
+            aria-label="Search lab orders"
+            placeholder="Search by order number, patient or vendor…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={list.filters.status}
+              onValueChange={(status) => list.setFilter('status', status)}
+              options={STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Vendor"
+              plural="vendors"
+              value={list.filters.vendor}
+              onValueChange={(vendor) => list.setFilter('vendor', vendor)}
+              options={vendorOptions}
+            />
+            <FilterSelect
+              label="Work type"
+              plural="work types"
+              value={list.filters.workType}
+              onValueChange={(workType) => list.setFilter('workType', workType)}
+              options={WORK_TYPE_OPTIONS}
+            />
+            <FilterSelect
+              label="Priority"
+              plural="priorities"
+              value={list.filters.priority}
+              onValueChange={(priority) => list.setFilter('priority', priority)}
+              options={PRIORITY_OPTIONS}
+            />
+          </>
+        }
+        active={{
+          noun: 'lab orders',
+          onClearAll: list.clear,
+          filters: [
+            { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
+            {
+              label: 'Status',
+              value:
+                list.filters.status === 'all' ? null : statusLabel('labOrder', list.filters.status),
+              onClear: () => list.setFilter('status', 'all'),
+            },
+            {
+              label: 'Vendor',
+              value:
+                list.filters.vendor === 'all'
+                  ? null
+                  : (vendors.find((v) => v.id === list.filters.vendor)?.name ?? 'Unknown'),
+              onClear: () => list.setFilter('vendor', 'all'),
+            },
+            {
+              label: 'Work type',
+              value: list.filters.workType === 'all' ? null : workTypeLabel(list.filters.workType),
+              onClear: () => list.setFilter('workType', 'all'),
+            },
+            {
+              label: 'Priority',
+              value: filterValueLabel(PRIORITY_OPTIONS, list.filters.priority),
+              onClear: () => list.setFilter('priority', 'all'),
+            },
+          ],
+        }}
+      />
 
-      {/* Orders Table */}
+      {/* Orders table */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[1000px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Order No.</TableHead>
+                <TableHead>Order no.</TableHead>
                 <TableHead>Patient</TableHead>
-                <TableHead>Work Type</TableHead>
+                <TableHead>Work type</TableHead>
                 <TableHead>Vendor</TableHead>
-                <TableHead>Order Date</TableHead>
+                <TableHead>Order date</TableHead>
                 <TableHead>Expected</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
-                <TableHead>Cost</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
                 <GridActionsHead />
               </TableRow>
             </TableHeader>
             <GridBody
               columns={10}
               loading={loading}
+              failed={failed}
+              onRetry={fetchOrders}
               empty={orders.length === 0}
               emptyIcon={FlaskConical}
               emptyTitle="No lab orders found"
-              emptyDescription="Nothing is out with a laboratory under these filters."
-              emptyActionLabel="Create Lab Order"
-              onEmptyAction={() => router.push('/lab/orders/new')}
+              emptyDescription={
+                list.isFiltered
+                  ? 'Nothing is out with a laboratory under these filters.'
+                  : 'No lab order has been raised yet.'
+              }
+              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New lab order'}
+              emptyActionHref={list.isFiltered ? undefined : '/lab/orders/new'}
+              onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {orders.map((order) => (
                 <ClickableRow
                   key={order.id}
                   href={trail.to(`/lab/orders/${order.id}`)}
-                  label={`Open lab case ${order.orderNumber}`}
+                  label={`Open lab order ${order.orderNumber}`}
                 >
                   <TableCell className="font-medium">{order.orderNumber}</TableCell>
                   <TableCell>
                     <div>
                       <div className="font-medium">{order.patientName}</div>
-                      <div className="text-sm text-muted-foreground">{order.patientPhone}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatPhone(order.patientPhone)}
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell>{formatWorkType(order.workType)}</TableCell>
+                  <TableCell>{workTypeLabel(order.workType)}</TableCell>
                   <TableCell>
                     <div>
                       <div className="font-medium">{order.vendorName}</div>
-                      <div className="text-sm text-muted-foreground">{order.vendorPhone}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatPhone(order.vendorPhone)}
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell>{formatDate(order.orderDate)}</TableCell>
-                  <TableCell>{formatDate(order.expectedDate)}</TableCell>
-                  <TableCell>{getStatusBadge(order.status)}</TableCell>
-                  <TableCell>{getPriorityBadge(order.priority)}</TableCell>
-                  <TableCell>{formatCurrency(order.estimatedCost)}</TableCell>
+                  <TableCell>{displayDate(order.orderDate)}</TableCell>
+                  <TableCell>{displayDate(order.expectedDate)}</TableCell>
+                  <TableCell>
+                    <StatusBadge kind="labOrder" status={order.status} />
+                  </TableCell>
+                  <TableCell>
+                    {/* Priority is not a status; urgent is the one worth colouring. */}
+                    <Badge variant={order.priority === 'URGENT' ? 'danger' : 'secondary'}>
+                      {priorityLabel(order.priority)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(order.estimatedCost)}
+                  </TableCell>
+                  {/* GridActionsCell carries the `row-actions` class. */}
                   <GridActionsCell>
                     <DropdownMenu>
                       <IconTooltip label="More actions">
@@ -625,15 +449,12 @@ export default function LabWorkPage() {
                         </DropdownMenuTrigger>
                       </IconTooltip>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/lab/orders/${order.id}`)}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
+                        {/* No "View details": the row itself opens the lab order. */}
                         <DropdownMenuItem
                           onClick={() => router.push(`/lab/orders/${order.id}/edit`)}
                         >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit Order
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit order
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -644,12 +465,12 @@ export default function LabWorkPage() {
           </Table>
 
           <GridPagination
-            page={pagination.page}
-            pageSize={pagination.limit}
-            total={pagination.total}
-            noun="lab cases"
-            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
-            onPageSizeChange={(limit) => setPagination((p) => ({ ...p, limit, page: 1 }))}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={total}
+            noun="lab orders"
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         </CardContent>
       </Card>

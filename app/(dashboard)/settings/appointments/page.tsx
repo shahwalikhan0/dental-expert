@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import {
   Select,
   SelectContent,
@@ -14,15 +15,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Calendar, Clock, Plus, Save, Trash2 } from 'lucide-react'
-import { format } from 'date-fns'
+import { FormField } from '@/components/ui/form-field'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { IconTooltip } from '@/components/ui/icon-action'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { displayDate } from '@/lib/dates'
+import { Plus, Save, Trash2 } from 'lucide-react'
+
+interface Holiday {
+  id: string
+  name: string
+  date: string
+}
 
 export default function AppointmentSettingsPage() {
   const { toast } = useToast()
+  const trail = useTrail('Appointment settings')
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [holidays, setHolidays] = useState<any[]>([])
+  const formRef = useFormGuard(saving)
+  const [holidays, setHolidays] = useState<Holiday[]>([])
   const [newHoliday, setNewHoliday] = useState({ name: '', date: '' })
+  const [holidayErrors, setHolidayErrors] = useState<{ name?: string; date?: string }>({})
+  const [addingHoliday, setAddingHoliday] = useState(false)
 
   const [settings, setSettings] = useState({
     slotDuration: '30',
@@ -35,19 +57,19 @@ export default function AppointmentSettingsPage() {
     doubleBookingPolicy: 'BLOCK',
   })
 
-  useEffect(() => {
-    fetchSettings()
-    fetchHolidays()
-  }, [])
-
-  const fetchSettings = async () => {
+  // The settings are what the page edits, so the page waits for them: shown
+  // before they arrive, the defaults could be saved over the clinic's own.
+  const fetchSettings = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
     try {
-      const response = await fetch('/api/settings?category=appointments')
-      const result = await response.json()
+      const result = await readJson<{ success?: boolean; data?: { key: string; value: string }[] }>(
+        await fetch('/api/settings?category=appointments')
+      )
 
       if (result.success && result.data) {
-        const settingsMap: any = {}
-        result.data.forEach((s: any) => {
+        const settingsMap: Record<string, string> = {}
+        result.data.forEach((s) => {
           const key = s.key.replace('appointments.', '')
           settingsMap[key] = s.value
         })
@@ -56,10 +78,13 @@ export default function AppointmentSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
+      setFailed(true)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchHolidays = async () => {
+  const fetchHolidays = useCallback(async () => {
     try {
       const currentYear = new Date().getFullYear()
       const response = await fetch(`/api/settings/holidays?year=${currentYear}`)
@@ -71,9 +96,17 @@ export default function AppointmentSettingsPage() {
     } catch (error) {
       console.error('Failed to fetch holidays:', error)
     }
-  }
+  }, [])
 
-  const handleSaveSettings = async () => {
+  useEffect(() => {
+    // Loading from the server on mount is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSettings()
+    fetchHolidays()
+  }, [fetchSettings, fetchHolidays])
+
+  const handleSaveSettings = async (event?: React.FormEvent) => {
+    event?.preventDefault()
     setSaving(true)
     try {
       const settingsArray = Object.entries(settings).map(([key, value]) => ({
@@ -82,152 +115,152 @@ export default function AppointmentSettingsPage() {
         category: 'appointments',
       }))
 
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: settingsArray }),
-      })
-
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'Appointment settings saved successfully',
+      await readJson(
+        await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: settingsArray }),
         })
-      } else {
-        const result = await response.json().catch(() => null)
-        throw new Error(result?.error || 'Failed to save settings')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      // The page stays put after a save, so the guard is told the work is safe.
+      formRef.reset()
+      toast(toastSuccess('Appointment settings saved'))
+    } catch (error) {
+      toast(toastError('save the appointment settings', error))
     } finally {
       setSaving(false)
     }
   }
 
   const handleAddHoliday = async () => {
-    if (!newHoliday.name || !newHoliday.date) {
-      toast({
-        title: 'Error',
-        description: 'Please enter holiday name and date',
-        variant: 'destructive',
-      })
+    const found: { name?: string; date?: string } = {}
+    if (!newHoliday.name.trim()) found.name = 'Enter the holiday’s name.'
+    if (!newHoliday.date) found.date = 'Choose the date.'
+    setHolidayErrors(found)
+    if (found.name || found.date) {
+      toast(toastError('add the holiday', 'Check the highlighted fields.'))
+      document.getElementById(found.name ? 'holiday-name' : 'holiday-date')?.focus()
       return
     }
 
+    setAddingHoliday(true)
     try {
-      const response = await fetch('/api/settings/holidays', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newHoliday.name,
-          // The date input's own `YYYY-MM-DD`: a holiday is a calendar day,
-          // and turning it into an instant here could move it a day.
-          date: newHoliday.date,
-        }),
-      })
-
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'Holiday added successfully',
+      // The server says why: a date already taken by another holiday names it.
+      await readJson(
+        await fetch('/api/settings/holidays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newHoliday.name,
+            // The date input's own `YYYY-MM-DD`: a holiday is a calendar day,
+            // and turning it into an instant here could move it a day.
+            date: newHoliday.date,
+          }),
         })
-        setNewHoliday({ name: '', date: '' })
-        fetchHolidays()
-      } else {
-        // The server says why: a date already taken by another holiday names it.
-        const result = await response.json().catch(() => null)
-        throw new Error(result?.error || 'Failed to add holiday')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      toast(toastSuccess('Holiday added', `${newHoliday.name} on ${displayDate(newHoliday.date)}`))
+      setNewHoliday({ name: '', date: '' })
+      fetchHolidays()
+    } catch (error) {
+      toast(toastError(`add holiday “${newHoliday.name}”`, error))
+    } finally {
+      setAddingHoliday(false)
     }
   }
 
-  const handleDeleteHoliday = async (id: string) => {
-    try {
-      const response = await fetch(`/api/settings/holidays?id=${id}`, {
-        method: 'DELETE',
-      })
+  const handleDeleteHoliday = async (holiday: Holiday) => {
+    const ok = await confirm({
+      title: `Delete holiday “${holiday.name}”?`,
+      description: `Appointments can be booked on ${displayDate(holiday.date)} again. Appointments already booked are not affected.`,
+      confirmLabel: 'Delete holiday',
+    })
+    if (!ok) return
 
-      if (response.ok) {
-        toast({
-          title: 'Success',
-          description: 'Holiday deleted successfully',
+    try {
+      await readJson(
+        await fetch(`/api/settings/holidays?id=${holiday.id}`, {
+          method: 'DELETE',
         })
-        fetchHolidays()
-      } else {
-        const result = await response.json().catch(() => null)
-        throw new Error(result?.error || 'Failed to delete holiday')
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      )
+
+      toast(toastSuccess('Holiday deleted'))
+      fetchHolidays()
+    } catch (error) {
+      toast(toastError(`delete holiday “${holiday.name}”`, error))
     }
+  }
+
+  const header = (
+    <PageHeader
+      back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+      title="Appointment settings"
+      description="Configure appointment scheduling and timing"
+    />
+  )
+
+  if (loading) {
+    return <PageSkeleton variant="form" />
+  }
+
+  if (failed) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6">
+        {header}
+        <LoadFailed what="the appointment settings" onRetry={fetchSettings} />
+      </div>
+    )
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
-        <h1 className="page-title flex items-center gap-2">
-          <Calendar className="w-8 h-8" />
-          Appointment Settings
-        </h1>
-        <p className="text-muted-foreground">Configure appointment scheduling and timing</p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      {header}
 
-      <div className="space-y-6">
+      <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
         {/* Slot Configuration */}
         <Card>
           <CardHeader>
-            <CardTitle>Time Slot Configuration</CardTitle>
+            <CardTitle>Time slot configuration</CardTitle>
             <CardDescription>
               How often the appointment book offers a time, and how long to leave clear afterwards
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="slotDuration">Offer a slot every (minutes)</Label>
-                <Input
-                  id="slotDuration"
-                  type="number"
-                  min={5}
-                  max={120}
-                  value={settings.slotDuration}
-                  onChange={(e) => setSettings({ ...settings, slotDuration: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  The spacing of the times offered, not the length of an appointment — the desk
-                  still chooses that per booking. At 15, the book offers 09:00, 09:15, 09:30.
-                </p>
-              </div>
+              <FormField
+                label="Offer a slot every (minutes)"
+                htmlFor="slotDuration"
+                hint="The spacing of the times offered, not the length of an appointment — the desk still chooses that per booking. At 15, the book offers 09:00, 09:15, 09:30."
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    min={5}
+                    max={120}
+                    value={settings.slotDuration}
+                    onChange={(e) => setSettings({ ...settings, slotDuration: e.target.value })}
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="bufferTime">Leave clear afterwards (minutes)</Label>
-                <Input
-                  id="bufferTime"
-                  type="number"
-                  min={0}
-                  max={60}
-                  value={settings.bufferTime}
-                  onChange={(e) => setSettings({ ...settings, bufferTime: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Turning the chair round and writing the note. No time is offered inside this gap
-                  after an appointment.
-                </p>
-              </div>
+              <FormField
+                label="Leave clear afterwards (minutes)"
+                htmlFor="bufferTime"
+                hint="Turning the chair round and writing the note. No time is offered inside this gap after an appointment."
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={settings.bufferTime}
+                    onChange={(e) => setSettings({ ...settings, bufferTime: e.target.value })}
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -256,25 +289,27 @@ export default function AppointmentSettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="lunchBreakStart">Lunch Break Start</Label>
-                <Input
-                  id="lunchBreakStart"
-                  type="time"
-                  value={settings.lunchBreakStart}
-                  onChange={(e) => setSettings({ ...settings, lunchBreakStart: e.target.value })}
-                />
-              </div>
+              <FormField label="Lunch break start" htmlFor="lunchBreakStart">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="time"
+                    value={settings.lunchBreakStart}
+                    onChange={(e) => setSettings({ ...settings, lunchBreakStart: e.target.value })}
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="lunchBreakEnd">Lunch Break End</Label>
-                <Input
-                  id="lunchBreakEnd"
-                  type="time"
-                  value={settings.lunchBreakEnd}
-                  onChange={(e) => setSettings({ ...settings, lunchBreakEnd: e.target.value })}
-                />
-              </div>
+              <FormField label="Lunch break end" htmlFor="lunchBreakEnd">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="time"
+                    value={settings.lunchBreakEnd}
+                    onChange={(e) => setSettings({ ...settings, lunchBreakEnd: e.target.value })}
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -282,40 +317,44 @@ export default function AppointmentSettingsPage() {
         {/* Booking Settings */}
         <Card>
           <CardHeader>
-            <CardTitle>Booking Settings</CardTitle>
+            <CardTitle>Booking settings</CardTitle>
             <CardDescription>Configure booking restrictions and reminders</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="maxAdvanceBookingDays">Maximum Advance Booking (days)</Label>
-                <Input
-                  id="maxAdvanceBookingDays"
-                  type="number"
-                  value={settings.maxAdvanceBookingDays}
-                  onChange={(e) =>
-                    setSettings({ ...settings, maxAdvanceBookingDays: e.target.value })
-                  }
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  How far in advance patients can book appointments
-                </p>
-              </div>
+              <FormField
+                label="Maximum advance booking (days)"
+                htmlFor="maxAdvanceBookingDays"
+                hint="How far in advance patients can book appointments"
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    value={settings.maxAdvanceBookingDays}
+                    onChange={(e) =>
+                      setSettings({ ...settings, maxAdvanceBookingDays: e.target.value })
+                    }
+                  />
+                )}
+              </FormField>
 
-              <div>
-                <Label htmlFor="reminderHoursBefore">Reminder Time (hours before)</Label>
-                <Input
-                  id="reminderHoursBefore"
-                  type="number"
-                  value={settings.reminderHoursBefore}
-                  onChange={(e) =>
-                    setSettings({ ...settings, reminderHoursBefore: e.target.value })
-                  }
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  When to send appointment reminders
-                </p>
-              </div>
+              <FormField
+                label="Reminder time (hours before)"
+                htmlFor="reminderHoursBefore"
+                hint="When to send appointment reminders"
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    value={settings.reminderHoursBefore}
+                    onChange={(e) =>
+                      setSettings({ ...settings, reminderHoursBefore: e.target.value })
+                    }
+                  />
+                )}
+              </FormField>
             </div>
           </CardContent>
         </Card>
@@ -323,7 +362,7 @@ export default function AppointmentSettingsPage() {
         {/* Double-booking policy — FR-004 "beyond configured rules" */}
         <Card>
           <CardHeader>
-            <CardTitle>Double Booking</CardTitle>
+            <CardTitle>Double booking</CardTitle>
             <CardDescription>
               What happens when a booking overlaps one the dentist already has
             </CardDescription>
@@ -349,81 +388,106 @@ export default function AppointmentSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Holidays */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Holiday Calendar</CardTitle>
-            <CardDescription>Manage clinic holidays and closures</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Add Holiday Form */}
-            <div className="border rounded-lg p-4 bg-muted/50">
-              <h4 className="font-semibold mb-3">Add New Holiday</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="md:col-span-1">
+        <div className="flex justify-end">
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+            Save changes
+          </SubmitButton>
+        </div>
+      </form>
+
+      {/*
+        Holidays are saved one at a time, as they are added or deleted, so they
+        sit outside the form: their fields are not part of "Save changes" and
+        typing one is not unsaved work on the settings above.
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Holiday calendar</CardTitle>
+          <CardDescription>Manage clinic holidays and closures</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="border rounded-lg p-4 bg-muted/50">
+            <h4 className="font-semibold mb-3">Add a holiday</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+              <FormField label="Name" htmlFor="holiday-name" required error={holidayErrors.name}>
+                {(control) => (
                   <Input
-                    placeholder="Holiday name"
+                    {...control}
+                    placeholder="Eid ul-Fitr"
                     value={newHoliday.name}
-                    onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })}
+                    onChange={(e) => {
+                      setNewHoliday({ ...newHoliday, name: e.target.value })
+                      if (holidayErrors.name)
+                        setHolidayErrors({ ...holidayErrors, name: undefined })
+                    }}
                   />
-                </div>
-                <div>
+                )}
+              </FormField>
+              <FormField label="Date" htmlFor="holiday-date" required error={holidayErrors.date}>
+                {(control) => (
                   <Input
+                    {...control}
                     type="date"
                     value={newHoliday.date}
-                    onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
+                    onChange={(e) => {
+                      setNewHoliday({ ...newHoliday, date: e.target.value })
+                      if (holidayErrors.date)
+                        setHolidayErrors({ ...holidayErrors, date: undefined })
+                    }}
                   />
-                </div>
-                <div>
-                  <Button onClick={handleAddHoliday} className="w-full">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Holiday
-                  </Button>
-                </div>
+                )}
+              </FormField>
+              <div className="md:pt-8">
+                {/* An add-row button inside the card, not the page's create
+                    action, so it says what it adds rather than "New holiday". */}
+                <SubmitButton
+                  type="button"
+                  busy={addingHoliday}
+                  busyLabel="Adding…"
+                  icon={Plus}
+                  onClick={handleAddHoliday}
+                  className="w-full"
+                >
+                  Add holiday
+                </SubmitButton>
               </div>
             </div>
+          </div>
 
-            {/* Holidays List */}
-            <div className="space-y-2">
-              <h4 className="font-semibold">Upcoming Holidays</h4>
-              {holidays.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No holidays configured</p>
-              ) : (
-                <div className="space-y-2">
-                  {holidays.map((holiday) => (
-                    <div
-                      key={holiday.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{holiday.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(holiday.date), 'dd MMM yyyy')}
-                        </p>
-                      </div>
+          <div className="space-y-2">
+            <h4 className="font-semibold">Upcoming holidays</h4>
+            {holidays.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No holidays configured</p>
+            ) : (
+              <div className="space-y-2">
+                {holidays.map((holiday) => (
+                  <div
+                    key={holiday.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{holiday.name}</p>
+                      <p className="text-sm text-muted-foreground">{displayDate(holiday.date)}</p>
+                    </div>
+                    <IconTooltip label="Delete holiday">
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDeleteHoliday(holiday.id)}
+                        aria-label={`Delete holiday “${holiday.name}”`}
+                        onClick={() => handleDeleteHoliday(holiday)}
                       >
-                        <Trash2 className="w-4 h-4 text-red-500 dark:text-red-400" />
+                        <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <Button onClick={handleSaveSettings} disabled={saving} size="lg">
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Appointment Settings'}
-          </Button>
-        </div>
-      </div>
+                    </IconTooltip>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      {ConfirmDialogComponent}
     </div>
   )
 }

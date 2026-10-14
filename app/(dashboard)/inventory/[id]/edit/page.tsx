@@ -1,12 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useFormGuard } from '@/hooks/use-form-guard'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { EMPTY_ITEM, ItemForm, type ItemFormValues } from '@/components/inventory/item-form'
-import { Loader2 } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import {
+  EMPTY_ITEM,
+  ItemForm,
+  itemPayload,
+  type ItemFormValues,
+} from '@/components/inventory/item-form'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 
 /**
  * Edit an inventory item.
@@ -17,110 +24,102 @@ import { Loader2 } from 'lucide-react'
  */
 export default function EditInventoryItemPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
   const params = useParams()
   const itemId = params.id as string
   const { toast } = useToast()
 
-  const [initial, setInitial] = useState<ItemFormValues>(EMPTY_ITEM)
-  const [name, setName] = useState<string | null>(null)
+  const [initial, setInitial] = useState<ItemFormValues | null>(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const trail = useTrail(name)
+  const trail = useTrail(initial?.name ?? null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setFailed(false)
+    try {
+      const data = await readJson<{ data: any }>(await fetch(`/api/inventory/items/${itemId}`))
+      const item = data.data
+      const text = (value: unknown, fallback = '') => (value == null ? fallback : String(value))
+      setInitial({
+        ...EMPTY_ITEM,
+        sku: text(item.sku),
+        name: text(item.name),
+        category: text(item.category),
+        itemType: text(item.itemType, 'DENTAL_MATERIAL'),
+        description: text(item.description),
+        unit: text(item.unit),
+        currentStock: text(item.currentStock, '0'),
+        minimumStock: text(item.minimumStock, '0'),
+        reorderLevel: text(item.reorderLevel, '0'),
+        maximumStock: text(item.maximumStock),
+        purchasePrice: text(item.purchasePrice),
+        sellingPrice: text(item.sellingPrice),
+        taxCode: text(item.taxCode),
+        taxPercentage: text(item.taxPercentage, '0'),
+        preferredSupplierId: text(item.preferredSupplierId),
+        preferredSupplierName: text(item.supplierName),
+        medicationId: text(item.medicationId),
+        storageLocation: text(item.storageLocation),
+        expiryTracking: Boolean(item.expiryTracking),
+        batchTracking: Boolean(item.batchTracking),
+        isActive: Boolean(item.isActive),
+        notes: text(item.notes),
+      })
+    } catch (error) {
+      console.error('Error loading the item:', error)
+      setFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [itemId])
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/inventory/items/${itemId}`)
-        const data = await res.json()
-        if (!res.ok || !data.success) throw new Error(data.error || 'That item could not be loaded')
-
-        const item = data.data
-        setName(item.name)
-        setInitial({
-          sku: item.sku ?? '',
-          name: item.name ?? '',
-          category: item.category ?? '',
-          itemType: item.itemType ?? 'DENTAL_MATERIAL',
-          description: item.description ?? '',
-          unit: item.unit ?? '',
-          currentStock: Number(item.currentStock ?? 0),
-          minimumStock: Number(item.minimumStock ?? 0),
-          reorderLevel: Number(item.reorderLevel ?? 0),
-          maximumStock: item.maximumStock ?? '',
-          purchasePrice: Number(item.purchasePrice ?? 0),
-          sellingPrice: Number(item.sellingPrice ?? 0),
-          taxCode: item.taxCode ?? '',
-          taxPercentage: Number(item.taxPercentage ?? 0),
-          preferredSupplierId: item.preferredSupplierId ?? '',
-          medicationId: item.medicationId ?? '',
-          storageLocation: item.storageLocation ?? '',
-          expiryTracking: Boolean(item.expiryTracking),
-          batchTracking: Boolean(item.batchTracking),
-          isActive: Boolean(item.isActive),
-          notes: item.notes ?? '',
-        })
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to load the item',
-          variant: 'destructive',
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
     load()
-  }, [itemId, toast])
+  }, [load])
 
   const handleSubmit = async (values: ItemFormValues) => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/inventory/items/${itemId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...values,
-          maximumStock: values.maximumStock === '' ? null : Number(values.maximumStock),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save the item')
-
-      toast({ title: 'Saved', description: `${values.name} has been updated.` })
+      await readJson(
+        await fetch(`/api/inventory/items/${itemId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemPayload(values)),
+        })
+      )
+      toast(toastSuccess('Item saved', `${values.name} has been updated.`))
       router.push(`/inventory/${itemId}`)
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to save the item',
-        variant: 'destructive',
-      })
-    } finally {
+      toast(toastError(`save ${values.name || 'the item'}`, error))
       setSaving(false)
     }
   }
 
-  if (loading) {
+  const back = <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
+
+  if (loading && !initial) return <PageSkeleton variant="form" />
+
+  if (failed || !initial) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="this item" onRetry={load} />
       </div>
     )
   }
 
   return (
-    <div ref={formRef} className="space-y-6">
-      <BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />
-
-      <h1 className="page-title">Edit {name ?? 'item'}</h1>
+    <div className="max-w-4xl space-y-6">
+      <PageHeader title={`Edit ${initial.name || 'item'}`} back={back} />
 
       <ItemForm
         mode="edit"
         initial={initial}
         busy={saving}
-        cancelHref={`/inventory/${itemId}`}
+        cancelHref={trail.back(`/inventory/${itemId}`)}
         submitLabel="Save changes"
         busyLabel="Saving…"
         onSubmit={handleSubmit}

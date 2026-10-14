@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
 import { useState, useEffect, useCallback } from 'react'
 
 interface Duplicate {
@@ -108,12 +109,11 @@ export function DuplicateDetector({
                 {Math.round(d.confidence * 100)}% match · matched on {d.matchFields.join(', ')}
               </p>
             </div>
-            <button
-              onClick={() => onSelect(d.id)}
-              className="text-xs rounded-md border border-primary text-primary px-2.5 py-1 hover:bg-primary/10 transition-colors"
-            >
+            {/* type="button": this sits inside the registration form, and a
+                plain <button> there submitted it as well as opening the record. */}
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelect(d.id)}>
               Use existing
-            </button>
+            </Button>
           </div>
         ))}
       </div>

@@ -7,7 +7,7 @@ test.describe('Reports & Analytics', () => {
       // Exact title — /report|analytics/i also matches the "Natural Language
       // Report" panel heading.
       await expect(
-        page.getByRole('heading', { name: 'Reports & Analytics Dashboard' })
+        page.getByRole('heading', { name: 'Reports & analytics dashboard' })
       ).toBeVisible()
     })
 

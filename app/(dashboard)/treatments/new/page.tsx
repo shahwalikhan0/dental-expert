@@ -4,12 +4,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { fetchHandedPatient } from '@/lib/prefill'
-import { usePatientSearch } from '@/hooks/use-patient-search'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { isoDay } from '@/lib/dates'
-import { SearchSelect, type SearchOption } from '@/components/ui/search-select'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,10 +19,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Search, User, Stethoscope, Save, Loader2 } from 'lucide-react'
+import { User, Stethoscope, Save } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
-import { procedureCategoryConfig, formatCurrency } from '@/lib/treatment-utils'
-import { parseTeeth } from '@/lib/teeth'
+import { PatientPicker } from '@/components/patients/patient-picker'
+import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
+import { FormField } from '@/components/ui/form-field'
+import { MoneyInput, parseMoney } from '@/components/ui/money-input'
+import { PageHeader } from '@/components/ui/page-header'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { formatCurrency } from '@/lib/i18n/format'
+import { formatTeeth, parseTeeth } from '@/lib/teeth'
+import { readJson, toastError } from '@/lib/toast-utils'
 import { VoiceInput } from '@/components/clinical/voice-input'
 
 interface Patient {
@@ -127,10 +132,11 @@ function withProcedureDefaults<T extends TreatmentNoteFields>(
   }
 }
 
+type FieldErrors = Partial<Record<'patient' | 'doctor' | 'procedure' | 'cost', string>>
+
 export default function NewTreatmentPage() {
   const router = useRouter()
-  // Warn before a half-filled form is thrown away by a stray click.
-  const formRef = useFormGuard()
+  const trail = useTrail('New treatment')
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
   const preselectedAppointmentId = searchParams.get('appointmentId')
@@ -149,8 +155,10 @@ export default function NewTreatmentPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<FieldErrors>({})
+  // Warn before a half-filled form is thrown away by a stray click.
+  const formRef = useFormGuard(loading)
   const { toast } = useToast()
-  const patientSearch = usePatientSearch<Patient>()
 
   // Form state
   const [formData, setFormData] = useState({
@@ -172,22 +180,15 @@ export default function NewTreatmentPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
 
-  // Fetch initial data
+  // Fetch initial data. The handed-over patient (`?patientId=`) is fetched by
+  // the picker itself, by id — see `initialPatientId` below.
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [doctorsRes, proceduresRes, handedPatient] = await Promise.all([
+        const [doctorsRes, proceduresRes] = await Promise.all([
           fetch('/api/staff/doctors'),
           fetch('/api/procedures?all=true&isActive=true'),
-          preselectedPatientId ? fetchHandedPatient<Patient>(preselectedPatientId) : null,
         ])
-
-        // Asked for by id. The register is searched on the server — see
-        // hooks/use-patient-search.ts — so there is no local list to find it
-        // in, and there never should have been.
-        if (handedPatient) {
-          setSelectedPatient(handedPatient)
-        }
 
         if (doctorsRes.ok) {
           const data = await doctorsRes.json()
@@ -233,43 +234,25 @@ export default function NewTreatmentPage() {
     }
 
     fetchData()
-  }, [preselectedPatientId, preselectedProcedureId])
+  }, [preselectedProcedureId])
 
-  const handlePatientSelect = (patient: Patient) => {
+  const handlePatientChange = (patient: Patient | null) => {
     setSelectedPatient(patient)
-    setFormData({ ...formData, patientId: patient.id })
+    setFormData((prev) => ({ ...prev, patientId: patient?.id ?? '' }))
+    if (patient) setErrors((prev) => ({ ...prev, patient: undefined }))
   }
 
-  /**
-   * The catalogue as select options, category first so that typing a category
-   * name still finds its procedures and the list reads in the same order the
-   * grouped dropdown did.
-   */
-  const procedureOptions: SearchOption[] = useMemo(
-    () =>
-      // The category grouping this replaced existed only to draw headings in
-      // a Select. The search field shows the category on each row instead, so
-      // it is searchable rather than merely visible.
-      procedures.map((proc) => ({
-        id: proc.id,
-        label: proc.name,
-        hint: formatCurrency(proc.basePrice),
-        detail: `${proc.code} · ${procedureCategoryConfig[proc.category]?.label || proc.category}`,
-      })),
-    [procedures]
-  )
-
-  const handleProcedureSelect = (procedureId: string) => {
-    const procedure = procedures.find((p) => p.id === procedureId)
-    setSelectedProcedure(procedure || null)
+  const handleProcedureSelect = (procedure: Procedure | null) => {
+    setSelectedProcedure(procedure)
+    if (procedure) setErrors((prev) => ({ ...prev, procedure: undefined }))
     setFormData((prev) =>
       withProcedureDefaults(
         {
           ...prev,
-          procedureId,
+          procedureId: procedure?.id ?? '',
           cost: procedure ? procedure.basePrice.toString() : '',
         },
-        procedure || null
+        procedure
       )
     )
   }
@@ -277,51 +260,44 @@ export default function NewTreatmentPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validation
-    const incomplete = (description: string) =>
-      toast({ variant: 'destructive', title: 'Treatment not saved', description })
-    if (!formData.patientId) {
-      incomplete('Please select a patient')
-      return
-    }
-    if (!formData.doctorId) {
-      incomplete('Please select a doctor')
-      return
-    }
-    if (!formData.procedureId) {
-      incomplete('Please select a procedure')
+    // '' is "not given", and the route uses the plan's or the list price;
+    // "0" is a price of nothing and is sent as 0.
+    const cost = formData.cost.trim() === '' ? null : parseMoney(formData.cost)
+
+    const found: FieldErrors = {}
+    if (!formData.patientId) found.patient = 'Choose the patient.'
+    if (!formData.doctorId) found.doctor = 'Choose the doctor.'
+    if (!formData.procedureId) found.procedure = 'Choose the procedure.'
+    if (formData.cost.trim() !== '' && cost === null)
+      found.cost = 'Enter an amount, such as 1500 or 1500.50.'
+    setErrors(found)
+    const first = (['patient', 'doctor', 'procedure', 'cost'] as const).find((k) => found[k])
+    if (first) {
+      toast(toastError('save the treatment', 'Check the highlighted fields.'))
+      const field = document.getElementById(first)
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      field?.focus()
       return
     }
 
     setLoading(true)
 
     try {
-      const response = await fetch('/api/treatments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          toothNumbers: formData.toothNumbers.length > 0 ? formData.toothNumbers.join(',') : null,
-          // '' is "not given", and the route uses the plan's or the list
-          // price; "0" is a price of nothing and is sent as 0.
-          cost: formData.cost === '' ? null : parseFloat(formData.cost),
-          treatmentPlanItemId: planItemId || undefined,
-        }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create treatment')
-      }
-
-      const treatment = await response.json()
+      const treatment = await readJson<{ id: string }>(
+        await fetch('/api/treatments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...formData,
+            toothNumbers: formatTeeth(formData.toothNumbers),
+            cost,
+            treatmentPlanItemId: planItemId || undefined,
+          }),
+        })
+      )
       router.push(`/treatments/${treatment.id}`)
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not save the treatment',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError('save the treatment', error))
     } finally {
       setLoading(false)
     }
@@ -329,106 +305,33 @@ export default function NewTreatmentPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/treatments">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Treatment</h1>
-          <p className="text-muted-foreground">Record a new treatment for a patient</p>
-        </div>
-      </div>
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
+        title="New treatment"
+        description="Record a new treatment for a patient"
+      />
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
         {/* Patient Selection */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              Patient Information
+              Patient
             </CardTitle>
-            <CardDescription>Select the patient for this treatment</CardDescription>
+            <CardDescription>Choose the patient for this treatment</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedPatient ? (
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium">
-                      {selectedPatient.firstName} {selectedPatient.lastName}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedPatient.patientId} | {selectedPatient.phone}
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedPatient(null)
-                    setFormData({ ...formData, patientId: '' })
-                  }}
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search patients by name, phone, or ID..."
-                    value={patientSearch.term}
-                    onChange={(e) => patientSearch.setTerm(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {patientSearch.searching ? (
-                    <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Searching…
-                    </p>
-                  ) : patientSearch.results.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">
-                      {patientSearch.failed
-                        ? 'Could not search just now. Check the connection and try again.'
-                        : patientSearch.isSearch
-                          ? `No patients found for “${patientSearch.searchedFor}”`
-                          : 'No patients found'}
-                    </div>
-                  ) : (
-                    patientSearch.results.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        onClick={() => handlePatientSelect(patient)}
-                        className="w-full flex items-center gap-4 p-3 hover:bg-muted/50 border-b last:border-b-0 text-left"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {patient.firstName} {patient.lastName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {patient.patientId} | {patient.phone}
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+          <CardContent>
+            <FormField label="Patient" htmlFor="patient" required error={errors.patient}>
+              {(control) => (
+                <PatientPicker<Patient>
+                  {...control}
+                  value={selectedPatient}
+                  onChange={handlePatientChange}
+                  initialPatientId={preselectedPatientId}
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
@@ -437,66 +340,58 @@ export default function NewTreatmentPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Stethoscope className="h-5 w-5" />
-              Treatment Details
+              Treatment details
             </CardTitle>
             <CardDescription>
               {planItemId
                 ? 'A step of the patient’s treatment plan. Completing this treatment completes the step.'
-                : 'Select the doctor and procedure'}
+                : 'Choose the doctor and the procedure'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="doctor">Doctor *</Label>
-                <Select
-                  value={formData.doctorId}
-                  onValueChange={(value) => setFormData({ ...formData, doctorId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select doctor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor.id} value={doctor.id}>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                        {doctor.specialization && ` - ${doctor.specialization}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormField label="Doctor" htmlFor="doctor" required error={errors.doctor}>
+                {(control) => (
+                  <Select
+                    value={formData.doctorId}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, doctorId: value })
+                      setErrors((prev) => ({ ...prev, doctor: undefined }))
+                    }}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Choose a doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((doctor) => (
+                        <SelectItem key={doctor.id} value={doctor.id}>
+                          Dr. {doctor.firstName} {doctor.lastName}
+                          {doctor.specialization && ` - ${doctor.specialization}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
 
-              <div className="space-y-2">
-                <Label htmlFor="procedure">Procedure *</Label>
-                {/*
-                  Searchable, because a Select is a list you scroll and a
-                  catalogue is not a short list. A clinic with sixty procedures
-                  across ten categories made this a scroll to the right heading
-                  and then a scroll within it, every time, with no way to type
-                  "crown" and be done.
-                */}
-                <SearchSelect
-                  id="procedure"
-                  value={formData.procedureId || null}
-                  selectedLabel={selectedProcedure ? selectedProcedure.name : null}
-                  options={procedureOptions}
-                  onSelect={(option) => handleProcedureSelect(option.id)}
-                  onClear={() => handleProcedureSelect('')}
-                  placeholder="Search procedures by name or code…"
-                  emptyMessage="No procedure of that name in the catalogue."
-                  emptyAction={
-                    <Link
-                      href="/settings/procedures"
-                      target="_blank"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Open the procedure catalogue
-                    </Link>
-                  }
-                  aria-label="Procedure"
-                />
-              </div>
+              {/*
+                Searchable, because a Select is a list you scroll and a
+                catalogue is not a short list. The page holds the catalogue
+                itself — it needs each procedure's defaults and price — and
+                hands it to the picker.
+              */}
+              <FormField label="Procedure" htmlFor="procedure" required error={errors.procedure}>
+                {(control) => (
+                  <ProcedurePicker<Procedure>
+                    {...control}
+                    procedures={procedures}
+                    value={formData.procedureId || null}
+                    selectedLabel={selectedProcedure ? selectedProcedure.name : null}
+                    onSelect={handleProcedureSelect}
+                    onClear={() => handleProcedureSelect(null)}
+                  />
+                )}
+              </FormField>
             </div>
 
             {selectedProcedure && (
@@ -509,23 +404,25 @@ export default function NewTreatmentPage() {
                 )}
                 <div className="flex gap-4 mt-2 text-sm">
                   <span>Duration: {selectedProcedure.defaultDuration} min</span>
-                  <span>Base Price: {formatCurrency(selectedProcedure.basePrice)}</span>
+                  <span>Base price: {formatCurrency(selectedProcedure.basePrice)}</span>
                 </div>
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="cost">Treatment Cost</Label>
-              <Input
-                id="cost"
-                type="number"
-                min={0}
-                step="0.01"
-                value={formData.cost}
-                onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                placeholder="Enter treatment cost"
-              />
-            </div>
+            <FormField
+              label="Treatment cost"
+              htmlFor="cost"
+              error={errors.cost}
+              hint="Leave blank to charge the plan's quoted price or the procedure's list price."
+            >
+              {(control) => (
+                <MoneyInput
+                  {...control}
+                  value={formData.cost}
+                  onChange={(raw) => setFormData({ ...formData, cost: raw })}
+                />
+              )}
+            </FormField>
           </CardContent>
         </Card>
 
@@ -540,7 +437,7 @@ export default function NewTreatmentPage() {
           <ToothPicker
             patientId={selectedPatient.id}
             selected={formData.toothNumbers}
-            onChange={(teeth) => setFormData({ ...formData, toothNumbers: teeth })}
+            onChange={(teeth) => setFormData((prev) => ({ ...prev, toothNumbers: teeth }))}
             defaultToFindings
             // A child opens on the primary teeth (bug report 12 Oct, finding 55).
             age={selectedPatient.age}
@@ -551,17 +448,17 @@ export default function NewTreatmentPage() {
         {/* Clinical Notes */}
         <Card>
           <CardHeader>
-            <CardTitle>Clinical Notes</CardTitle>
+            <CardTitle>Clinical notes</CardTitle>
             <CardDescription>Document the clinical findings and treatment notes</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="chiefComplaint">Chief Complaint</Label>
+              <Label htmlFor="chiefComplaint">Chief complaint</Label>
               <Textarea
                 id="chiefComplaint"
                 value={formData.chiefComplaint}
                 onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-                placeholder="Patient's main concern or reason for visit..."
+                placeholder="Patient's main concern or reason for visit…"
                 rows={2}
               />
             </div>
@@ -572,25 +469,25 @@ export default function NewTreatmentPage() {
                 id="diagnosis"
                 value={formData.diagnosis}
                 onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                placeholder="Clinical diagnosis..."
+                placeholder="Clinical diagnosis…"
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="findings">Clinical Findings</Label>
+              <Label htmlFor="findings">Clinical findings</Label>
               <Textarea
                 id="findings"
                 value={formData.findings}
                 onChange={(e) => setFormData({ ...formData, findings: e.target.value })}
-                placeholder="Examination findings..."
+                placeholder="Examination findings…"
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Label htmlFor="procedureNotes">Procedure Notes</Label>
+                <Label htmlFor="procedureNotes">Procedure notes</Label>
                 <VoiceInput
                   onTranscript={(text) =>
                     setFormData((prev) => ({
@@ -604,18 +501,18 @@ export default function NewTreatmentPage() {
                 id="procedureNotes"
                 value={formData.procedureNotes}
                 onChange={(e) => setFormData({ ...formData, procedureNotes: e.target.value })}
-                placeholder="Details of the procedure performed... (use mic for voice dictation)"
+                placeholder="Details of the procedure performed… (use the mic to dictate)"
                 rows={3}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="materialsUsed">Materials Used</Label>
+              <Label htmlFor="materialsUsed">Materials used</Label>
               <Textarea
                 id="materialsUsed"
                 value={formData.materialsUsed}
                 onChange={(e) => setFormData({ ...formData, materialsUsed: e.target.value })}
-                placeholder="List of materials and supplies used..."
+                placeholder="List of materials and supplies used…"
                 rows={2}
               />
             </div>
@@ -641,7 +538,7 @@ export default function NewTreatmentPage() {
 
             {formData.followUpRequired && (
               <div className="space-y-2">
-                <Label htmlFor="followUpDate">Follow-up Date</Label>
+                <Label htmlFor="followUpDate">Follow-up date</Label>
                 <Input
                   id="followUpDate"
                   type="date"
@@ -658,16 +555,9 @@ export default function NewTreatmentPage() {
           <Button type="button" variant="outline" asChild>
             <Link href="/treatments">Cancel</Link>
           </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              'Creating...'
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Create Treatment
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={loading} busyLabel="Creating treatment…" icon={Save}>
+            Create treatment
+          </SubmitButton>
         </div>
       </form>
     </div>

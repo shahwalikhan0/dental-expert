@@ -60,6 +60,15 @@ export async function GET(req: NextRequest) {
       }
       where.category = category
     }
+    const isActive = searchParams.get('isActive')
+    if (isActive === 'true' || isActive === 'false') where.isActive = isActive === 'true'
+    const search = searchParams.get('search')?.trim()
+    if (search) {
+      where.OR = [
+        { code: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ]
+    }
 
     const [procedures, total] = await Promise.all([
       prisma.procedure.findMany({

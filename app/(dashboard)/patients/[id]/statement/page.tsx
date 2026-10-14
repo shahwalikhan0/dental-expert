@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { Loader2, Printer } from 'lucide-react'
-import { formatCurrency } from '@/lib/billing-utils'
+import { Printer } from 'lucide-react'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { formatCurrency } from '@/lib/i18n/format'
 import { displayDate } from '@/lib/dates'
 import { AGEING_BUCKETS } from '@/lib/ageing'
 import type { Ledger } from '@/lib/ledger'
@@ -63,6 +65,7 @@ export default function PatientStatementPage() {
   const [data, setData] = useState<StatementData | null>(null)
   const [clinic, setClinic] = useState<Clinic | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -81,6 +84,8 @@ export default function PatientStatementPage() {
           const payload = await clinicRes.json()
           setClinic(payload.hospital ?? payload.clinic ?? payload)
         }
+      } catch {
+        // `data` stays empty: the page says it could not load, with a retry.
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -89,21 +94,15 @@ export default function PatientStatementPage() {
     return () => {
       cancelled = true
     }
-  }, [params.id, family])
+  }, [params.id, family, reload])
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  if (loading) return <PageSkeleton variant="detail" />
 
   if (!data) {
     return (
       <div className="space-y-4">
         <BackLink fallback={`/patients/${params.id}`} fallbackLabel="Patient" trail={trail} />
-        <p className="text-muted-foreground">That statement could not be loaded.</p>
+        <LoadFailed what="this statement" onRetry={() => setReload((n) => n + 1)} />
       </div>
     )
   }

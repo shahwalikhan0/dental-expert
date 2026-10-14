@@ -4,7 +4,8 @@ import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Building2,
   Calendar,
@@ -25,77 +26,77 @@ import {
 
 const settingsCategories = [
   {
-    title: 'Setup Guide',
+    title: 'Setup guide',
     description: 'Step-by-step instructions to set up everything — start here!',
     icon: BookOpen,
     href: '/settings/setup-guide',
     color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/30',
   },
   {
-    title: 'Clinic Information',
+    title: 'Clinic information',
     description: 'Manage clinic details, contact information, and branding',
     icon: Building2,
     href: '/settings/clinic',
     color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30',
   },
   {
-    title: 'Appointment Settings',
+    title: 'Appointment settings',
     description: 'Configure time slots, working hours, and holiday calendar',
     icon: Calendar,
     href: '/settings/appointments',
     color: 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-950/30',
   },
   {
-    title: 'Billing Settings',
+    title: 'Billing settings',
     description: 'Set up tax rates, invoice format, and payment terms',
     icon: Receipt,
     href: '/settings/billing',
     color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30',
   },
   {
-    title: 'Communication Settings',
+    title: 'Communication settings',
     description: 'Configure SMS gateways, email SMTP, and notifications',
     icon: MessageSquare,
     href: '/settings/communications',
     color: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/30',
   },
   {
-    title: 'Procedure Settings',
+    title: 'Procedure settings',
     description: 'Manage dental procedures and default pricing',
     icon: SettingsIcon,
     href: '/settings/procedures',
     color: 'text-pink-600 bg-pink-50 dark:text-pink-400 dark:bg-pink-950/30',
   },
   {
-    title: 'User Management',
+    title: 'User management',
     description: 'Manage staff accounts, roles, and permissions',
     icon: Users,
     href: '/staff',
     color: 'text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-950/30',
   },
   {
-    title: 'System Settings',
+    title: 'System settings',
     description: 'Backup, export data, and view audit logs',
     icon: Database,
     href: '/settings/system',
     color: 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/30',
   },
   {
-    title: 'Security Settings',
+    title: 'Security settings',
     description: 'Password policies, session timeout, and security logs',
     icon: Shield,
     href: '/settings/security',
     color: 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30',
   },
   {
-    title: 'Data Import',
+    title: 'Data import',
     description: 'Import data from CSV, Excel, or PDF files from your previous ERP',
     icon: Upload,
     href: '/settings/import',
     color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30',
   },
   {
-    title: 'My Profile',
+    title: 'My profile',
     description: 'Your own language and formatting preferences — affects nobody else',
     icon: Languages,
     href: '/settings/profile',
@@ -105,7 +106,7 @@ const settingsCategories = [
     // Listed for everybody, not gated on a settings capability: Inventory /
     // Store and Lab Technician hold none, and somebody who cannot open the page
     // that changes their password cannot change their password.
-    title: 'My Password',
+    title: 'My password',
     description: 'Change your own sign-in password',
     icon: KeyRound,
     href: '/settings/password',
@@ -114,6 +115,14 @@ const settingsCategories = [
 ]
 
 const noSubscription = () => () => {}
+
+type ThemeChoice = 'light' | 'dark' | 'system'
+
+const THEME_OPTIONS = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+] as const
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -130,13 +139,10 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="mb-8">
-        <h1 className="page-title flex items-center gap-2">
-          <SettingsIcon className="w-8 h-8" />
-          Settings & Configuration
-        </h1>
-        <p className="text-muted-foreground mt-2">Manage all system settings and configurations</p>
-      </div>
+      <PageHeader
+        title="Settings & configuration"
+        description="Manage all system settings and configurations"
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {settingsCategories.map((category) => (
@@ -167,25 +173,14 @@ export default function SettingsPage() {
             <CardDescription>Choose how the application looks for you</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-3">
-              {(
-                [
-                  { value: 'light', label: 'Light', icon: Sun },
-                  { value: 'dark', label: 'Dark', icon: Moon },
-                  { value: 'system', label: 'System', icon: Monitor },
-                ] as const
-              ).map((opt) => (
-                <Button
-                  key={opt.value}
-                  variant={hydrated && theme === opt.value ? 'default' : 'outline'}
-                  className="flex items-center gap-2"
-                  onClick={() => setTheme(opt.value)}
-                >
-                  <opt.icon className="h-4 w-4" />
-                  {opt.label}
-                </Button>
-              ))}
-            </div>
+            <SegmentedControl
+              aria-label="Theme"
+              size="md"
+              options={THEME_OPTIONS}
+              // Nothing is selected until hydrated: see above.
+              value={(hydrated ? theme : '') as ThemeChoice}
+              onChange={setTheme}
+            />
           </CardContent>
         </Card>
       </div>
@@ -194,7 +189,7 @@ export default function SettingsPage() {
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>System Information</CardTitle>
+            <CardTitle>System information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -214,7 +209,7 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Quick Tips</CardTitle>
+            <CardTitle>Quick tips</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>• Regular backups are crucial for data safety</p>

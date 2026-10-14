@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Plus } from 'lucide-react'
 import { formatCurrency } from '@/lib/billing-utils'
 import { lineKey, type FormLine } from '@/lib/invoice-form'
@@ -58,11 +59,20 @@ export function UnbilledTreatmentList({
   onAdd: (treatment: UnbilledTreatment) => void
 }) {
   if (loading) {
-    return <div className="text-center py-4 text-muted-foreground">Loading treatments...</div>
+    // Shaped like the rows that are coming, rather than the word "Loading".
+    return (
+      <div className="space-y-2" role="status" aria-label="Loading treatments">
+        {[0, 1, 2].map((row) => (
+          <Skeleton key={row} className="h-14 w-full rounded-lg" />
+        ))}
+      </div>
+    )
   }
   if (treatments.length === 0) {
     return (
-      <div className="text-center py-4 text-muted-foreground">No unbilled treatments found</div>
+      <p className="py-4 text-center text-sm text-muted-foreground">
+        No unbilled treatments for this patient.
+      </p>
     )
   }
   return (

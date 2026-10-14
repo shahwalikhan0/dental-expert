@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useCan } from '@/hooks/use-can'
 import { useToast } from '@/hooks/use-toast'
@@ -10,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -20,11 +18,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
+import { FormField } from '@/components/ui/form-field'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
 import {
-  ArrowLeft,
   User,
   Phone,
   Mail,
@@ -34,9 +36,9 @@ import {
   FileText,
   Play,
   CheckCircle,
-  XCircle,
+  Trash2,
   ClipboardList,
-  Edit,
+  Pencil,
   Printer,
   AlertCircle,
   Pill,
@@ -45,19 +47,18 @@ import {
   PenLine,
   History,
 } from 'lucide-react'
-import { VoiceInput } from '@/components/clinical/voice-input'
-import {
-  treatmentStatusConfig,
-  procedureCategoryConfig,
-  formatCurrency,
-  formatDate,
-  formatDateTime,
-  parseToothNumbers,
-  toothNames,
-} from '@/lib/treatment-utils'
+import { procedureCategoryConfig, parseToothNumbers, toothNames } from '@/lib/treatment-utils'
+import { formatCurrency } from '@/lib/i18n/format'
+import { displayDate, displayDateTime } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { groupTeeth } from '@/lib/teeth'
 import { newInvoiceHref } from '@/lib/invoice-links'
+import {
+  CompleteTreatmentDialog,
+  completionNotesOf,
+} from '@/components/treatments/complete-treatment-dialog'
 
 interface Treatment {
   id: string
@@ -150,17 +151,18 @@ interface Treatment {
 
 export default function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const router = useRouter()
   const [treatment, setTreatment] = useState<Treatment | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(treatment?.treatmentNo ?? null)
   const [loading, setLoading] = useState(true)
+  // Could not be loaded, which is not the same as not existing.
+  const [failed, setFailed] = useState(false)
+  const [notFound, setNotFound] = useState(false)
   const { toast } = useToast()
+  const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false)
-  const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [addendumOpen, setAddendumOpen] = useState(false)
   const [addendumText, setAddendumText] = useState('')
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   // Only the treating dentist may sign (bug report 12 Oct, finding 12), so the
   // button is offered to them alone. The route enforces it either way.
   const { data: session } = useSession()
@@ -171,34 +173,21 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const canBill = useCan('billing:write') === true
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Complete form state
-  const [completeFormData, setCompleteFormData] = useState({
-    procedureNotes: '',
-    materialsUsed: '',
-    complications: '',
-    followUpRequired: false,
-    followUpDate: '',
-  })
-
   const fetchTreatment = async () => {
     try {
       setLoading(true)
+      setFailed(false)
       const response = await fetch(`/api/treatments/${id}`)
+      if (response.status === 404) {
+        setNotFound(true)
+        return
+      }
       if (!response.ok) throw new Error('Failed to fetch treatment')
       const data = await response.json()
       setTreatment(data)
-
-      // Pre-fill complete form with existing data
-      setCompleteFormData({
-        procedureNotes: data.procedureNotes || '',
-        materialsUsed: data.materialsUsed || '',
-        complications: data.complications || '',
-        followUpRequired: data.followUpRequired || false,
-        followUpDate: data.followUpDate ? data.followUpDate.split('T')[0] : '',
-      })
     } catch (error) {
       console.error('Error fetching treatment:', error)
-      toast({ variant: 'destructive', title: 'Could not load the treatment' })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
@@ -206,160 +195,124 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
   useEffect(() => {
     fetchTreatment()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const handleStartTreatment = async () => {
+    if (!treatment) return
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatments/${id}/start`, {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to start treatment')
+      await readJson(await fetch(`/api/treatments/${id}/start`, { method: 'POST' }))
       fetchTreatment()
     } catch (error) {
-      console.error('Error starting treatment:', error)
-      toast({ variant: 'destructive', title: 'Could not start the treatment' })
+      toast(toastError(`start treatment ${treatment.treatmentNo}`, error))
     } finally {
       setActionLoading(false)
     }
   }
 
-  const handleCompleteTreatment = async () => {
-    try {
-      setActionLoading(true)
-      const response = await fetch(`/api/treatments/${id}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(completeFormData),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || 'Failed to complete treatment')
-      setCompleteDialogOpen(false)
-      // A recall this procedure is the visit for has moved on with it; say
-      // where to, so the desk does not press Mark as done a second time.
-      const moved: { name: string; dueDate: string }[] = result.recallsMoved ?? []
-      if (moved.length > 0) {
-        toast({
-          title: 'Treatment completed',
-          description: moved
-            .map((recall) => `${recall.name} recall now due ${formatDate(recall.dueDate)}`)
-            .join('. '),
-        })
-      }
-      fetchTreatment()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not complete the treatment',
-        description: error.message,
-      })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
+  // Signing destroys nothing, but it cannot be undone: the standard confirm,
+  // in the default tone, spelling out what it locks.
   const handleSignTreatment = async () => {
+    if (!treatment) return
+    const ok = await confirm({
+      title: `Sign the note for treatment ${treatment.treatmentNo}?`,
+      description:
+        'Signing attests that you are the treating provider for this treatment. The note is then locked: it cannot be deleted, and anything further goes in an addendum. A correction afterwards needs a reason and is recorded. There is no way to unsign.',
+      confirmLabel: 'Sign and lock',
+      tone: 'default',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatments/${id}/sign`, { method: 'POST' })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Failed to sign the treatment')
-      setSignDialogOpen(false)
+      await readJson(await fetch(`/api/treatments/${id}/sign`, { method: 'POST' }))
+      toast(toastSuccess(`Treatment ${treatment.treatmentNo} signed`))
       fetchTreatment()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not sign the treatment',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError(`sign treatment ${treatment.treatmentNo}`, error))
     } finally {
       setActionLoading(false)
     }
   }
 
-  const handleAddAddendum = async () => {
+  const handleAddAddendum = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!treatment) return
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatments/${id}/addenda`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: addendumText }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Failed to add the addendum')
+      await readJson(
+        await fetch(`/api/treatments/${id}/addenda`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: addendumText }),
+        })
+      )
       setAddendumOpen(false)
       setAddendumText('')
+      toast(toastSuccess('Addendum added'))
       fetchTreatment()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not add the addendum',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError(`add the addendum to ${treatment.treatmentNo}`, error))
     } finally {
       setActionLoading(false)
     }
   }
 
   const handleCancelTreatment = async () => {
+    if (!treatment) return
+    // No reason is asked for: a treatment has nowhere to keep one (there is no
+    // cancellation reason on Treatment, unlike Appointment and TreatmentPlan),
+    // and a reason typed only to be thrown away would be a lie to the user.
+    const ok = await confirm({
+      title: `Cancel treatment ${treatment.treatmentNo}?`,
+      description:
+        'It will be marked cancelled and cannot be reopened. A plan step it was carrying out is handed back to be started again.',
+      confirmLabel: 'Cancel treatment',
+      cancelLabel: 'Keep treatment',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
-      const response = await fetch(`/api/treatments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CANCELLED' }),
-      })
       // The route's own reason: a billed treatment is refused with the
       // invoice to deal with first, and that is what the desk needs to read.
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || 'Failed to cancel treatment')
-      setCancelDialogOpen(false)
+      await readJson(
+        await fetch(`/api/treatments/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'CANCELLED' }),
+        })
+      )
+      toast(toastSuccess(`Treatment ${treatment.treatmentNo} cancelled`))
       fetchTreatment()
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not cancel the treatment',
-        description: error.message,
-      })
+    } catch (error) {
+      toast(toastError(`cancel treatment ${treatment.treatmentNo}`, error))
     } finally {
       setActionLoading(false)
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const config = treatmentStatusConfig[status] || {
-      label: status,
-      color: 'text-foreground',
-      bgColor: 'bg-muted',
-    }
+  // The first load only: a reload after an action keeps the page on screen.
+  if (loading && !treatment) {
+    return <PageSkeleton variant="detail" />
+  }
+
+  if (notFound) {
     return (
-      <Badge className={`${config.bgColor} ${config.color} border-0 text-sm`}>{config.label}</Badge>
+      <EmptyState
+        icon={AlertCircle}
+        title="Treatment not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to treatments"
+        actionHref="/treatments"
+      />
     )
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    )
+  if (failed && !treatment) {
+    return <LoadFailed what="this treatment" onRetry={fetchTreatment} />
   }
 
-  if (!treatment) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Treatment not found</p>
-        <Button variant="outline" asChild>
-          <Link href="/treatments">Back to Treatments</Link>
-        </Button>
-      </div>
-    )
-  }
+  if (!treatment) return null
 
   const teeth = treatment.toothNumbers ? parseToothNumbers(treatment.toothNumbers) : []
   // Work that has been done, or is under way, and that no live invoice
@@ -369,108 +322,108 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="page-title">{treatment.treatmentNo}</h1>
-              {getStatusBadge(treatment.status)}
-            </div>
-            <p className="text-muted-foreground">Created on {formatDate(treatment.createdAt)}</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {treatment.status === 'PLANNED' && (
-            <Button onClick={handleStartTreatment} disabled={actionLoading}>
-              <Play className="h-4 w-4 mr-2" />
-              Start Treatment
-            </Button>
-          )}
-          {treatment.status === 'IN_PROGRESS' && (
-            <Button onClick={() => setCompleteDialogOpen(true)}>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Complete Treatment
-            </Button>
-          )}
-          {treatment.status === 'COMPLETED' &&
-            !treatment.signedAt &&
-            (!myStaffId || myStaffId === treatment.doctor.id) && (
-              <Button onClick={() => setSignDialogOpen(true)}>
-                <PenLine className="h-4 w-4 mr-2" />
-                Sign Note
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
+        title={treatment.treatmentNo}
+        badges={<StatusBadge kind="treatment" status={treatment.status} />}
+        description={`Created on ${displayDate(treatment.createdAt)}`}
+        actions={
+          <>
+            {treatment.status === 'PLANNED' && (
+              <SubmitButton
+                type="button"
+                onClick={handleStartTreatment}
+                busy={actionLoading}
+                busyLabel="Starting…"
+                icon={Play}
+              >
+                Start treatment
+              </SubmitButton>
+            )}
+            {treatment.status === 'IN_PROGRESS' && (
+              <Button onClick={() => setCompleteDialogOpen(true)}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Complete treatment…
               </Button>
             )}
-          {treatment.signedAt && (
-            <Button variant="outline" onClick={() => setAddendumOpen(true)}>
-              <FileText className="h-4 w-4 mr-2" />
-              Add Addendum
-            </Button>
-          )}
-          {!treatment.signedAt &&
-            treatment.status !== 'COMPLETED' &&
-            treatment.status !== 'CANCELLED' && (
-              <>
-                <Button variant="outline" asChild>
-                  <Link href={`/treatments/${id}/edit`}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Link>
+            {treatment.status === 'COMPLETED' &&
+              !treatment.signedAt &&
+              (!myStaffId || myStaffId === treatment.doctor.id) && (
+                <Button onClick={handleSignTreatment} disabled={actionLoading}>
+                  <PenLine className="h-4 w-4 mr-2" />
+                  Sign note
                 </Button>
-                {/* Disabled, not hidden, while an invoice bills it: the
-                    banner below says why and which invoice to deal with. */}
-                <Button
-                  variant="outline"
-                  className="text-red-600 dark:text-red-400"
-                  onClick={() => setCancelDialogOpen(true)}
-                  disabled={Boolean(treatment.billedOn)}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Cancel
-                </Button>
-              </>
+              )}
+            {treatment.signedAt && (
+              <Button variant="outline" onClick={() => setAddendumOpen(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Add addendum
+              </Button>
             )}
-          {/* "Bill this" (review 4.1). New Invoice opens on this patient with
-              this treatment ticked; the rest of their unbilled work is there
-              to add. */}
-          {canBill && billable && (
-            <Button variant="outline" asChild>
-              <Link
-                href={trail.to(
-                  newInvoiceHref({
-                    patientId: treatment.patient.id,
-                    treatmentIds: [treatment.id],
-                  })
-                )}
-              >
-                <Receipt className="h-4 w-4 mr-2" />
-                Bill this treatment
-              </Link>
+            {!treatment.signedAt &&
+              treatment.status !== 'COMPLETED' &&
+              treatment.status !== 'CANCELLED' && (
+                <>
+                  <Button variant="outline" asChild>
+                    <Link href={trail.to(`/treatments/${id}/edit`)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Link>
+                  </Button>
+                  {/* Disabled, not hidden, while an invoice bills it: the
+                      banner below says why and which invoice to deal with. */}
+                  <Button
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={handleCancelTreatment}
+                    disabled={Boolean(treatment.billedOn) || actionLoading}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Cancel treatment
+                  </Button>
+                </>
+              )}
+            {/* "Bill this" (review 4.1). New Invoice opens on this patient with
+                this treatment ticked; the rest of their unbilled work is there
+                to add. */}
+            {canBill && billable && (
+              <Button variant="outline" asChild>
+                <Link
+                  href={trail.to(
+                    newInvoiceHref({
+                      patientId: treatment.patient.id,
+                      treatmentIds: [treatment.id],
+                    })
+                  )}
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Bill this treatment
+                </Link>
+              </Button>
+            )}
+            {/*
+              The other half of the prescription/treatment link. Extraction then
+              antibiotics is the commonest pair of acts in a dental day, and it
+              meant leaving this screen, finding the patient again and retyping
+              the tooth. The form reads the patient, the diagnosis and the teeth
+              from this treatment.
+            */}
+            {/* Only a dentist prescribes, so only a dentist is offered it. */}
+            {canPrescribe && (
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/prescriptions/new?treatmentId=${treatment.id}`)}>
+                  <ClipboardList className="h-4 w-4 mr-2" />
+                  Prescribe
+                </Link>
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </Button>
-          )}
-          {/*
-            The other half of the prescription/treatment link. Extraction then
-            antibiotics is the commonest pair of acts in a dental day, and it
-            meant leaving this screen, finding the patient again and retyping
-            the tooth. The form reads the patient, the diagnosis and the teeth
-            from this treatment.
-          */}
-          {/* Only a dentist prescribes, so only a dentist is offered it. */}
-          {canPrescribe && (
-            <Button variant="outline" asChild>
-              <Link href={`/prescriptions/new?treatmentId=${treatment.id}`}>
-                <ClipboardList className="h-4 w-4 mr-2" />
-                Prescribe
-              </Link>
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* FR-007: whether this note is locked, and who put their name to it */}
       {treatment.signedAt && (
@@ -478,14 +431,15 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           <Lock className="h-4 w-4 shrink-0" />
           <span>
             Signed by <strong>{treatment.signedBy?.name || 'a clinician'}</strong> on{' '}
-            {formatDateTime(treatment.signedAt)}. This note is locked — additions go in an addendum.
+            {displayDateTime(treatment.signedAt)}. This note is locked — additions go in an
+            addendum.
           </span>
           {treatment.amendedAt && (
             <Badge
               variant="outline"
               className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200"
             >
-              Amended {formatDateTime(treatment.amendedAt)}
+              Amended {displayDateTime(treatment.amendedAt)}
             </Badge>
           )}
         </div>
@@ -521,7 +475,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Stethoscope className="h-5 w-5" />
-                Procedure Details
+                Procedure details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -533,6 +487,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   </div>
                 </div>
                 <Badge
+                  variant="outline"
                   className={`${procedureCategoryConfig[treatment.procedure.category]?.bgColor} ${procedureCategoryConfig[treatment.procedure.category]?.color} border-0`}
                 >
                   {procedureCategoryConfig[treatment.procedure.category]?.label}
@@ -547,11 +502,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-sm text-muted-foreground">Treatment Cost</div>
+                  <div className="text-sm text-muted-foreground">Treatment cost</div>
                   <div className="font-medium text-lg">{formatCurrency(treatment.cost)}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-muted-foreground">Base Price</div>
+                  <div className="text-sm text-muted-foreground">Base price</div>
                   <div className="font-medium">{formatCurrency(treatment.procedure.basePrice)}</div>
                 </div>
               </div>
@@ -560,12 +515,12 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>Started: {formatDateTime(treatment.startTime)}</span>
+                    <span>Started: {displayDateTime(treatment.startTime)}</span>
                   </div>
                   {treatment.endTime && (
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <span>Completed: {formatDateTime(treatment.endTime)}</span>
+                      <span>Completed: {displayDateTime(treatment.endTime)}</span>
                     </div>
                   )}
                 </div>
@@ -577,7 +532,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           {teeth.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Teeth Affected</CardTitle>
+                <CardTitle>Teeth affected</CardTitle>
               </CardHeader>
               <CardContent>
                 {/*
@@ -616,13 +571,13 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Clinical Notes
+                Clinical notes
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {treatment.chiefComplaint && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground">Chief Complaint</div>
+                  <div className="text-sm font-medium text-muted-foreground">Chief complaint</div>
                   <p className="mt-1">{treatment.chiefComplaint}</p>
                 </div>
               )}
@@ -636,21 +591,21 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
               {treatment.findings && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground">Clinical Findings</div>
+                  <div className="text-sm font-medium text-muted-foreground">Clinical findings</div>
                   <p className="mt-1">{treatment.findings}</p>
                 </div>
               )}
 
               {treatment.procedureNotes && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground">Procedure Notes</div>
+                  <div className="text-sm font-medium text-muted-foreground">Procedure notes</div>
                   <p className="mt-1">{treatment.procedureNotes}</p>
                 </div>
               )}
 
               {treatment.materialsUsed && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground">Materials Used</div>
+                  <div className="text-sm font-medium text-muted-foreground">Materials used</div>
                   <p className="mt-1">{treatment.materialsUsed}</p>
                 </div>
               )}
@@ -669,7 +624,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 !treatment.findings &&
                 !treatment.procedureNotes && (
                   <p className="text-muted-foreground text-center py-4">
-                    No clinical notes recorded
+                    No clinical notes recorded.
                   </p>
                 )}
             </CardContent>
@@ -685,7 +640,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 {treatment.procedure.preInstructions && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground">
-                      Pre-procedure Instructions
+                      Pre-procedure instructions
                     </div>
                     <p className="mt-1">{treatment.procedure.preInstructions}</p>
                   </div>
@@ -693,7 +648,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 {treatment.procedure.postInstructions && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground">
-                      Post-procedure Instructions
+                      Post-procedure instructions
                     </div>
                     <p className="mt-1">{treatment.procedure.postInstructions}</p>
                   </div>
@@ -748,7 +703,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                       </div>
                     )}
                     <p className="text-muted-foreground mt-2 text-xs">
-                      {amendment.author.name} · {formatDateTime(amendment.createdAt)}
+                      {amendment.author.name} · {displayDateTime(amendment.createdAt)}
                     </p>
                   </div>
                 ))}
@@ -785,7 +740,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  {treatment.patient.phone}
+                  {formatPhone(treatment.patient.phone)}
                 </div>
                 {treatment.patient.email && (
                   <div className="flex items-center gap-2">
@@ -795,7 +750,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 )}
                 {treatment.patient.bloodGroup && (
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Blood Group:</span>
+                    <span className="text-muted-foreground">Blood group:</span>
                     <Badge variant="outline">{treatment.patient.bloodGroup}</Badge>
                   </div>
                 )}
@@ -803,7 +758,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
               <Button variant="outline" className="w-full" asChild>
                 <Link href={trail.to(`/patients/${treatment.patient.id}`)}>
-                  View Patient Profile
+                  View patient profile
                 </Link>
               </Button>
             </CardContent>
@@ -829,7 +784,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               {treatment.doctor.phone && (
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  {treatment.doctor.phone}
+                  {formatPhone(treatment.doctor.phone)}
                 </div>
               )}
             </CardContent>
@@ -841,7 +796,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Treatment Plan
+                  Treatment plan
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -851,7 +806,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 </div>
                 <Button variant="outline" size="sm" className="w-full mt-2" asChild>
                   <Link href={trail.to(`/treatments/plans/${treatment.planItem.treatmentPlan.id}`)}>
-                    View Plan
+                    View plan
                   </Link>
                 </Button>
               </CardContent>
@@ -870,12 +825,12 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               <CardContent className="space-y-2">
                 <div className="font-medium">{treatment.appointment.appointmentNo}</div>
                 <div className="text-sm text-muted-foreground">
-                  {formatDate(treatment.appointment.scheduledDate)} at{' '}
+                  {displayDate(treatment.appointment.scheduledDate)} at{' '}
                   {treatment.appointment.scheduledTime}
                 </div>
                 <Button variant="outline" size="sm" className="w-full mt-2" asChild>
                   <Link href={trail.to(`/appointments/${treatment.appointment.id}`)}>
-                    View Appointment
+                    View appointment
                   </Link>
                 </Button>
               </CardContent>
@@ -888,17 +843,17 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
                   <AlertCircle className="h-5 w-5" />
-                  Follow-up Required
+                  Follow-up required
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {treatment.followUpDate ? (
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                    {formatDate(treatment.followUpDate)}
+                    {displayDate(treatment.followUpDate)}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Date not scheduled</p>
+                  <p className="text-sm text-muted-foreground">Date not scheduled.</p>
                 )}
                 {/* Booking the follow-up is the whole point of the card, and
                     this button did nothing at all. The date, when one was set,
@@ -913,7 +868,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                     )}
                     className="block mt-4"
                   >
-                    Schedule Follow-up
+                    Schedule follow-up
                   </Link>
                 </Button>
               </CardContent>
@@ -963,7 +918,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                       className="flex items-center justify-between rounded-lg border p-3 text-sm hover:bg-accent transition-colors"
                     >
                       <span className="font-medium">{item.invoice.invoiceNo}</span>
-                      <Badge variant="outline">{item.invoice.status}</Badge>
+                      <StatusBadge kind="invoice" status={item.invoice.status} />
                     </Link>
                   ) : null
                 )}
@@ -973,188 +928,52 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      {/* Complete Treatment Dialog */}
-      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Complete Treatment</DialogTitle>
-            <DialogDescription>Add final notes and complete this treatment.</DialogDescription>
-          </DialogHeader>
+      <CompleteTreatmentDialog
+        treatment={completeDialogOpen ? treatment : null}
+        initial={completionNotesOf(treatment)}
+        onClose={() => setCompleteDialogOpen(false)}
+        onCompleted={fetchTreatment}
+      />
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="procedureNotes">Procedure Notes</Label>
-                <VoiceInput
-                  onTranscript={(text) =>
-                    setCompleteFormData((prev) => ({
-                      ...prev,
-                      procedureNotes: prev.procedureNotes ? prev.procedureNotes + ' ' + text : text,
-                    }))
-                  }
-                />
-              </div>
-              <Textarea
-                id="procedureNotes"
-                value={completeFormData.procedureNotes}
-                onChange={(e) =>
-                  setCompleteFormData({
-                    ...completeFormData,
-                    procedureNotes: e.target.value,
-                  })
-                }
-                placeholder="Final procedure notes... (use mic for voice dictation)"
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="materialsUsed">Materials Used</Label>
-              <Textarea
-                id="materialsUsed"
-                value={completeFormData.materialsUsed}
-                onChange={(e) =>
-                  setCompleteFormData({
-                    ...completeFormData,
-                    materialsUsed: e.target.value,
-                  })
-                }
-                placeholder="List materials used..."
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="complications">Complications (if any)</Label>
-              <Textarea
-                id="complications"
-                value={completeFormData.complications}
-                onChange={(e) =>
-                  setCompleteFormData({
-                    ...completeFormData,
-                    complications: e.target.value,
-                  })
-                }
-                placeholder="Document any complications..."
-                rows={2}
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="followUpRequired"
-                checked={completeFormData.followUpRequired}
-                onCheckedChange={(checked) =>
-                  setCompleteFormData({
-                    ...completeFormData,
-                    followUpRequired: checked as boolean,
-                  })
-                }
-              />
-              <Label htmlFor="followUpRequired">Follow-up required</Label>
-            </div>
-
-            {completeFormData.followUpRequired && (
-              <div className="space-y-2">
-                <Label htmlFor="followUpDate">Follow-up Date</Label>
-                <Input
-                  id="followUpDate"
-                  type="date"
-                  value={completeFormData.followUpDate}
-                  onChange={(e) =>
-                    setCompleteFormData({
-                      ...completeFormData,
-                      followUpDate: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCompleteTreatment} disabled={actionLoading}>
-              {actionLoading ? 'Completing...' : 'Complete Treatment'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Sign Note Dialog — deliberately spells out that this is irreversible */}
-      <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sign this clinical note</DialogTitle>
-            <DialogDescription>
-              Signing attests that you are the treating provider for this treatment. The note is
-              then locked: it cannot be deleted, and anything further goes in an addendum. A
-              correction afterwards needs a reason and is recorded. There is no way to unsign.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSignDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSignTreatment} disabled={actionLoading}>
-              <PenLine className="h-4 w-4 mr-2" />
-              Sign and lock
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Addendum Dialog */}
+      {/* Addendum */}
       <Dialog open={addendumOpen} onOpenChange={setAddendumOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add an addendum</DialogTitle>
-            <DialogDescription>
-              Appended to the signed note, under your name. It cannot be edited or removed once
-              saved.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            rows={6}
-            value={addendumText}
-            onChange={(e) => setAddendumText(e.target.value)}
-            placeholder="What you want to add to this note…"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddendumOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddAddendum}
-              disabled={actionLoading || addendumText.trim().length < 3}
-            >
-              Save addendum
-            </Button>
-          </DialogFooter>
+        <DialogContent size="md">
+          <form onSubmit={handleAddAddendum} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Add an addendum to {treatment.treatmentNo}</DialogTitle>
+              <DialogDescription>
+                Appended to the signed note, under your name. It cannot be edited or removed once
+                saved.
+              </DialogDescription>
+            </DialogHeader>
+            <FormField label="Addendum" required hint="At least 3 characters.">
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={6}
+                  value={addendumText}
+                  onChange={(e) => setAddendumText(e.target.value)}
+                  placeholder="What you want to add to this note…"
+                />
+              )}
+            </FormField>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddendumOpen(false)}>
+                Cancel
+              </Button>
+              <SubmitButton
+                busy={actionLoading}
+                busyLabel="Saving…"
+                disabled={addendumText.trim().length < 3}
+              >
+                Save addendum
+              </SubmitButton>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* Cancel Treatment Dialog */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Treatment</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this treatment? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
-              Keep Treatment
-            </Button>
-            <Button variant="destructive" onClick={handleCancelTreatment} disabled={actionLoading}>
-              {actionLoading ? 'Cancelling...' : 'Cancel Treatment'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {ConfirmDialogComponent}
     </div>
   )
 }

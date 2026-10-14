@@ -16,9 +16,33 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
+    // A name, a patient number or a phone. Optional: without it the list is
+    // exactly what it was. The entry holds the patient's id, not a relation,
+    // so the register is searched first and the entries narrowed to those.
+    const search = (searchParams.get('search') || '').trim()
+
     const where: any = { hospitalId }
     if (status) where.status = status
     if (doctorId) where.doctorId = doctorId
+    if (search) {
+      const words = search.split(/\s+/).filter(Boolean)
+      const matching = await prisma.patient.findMany({
+        where: {
+          hospitalId,
+          AND: words.map((word) => ({
+            OR: [
+              { firstName: { contains: word, mode: 'insensitive' as const } },
+              { lastName: { contains: word, mode: 'insensitive' as const } },
+              { patientId: { contains: word, mode: 'insensitive' as const } },
+              { phone: { contains: word } },
+            ],
+          })),
+        },
+        select: { id: true },
+        take: 500,
+      })
+      where.patientId = { in: matching.map((p) => p.id) }
+    }
 
     const [entries, total] = await Promise.all([
       prisma.waitlist.findMany({

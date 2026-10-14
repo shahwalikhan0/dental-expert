@@ -1,446 +1,454 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, CalendarClock, Layers, Package } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { GridBody } from '@/components/ui/data-grid'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { humanise } from '@/lib/labels'
+import { TONE_BADGE_VARIANT, TONE_TEXT_CLASS, type StatusTone } from '@/lib/status'
+import { formatPhone } from '@/lib/utils'
+import { readJson } from '@/lib/toast-utils'
+
+const REPORTS = [
+  { id: 'summary', label: 'Summary' },
+  { id: 'low_stock', label: 'Low stock' },
+  { id: 'expiring', label: 'Expiring items' },
+  { id: 'stock_valuation', label: 'Stock valuation' },
+] as const
+
+type ReportId = (typeof REPORTS)[number]['id']
+
+const DAYS_AHEAD = [7, 15, 30, 60, 90]
+
+/** How urgent a shortage or an expiry is, in the status tones. */
+function urgencyTone(urgency: string): StatusTone {
+  if (urgency === 'out_of_stock' || urgency === 'expired' || urgency === 'critical') return 'danger'
+  return 'progress'
+}
+
+function UrgencyBadge({ urgency }: { urgency: string }) {
+  return (
+    <Badge variant={TONE_BADGE_VARIANT[urgencyTone(urgency)]} className="whitespace-nowrap">
+      {humanise(urgency)}
+    </Badge>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string
+  value: React.ReactNode
+  note?: React.ReactNode
+  tone?: StatusTone
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <p className={`mt-2 text-3xl font-bold ${tone ? TONE_TEXT_CLASS[tone] : ''}`}>{value}</p>
+        {note && <p className="mt-1 text-sm text-muted-foreground">{note}</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function InventoryReportsPage() {
-  const [activeReport, setActiveReport] = useState('summary')
-  const [loading, setLoading] = useState(false)
-  const [reportData, setReportData] = useState<any>(null)
-  const [reportParams, setReportParams] = useState({
-    days: 30,
-  })
+  const trail = useTrail('Inventory reports')
+  const [activeReport, setActiveReport] = useState<ReportId>('summary')
+  const [days, setDays] = useState(30)
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
+  // Kept with the report it answers, so switching tabs never draws one
+  // report's data with another's layout.
+  const [report, setReport] = useState<{ type: ReportId; data: any } | null>(null)
+  const latestRequest = useRef(0)
 
-  useEffect(() => {
-    fetchReport()
-  }, [activeReport, reportParams])
-
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
+    const requestId = ++latestRequest.current
     setLoading(true)
+    setFailed(false)
     try {
-      const params = new URLSearchParams({
-        type: activeReport,
-        days: String(reportParams.days),
-      })
-
-      const response = await fetch(`/api/inventory/reports?${params}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setReportData(data.data)
-      }
+      const params = new URLSearchParams({ type: activeReport, days: String(days) })
+      const data = await readJson<{ data: any }>(await fetch(`/api/inventory/reports?${params}`))
+      if (requestId !== latestRequest.current) return
+      setReport({ type: activeReport, data: data.data })
     } catch (error) {
       console.error('Error fetching report:', error)
+      if (requestId === latestRequest.current) setFailed(true)
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
-  }
+  }, [activeReport, days])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-      minimumFractionDigits: 0,
-    }).format(amount)
-  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
+    fetchReport()
+  }, [fetchReport])
 
-  const renderSummaryReport = () => {
-    if (!reportData) return null
+  const data = report?.type === activeReport ? report.data : null
 
-    return (
-      <div>
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Total Items</h3>
-            <p className="text-3xl font-bold mt-2">{reportData.summary.totalItems}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {reportData.summary.activeItems} active
-            </p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Out of Stock</h3>
-            <p className="text-3xl font-bold mt-2 text-red-600 dark:text-red-400">
-              {reportData.summary.outOfStockItems}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Items need restock</p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Low Stock</h3>
-            <p className="text-3xl font-bold mt-2 text-orange-600 dark:text-orange-400">
-              {reportData.summary.lowStockItems}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Items below minimum</p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Inventory Value</h3>
-            <p className="text-3xl font-bold mt-2 text-green-600 dark:text-green-400">
-              {formatCurrency(reportData.summary.totalInventoryValue || 0)}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Total stock value</p>
-          </div>
-        </div>
-
-        {/* Category Breakdown */}
-        <div className="bg-background p-6 rounded-lg shadow mb-6">
-          <h3 className="text-lg font-bold mb-4">Inventory by Category</h3>
-          <div>
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Item Count</TableHead>
-                  <TableHead>Category Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.categoryBreakdown.map((cat: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {cat.category || 'Uncategorized'}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {cat.itemCount}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatCurrency(cat.categoryValue || 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-
-        {/* Type Breakdown */}
-        <div className="bg-background p-6 rounded-lg shadow">
-          <h3 className="text-lg font-bold mb-4">Inventory by Type</h3>
-          <div>
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Item Count</TableHead>
-                  <TableHead>Type Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.typeBreakdown.map((type: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {type.itemType.replace('_', ' ').toUpperCase()}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {type.itemCount}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatCurrency(type.typeValue || 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const renderLowStockReport = () => {
-    if (!reportData || !Array.isArray(reportData)) return null
-
-    return (
-      <div className="bg-background rounded-lg shadow overflow-hidden">
-        <div>
-          <Table className="min-w-full">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item Code</TableHead>
-                <TableHead>Item Name</TableHead>
-                <TableHead>Current Stock</TableHead>
-                <TableHead>Minimum Stock</TableHead>
-                <TableHead>Urgency</TableHead>
-                <TableHead>Suggested Order</TableHead>
-                <TableHead>Supplier</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reportData.map((item: any) => (
-                <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap font-medium">{item.sku}</TableCell>
-                  <TableCell className="whitespace-nowrap">{item.name}</TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {item.currentStock} {item.unit}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {item.minimumStock} {item.unit}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <span
-                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        item.urgency === 'out_of_stock'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300'
-                          : item.urgency === 'critical'
-                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300'
-                      }`}
-                    >
-                      {item.urgency.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {item.suggestedOrderQuantity} {item.unit}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {item.supplierName || '-'}
-                    {item.supplierPhone && (
-                      <div className="text-xs text-muted-foreground">{item.supplierPhone}</div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    )
-  }
-
-  const renderExpiringReport = () => {
-    if (!reportData) return null
-
-    return (
-      <div>
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Expired Batches</h3>
-            <p className="text-3xl font-bold mt-2 text-red-600 dark:text-red-400">
-              {reportData.summary.expiredBatches || 0}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Value: {formatCurrency(reportData.summary.expiredValue || 0)}
-            </p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Expiring Soon</h3>
-            <p className="text-3xl font-bold mt-2 text-orange-600 dark:text-orange-400">
-              {reportData.summary.expiringSoonBatches || 0}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Value: {formatCurrency(reportData.summary.expiringSoonValue || 0)}
-            </p>
-          </div>
-        </div>
-
-        {/* Items Table */}
-        <div className="bg-background rounded-lg shadow overflow-hidden">
-          <div>
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Batch Number</TableHead>
-                  <TableHead>Expiry Date</TableHead>
-                  <TableHead>Days to Expiry</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Value at Risk</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.items.map((item: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {item.name}
-                      <br />
-                      <span className="text-xs text-muted-foreground">{item.sku}</span>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {item.batchNumber}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {new Date(item.expiryDate).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{item.daysToExpiry} days</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {item.remainingQty} {item.unit}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatCurrency(item.valueAtRisk || 0)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          item.urgency === 'expired'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300'
-                            : item.urgency === 'critical'
-                              ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300'
-                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300'
-                        }`}
-                      >
-                        {item.urgency.toUpperCase()}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const renderStockValuationReport = () => {
-    if (!reportData) return null
-
-    return (
-      <div>
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Total Stock Value</h3>
-            <p className="text-3xl font-bold mt-2 text-green-600 dark:text-green-400">
-              {formatCurrency(reportData.totals.totalValue || 0)}
-            </p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Items in Stock</h3>
-            <p className="text-3xl font-bold mt-2">{reportData.totals.itemsInStock || 0}</p>
-          </div>
-
-          <div className="bg-background p-6 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-muted-foreground">Average Item Value</h3>
-            <p className="text-3xl font-bold mt-2">
-              {formatCurrency(reportData.totals.averageItemValue || 0)}
-            </p>
-          </div>
-        </div>
-
-        {/* Items Table */}
-        <div className="bg-background rounded-lg shadow overflow-hidden">
-          <div>
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item Code</TableHead>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Stock Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.items.map((item: any) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="whitespace-nowrap font-medium">{item.sku}</TableCell>
-                    <TableCell className="whitespace-nowrap">{item.name}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {item.categoryName || '-'}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {item.currentStock} {item.unit}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatCurrency(item.purchasePrice)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {formatCurrency(item.stockValue || 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </div>
-    )
+  const body = (id: ReportId, render: (data: any) => React.ReactNode) => {
+    if (failed) return <LoadFailed what="this report" onRetry={fetchReport} />
+    if (loading || !data || report?.type !== id)
+      return <PageSkeleton variant={id === 'low_stock' ? 'table' : 'dashboard'} />
+    return render(data)
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="page-title">Inventory Reports</h1>
-        <Link
-          href="/inventory"
-          className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
-        >
-          Back to Inventory
-        </Link>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Inventory reports"
+        description="Stock levels, shortages, expiry and what the shelves are worth."
+        back={<BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />}
+      />
 
-      {/* Report Tabs */}
-      <div className="bg-background rounded-lg shadow mb-6">
-        <div className="border-b border-border">
-          <nav className="flex space-x-8 px-6" aria-label="Tabs">
-            {[
-              { id: 'summary', label: 'Summary' },
-              { id: 'low_stock', label: 'Low Stock' },
-              { id: 'expiring', label: 'Expiring Items' },
-              { id: 'stock_valuation', label: 'Stock Valuation' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveReport(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeReport === tab.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+      <Tabs value={activeReport} onValueChange={(v) => setActiveReport(v as ReportId)}>
+        <TabsList>
+          {REPORTS.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        {/* Report Parameters */}
-        {activeReport === 'expiring' && (
-          <div className="p-6 bg-muted/50">
-            <label className="block text-sm font-medium text-foreground mb-2">Days Ahead</label>
-            <select
-              value={reportParams.days}
-              onChange={(e) => setReportParams({ ...reportParams, days: parseInt(e.target.value) })}
-              className="px-4 py-2 border border-border rounded-lg"
-            >
-              <option value="7">7 days</option>
-              <option value="15">15 days</option>
-              <option value="30">30 days</option>
-              <option value="60">60 days</option>
-              <option value="90">90 days</option>
-            </select>
+        <TabsContent value="summary" className="space-y-6">
+          {body('summary', (d) => (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <StatCard
+                  label="Total items"
+                  value={d.summary.totalItems}
+                  note={`${d.summary.activeItems} active`}
+                />
+                <StatCard
+                  label="Out of stock"
+                  value={d.summary.outOfStockItems}
+                  note="Items need restock"
+                  tone="danger"
+                />
+                <StatCard
+                  label="Low stock"
+                  value={d.summary.lowStockItems}
+                  note="Items below minimum"
+                  tone="progress"
+                />
+                <StatCard
+                  label="Inventory value"
+                  value={formatCurrency(d.summary.totalInventoryValue ?? 0)}
+                  note="Total stock value"
+                  tone="success"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Inventory by category</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Item count</TableHead>
+                        <TableHead>Category value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <GridBody
+                      columns={3}
+                      empty={d.categoryBreakdown.length === 0}
+                      emptyIcon={Layers}
+                      emptyTitle="No categories yet"
+                      emptyDescription="Items are grouped here by their category."
+                    >
+                      {d.categoryBreakdown.map((cat: any, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {cat.category || 'Uncategorized'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {cat.itemCount}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatCurrency(cat.categoryValue ?? 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </GridBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Inventory by type</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Item count</TableHead>
+                        <TableHead>Type value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <GridBody
+                      columns={3}
+                      empty={d.typeBreakdown.length === 0}
+                      emptyIcon={Package}
+                      emptyTitle="No items yet"
+                      emptyDescription="Items are grouped here by their type."
+                    >
+                      {d.typeBreakdown.map((type: any, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {humanise(type.itemType)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {type.itemCount}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatCurrency(type.typeValue ?? 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </GridBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          ))}
+        </TabsContent>
+
+        <TabsContent value="low_stock">
+          {body('low_stock', (d) => (
+            <Card>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item code</TableHead>
+                      <TableHead>Item name</TableHead>
+                      <TableHead>Current stock</TableHead>
+                      <TableHead>Minimum stock</TableHead>
+                      <TableHead>Urgency</TableHead>
+                      <TableHead>Suggested order</TableHead>
+                      <TableHead>Supplier</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <GridBody
+                    columns={7}
+                    empty={!Array.isArray(d) || d.length === 0}
+                    emptyIcon={AlertTriangle}
+                    emptyTitle="Nothing is low"
+                    emptyDescription="Every item is above its minimum stock."
+                  >
+                    {(Array.isArray(d) ? d : []).map((item: any) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="whitespace-nowrap font-medium">{item.sku}</TableCell>
+                        <TableCell className="whitespace-nowrap">{item.name}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {item.currentStock} {item.unit}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {item.minimumStock} {item.unit}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <UrgencyBadge urgency={item.urgency} />
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {item.suggestedOrderQuantity} {item.unit}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {item.supplierName || BLANK}
+                          {item.supplierPhone && (
+                            <div className="text-xs text-muted-foreground">
+                              {formatPhone(item.supplierPhone)}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </GridBody>
+                </Table>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+
+        <TabsContent value="expiring" className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Label htmlFor="days-ahead">Days ahead</Label>
+            <Select value={String(days)} onValueChange={(v) => setDays(parseInt(v, 10))}>
+              <SelectTrigger id="days-ahead" className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DAYS_AHEAD.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n} days
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        )}
-      </div>
 
-      {/* Report Content */}
-      <div className="mt-6">
-        {loading ? (
-          <div className="bg-background rounded-lg shadow p-8 text-center">Loading...</div>
-        ) : (
-          <>
-            {activeReport === 'summary' && renderSummaryReport()}
-            {activeReport === 'low_stock' && renderLowStockReport()}
-            {activeReport === 'expiring' && renderExpiringReport()}
-            {activeReport === 'stock_valuation' && renderStockValuationReport()}
-          </>
-        )}
-      </div>
+          {body('expiring', (d) => (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <StatCard
+                  label="Expired batches"
+                  value={d.summary.expiredBatches ?? 0}
+                  note={`Value: ${formatCurrency(d.summary.expiredValue ?? 0)}`}
+                  tone="danger"
+                />
+                <StatCard
+                  label="Expiring soon"
+                  value={d.summary.expiringSoonBatches ?? 0}
+                  note={`Value: ${formatCurrency(d.summary.expiringSoonValue ?? 0)}`}
+                  tone="progress"
+                />
+              </div>
+
+              <Card>
+                <CardContent className="p-0 overflow-x-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Batch number</TableHead>
+                        <TableHead>Expiry date</TableHead>
+                        <TableHead>Days to expiry</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Value at risk</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <GridBody
+                      columns={7}
+                      empty={d.items.length === 0}
+                      emptyIcon={CalendarClock}
+                      emptyTitle="Nothing is expiring"
+                      emptyDescription={`No batch expires in the next ${days} days.`}
+                    >
+                      {d.items.map((item: any, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {item.name}
+                            <span className="block text-xs text-muted-foreground">{item.sku}</span>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {item.batchNumber}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {displayDate(item.expiryDate)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {item.daysToExpiry} days
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {item.remainingQty} {item.unit}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatCurrency(item.valueAtRisk ?? 0)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <UrgencyBadge urgency={item.urgency} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </GridBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          ))}
+        </TabsContent>
+
+        <TabsContent value="stock_valuation" className="space-y-6">
+          {body('stock_valuation', (d) => (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <StatCard
+                  label="Total stock value"
+                  value={formatCurrency(d.totals.totalValue ?? 0)}
+                  tone="success"
+                />
+                <StatCard label="Items in stock" value={d.totals.itemsInStock ?? 0} />
+                <StatCard
+                  label="Average item value"
+                  value={formatCurrency(d.totals.averageItemValue ?? 0)}
+                />
+              </div>
+
+              <Card>
+                <CardContent className="p-0 overflow-x-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item code</TableHead>
+                        <TableHead>Item name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Unit price</TableHead>
+                        <TableHead>Stock value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <GridBody
+                      columns={6}
+                      empty={d.items.length === 0}
+                      emptyIcon={Package}
+                      emptyTitle="Nothing in stock"
+                      emptyDescription="Items with stock on the shelf are valued here."
+                    >
+                      {d.items.map((item: any) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {item.sku}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{item.name}</TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {item.categoryName || BLANK}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {item.currentStock} {item.unit}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatCurrency(item.purchasePrice)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {formatCurrency(item.stockValue ?? 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </GridBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          ))}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

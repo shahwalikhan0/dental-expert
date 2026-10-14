@@ -16,10 +16,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, Calendar, Clock, User, Check, Loader2, Save } from 'lucide-react'
-import { formatTime, formatDate } from '@/lib/appointment-utils'
+import { FormField } from '@/components/ui/form-field'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { BackLink, useTrail } from '@/components/ui/trail'
+import { PatientSummaryCard } from '@/components/patients/patient-picker'
+import { AlertTriangle, Calendar, Clock, User, Check, Loader2, Save } from 'lucide-react'
+import { formatTime } from '@/lib/appointment-utils'
 import { subjectName, subjectPhone } from '@/lib/visitors'
+import { formatPhone } from '@/lib/utils'
+import { toastError } from '@/lib/toast-utils'
+
+/** The fields that can be missing on submit, each said under its own control. */
+type FieldErrors = Partial<Record<'doctor' | 'date' | 'time', string>>
 
 interface Doctor {
   id: string
@@ -74,10 +86,15 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
   const formRef = useFormGuard()
 
   const [loading, setLoading] = useState(true)
+  // Could not be loaded, as opposed to not existing (a 404).
+  const [failed, setFailed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState<FieldErrors>({})
+  const [reload, setReload] = useState(0)
   const { toast } = useToast()
 
   const [appointment, setAppointment] = useState<Appointment | null>(null)
+  const trail = useTrail(appointment ? `Edit ${appointment.appointmentNo}` : null)
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -96,6 +113,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
+      setFailed(false)
       try {
         const [appointmentRes, doctorsRes] = await Promise.all([
           fetch(`/api/appointments/${id}`),
@@ -116,8 +134,8 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           setNotes(data.notes || '')
         } else if (appointmentRes.status !== 404) {
           // A 404 is answered by the "not found" view below; anything else is
-          // a failure the receptionist should hear about.
-          toast({ variant: 'destructive', title: 'Could not load the appointment' })
+          // a failure, said on the page with a way to try again.
+          setFailed(true)
         }
 
         if (doctorsRes.ok) {
@@ -126,14 +144,14 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
         }
       } catch (err) {
         console.error('Error fetching data:', err)
-        toast({ variant: 'destructive', title: 'Could not load the appointment' })
+        setFailed(true)
       } finally {
         setLoading(false)
       }
     }
 
     fetchData()
-  }, [id, toast])
+  }, [id, reload])
 
   // Fetch available time slots when doctor and date change
   useEffect(() => {
@@ -180,21 +198,18 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const incomplete = (description: string) =>
-      toast({ variant: 'destructive', title: 'Appointment not saved', description })
-
-    if (!selectedDoctor) {
-      incomplete('Please select a doctor')
-      return
-    }
-
-    if (!selectedDate) {
-      incomplete('Please select a date')
-      return
-    }
-
-    if (!selectedTime) {
-      incomplete('Please select a time slot')
+    // Every missing field at once, under its own control, plus one toast.
+    const found: FieldErrors = {}
+    if (!selectedDoctor) found.doctor = 'Select a doctor'
+    if (!selectedDate) found.date = 'Select a date'
+    if (!selectedTime) found.time = 'Select a time slot'
+    setErrors(found)
+    const first = (['doctor', 'date', 'time'] as const).find((key) => found[key])
+    if (first) {
+      toast(toastError('save the appointment', 'Check the highlighted fields.'))
+      document
+        .getElementById(`appointment-${first}`)
+        ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
       return
     }
 
@@ -217,69 +232,57 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to update appointment')
       }
 
-      router.push(`/appointments/${id}`)
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not save the appointment',
-        description: err.message,
-      })
+      router.push(trail.back(`/appointments/${id}`))
+    } catch (err) {
+      toast(toastError('save the appointment', err))
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (loading) {
+  const back = (
+    <BackLink
+      trail={trail}
+      fallback={`/appointments/${id}`}
+      fallbackLabel={appointment?.appointmentNo ?? 'Appointment'}
+    />
+  )
+
+  if (loading) return <PageSkeleton variant="form" />
+
+  if (failed) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10" />
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </CardContent>
-        </Card>
+        {back}
+        <LoadFailed what="this appointment" onRetry={() => setReload((n) => n + 1)} />
       </div>
     )
   }
 
   if (!appointment) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">Appointment not found</p>
-        <Button variant="outline" className="mt-4" asChild>
-          <Link href="/appointments">Back to Appointments</Link>
-        </Button>
+      <div className="space-y-6">
+        {back}
+        <EmptyState
+          icon={AlertTriangle}
+          title="Appointment not found"
+          description="It may have been removed, or the link is wrong."
+          actionLabel="Back to appointments"
+          actionHref="/appointments"
+        />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href={`/appointments/${id}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">Edit Appointment</h1>
-          <p className="text-muted-foreground">{appointment.appointmentNo}</p>
-        </div>
-      </div>
+      <PageHeader title="Edit appointment" description={appointment.appointmentNo} back={back} />
 
-      <form ref={formRef} onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit} noValidate>
         <div className="grid gap-6 md:grid-cols-2">
           {/* Patient Info (Read-only) */}
           <Card>
@@ -293,15 +296,20 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border p-4 bg-muted/50">
-                <p className="font-medium">{subjectName(appointment)}</p>
-                {/* A walk-in has no patient number to show — saying so is more
-                    use than a blank line where one is expected. */}
-                <p className="text-sm text-muted-foreground">
-                  {appointment.patient ? appointment.patient.patientId : 'Walk-in, not registered'}
-                </p>
-                <p className="text-sm text-muted-foreground">{subjectPhone(appointment) ?? '-'}</p>
-              </div>
+              {appointment.patient ? (
+                // The chosen patient, drawn the one way — read-only here.
+                <PatientSummaryCard patient={appointment.patient} />
+              ) : (
+                <div className="rounded-lg border p-4 bg-muted/50">
+                  <p className="font-medium">{subjectName(appointment)}</p>
+                  {/* A walk-in has no patient number to show — saying so is more
+                      use than a blank line where one is expected. */}
+                  <p className="text-sm text-muted-foreground">Walk-in, not registered</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatPhone(subjectPhone(appointment)) || '—'}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -315,39 +323,49 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
               <CardDescription>Update the doctor, date, or time</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Doctor *</Label>
-                <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a doctor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor.id} value={doctor.id}>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                        {doctor.specialization && ` (${doctor.specialization})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormField label="Doctor" required htmlFor="appointment-doctor" error={errors.doctor}>
+                {(control) => (
+                  <Select
+                    value={selectedDoctor}
+                    onValueChange={(value) => {
+                      setSelectedDoctor(value)
+                      setErrors((prev) => ({ ...prev, doctor: undefined }))
+                    }}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Select a doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((doctor) => (
+                        <SelectItem key={doctor.id} value={doctor.id}>
+                          Dr. {doctor.firstName} {doctor.lastName}
+                          {doctor.specialization && ` (${doctor.specialization})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
 
               <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value)
+                        setSelectedTime('')
+                        setErrors((prev) => ({ ...prev, date: undefined }))
+                      }}
+                    />
+                  )}
+                </FormField>
                 <div className="space-y-2">
-                  <Label>Date *</Label>
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => {
-                      setSelectedDate(e.target.value)
-                      setSelectedTime('')
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Duration</Label>
+                  <Label htmlFor="appointment-duration">Duration</Label>
                   <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-duration">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -363,12 +381,19 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
               </div>
 
               {/* Time Slots */}
-              <div className="space-y-2">
-                <Label>Time Slot *</Label>
+              <div
+                className="space-y-2"
+                id="appointment-time"
+                role="group"
+                aria-labelledby="appointment-time-label"
+              >
+                <p id="appointment-time-label" className="label-required text-sm font-medium">
+                  Time slot
+                </p>
                 {loadingSlots ? (
                   <div className="flex items-center gap-2 p-4 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading available slots...
+                    Loading available slots…
                   </div>
                 ) : timeSlots.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">
@@ -390,7 +415,10 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                               ? ''
                               : 'hover:bg-primary/10'
                         }
-                        onClick={() => setSelectedTime(slot.time)}
+                        onClick={() => {
+                          setSelectedTime(slot.time)
+                          setErrors((prev) => ({ ...prev, time: undefined }))
+                        }}
                       >
                         {selectedTime === slot.time && <Check className="mr-1 h-3 w-3" />}
                         {formatTime(slot.time)}
@@ -398,6 +426,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                     ))}
                   </div>
                 )}
+                {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
               </div>
             </CardContent>
           </Card>
@@ -407,31 +436,31 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-                Appointment Details
+                Appointment details
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Appointment Type</Label>
+                  <Label htmlFor="appointment-type">Appointment type</Label>
                   <Select value={appointmentType} onValueChange={setAppointmentType}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="CONSULTATION">Consultation</SelectItem>
                       <SelectItem value="PROCEDURE">Procedure</SelectItem>
-                      <SelectItem value="FOLLOW_UP">Follow Up</SelectItem>
+                      <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
                       <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                      <SelectItem value="CHECK_UP">Check Up</SelectItem>
+                      <SelectItem value="CHECK_UP">Check-up</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Priority</Label>
+                  <Label htmlFor="appointment-priority">Priority</Label>
                   <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger>
+                    <SelectTrigger id="appointment-priority">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -444,8 +473,9 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 </div>
 
                 <div className="space-y-2 md:col-span-3">
-                  <Label>Chief Complaint</Label>
+                  <Label htmlFor="appointment-complaint">Chief complaint</Label>
                   <Input
+                    id="appointment-complaint"
                     placeholder="Patient's main concern or reason for visit"
                     value={chiefComplaint}
                     onChange={(e) => setChiefComplaint(e.target.value)}
@@ -453,8 +483,9 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 </div>
 
                 <div className="space-y-2 md:col-span-3">
-                  <Label>Notes</Label>
+                  <Label htmlFor="appointment-notes">Notes</Label>
                   <Input
+                    id="appointment-notes"
                     placeholder="Additional notes about the appointment"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -467,21 +498,11 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
 
         <div className="mt-6 flex justify-end gap-4">
           <Button type="button" variant="outline" asChild>
-            <Link href={`/appointments/${id}`}>Cancel</Link>
+            <Link href={trail.back(`/appointments/${id}`)}>Cancel</Link>
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Save Changes
-              </>
-            )}
-          </Button>
+          <SubmitButton busy={submitting} icon={Save}>
+            Save changes
+          </SubmitButton>
         </div>
       </form>
     </div>

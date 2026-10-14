@@ -25,11 +25,24 @@ import {
 } from '@/components/ui/table'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { FormField } from '@/components/ui/form-field'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
+import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { formatToken } from '@/lib/tokens'
 import { splitName } from '@/lib/visitors'
-import { Loader2, Trash2, UserPlus } from 'lucide-react'
+import { formatPhone } from '@/lib/utils'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { AlertTriangle, Trash2, UserPlus } from 'lucide-react'
 import { displayDate, displayDateTime } from '@/lib/dates'
+
+type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'phone', string>>
 
 /**
  * One walk-in, and the decision about them.
@@ -81,7 +94,13 @@ export default function WalkInPage() {
 
   const [visitor, setVisitor] = useState<Visitor | null>(null)
   const [loading, setLoading] = useState(true)
+  // Could not be loaded, as opposed to not existing (a 404).
+  const [failed, setFailed] = useState(false)
+  const [reload, setReload] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<FieldErrors>({})
+  // Warn before a half-typed registration is thrown away by a stray click.
+  const formRef = useFormGuard(saving)
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -96,10 +115,15 @@ export default function WalkInPage() {
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true)
+      setFailed(false)
       try {
         const res = await fetch(`/api/visitors/${visitorId}`)
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'That walk-in could not be found')
+        if (res.status === 404) {
+          setVisitor(null)
+          return
+        }
+        const data = await readJson<{ visitor: Visitor }>(res)
 
         setVisitor(data.visitor)
         const guessed = splitName(data.visitor.name)
@@ -110,27 +134,28 @@ export default function WalkInPage() {
           phone: data.visitor.phone ?? '',
         }))
       } catch (err) {
-        toast({
-          title: 'Error',
-          description: err instanceof Error ? err.message : 'Failed to load the walk-in',
-          variant: 'destructive',
-        })
+        console.error('Error fetching walk-in:', err)
+        setFailed(true)
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [visitorId, toast])
+  }, [visitorId, reload])
 
   const convert = async (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.phone.trim()) {
-      toast({
-        title: 'Not enough to register somebody',
-        description: 'A patient record needs a first name, a last name and a phone number.',
-        variant: 'destructive',
-      })
+    // A patient record needs a first name, a last name and a phone number.
+    const found: FieldErrors = {}
+    if (!form.firstName.trim()) found.firstName = 'Enter a first name'
+    if (!form.lastName.trim()) found.lastName = 'Enter a last name'
+    if (!form.phone.trim()) found.phone = 'Enter a phone number'
+    setErrors(found)
+    const first = (['firstName', 'lastName', 'phone'] as const).find((key) => found[key])
+    if (first) {
+      toast(toastError('register the walk-in', 'Check the highlighted fields.'))
+      document.getElementById(first)?.focus()
       return
     }
 
@@ -145,20 +170,17 @@ export default function WalkInPage() {
           gender: form.gender || null,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Could not register this walk-in')
+      const data = await readJson<{ patient: { id: string; patientId: string } }>(res)
 
-      toast({
-        title: 'Registered',
-        description: `${form.firstName} ${form.lastName} is now ${data.patient.patientId}. Their visits came with them.`,
-      })
+      toast(
+        toastSuccess(
+          'Walk-in registered',
+          `${form.firstName} ${form.lastName} is now ${data.patient.patientId}. Their visits came with them.`
+        )
+      )
       router.push(`/patients/${data.patient.id}`)
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Could not register this walk-in',
-        variant: 'destructive',
-      })
+      toast(toastError('register the walk-in', err))
     } finally {
       setSaving(false)
     }
@@ -169,31 +191,29 @@ export default function WalkInPage() {
       title: `Discard ${visitor?.name}?`,
       description:
         'Their visits stay on the record. They will not appear in the list of walk-ins to decide on.',
-      confirmLabel: 'Discard',
-      variant: 'destructive',
+      confirmLabel: 'Discard walk-in',
     })
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/visitors/${visitorId}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Could not discard this walk-in')
+      const data = await readJson<{ message?: string }>(
+        await fetch(`/api/visitors/${visitorId}`, { method: 'DELETE' })
+      )
 
-      toast({ title: 'Discarded', description: data.message })
-      router.push('/walk-ins')
+      toast(toastSuccess('Walk-in discarded', data.message))
+      router.push(trail.back('/walk-ins'))
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Could not discard this walk-in',
-        variant: 'destructive',
-      })
+      toast(toastError(`discard ${visitor?.name ?? 'the walk-in'}`, err))
     }
   }
 
-  if (loading) {
+  if (loading && !visitor) return <PageSkeleton variant="detail" />
+
+  if (failed) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-4">
+        <BackLink trail={trail} fallback="/walk-ins" fallbackLabel="Walk-ins" />
+        <LoadFailed what="this walk-in" onRetry={() => setReload((n) => n + 1)} />
       </div>
     )
   }
@@ -202,7 +222,13 @@ export default function WalkInPage() {
     return (
       <div className="space-y-4">
         <BackLink trail={trail} fallback="/walk-ins" fallbackLabel="Walk-ins" />
-        <p className="text-sm text-muted-foreground">That walk-in could not be found.</p>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Walk-in not found"
+          description="That walk-in could not be found. It may have been removed, or the link is wrong."
+          actionLabel="Back to walk-ins"
+          actionHref="/walk-ins"
+        />
       </div>
     )
   }
@@ -212,33 +238,30 @@ export default function WalkInPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       {ConfirmDialogComponent}
-      <BackLink trail={trail} fallback="/walk-ins" fallbackLabel="Walk-ins" />
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">{visitor.name}</h1>
-            {visitor.convertedPatient ? (
-              <Badge variant="outline">Registered</Badge>
-            ) : visitor.discardedAt ? (
-              <Badge variant="outline" className="text-muted-foreground">
-                Discarded
-              </Badge>
-            ) : (
-              <Badge>To decide</Badge>
-            )}
-          </div>
-          <p className="text-muted-foreground">
-            {visitor.phone || 'No phone number'} · first seen {displayDate(visitor.createdAt)}
-          </p>
-        </div>
-        {!decided && (
-          <Button variant="outline" className="text-red-600 dark:text-red-400" onClick={discard}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            Discard
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={visitor.name}
+        back={<BackLink trail={trail} fallback="/walk-ins" fallbackLabel="Walk-ins" />}
+        badges={
+          visitor.convertedPatient ? (
+            <Badge variant="outline">Registered</Badge>
+          ) : visitor.discardedAt ? (
+            <Badge variant="outline" className="text-muted-foreground">
+              Discarded
+            </Badge>
+          ) : (
+            <Badge>To decide</Badge>
+          )
+        }
+        description={`${formatPhone(visitor.phone) || 'No phone number'} · first seen ${displayDate(visitor.createdAt)}`}
+        actions={
+          !decided && (
+            <Button variant="outline" className="text-destructive" onClick={discard}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Discard
+            </Button>
+          )
+        }
+      />
 
       {visitor.convertedPatient && (
         <Card>
@@ -302,9 +325,7 @@ export default function WalkInPage() {
                       {formatToken(appointment.tokenNumber)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {appointment.status.toLowerCase().replace('_', ' ')}
-                      </Badge>
+                      <StatusBadge kind="appointment" status={appointment.status} />
                     </TableCell>
                   </TableRow>
                 ))
@@ -315,7 +336,7 @@ export default function WalkInPage() {
       </Card>
 
       {!decided && (
-        <form onSubmit={convert}>
+        <form ref={formRef} onSubmit={convert} noValidate>
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -329,30 +350,33 @@ export default function WalkInPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First name *</Label>
-                  <Input
-                    id="firstName"
-                    value={form.firstName}
-                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last name *</Label>
-                  <Input
-                    id="lastName"
-                    value={form.lastName}
-                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone *</Label>
-                  <Input
-                    id="phone"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  />
-                </div>
+                <FormField label="First name" required htmlFor="firstName" error={errors.firstName}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={form.firstName}
+                      onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Last name" required htmlFor="lastName" error={errors.lastName}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={form.lastName}
+                      onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
+                  {(control) => (
+                    <PhoneInput
+                      {...control}
+                      value={form.phone}
+                      onChange={(phone) => setForm((current) => ({ ...current, phone }))}
+                    />
+                  )}
+                </FormField>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -400,14 +424,9 @@ export default function WalkInPage() {
               </div>
 
               <div className="flex justify-end">
-                <Button type="submit" disabled={saving}>
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <UserPlus className="h-4 w-4 mr-2" />
-                  )}
+                <SubmitButton busy={saving} busyLabel="Registering…" icon={UserPlus}>
                   Register and keep the visits
-                </Button>
+                </SubmitButton>
               </div>
             </CardContent>
           </Card>

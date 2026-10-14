@@ -30,6 +30,8 @@ vi.mock('@/hooks/use-can', () => ({
 
 vi.mock('@/lib/utils', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
+  // The patient picker's summary card writes the phone with it.
+  formatPhone: (phone: string | null | undefined) => phone ?? '',
 }))
 
 vi.mock('lucide-react', async (importOriginal) => {
@@ -170,14 +172,15 @@ describe('NewPrescriptionPage', () => {
   describe('Initial rendering', () => {
     it('renders page heading', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('New Prescription')).toBeInTheDocument()
+      expect(screen.getByText('New prescription')).toBeInTheDocument()
       expect(screen.getByText('Create a new e-prescription for a patient')).toBeInTheDocument()
     })
 
     it('renders patient selection section', () => {
       render(<NewPrescriptionPage />)
       expect(screen.getByText('Patient')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText(/Search patient by name/i)).toBeInTheDocument()
+      // The shared patient picker (components/patients/patient-picker.tsx).
+      expect(screen.getByPlaceholderText(/Search by name, ID or phone/i)).toBeInTheDocument()
     })
 
     it('renders diagnosis section', () => {
@@ -210,13 +213,13 @@ describe('NewPrescriptionPage', () => {
 
     it('renders additional notes section', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('Additional Notes')).toBeInTheDocument()
+      expect(screen.getByText('Additional notes')).toBeInTheDocument()
       expect(screen.getByPlaceholderText(/General advice/i)).toBeInTheDocument()
     })
 
     it('renders submit and cancel buttons', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('Create Prescription')).toBeInTheDocument()
+      expect(screen.getByText('Create prescription')).toBeInTheDocument()
       expect(screen.getByText('Cancel')).toBeInTheDocument()
     })
 
@@ -229,10 +232,10 @@ describe('NewPrescriptionPage', () => {
   describe('Medication rows', () => {
     it('renders medication field labels', () => {
       render(<NewPrescriptionPage />)
-      expect(screen.getByText('Medication *')).toBeInTheDocument()
-      expect(screen.getByText('Dosage *')).toBeInTheDocument()
-      expect(screen.getByText('Frequency *')).toBeInTheDocument()
-      expect(screen.getByText('Duration *')).toBeInTheDocument()
+      // Required is the label's marker (`label-required`), not "*" typed in.
+      for (const name of ['Medication', 'Dosage', 'Frequency', 'Duration']) {
+        expect(screen.getByText(name)).toHaveClass('label-required')
+      }
       expect(screen.getByText('Route')).toBeInTheDocument()
       expect(screen.getByText('Timing')).toBeInTheDocument()
       expect(screen.getByText('Quantity')).toBeInTheDocument()
@@ -241,7 +244,7 @@ describe('NewPrescriptionPage', () => {
     it('can add another medication row', () => {
       render(<NewPrescriptionPage />)
 
-      fireEvent.click(screen.getByText('Add Another Medication'))
+      fireEvent.click(screen.getByText('Add another medication'))
 
       expect(screen.getByText('Medication 1')).toBeInTheDocument()
       expect(screen.getByText('Medication 2')).toBeInTheDocument()
@@ -255,7 +258,7 @@ describe('NewPrescriptionPage', () => {
       // The trash icon shouldn't be visible for the only row
 
       // Add second row
-      fireEvent.click(screen.getByText('Add Another Medication'))
+      fireEvent.click(screen.getByText('Add another medication'))
 
       // Now delete buttons should appear
       expect(screen.getByText('Medication 2')).toBeInTheDocument()
@@ -313,22 +316,25 @@ describe('NewPrescriptionPage', () => {
     it('shows error when no patient is selected', async () => {
       render(<NewPrescriptionPage />)
 
-      fireEvent.click(screen.getByText('Create Prescription'))
+      fireEvent.click(screen.getByText('Create prescription'))
 
+      // One summary toast, and the reason under the field itself.
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             variant: 'destructive',
-            description: 'Please select a patient',
+            title: "Couldn't create the prescription",
+            description: 'Check the highlighted fields.',
           })
         )
       })
+      expect(screen.getByText('Choose the patient this prescription is for.')).toBeInTheDocument()
     })
 
     it('does not call API when patient not selected', async () => {
       render(<NewPrescriptionPage />)
 
-      fireEvent.click(screen.getByText('Create Prescription'))
+      fireEvent.click(screen.getByText('Create prescription'))
 
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalled()
@@ -362,7 +368,7 @@ describe('NewPrescriptionPage', () => {
 
       // The form validates that at least one med has name+dosage+frequency+duration
       // Since we can't easily select a patient in this mock setup, submitting will first error on patient
-      fireEvent.click(screen.getByText('Create Prescription'))
+      fireEvent.click(screen.getByText('Create prescription'))
 
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
@@ -401,7 +407,8 @@ describe('NewPrescriptionPage', () => {
 
       render(<NewPrescriptionPage />)
 
-      const searchInput = screen.getByPlaceholderText(/Search patient by name/i)
+      const searchInput = screen.getByPlaceholderText(/Search by name, ID or phone/i)
+      fireEvent.focus(searchInput)
       fireEvent.change(searchInput, { target: { value: 'Jo' } })
 
       await waitFor(
@@ -440,7 +447,8 @@ describe('NewPrescriptionPage', () => {
 
       render(<NewPrescriptionPage />)
 
-      const searchInput = screen.getByPlaceholderText(/Search patient by name/i)
+      const searchInput = screen.getByPlaceholderText(/Search by name, ID or phone/i)
+      fireEvent.focus(searchInput)
       fireEvent.change(searchInput, { target: { value: 'John' } })
 
       await waitFor(
@@ -492,7 +500,8 @@ describe('NewPrescriptionPage', () => {
       render(<NewPrescriptionPage />)
 
       // Select patient
-      const searchInput = screen.getByPlaceholderText(/Search patient by name/i)
+      const searchInput = screen.getByPlaceholderText(/Search by name, ID or phone/i)
+      fireEvent.focus(searchInput)
       fireEvent.change(searchInput, { target: { value: 'John' } })
 
       await waitFor(
@@ -508,7 +517,7 @@ describe('NewPrescriptionPage', () => {
       fireEvent.change(screen.getByPlaceholderText('3 times a day'), { target: { value: 'TID' } })
       fireEvent.change(screen.getByPlaceholderText('5 days'), { target: { value: '7 days' } })
 
-      fireEvent.click(screen.getByText('Create Prescription'))
+      fireEvent.click(screen.getByText('Create prescription'))
 
       await waitFor(() => {
         const postCalls = (global.fetch as any).mock.calls.filter(
@@ -566,7 +575,8 @@ describe('NewPrescriptionPage', () => {
       render(<NewPrescriptionPage />)
 
       // Select patient
-      const searchInput = screen.getByPlaceholderText(/Search patient by name/i)
+      const searchInput = screen.getByPlaceholderText(/Search by name, ID or phone/i)
+      fireEvent.focus(searchInput)
       fireEvent.change(searchInput, { target: { value: 'Jane' } })
 
       await waitFor(
@@ -582,7 +592,7 @@ describe('NewPrescriptionPage', () => {
       fireEvent.change(screen.getByPlaceholderText('3 times a day'), { target: { value: 'BID' } })
       fireEvent.change(screen.getByPlaceholderText('5 days'), { target: { value: '3 days' } })
 
-      fireEvent.click(screen.getByText('Create Prescription'))
+      fireEvent.click(screen.getByText('Create prescription'))
 
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
@@ -600,7 +610,7 @@ describe('NewPrescriptionPage', () => {
       mockCan.mockReturnValue(false)
       render(<NewPrescriptionPage />)
       expect(screen.getByText(/only a dentist can write a prescription/i)).toBeInTheDocument()
-      expect(screen.queryByText('Create Prescription')).not.toBeInTheDocument()
+      expect(screen.queryByText('Create prescription')).not.toBeInTheDocument()
     })
   })
 
@@ -627,11 +637,14 @@ describe('NewPrescriptionPage', () => {
       expect(mockPush).toHaveBeenCalledWith('/prescriptions')
     })
 
-    it('back button navigates to prescriptions', () => {
+    it('back link goes to prescriptions', () => {
       render(<NewPrescriptionPage />)
 
-      fireEvent.click(screen.getByText(/Back to Prescriptions/i))
-      expect(mockPush).toHaveBeenCalledWith('/prescriptions')
+      // A BackLink: a real link, trail-aware, falling back to the list.
+      expect(screen.getByRole('link', { name: /Back to Prescriptions/i })).toHaveAttribute(
+        'href',
+        '/prescriptions'
+      )
     })
   })
 })

@@ -2,11 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { formatCurrency, formatDate } from '@/lib/i18n/format'
+import { ClipboardList, PackageCheck, Send, Trash2, XCircle } from 'lucide-react'
+import { formatCurrency } from '@/lib/i18n/format'
+import { BLANK, displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
+import { TONE_TEXT_CLASS } from '@/lib/status'
+import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { LoadFailed } from '@/components/ui/load-failed'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { SubmitButton } from '@/components/ui/submit-button'
 import {
   Table,
   TableBody,
@@ -69,13 +83,7 @@ interface ReceiptDraft {
 
 const EMPTY_DRAFT: ReceiptDraft = { quantity: '', batchNumber: '', expiryDate: '' }
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: 'bg-muted text-foreground',
-  ORDERED: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-  PARTIALLY_RECEIVED: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
-  RECEIVED: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
-  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-}
+type Busy = 'place' | 'cancel' | 'receive' | null
 
 export default function PurchaseOrderPage() {
   const params = useParams<{ id: string }>()
@@ -85,39 +93,36 @@ export default function PurchaseOrderPage() {
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(order?.orderNumber ?? null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
+  const [notFound, setNotFound] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, ReceiptDraft>>({})
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<Busy>(null)
   const { toast } = useToast()
 
   const fetchOrder = useCallback(async () => {
     setLoading(true)
+    setFailed(false)
+    setNotFound(false)
     try {
       const response = await fetch(`/api/inventory/purchase-orders/${params.id}`)
-      const data = await response.json()
-      if (data.success) {
-        setOrder(data.data)
-        setDrafts({})
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Could not load the purchase order',
-          description: data.error || 'That order could not be found.',
-        })
+      if (response.status === 404) {
+        setNotFound(true)
+        return
       }
+      const data = await readJson<{ data: Order }>(response)
+      setOrder(data.data)
+      setDrafts({})
     } catch (err) {
       console.error('Error loading purchase order:', err)
-      toast({
-        variant: 'destructive',
-        title: 'Could not load the purchase order',
-        description: 'Check the connection and try again.',
-      })
+      setFailed(true)
     } finally {
       setLoading(false)
     }
-  }, [params.id, toast])
+  }, [params.id])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data from the server is the effect
     fetchOrder()
   }, [fetchOrder])
 
@@ -127,41 +132,32 @@ export default function PurchaseOrderPage() {
       [lineId]: { ...EMPTY_DRAFT, ...current[lineId], ...changes },
     }))
 
-  const patch = async (body: Record<string, unknown>, done: string) => {
-    setBusy(true)
+  const patch = async (
+    action: Exclude<Busy, 'receive' | null>,
+    body: Record<string, unknown>,
+    done: string,
+    failure: string
+  ) => {
+    setBusy(action)
     try {
-      const response = await fetch(`/api/inventory/purchase-orders/${params.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Could not update the order',
-          description: data.error || 'That did not work',
+      await readJson(
+        await fetch(`/api/inventory/purchase-orders/${params.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
         })
-        return
-      }
-      toast({ title: done })
+      )
+      toast(toastSuccess(done))
       await fetchOrder()
     } catch (err) {
       console.error('Error updating purchase order:', err)
-      toast({
-        variant: 'destructive',
-        title: 'Could not update the order',
-        description: 'Check the connection and try again.',
-      })
+      toast(toastError(failure, err))
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
   const receive = async () => {
-    const fail = (description: string) =>
-      toast({ variant: 'destructive', title: 'Could not receive the goods', description })
-
     const items = Object.entries(drafts)
       .filter(([, draft]) => Number(draft.quantity) > 0)
       .map(([lineId, draft]) => ({
@@ -172,146 +168,176 @@ export default function PurchaseOrderPage() {
       }))
 
     if (items.length === 0) {
-      fail('Enter the quantity received against at least one line')
+      toast(
+        toastError('receive the goods', 'Enter the quantity received against at least one line.')
+      )
       return
     }
 
-    setBusy(true)
+    setBusy('receive')
     try {
-      const response = await fetch(`/api/inventory/purchase-orders/${params.id}/receive`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, receivedDate }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        fail(data.error || 'The server refused the receipt.')
-        return
-      }
-      toast({ title: 'Goods received', description: data.message })
+      const data = await readJson<{ message?: string }>(
+        await fetch(`/api/inventory/purchase-orders/${params.id}/receive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items, receivedDate }),
+        })
+      )
+      toast(toastSuccess('Goods received', data.message))
       await fetchOrder()
     } catch (err) {
       console.error('Error receiving goods:', err)
-      fail('Check the connection and try again.')
+      toast(toastError('receive the goods', err))
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
-  const remove = async () => {
+  const cancelOrder = async (current: Order) => {
     const ok = await confirm({
-      title: 'Delete this draft order?',
-      description: 'Nothing has been ordered or received against it, so it can be removed.',
-      confirmLabel: 'Delete',
-      variant: 'destructive',
+      title: `Cancel purchase order ${current.orderNumber}?`,
+      description: 'It is kept, marked cancelled, and nothing more can be received against it.',
+      confirmLabel: 'Cancel order',
+      cancelLabel: 'Keep order',
     })
     if (!ok) return
-    const response = await fetch(`/api/inventory/purchase-orders/${params.id}`, {
-      method: 'DELETE',
-    })
-    if (response.ok) {
-      router.push('/inventory/purchase-orders')
-      return
-    }
-    const data = await response.json().catch(() => ({}))
-    toast({
-      variant: 'destructive',
-      title: 'Could not delete the order',
-      description: data.error || 'The draft order was not removed.',
-    })
+    await patch(
+      'cancel',
+      { status: 'CANCELLED' },
+      'Order cancelled',
+      `cancel order ${current.orderNumber}`
+    )
   }
 
-  if (loading) return <div>Loading...</div>
-  if (!order) return <div>Purchase order not found</div>
+  const remove = async (current: Order) => {
+    const ok = await confirm({
+      title: `Delete draft order ${current.orderNumber}?`,
+      description: 'Nothing has been ordered or received against it, so it can be removed.',
+      confirmLabel: 'Delete order',
+    })
+    if (!ok) return
+    try {
+      await readJson(
+        await fetch(`/api/inventory/purchase-orders/${params.id}`, { method: 'DELETE' })
+      )
+      toast(toastSuccess('Draft order deleted', current.orderNumber))
+      router.push('/inventory/purchase-orders')
+    } catch (err) {
+      toast(toastError(`delete order ${current.orderNumber}`, err))
+    }
+  }
+
+  const back = (
+    <BackLink trail={trail} fallback="/inventory/purchase-orders" fallbackLabel="Purchase orders" />
+  )
+
+  if (loading && !order) return <PageSkeleton variant="detail" />
+  if (notFound)
+    return (
+      <EmptyState
+        icon={ClipboardList}
+        title="Purchase order not found"
+        description="It may have been deleted, or the link is wrong."
+        actionLabel="Back to purchase orders"
+        actionHref="/inventory/purchase-orders"
+      />
+    )
+  if (failed || !order)
+    return (
+      <div className="space-y-6">
+        {back}
+        <LoadFailed what="this purchase order" onRetry={fetchOrder} />
+      </div>
+    )
 
   const canReceive = order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED'
   const outstanding = order.items.reduce((sum, line) => sum + line.outstanding, 0)
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-5xl space-y-6">
       {ConfirmDialogComponent}
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="page-title">{order.orderNumber}</h1>
-            <span
-              className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                STATUS_STYLES[order.status] ?? 'bg-muted text-foreground'
-              }`}
-            >
-              {order.status.charAt(0) + order.status.slice(1).toLowerCase().replace('_', ' ')}
-            </span>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
+      <PageHeader
+        title={order.orderNumber}
+        badges={<StatusBadge kind="purchaseOrder" status={order.status} />}
+        description={
+          <>
             {order.supplier.name} ({order.supplier.code})
-            {order.supplier.phone ? ` · ${order.supplier.phone}` : ''}
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Link
-            href="/inventory/purchase-orders"
-            className="px-4 py-2 bg-muted-foreground text-background rounded-lg hover:bg-muted-foreground/80"
-          >
-            Back
-          </Link>
-          {order.status === 'DRAFT' && (
-            <>
-              <button
-                onClick={remove}
-                className="px-4 py-2 border border-border rounded-lg hover:bg-muted"
+            {order.supplier.phone ? ` · ${formatPhone(order.supplier.phone)}` : ''}
+          </>
+        }
+        back={back}
+        actions={
+          <>
+            {order.status === 'DRAFT' && (
+              <>
+                <Button variant="outline" onClick={() => remove(order)} disabled={busy !== null}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+                <SubmitButton
+                  type="button"
+                  icon={Send}
+                  busy={busy === 'place'}
+                  busyLabel="Placing order…"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    patch(
+                      'place',
+                      { status: 'ORDERED' },
+                      'Order placed',
+                      `place order ${order.orderNumber}`
+                    )
+                  }
+                >
+                  Place order
+                </SubmitButton>
+              </>
+            )}
+            {(order.status === 'DRAFT' || order.status === 'ORDERED') && (
+              <SubmitButton
+                type="button"
+                variant="outline"
+                icon={XCircle}
+                className="text-destructive"
+                busy={busy === 'cancel'}
+                busyLabel="Cancelling…"
+                disabled={busy !== null}
+                onClick={() => cancelOrder(order)}
               >
-                Delete
-              </button>
-              <button
-                disabled={busy}
-                onClick={() => patch({ status: 'ORDERED' }, 'Order placed')}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                Place order
-              </button>
-            </>
-          )}
-          {(order.status === 'DRAFT' || order.status === 'ORDERED') && (
-            <button
-              disabled={busy}
-              onClick={() => patch({ status: 'CANCELLED' }, 'Order cancelled')}
-              className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50 dark:border-red-800/70 dark:text-red-300"
-            >
-              Cancel order
-            </button>
-          )}
-        </div>
-      </div>
+                Cancel order
+              </SubmitButton>
+            )}
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: 'Ordered', value: formatDate(order.orderDate) },
-          { label: 'Expected', value: order.expectedDate ? formatDate(order.expectedDate) : '—' },
-          {
-            label: 'Received',
-            value: order.receivedDate ? formatDate(order.receivedDate) : '—',
-          },
+          { label: 'Ordered', value: displayDate(order.orderDate) },
+          { label: 'Expected', value: displayDate(order.expectedDate) },
+          { label: 'Received', value: displayDate(order.receivedDate) },
           { label: 'Total', value: formatCurrency(order.totalAmount) },
         ].map((stat) => (
-          <div key={stat.label} className="bg-background rounded-lg shadow p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-lg font-semibold mt-1">{stat.value}</p>
-          </div>
+          <Card key={stat.label}>
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+              <p className="mt-1 text-lg font-semibold">{stat.value}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      <div className="bg-background rounded-lg shadow overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Items</h2>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b">
+          <CardTitle className="text-lg">Items</CardTitle>
           {outstanding > 0 && (
-            <span className="text-sm text-amber-700 dark:text-amber-300">
+            <span className={`text-sm ${TONE_TEXT_CLASS.progress}`}>
               {outstanding} still outstanding
             </span>
           )}
-        </div>
+        </CardHeader>
 
-        <div>
+        <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-full">
             <TableHeader>
               <TableRow>
@@ -334,11 +360,11 @@ export default function PurchaseOrderPage() {
                   <TableCell>{line.receivedQty}</TableCell>
                   <TableCell>
                     {line.outstanding > 0 ? (
-                      <span className="text-amber-700 font-medium dark:text-amber-300">
+                      <span className={`font-medium ${TONE_TEXT_CLASS.progress}`}>
                         {line.outstanding}
                       </span>
                     ) : (
-                      <span className="text-green-700 dark:text-green-300">Complete</span>
+                      <span className={TONE_TEXT_CLASS.success}>Complete</span>
                     )}
                   </TableCell>
                   <TableCell>{formatCurrency(line.unitPrice)}</TableCell>
@@ -347,17 +373,18 @@ export default function PurchaseOrderPage() {
                   {canReceive && (
                     <TableCell>
                       {line.outstanding === 0 ? (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">{BLANK}</span>
                       ) : (
-                        <div className="space-y-2 min-w-[14rem]">
-                          <input
+                        <div className="min-w-[14rem] space-y-2">
+                          <Input
                             type="number"
                             min={0}
                             max={line.outstanding}
-                            placeholder={`up to ${line.outstanding}`}
+                            aria-label={`Quantity received of ${line.item.name}`}
+                            placeholder={`Up to ${line.outstanding}`}
                             value={drafts[line.id]?.quantity ?? ''}
                             onChange={(e) => setDraft(line.id, { quantity: e.target.value })}
-                            className="w-full px-3 py-1.5 border border-border rounded text-sm"
+                            className="h-9"
                           />
                           {/* Shown when the item asks for them. An expiry date
                               is the only thing that makes a near-expiry alert
@@ -365,22 +392,23 @@ export default function PurchaseOrderPage() {
                               is knowable. */}
                           {(line.item.batchTracking || line.item.expiryTracking) && (
                             <>
-                              <input
+                              <Input
                                 type="text"
+                                aria-label={`Batch number for ${line.item.name}`}
                                 placeholder="Batch number"
                                 value={drafts[line.id]?.batchNumber ?? ''}
                                 onChange={(e) => setDraft(line.id, { batchNumber: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-border rounded text-sm"
+                                className="h-9"
                               />
                               {line.item.expiryTracking && (
-                                <input
+                                <Input
                                   type="date"
                                   aria-label={`Expiry date for ${line.item.name}`}
                                   value={drafts[line.id]?.expiryDate ?? ''}
                                   onChange={(e) =>
                                     setDraft(line.id, { expiryDate: e.target.value })
                                   }
-                                  className="w-full px-3 py-1.5 border border-border rounded text-sm"
+                                  className="h-9"
                                 />
                               )}
                             </>
@@ -393,69 +421,68 @@ export default function PurchaseOrderPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </CardContent>
 
         {canReceive && (
-          <div className="px-6 py-4 border-t border-border flex items-end justify-between gap-4">
-            <div>
-              <label htmlFor="receivedDate" className="block text-xs text-muted-foreground mb-1">
-                Delivery date
-              </label>
-              <input
+          <div className="flex flex-col gap-4 border-t px-6 py-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <Label htmlFor="receivedDate">Delivery date</Label>
+              <Input
                 id="receivedDate"
                 type="date"
                 value={receivedDate}
                 onChange={(e) => setReceivedDate(e.target.value)}
-                className="px-3 py-2 border border-border rounded-lg text-sm"
+                className="w-auto"
               />
             </div>
-            <button
-              disabled={busy}
+            <SubmitButton
+              type="button"
+              icon={PackageCheck}
+              busy={busy === 'receive'}
+              busyLabel="Receiving…"
+              disabled={busy !== null}
               onClick={receive}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
               Receive goods
-            </button>
+            </SubmitButton>
           </div>
         )}
-      </div>
+      </Card>
 
       {order.receipts.length > 0 && (
-        <div className="bg-background rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-lg font-semibold">Deliveries</h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              Every stock movement booked in against this order.
-            </p>
-          </div>
-          <Table className="min-w-full">
-            <TableHeader>
-              <TableRow>
-                {['Date', 'Item', 'Quantity', 'Batch', 'Expires'].map((h) => (
-                  <TableHead key={h}>{h}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {order.receipts.map((receipt) => {
-                const line = order.items.find((l) => l.itemId === receipt.itemId)
-                return (
-                  <TableRow key={receipt.id}>
-                    <TableCell>{formatDate(receipt.transactionDate)}</TableCell>
-                    <TableCell>{line?.item.name ?? '—'}</TableCell>
-                    <TableCell>{receipt.quantity}</TableCell>
-                    <TableCell>
-                      {receipt.batch?.batchNumber ?? receipt.batchNumber ?? '—'}
-                    </TableCell>
-                    <TableCell>
-                      {receipt.batch?.expiryDate ? formatDate(receipt.batch.expiryDate) : '—'}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
+            <CardTitle className="text-lg">Deliveries</CardTitle>
+            <CardDescription>Every stock movement booked in against this order.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  {['Date', 'Item', 'Quantity', 'Batch', 'Expires'].map((h) => (
+                    <TableHead key={h}>{h}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {order.receipts.map((receipt) => {
+                  const line = order.items.find((l) => l.itemId === receipt.itemId)
+                  return (
+                    <TableRow key={receipt.id}>
+                      <TableCell>{displayDate(receipt.transactionDate)}</TableCell>
+                      <TableCell>{line?.item.name ?? BLANK}</TableCell>
+                      <TableCell>{receipt.quantity}</TableCell>
+                      <TableCell>
+                        {receipt.batch?.batchNumber ?? receipt.batchNumber ?? BLANK}
+                      </TableCell>
+                      <TableCell>{displayDate(receipt.batch?.expiryDate)}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
