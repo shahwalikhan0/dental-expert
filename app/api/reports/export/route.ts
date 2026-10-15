@@ -3,7 +3,8 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import ExcelJS from 'exceljs'
 import { format } from 'date-fns'
-import { escapeHtml } from '@/lib/services/pdf-generator'
+import { escapeHtml, printHtmlPage, type PrintLayout } from '@/lib/print'
+import { readPrintLayout } from '@/lib/print-settings'
 
 /**
  * The reports there are, and the other names they are asked for by.
@@ -39,7 +40,7 @@ function reportType(value: string): ReportType | null {
 const EXPORT_FORMATS = ['excel', 'html'] as const
 
 /** Text from the database, made safe to put in the print view. */
-const html = (value: unknown) => escapeHtml(String(value ?? ''))
+const html = escapeHtml
 
 async function generateExcelReport(
   type: string,
@@ -229,187 +230,164 @@ async function generateExcelReport(
   return workbook
 }
 
-async function generatePrintView(type: string, data: any, dateRange: string, hospitalName: string) {
-  const page = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${html(hospitalName)} – ${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    h1 { color: #0070C0; text-align: center; }
-    h2 { color: #333; border-bottom: 2px solid #0070C0; padding-bottom: 5px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    th { background-color: #0070C0; color: white; padding: 10px; text-align: left; }
-    td { padding: 8px; border-bottom: 1px solid #ddd; }
-    .metric { font-weight: bold; }
-    .value { text-align: right; }
-    .footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
-    .print { display: block; margin: 0 auto 20px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
-    @media print { .print { display: none; } }
-  </style>
-</head>
-<body>
-  <button class="print" onclick="window.print()">Print or save as PDF</button>
-  <h1>${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report</h1>
-  <p style="text-align: center; color: #666;">Period: ${html(dateRange)}</p>
-  <p style="text-align: center; color: #666;">Generated on: ${format(new Date(), 'PPpp')}</p>
+/** A two-column table of figures: what was measured, and the number. */
+const figures = (rows: [label: string, value: string | number][]) => `
+    <table class="pd-table">
+      <tbody>
+        ${rows.map(([label, value]) => `<tr><td>${html(label)}</td><td class="pd-num pd-strong">${html(value)}</td></tr>`).join('')}
+      </tbody>
+    </table>`
 
-  ${
-    type === 'patient'
-      ? `
-    <h2>Patient Overview</h2>
-    <table>
-      <tr><td class="metric">New Patients</td><td class="value">${data.newPatients}</td></tr>
-      <tr><td class="metric">Returning Patients</td><td class="value">${data.returningPatients}</td></tr>
-      <tr><td class="metric">Total Patients</td><td class="value">${data.totalPatients}</td></tr>
-      <tr><td class="metric">Retention Rate</td><td class="value">${data.retentionRate.toFixed(2)}%</td></tr>
-    </table>
+/** A table with a header row; `numeric` names the right-aligned columns. */
+const listing = (headers: string[], rows: (string | number)[][], numeric: number[] = []) => `
+    <table class="pd-table">
+      <thead><tr>${headers.map((h, i) => `<th${numeric.includes(i) ? ' class="pd-num"' : ''}>${html(h)}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${rows.map((row) => `<tr>${row.map((cell, i) => `<td${numeric.includes(i) ? ' class="pd-num"' : ''}>${html(cell)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>`
 
-    <h2>Gender Distribution</h2>
-    <table>
-      <tr><td class="metric">Male</td><td class="value">${data.demographics.male}</td></tr>
-      <tr><td class="metric">Female</td><td class="value">${data.demographics.female}</td></tr>
-      <tr><td class="metric">Other</td><td class="value">${data.demographics.other}</td></tr>
-    </table>
+const section = (title: string, body: string) =>
+  `<section class="pd-section"><h2 class="pd-section-title">${html(title)}</h2>${body}</section>`
 
-    ${
-      data.acquisitionSources.length > 0
-        ? `
-      <h2>Acquisition Sources</h2>
-      <table>
-        <tr><th>Source</th><th>Count</th><th>Percentage</th></tr>
-        ${data.acquisitionSources
-          .map(
-            (s: any) => `
-          <tr><td>${html(s.source)}</td><td>${s.count}</td><td>${s.percentage.toFixed(2)}%</td></tr>
-        `
-          )
-          .join('')}
-      </table>
-    `
-        : ''
+const rs = (value: number) => `Rs ${value.toFixed(2)}`
+const pct = (value: number) => `${value.toFixed(2)}%`
+
+/**
+ * The report as a printable page, laid out like every other printed document
+ * (lib/print.ts): the clinic's header and footer space left blank on every
+ * sheet, no clinic name of its own — the letterhead has it.
+ */
+function generatePrintView(type: ReportType, data: any, dateRange: string, layout: PrintLayout) {
+  const title = `${type.charAt(0).toUpperCase() + type.slice(1)} analytics report`
+  let body = ''
+
+  if (type === 'patient') {
+    body += section(
+      'Patient overview',
+      figures([
+        ['New patients', data.newPatients],
+        ['Returning patients', data.returningPatients],
+        ['Total patients', data.totalPatients],
+        ['Retention rate', pct(data.retentionRate)],
+      ])
+    )
+    body += section(
+      'Gender distribution',
+      figures([
+        ['Male', data.demographics.male],
+        ['Female', data.demographics.female],
+        ['Other', data.demographics.other],
+      ])
+    )
+    if (data.acquisitionSources.length > 0) {
+      body += section(
+        'Acquisition sources',
+        listing(
+          ['Source', 'Count', 'Percentage'],
+          data.acquisitionSources.map((s: any) => [s.source, s.count, pct(s.percentage)]),
+          [1, 2]
+        )
+      )
     }
-  `
-      : ''
   }
 
-  ${
-    type === 'clinical'
-      ? `
-    <h2>Clinical Overview</h2>
-    <table>
-      <tr><td class="metric">Total Treatments</td><td class="value">${data.totalTreatments}</td></tr>
-      <tr><td class="metric">Completed</td><td class="value">${data.completedTreatments}</td></tr>
-      <tr><td class="metric">In Progress</td><td class="value">${data.inProgressTreatments}</td></tr>
-      <tr><td class="metric">Completion Rate</td><td class="value">${data.completionRate.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Avg. Duration (mins)</td><td class="value">${data.avgTreatmentDuration}</td></tr>
-    </table>
-
-    ${
-      data.commonProcedures.length > 0
-        ? `
-      <h2>Common Procedures</h2>
-      <table>
-        <tr><th>Procedure</th><th>Code</th><th>Count</th><th>Success Rate</th></tr>
-        ${data.commonProcedures
-          .map(
-            (p: any) => `
-          <tr><td>${html(p.name)}</td><td>${html(p.code)}</td><td>${p.count}</td><td>${p.successRate.toFixed(2)}%</td></tr>
-        `
-          )
-          .join('')}
-      </table>
-    `
-        : ''
+  if (type === 'clinical') {
+    body += section(
+      'Clinical overview',
+      figures([
+        ['Total treatments', data.totalTreatments],
+        ['Completed', data.completedTreatments],
+        ['In progress', data.inProgressTreatments],
+        ['Completion rate', pct(data.completionRate)],
+        ['Average duration (minutes)', data.avgTreatmentDuration],
+      ])
+    )
+    if (data.commonProcedures.length > 0) {
+      body += section(
+        'Common procedures',
+        listing(
+          ['Procedure', 'Code', 'Count', 'Success rate'],
+          data.commonProcedures.map((p: any) => [p.name, p.code, p.count, pct(p.successRate)]),
+          [2, 3]
+        )
+      )
     }
-  `
-      : ''
   }
 
-  ${
-    type === 'financial'
-      ? `
-    <h2>Financial Overview</h2>
-    <table>
-      <tr><td class="metric">Billed (invoices issued)</td><td class="value">Rs ${data.totalBilled.toFixed(2)}</td></tr>
-      <tr><td class="metric">Collected (net of refunds)</td><td class="value">Rs ${data.totalCollected.toFixed(2)}</td></tr>
-      <tr><td class="metric">Expenses (stock purchases)</td><td class="value">Rs ${data.totalExpenses.toFixed(2)}</td></tr>
-      <tr><td class="metric">Profit (collected − expenses)</td><td class="value">Rs ${data.profit.toFixed(2)}</td></tr>
-      <tr><td class="metric">Profit Margin (of collected)</td><td class="value">${data.profitMargin.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Avg. Bill Value</td><td class="value">Rs ${data.avgBillValue.toFixed(2)}</td></tr>
-      <tr><td class="metric">Collection Rate (collected ÷ billed)</td><td class="value">${data.collectionEfficiency.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Outstanding (owed now)</td><td class="value">Rs ${data.outstandingAmount.toFixed(2)}</td></tr>
-    </table>
-
-    ${
-      data.paymentMethodBreakdown.length > 0
-        ? `
-      <h2>Payment Methods</h2>
-      <table>
-        <tr><th>Method</th><th>Collected (Rs)</th><th>Percentage</th></tr>
-        ${data.paymentMethodBreakdown
-          .map(
-            (m: any) => `
-          <tr><td>${html(m.method)}</td><td>Rs ${m.amount.toFixed(2)}</td><td>${m.percentage.toFixed(2)}%</td></tr>
-        `
-          )
-          .join('')}
-      </table>
-    `
-        : ''
+  if (type === 'financial') {
+    body += section(
+      'Financial overview',
+      figures([
+        ['Billed (invoices issued)', rs(data.totalBilled)],
+        ['Collected (net of refunds)', rs(data.totalCollected)],
+        ['Expenses (stock purchases)', rs(data.totalExpenses)],
+        ['Profit (collected − expenses)', rs(data.profit)],
+        ['Profit margin (of collected)', pct(data.profitMargin)],
+        ['Average bill value', rs(data.avgBillValue)],
+        ['Collection rate (collected ÷ billed)', pct(data.collectionEfficiency)],
+        ['Outstanding (owed now)', rs(data.outstandingAmount)],
+      ])
+    )
+    if (data.paymentMethodBreakdown.length > 0) {
+      body += section(
+        'Payment methods',
+        listing(
+          ['Method', 'Collected', 'Percentage'],
+          data.paymentMethodBreakdown.map((m: any) => [m.method, rs(m.amount), pct(m.percentage)]),
+          [1, 2]
+        )
+      )
     }
-  `
-      : ''
   }
 
-  ${
-    type === 'operational'
-      ? `
-    <h2>Operational Overview</h2>
-    <table>
-      <tr><td class="metric">Total Appointments</td><td class="value">${data.totalAppointments}</td></tr>
-      <tr><td class="metric">Completed</td><td class="value">${data.completedAppointments}</td></tr>
-      <tr><td class="metric">Cancelled</td><td class="value">${data.cancelledAppointments}</td></tr>
-      <tr><td class="metric">No-Show Count</td><td class="value">${data.noShowCount}</td></tr>
-      <tr><td class="metric">No-Show Rate</td><td class="value">${data.noShowRate.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Utilization</td><td class="value">${data.appointmentUtilization.toFixed(2)}%</td></tr>
-      <tr><td class="metric">Avg. Wait Time (mins)</td><td class="value">${data.avgWaitTime}</td></tr>
-      <tr><td class="metric">Inventory Turnover</td><td class="value">${data.inventoryTurnover.toFixed(2)}</td></tr>
-      <tr><td class="metric">Low Stock Items</td><td class="value">${data.lowStockItems}</td></tr>
-    </table>
-
-    ${
-      data.staffProductivity.length > 0
-        ? `
-      <h2>Staff Productivity</h2>
-      <table>
-        <tr><th>Staff</th><th>Role</th><th>Appointments</th><th>Treatments</th><th>Invoiced (Rs)</th></tr>
-        ${data.staffProductivity
-          .map(
-            (s: any) => `
-          <tr><td>${html(s.name)}</td><td>${html(s.role)}</td><td>${s.appointmentsHandled}</td><td>${s.treatmentsCompleted}</td><td>${s.invoiced === undefined ? '' : `Rs ${s.invoiced.toFixed(2)}`}</td></tr>
-        `
-          )
-          .join('')}
-      </table>
-    `
-        : ''
+  if (type === 'operational') {
+    body += section(
+      'Operational overview',
+      figures([
+        ['Total appointments', data.totalAppointments],
+        ['Completed', data.completedAppointments],
+        ['Cancelled', data.cancelledAppointments],
+        ['No-shows', data.noShowCount],
+        ['No-show rate', pct(data.noShowRate)],
+        ['Utilisation', pct(data.appointmentUtilization)],
+        ['Average wait (minutes)', data.avgWaitTime],
+        ['Inventory turnover', data.inventoryTurnover.toFixed(2)],
+        ['Low-stock items', data.lowStockItems],
+      ])
+    )
+    if (data.staffProductivity.length > 0) {
+      body += section(
+        'Staff productivity',
+        listing(
+          ['Staff', 'Role', 'Appointments', 'Treatments', 'Invoiced'],
+          data.staffProductivity.map((s: any) => [
+            s.name,
+            s.role,
+            s.appointmentsHandled,
+            s.treatmentsCompleted,
+            s.invoiced === undefined ? '' : rs(s.invoiced),
+          ]),
+          [2, 3, 4]
+        )
+      )
     }
-  `
-      : ''
   }
 
-  <div class="footer">
-    <p>${html(hospitalName)}</p>
-    <p>This is a system-generated report</p>
-  </div>
-</body>
-</html>
-  `
-
-  return page
+  return printHtmlPage({
+    title,
+    layout,
+    content: `
+      <header class="pd-heading">
+        <div>
+          <h1 class="pd-title">${html(title)}</h1>
+          <p class="pd-subtitle">Period: ${html(dateRange)}</p>
+        </div>
+        <div class="pd-heading-meta">Generated ${html(format(new Date(), 'd MMM yyyy, h:mm a'))}</div>
+      </header>
+      ${body}
+      <p class="pd-printed-on">A system-generated report</p>`,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -420,7 +398,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get hospital info for the report header
+    // The workbook names the clinic; the print view leaves that to the
+    // letterhead it is printed on.
     const hospital = await prisma.hospital.findUnique({
       where: { id: hospitalId },
       select: { name: true },
@@ -525,7 +504,7 @@ export async function GET(request: NextRequest) {
     // The print view, as a file. An attachment rather than a page served from
     // this origin: it is the clinic's figures in an HTML document, opened and
     // printed by whoever downloaded it.
-    const page = await generatePrintView(type, data, dateRange, hospitalName)
+    const page = generatePrintView(type, data, dateRange, await readPrintLayout(prisma, hospitalId))
 
     return new NextResponse(page, {
       headers: {

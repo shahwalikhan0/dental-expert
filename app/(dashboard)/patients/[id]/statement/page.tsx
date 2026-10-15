@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { Printer } from 'lucide-react'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { formatCurrency } from '@/lib/i18n/format'
 import { displayDate } from '@/lib/dates'
 import { AGEING_BUCKETS } from '@/lib/ageing'
 import type { Ledger } from '@/lib/ledger'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { StatementPrint } from '@/components/print/templates/statement-print'
 
 /**
  * The statement — one page, addressed to whoever settles the bill.
@@ -96,6 +98,10 @@ export default function PatientStatementPage() {
     }
   }, [params.id, family, reload])
 
+  const printing = usePrint({
+    documentTitle: data ? `Statement ${data.patient.patientId}` : 'Statement',
+  })
+
   if (loading) return <PageSkeleton variant="detail" />
 
   if (!data) {
@@ -115,19 +121,21 @@ export default function PatientStatementPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+      {/* What goes on paper: a template, not this page. */}
+      <PrintDocument printing={printing}>
+        <StatementPrint statement={data} clinicPhone={clinic?.phone} />
+      </PrintDocument>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <BackLink
           fallback={`/patients/${params.id}?tab=billing`}
           fallbackLabel="Patient"
           trail={trail}
         />
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print
-        </Button>
+        <PrintButton printing={printing} />
       </div>
 
-      <div className="rounded-lg border bg-background p-8 print:border-0 print:p-0">
+      <div className="rounded-lg border bg-background p-8">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
           <div>
             <h1 className="text-xl font-semibold">{clinic?.name ?? 'Statement'}</h1>

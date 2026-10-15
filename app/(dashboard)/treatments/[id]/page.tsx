@@ -39,7 +39,6 @@ import {
   Trash2,
   ClipboardList,
   Pencil,
-  Printer,
   AlertCircle,
   Pill,
   Receipt,
@@ -59,6 +58,10 @@ import {
   CompleteTreatmentDialog,
   completionNotesOf,
 } from '@/components/treatments/complete-treatment-dialog'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { TreatmentPrint } from '@/components/print/templates/treatment-print'
 
 interface Treatment {
   id: string
@@ -172,6 +175,9 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   // Raising an invoice is the desk's act; the button is for those who may.
   const canBill = useCan('billing:write') === true
   const [actionLoading, setActionLoading] = useState(false)
+  const printing = usePrint({
+    documentTitle: treatment ? `Treatment ${treatment.treatmentNo}` : 'Treatment',
+  })
 
   const fetchTreatment = async () => {
     try {
@@ -322,6 +328,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-6">
+      {/* What goes on paper: a template, not this page. */}
+      <PrintDocument printing={printing}>
+        <TreatmentPrint treatment={treatment} />
+      </PrintDocument>
+
       <PageHeader
         back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
         title={treatment.treatmentNo}
@@ -417,10 +428,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 </Link>
               </Button>
             )}
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
+            <PrintButton printing={printing} />
           </>
         }
       />

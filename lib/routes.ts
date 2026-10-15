@@ -105,6 +105,7 @@ export const APP_ROUTES = [
   '/settings/profile',
   '/settings/recare',
   '/settings/password',
+  '/settings/printing',
   '/settings/security',
   '/settings/setup-guide',
   '/settings/system',

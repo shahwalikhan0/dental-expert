@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
-import { Loader2, Printer } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
 import { useToast } from '@/hooks/use-toast'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { ReceiptPrint } from '@/components/print/templates/receipt-print'
 
 /**
  * A receipt for one payment — UAT-07, "receive partial payment and issue
@@ -106,6 +109,10 @@ export default function PaymentReceiptPage() {
     load()
   }, [paymentId, toast])
 
+  const printing = usePrint({
+    documentTitle: payment ? `Receipt ${payment.paymentNo}` : 'Receipt',
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -128,17 +135,19 @@ export default function PaymentReceiptPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="no-print space-y-4">
+      {/* What goes on paper: a template, not this page. */}
+      <PrintDocument printing={printing}>
+        <ReceiptPrint payment={payment} />
+      </PrintDocument>
+
+      <div className="space-y-4">
         <BackLink trail={trail} fallback="/billing/payments" fallbackLabel="Payments" />
         <div className="flex justify-end">
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print receipt
-          </Button>
+          <PrintButton printing={printing} label="Print receipt" />
         </div>
       </div>
 
-      <div className="rounded-lg border bg-background p-8 print:border-0 print:p-0">
+      <div className="rounded-lg border bg-background p-8">
         <div className="text-center border-b pb-4">
           <h1 className="text-xl font-bold">{payment.clinic?.name ?? 'Receipt'}</h1>
           {payment.clinic && (
@@ -176,7 +185,7 @@ export default function PaymentReceiptPage() {
             <p className="font-medium">
               <Link
                 href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
-                className="hover:underline print:no-underline"
+                className="hover:underline"
               >
                 {payment.invoice.invoiceNo}
               </Link>

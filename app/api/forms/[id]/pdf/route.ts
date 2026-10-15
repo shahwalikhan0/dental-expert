@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { generateFormPdfHtml } from '@/lib/services/pdf-generator'
+import { readPrintLayout } from '@/lib/print-settings'
+import { displayDate } from '@/lib/dates'
+import { formatPhone } from '@/lib/utils'
 
 /**
  * GET /api/forms/[id]/pdf
@@ -38,26 +41,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     })
     if (patient) {
       patientName = `${patient.firstName} ${patient.lastName}`
-      patientPhone = patient.phone || ''
-      patientDob = patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : ''
+      patientPhone = formatPhone(patient.phone)
+      patientDob = patient.dateOfBirth ? displayDate(patient.dateOfBirth) : ''
       patientDisplayId = patient.patientId || ''
     }
   }
-
-  // Get clinic info from hospital
-  const clinicInfo = await prisma.hospital.findUnique({
-    where: { id: submission.hospitalId },
-    select: {
-      name: true,
-      phone: true,
-      email: true,
-      address: true,
-      city: true,
-      state: true,
-      postalCode: true,
-      logo: true,
-    },
-  })
 
   // Parse form fields and submission data
   let templateFields: Array<{ label: string; type: string }> = []
@@ -87,22 +75,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     type: field.type,
   }))
 
-  const html = generateFormPdfHtml({
-    clinicName: clinicInfo?.name || 'Dental Clinic',
-    clinicAddress: clinicInfo?.address || undefined,
-    clinicPhone: clinicInfo?.phone || undefined,
-    clinicEmail: clinicInfo?.email || undefined,
-    patientName,
-    patientId: patientDisplayId,
-    patientPhone,
-    patientDob,
-    formTitle: submission.template.name,
-    formType: submission.template.type,
-    submittedAt: submission.createdAt.toISOString(),
-    fields,
-    signature: submission.signature || undefined,
-    signedAt: submission.signedAt?.toISOString() || undefined,
-  })
+  // No clinic header: it is printed on the clinic's letterhead.
+  const html = generateFormPdfHtml(
+    {
+      patientName,
+      patientId: patientDisplayId,
+      patientPhone,
+      patientDob,
+      formTitle: submission.template.name,
+      formType: submission.template.type,
+      submittedAt: submission.createdAt.toISOString(),
+      fields,
+      signature: submission.signature || undefined,
+      signedAt: submission.signedAt?.toISOString() || undefined,
+    },
+    await readPrintLayout(prisma, hospitalId!)
+  )
 
   return new Response(html, {
     status: 200,

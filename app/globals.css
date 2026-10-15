@@ -107,24 +107,8 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Print styles */
-@media print {
-  .no-print {
-    display: none !important;
-  }
-
-  .print-only {
-    display: block !important;
-  }
-
-  body {
-    background: white !important;
-  }
-}
-
-.print-only {
-  display: none;
-}
+/* Printing is lib/print.ts: documents print from their own frame, without
+   these styles. */
 
 /* Recharts dark mode */
 .recharts-default-tooltip {

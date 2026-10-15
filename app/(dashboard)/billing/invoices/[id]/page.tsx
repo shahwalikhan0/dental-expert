@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, use } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -43,7 +43,6 @@ import {
   Phone,
   Mail,
   MapPin,
-  Printer,
   CreditCard,
   Calendar,
   Clock,
@@ -74,6 +73,10 @@ import { useOpenTill } from '@/hooks/use-open-till'
 import { ToastAction } from '@/components/ui/toast'
 import { NoTillNotice } from '@/components/billing/no-till-notice'
 import { NO_OPEN_TILL, TILL_PATH } from '@/lib/till'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { InvoicePrint } from '@/components/print/templates/invoice-print'
 
 interface Invoice {
   id: string
@@ -263,15 +266,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // Once, after the invoice has rendered — printing on arrival would print the
-  // loading skeleton.
-  const printed = useRef(false)
-  useEffect(() => {
-    if (!printOnLoad || !invoice || printed.current) return
-    printed.current = true
-    const frame = requestAnimationFrame(() => window.print())
-    return () => cancelAnimationFrame(frame)
-  }, [printOnLoad, invoice])
+  // The invoice list's "Print invoice" arrives with `?print=1`: printed once,
+  // when the invoice has loaded.
+  const printing = usePrint({
+    documentTitle: invoice ? `Invoice ${invoice.invoiceNo}` : 'Invoice',
+    autoPrint: printOnLoad && !!invoice,
+  })
 
   const handleRecordPayment = async () => {
     // A toast sits above the dialog, so a refused payment is seen while the
@@ -493,45 +493,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     <div className="space-y-6">
       {ConfirmDialogComponent}
 
-      {/* Letterhead, printed only. The screen version is the app around it;
-          on paper the invoice has to say who issued it (invoice review 6.3).
-          The registration numbers are printed when tax is charged. */}
-      <div className="hidden print:block border-b pb-4">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-xl font-bold">{invoice.clinic?.name ?? 'Invoice'}</h1>
-            {invoice.clinic && (
-              <p className="text-sm">
-                {[invoice.clinic.address, invoice.clinic.city].filter(Boolean).join(', ')}
-                {invoice.clinic.phone ? ` · ${invoice.clinic.phone}` : ''}
-                {invoice.clinic.email ? ` · ${invoice.clinic.email}` : ''}
-              </p>
-            )}
-            {taxRate > 0 && invoice.clinic?.taxRegistrationNo && (
-              <p className="text-sm">STRN: {invoice.clinic.taxRegistrationNo}</p>
-            )}
-            {taxRate > 0 && invoice.clinic?.nationalTaxNo && (
-              <p className="text-sm">NTN: {invoice.clinic.nationalTaxNo}</p>
-            )}
-          </div>
-          <div className="text-right text-sm">
-            <p className="text-lg font-semibold uppercase tracking-wide">
-              {taxRate > 0 ? 'Tax invoice' : 'Invoice'}
-            </p>
-            <p>
-              <span className="font-medium">{invoice.invoiceNo}</span>
-              {invoice.status === 'DRAFT' ? ' (draft)' : ''}
-              {invoice.status === 'CANCELLED' ? ' (cancelled)' : ''}
-            </p>
-            <p>Date: {displayDate(invoiceDate)}</p>
-            {invoice.dueDate && <p>Due: {displayDate(invoice.dueDate)}</p>}
-          </div>
-        </div>
-      </div>
+      {/* What goes on paper: a template, not this page. */}
+      <PrintDocument printing={printing}>
+        <InvoicePrint invoice={invoice} />
+      </PrintDocument>
 
       {/* Header */}
       <PageHeader
-        className="print:hidden"
         back={<BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />}
         title={invoice.invoiceNo}
         badges={<StatusBadge kind="invoice" status={invoice.status} />}
@@ -542,10 +510,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         }
         actions={
           <>
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
+            <PrintButton printing={printing} />
             {invoice.status === 'DRAFT' && (
               <>
                 <Button variant="outline" asChild>
@@ -586,15 +551,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       />
 
       {invoice.status === 'DRAFT' && issueBlocked && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{issueBlocked}</span>
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3 print:block">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6 print:space-y-4">
+        <div className="lg:col-span-2 space-y-6">
           {/* Patient Info */}
           <Card>
             <CardHeader>
@@ -617,7 +582,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       for{' '}
                       <Link
                         href={trail.to(`/patients/${invoice.patient.id}`)}
-                        className="hover:underline print:no-underline"
+                        className="hover:underline"
                       >
                         {invoice.patient.firstName} {invoice.patient.lastName}
                       </Link>{' '}
@@ -674,7 +639,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               (
               <Link
                 href={trail.to(`/appointments/${invoice.appointment.id}`)}
-                className="hover:underline print:no-underline"
+                className="hover:underline"
               >
                 {invoice.appointment.appointmentNo}
               </Link>
@@ -718,14 +683,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             <Package className="h-3 w-3" />
                             <Link
                               href={trail.to(`/inventory/${item.inventoryItem.id}`)}
-                              className="hover:underline print:no-underline"
+                              className="hover:underline"
                             >
                               {item.inventoryItem.sku}
                             </Link>
                           </div>
                         )}
                         {item.treatment && Number(item.amount) < Number(item.treatment.cost) && (
-                          <div className="text-xs text-muted-foreground print:hidden">
+                          <div className="text-xs text-muted-foreground">
                             Charged below the treatment&rsquo;s price of{' '}
                             {formatCurrency(item.treatment.cost)}
                           </div>
@@ -737,7 +702,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                 and the number was printed here unlinked. */}
                             <Link
                               href={trail.to(`/treatments/${item.treatment.id}`)}
-                              className="hover:underline print:no-underline"
+                              className="hover:underline"
                             >
                               {item.treatment.treatmentNo}
                             </Link>
@@ -858,7 +823,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                               something showing I paid". */}
                           <Link
                             href={trail.to(`/billing/payments/${payment.id}/receipt`)}
-                            className="font-medium hover:underline print:no-underline"
+                            className="font-medium hover:underline"
                           >
                             {payment.paymentNo}
                           </Link>
@@ -944,7 +909,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6 print:hidden">
+        <div className="space-y-6">
           {/* Discount and its approval (FR-013, invoice review 1.1, 6.4) */}
           {Number(invoice.discountAmount) > 0 || approval !== 'NOT_REQUIRED' ? (
             <Card>
@@ -1109,14 +1074,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button
-                variant="outline"
+              <PrintButton
+                printing={printing}
+                label="Print invoice"
                 className="w-full justify-start"
-                onClick={() => window.print()}
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                Print invoice
-              </Button>
+              />
               {/* "Send via Email" was here with no handler and no route behind
                   it — there is no endpoint that emails an invoice. Removed
                   rather than left as a button that silently does nothing; see

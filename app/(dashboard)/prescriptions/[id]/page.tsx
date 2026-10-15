@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter, useParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
-import { ClipboardList, Printer, Trash2 } from 'lucide-react'
+import { ClipboardList, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { groupTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
@@ -25,6 +25,10 @@ import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { ageInYears } from '@/lib/age'
 import { formatPhone } from '@/lib/utils'
 import { useCan } from '@/hooks/use-can'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { PrescriptionPrint } from '@/components/print/templates/prescription-print'
 
 interface PrescriptionDetail {
   id: string
@@ -82,32 +86,17 @@ interface PrescriptionDetail {
   }[]
 }
 
-interface Hospital {
-  name: string
-  tagline: string | null
-  phone: string | null
-  email: string | null
-  address: string | null
-  city: string | null
-  state: string | null
-  postalCode: string | null
-  logo: string | null
-  registrationNo: string | null
-}
-
 export default function PrescriptionDetailPage() {
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
-  const printRef = useRef<HTMLDivElement>(null)
 
   const [prescription, setPrescription] = useState<PrescriptionDetail | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
   const trail = useTrail(prescription?.prescriptionNo ?? null)
   const teeth = parseTeeth(prescription?.toothNumbers)
   const toothGroups = groupTeeth(teeth)
-  const [hospital, setHospital] = useState<Hospital | null>(null)
   const [loading, setLoading] = useState(true)
   /** Why there is no prescription to show: it does not exist, or it did not load. */
   const [problem, setProblem] = useState<'not-found' | 'failed' | null>(null)
@@ -123,9 +112,8 @@ export default function PrescriptionDetailPage() {
         setProblem('not-found')
         return
       }
-      const result = await readJson<{ data: PrescriptionDetail; hospital: Hospital | null }>(res)
+      const result = await readJson<{ data: PrescriptionDetail }>(res)
       setPrescription(result.data)
-      setHospital(result.hospital)
     } catch (error) {
       console.error('Error loading prescription:', error)
       setProblem('failed')
@@ -138,9 +126,9 @@ export default function PrescriptionDetailPage() {
     load()
   }, [load])
 
-  const handlePrint = () => {
-    window.print()
-  }
+  const printing = usePrint({
+    documentTitle: prescription ? `Prescription ${prescription.prescriptionNo}` : 'Prescription',
+  })
 
   const handleDelete = async () => {
     if (!prescription) return
@@ -194,8 +182,12 @@ export default function PrescriptionDetailPage() {
 
   return (
     <>
-      {/* Screen-only controls */}
-      <div className="mx-auto max-w-4xl mb-6 print:hidden">
+      {/* What goes on paper: a template, not this page. */}
+      <PrintDocument printing={printing}>
+        <PrescriptionPrint prescription={prescription} />
+      </PrintDocument>
+
+      <div className="mx-auto max-w-4xl mb-6">
         <PageHeader
           back={back}
           title={prescription.prescriptionNo}
@@ -212,45 +204,16 @@ export default function PrescriptionDetailPage() {
                   <Trash2 className="h-4 w-4 mr-2" /> Delete prescription
                 </Button>
               )}
-              <Button onClick={handlePrint}>
-                <Printer className="h-4 w-4 mr-2" /> Print
-              </Button>
+              <PrintButton printing={printing} variant="default" />
             </>
           }
         />
       </div>
 
-      {/* Printable prescription */}
-      <div ref={printRef} className="mx-auto max-w-4xl print:max-w-full">
-        <Card className="print:shadow-none print:border-none">
-          <CardContent className="p-8 print:p-6">
-            {/* Header — Clinic Info */}
-            <div className="flex items-start justify-between mb-1">
-              <div className="flex items-center gap-4">
-                {hospital?.logo ? (
-                  <img src={hospital.logo} alt="" className="h-16 w-16 rounded-lg object-cover" />
-                ) : (
-                  <div className="h-16 w-16 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-2xl font-bold">
-                    {hospital?.name?.charAt(0) || 'D'}
-                  </div>
-                )}
-                <div>
-                  <h1 className="text-xl font-bold">{hospital?.name || 'Dental Clinic'}</h1>
-                  {hospital?.tagline && (
-                    <p className="text-sm text-muted-foreground">{hospital.tagline}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {[hospital?.address, hospital?.city, hospital?.state, hospital?.postalCode]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {[hospital?.phone && `Ph: ${hospital.phone}`, hospital?.email]
-                      .filter(Boolean)
-                      .join(' | ')}
-                  </p>
-                </div>
-              </div>
+      <div className="mx-auto max-w-4xl">
+        <Card>
+          <CardContent className="p-8">
+            <div className="flex items-start justify-end mb-1">
               <div className="text-right">
                 <Badge variant="outline" className="text-base font-mono">
                   {prescription.prescriptionNo}
@@ -272,7 +235,7 @@ export default function PrescriptionDetailPage() {
                     here, and the rest of the history is one click away. */}
                 <Link
                   href={trail.to(`/patients/${prescription.patient.id}`)}
-                  className="font-medium hover:underline print:no-underline"
+                  className="font-medium hover:underline"
                 >
                   {prescription.patient.firstName} {prescription.patient.lastName}
                 </Link>
@@ -335,13 +298,13 @@ export default function PrescriptionDetailPage() {
             )}
 
             {/*
-              Where this came from — on screen, and deliberately not on the
-              printed sheet below, which is for the patient and the pharmacy.
-              The template name is the clinic's own filing, and the treatment
+              Where this came from. On screen only: the printed sheet
+              (PrescriptionPrint) is for the patient and the pharmacy. The
+              template name is the clinic's own filing, and the treatment
               number means nothing outside this building.
             */}
             {(prescription.treatment || prescription.template) && (
-              <div className="no-print mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                 {prescription.treatment && (
                   <span className="text-muted-foreground">
                     Written during{' '}
@@ -375,7 +338,6 @@ export default function PrescriptionDetailPage() {
                   <th className="pb-2 font-medium">Dosage</th>
                   <th className="pb-2 font-medium">Frequency</th>
                   <th className="pb-2 font-medium">Duration</th>
-                  <th className="pb-2 font-medium hidden print:table-cell">Qty</th>
                 </tr>
               </thead>
               <tbody>
@@ -398,7 +360,6 @@ export default function PrescriptionDetailPage() {
                     <td className="py-3">{med.dosage}</td>
                     <td className="py-3">{med.frequency}</td>
                     <td className="py-3">{med.duration}</td>
-                    <td className="py-3 hidden print:table-cell">{med.quantity || BLANK}</td>
                   </tr>
                 ))}
               </tbody>

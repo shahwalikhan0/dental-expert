@@ -53,7 +53,12 @@ export function useFormGuard(saving = false): FormGuardRef {
       if (!/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
       // A search box that only filters a picker is not unsaved work.
       if (target.getAttribute('data-form-guard') === 'ignore') return
-      setDirty(true)
+      // After the event, not during it. This listener is on the form, so it
+      // runs before React's own one at the root, and the browser runs
+      // microtasks between listeners: an update here re-rendered the page
+      // first, put the old value back in the box, and React's onChange then
+      // read that. The first keystroke on every guarded form was lost.
+      setTimeout(() => setDirty(true), 0)
     }
 
     const attach = (node: HTMLElement | null) => {

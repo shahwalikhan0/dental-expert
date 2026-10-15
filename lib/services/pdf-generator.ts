@@ -1,17 +1,15 @@
 /**
- * PDF Generator Service
+ * A signed form, as a print page.
  *
- * Generates PDF documents from form submissions using print-optimized HTML.
- * Uses server-side HTML rendering — no external PDF library needed.
- * The HTML output is designed for the browser's print-to-PDF functionality,
- * and can also be served as a downloadable HTML document.
+ * Served as HTML laid out like every other printed document (lib/print.ts):
+ * blank space at the top and bottom of every sheet for the clinic's
+ * letterhead, so the page draws no clinic header of its own. The browser's
+ * Print → Save as PDF makes the PDF.
  */
+import { displayDateTime } from '@/lib/dates'
+import { escapeHtml, printHtmlPage, type PrintLayout } from '@/lib/print'
 
 interface PdfFormData {
-  clinicName: string
-  clinicAddress?: string
-  clinicPhone?: string
-  clinicEmail?: string
   patientName: string
   patientId?: string
   patientPhone?: string
@@ -28,155 +26,65 @@ interface PdfFormData {
   signedAt?: string
 }
 
-export function generateFormPdfHtml(data: PdfFormData): string {
-  const signatureBlock = data.signature
-    ? `
-    <div class="signature-section">
-      <h3>Patient Signature</h3>
-      <div class="signature-box">
-        <img src="${data.signature}" alt="Patient Signature" class="signature-image" />
-      </div>
-      <p class="signed-date">Signed on: ${data.signedAt ? new Date(data.signedAt).toLocaleString() : 'N/A'}</p>
-    </div>
-  `
-    : ''
+export function generateFormPdfHtml(data: PdfFormData, layout: PrintLayout): string {
+  const patient = (
+    [
+      ['Name', data.patientName],
+      ['Patient ID', data.patientId],
+      ['Phone', data.patientPhone],
+      ['Date of birth', data.patientDob],
+    ] as const
+  )
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<dt>${label}</dt><dd>${escapeHtml(value)}</dd>`)
+    .join('')
 
-  const fieldsHtml = data.fields
+  const answers = data.fields
     .map(
-      (f) => `
-    <tr>
-      <td class="field-label">${escapeHtml(f.label)}</td>
-      <td class="field-value">${escapeHtml(f.value)}</td>
-    </tr>
-  `
+      (field) =>
+        `<tr><td class="pd-strong">${escapeHtml(field.label)}</td><td>${escapeHtml(field.value)}</td></tr>`
     )
     .join('')
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>${escapeHtml(data.formTitle)} - ${escapeHtml(data.patientName)}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 12px;
-      line-height: 1.5;
-      color: #333;
-      padding: 20mm;
-    }
-    @media print {
-      body { padding: 10mm; }
-      .no-print { display: none; }
-    }
-    .header {
-      text-align: center;
-      border-bottom: 2px solid #333;
-      padding-bottom: 12px;
-      margin-bottom: 20px;
-    }
-    .header h1 { font-size: 18px; margin-bottom: 4px; }
-    .header p { font-size: 11px; color: #666; }
-    .meta-info {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 20px;
-      font-size: 11px;
-    }
-    .meta-info .col { flex: 1; }
-    .meta-info .col strong { display: block; margin-bottom: 2px; }
-    .form-title {
-      text-align: center;
-      font-size: 16px;
-      font-weight: bold;
-      margin: 20px 0 16px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    table tr { border-bottom: 1px solid #ddd; }
-    table td { padding: 8px 12px; vertical-align: top; }
-    .field-label {
-      font-weight: 600;
-      width: 35%;
-      background: #f8f9fa;
-    }
-    .field-value { width: 65%; }
-    .signature-section {
-      margin-top: 30px;
-      border-top: 1px solid #ddd;
-      padding-top: 16px;
-    }
-    .signature-section h3 { margin-bottom: 8px; }
-    .signature-box {
-      border: 1px solid #ccc;
-      padding: 8px;
-      display: inline-block;
-      background: #fff;
-    }
-    .signature-image { max-width: 300px; max-height: 100px; }
-    .signed-date { font-size: 10px; color: #666; margin-top: 4px; }
-    .footer {
-      margin-top: 40px;
-      border-top: 1px solid #ddd;
-      padding-top: 8px;
-      font-size: 10px;
-      color: #999;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>${escapeHtml(data.clinicName)}</h1>
-    ${data.clinicAddress ? `<p>${escapeHtml(data.clinicAddress)}</p>` : ''}
-    <p>
-      ${data.clinicPhone ? `Phone: ${escapeHtml(data.clinicPhone)}` : ''}
-      ${data.clinicPhone && data.clinicEmail ? ' | ' : ''}
-      ${data.clinicEmail ? `Email: ${escapeHtml(data.clinicEmail)}` : ''}
-    </p>
-  </div>
+  // Only an image the form captured: a data URL, never a link to elsewhere.
+  const signature =
+    data.signature && data.signature.startsWith('data:image/')
+      ? `
+      <div class="pd-signatures">
+        <div class="pd-signature">
+          <img class="pd-signature-image" src="${escapeHtml(data.signature)}" alt="Patient signature">
+          Patient signature${data.signedAt ? `, ${escapeHtml(displayDateTime(data.signedAt))}` : ''}
+        </div>
+      </div>`
+      : `
+      <div class="pd-signatures">
+        <div class="pd-signature">Patient signature</div>
+        <div class="pd-signature">Date</div>
+      </div>`
 
-  <div class="meta-info">
-    <div class="col">
-      <strong>Patient Information</strong>
-      Name: ${escapeHtml(data.patientName)}<br/>
-      ${data.patientId ? `ID: ${escapeHtml(data.patientId)}<br/>` : ''}
-      ${data.patientPhone ? `Phone: ${escapeHtml(data.patientPhone)}<br/>` : ''}
-      ${data.patientDob ? `DOB: ${escapeHtml(data.patientDob)}<br/>` : ''}
-    </div>
-    <div class="col" style="text-align: right;">
-      <strong>Form Details</strong>
-      Type: ${escapeHtml(data.formType)}<br/>
-      Submitted: ${new Date(data.submittedAt).toLocaleString()}<br/>
-    </div>
-  </div>
-
-  <div class="form-title">${escapeHtml(data.formTitle)}</div>
-
-  <table>
-    ${fieldsHtml}
-  </table>
-
-  ${signatureBlock}
-
-  <div class="footer">
-    Generated by ${escapeHtml(data.clinicName)} - Dental Expert | ${new Date().toLocaleString()}
-  </div>
-</body>
-</html>`
-}
-
-export function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+  return printHtmlPage({
+    title: `${data.formTitle} - ${data.patientName}`,
+    layout,
+    content: `
+      <header class="pd-heading">
+        <div>
+          <h1 class="pd-title">${escapeHtml(data.formTitle)}</h1>
+          <p class="pd-subtitle">${escapeHtml(data.formType)}</p>
+        </div>
+        <div class="pd-heading-meta">Submitted ${escapeHtml(displayDateTime(data.submittedAt))}</div>
+      </header>
+      <section class="pd-section pd-keep">
+        <h2 class="pd-section-title">Patient</h2>
+        <dl class="pd-fields">${patient}</dl>
+      </section>
+      ${
+        answers
+          ? `<table class="pd-table">
+        <thead><tr><th style="width: 38%">Question</th><th>Answer</th></tr></thead>
+        <tbody>${answers}</tbody>
+      </table>`
+          : '<p class="pd-note pd-muted">This form has no questions.</p>'
+      }
+      ${signature}`,
+  })
 }

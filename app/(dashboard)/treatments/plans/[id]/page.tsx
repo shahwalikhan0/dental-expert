@@ -52,6 +52,10 @@ import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK, displayDate } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { PlanEstimatePrint } from '@/components/print/templates/plan-estimate-print'
 
 interface TreatmentPlanItem {
   id: string
@@ -88,6 +92,7 @@ interface TreatmentPlan {
   expectedEndDate: string | null
   completedDate: string | null
   consentGiven: boolean
+  consentDate: string | null
   phaseNames: string[] | null
   createdAt: string
   updatedAt: string
@@ -124,6 +129,10 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  // Prints the patient estimate, with each step's status for the clinic's file.
+  const printing = usePrint({
+    documentTitle: plan ? `Treatment plan ${plan.planNumber}` : 'Treatment plan',
+  })
 
   /** PUT a change to the plan; throws with the route's message on a refusal. */
   const savePlan = async (change: Record<string, unknown>) => {
@@ -252,6 +261,10 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6">
+      <PrintDocument printing={printing}>
+        <PlanEstimatePrint plan={plan} showItemStatus />
+      </PrintDocument>
+
       <PageHeader
         title={plan.planNumber}
         description={plan.title}
@@ -326,10 +339,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                 </Button>
               </>
             )}
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
+            <PrintButton printing={printing} label="Print plan" />
           </>
         }
       />

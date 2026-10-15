@@ -1,17 +1,20 @@
 'use client'
 
 import { use, useCallback, useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { EmptyState } from '@/components/ui/empty-state'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
-import { FileText, Printer } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK, displayDate } from '@/lib/dates'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { formatPhone } from '@/lib/utils'
 import { groupByPhase } from '@/lib/treatment-phases'
+import { usePrint } from '@/hooks/use-print'
+import { PrintDocument } from '@/components/print/print-document'
+import { PrintButton } from '@/components/print/print-button'
+import { PlanEstimatePrint } from '@/components/print/templates/plan-estimate-print'
 
 /**
  * The estimate the patient takes home.
@@ -30,6 +33,10 @@ import { groupByPhase } from '@/lib/treatment-phases'
  * it is a quotation, and the wording at the foot says so, because a patient
  * who mistakes one for the other has been misled by the clinic's own
  * stationery.
+ *
+ * The page is the on-screen preview; Print sends PlanEstimatePrint, the same
+ * content on the clinic's letterhead paper, with a line for the patient's and
+ * the dentist's signatures.
  */
 
 interface Item {
@@ -48,9 +55,11 @@ interface Plan {
   planNumber: string
   title: string
   notes: string | null
+  status: string
   estimatedCost: string | number
   phaseNames: string[] | null
   createdAt: string
+  consentDate: string | null
   patient: { id: string; patientId: string; firstName: string; lastName: string; phone: string }
   items: Item[]
 }
@@ -73,6 +82,9 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
   const [loadState, setLoadState] = useState<'ok' | 'missing' | 'failed'>('ok')
   // The newest load; an older one that lands late is dropped.
   const latest = useRef(0)
+  const printing = usePrint({
+    documentTitle: plan ? `Treatment estimate ${plan.planNumber}` : 'Treatment estimate',
+  })
 
   const load = useCallback(async () => {
     const request = ++latest.current
@@ -81,7 +93,8 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
     try {
       const [planRes, clinicRes] = await Promise.all([
         fetch(`/api/treatment-plans/${id}`),
-        // The letterhead is a nicety; the sheet prints without it.
+        // The clinic's name on the screen preview is a nicety; the page shows
+        // without it. The printout never uses it: the paper has the letterhead.
         fetch('/api/settings/clinic').catch(() => null),
       ])
       if (request !== latest.current) return
@@ -137,19 +150,20 @@ export default function TreatmentEstimatePage({ params }: { params: Promise<{ id
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+      <PrintDocument printing={printing}>
+        <PlanEstimatePrint plan={plan} />
+      </PrintDocument>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <BackLink
           fallback={`/treatments/plans/${plan.id}`}
           fallbackLabel="Treatment plan"
           trail={trail}
         />
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print
-        </Button>
+        <PrintButton printing={printing} label="Print estimate" />
       </div>
 
-      <div className="rounded-lg border bg-background p-8 print:border-0 print:p-0">
+      <div className="rounded-lg border bg-background p-8">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
           <div>
             <h1 className="text-xl font-semibold">{clinic?.name ?? 'Treatment estimate'}</h1>

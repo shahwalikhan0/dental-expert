@@ -230,3 +230,40 @@ Icon-only buttons have an `aria-label` and an `IconTooltip`; never a native `tit
   `formatDate`s are deprecated wrappers.
 - **Phones:** displayed with `formatPhone` → `0300 1234567`; stored via `normalisePhone` →
   `03001234567`.
+
+## 10. Printing
+
+Clinics print on their own stationery: the letterhead is already at the top of the sheet and a
+footer strip at the bottom. So a printed document never draws a clinic name, logo or address. It
+leaves blank space at the top and bottom of **every** sheet, set once per clinic in
+**Settings → Printing** (paper size, header, footer and side space in mm; A4 / 40 / 20 / 15 by
+default).
+
+- **Never `window.print()` on a screen.** It printed the buttons and, because the dashboard shell
+  scrolls inside a fixed-height frame, only the first sheet.
+- **A document is a template**, `components/print/templates/<name>-print.tsx`: a pure component
+  that takes the record the screen already loaded and returns the blocks in
+  `components/print/blocks.tsx` (`PrintHeading`, `PrintFields`, `PrintTable`, `PrintTotals`,
+  `PrintSignatures` …). No app UI components, icons, links or Tailwind classes; its look is
+  `PRINT_CSS` in `lib/print.ts` alone.
+- **The screen** calls the hook and renders the template inside `PrintDocument`, hidden:
+
+  ```tsx
+  const printing = usePrint({ documentTitle: `Invoice ${invoice.invoiceNo}` })
+  // …
+  <PrintButton printing={printing} label="Print invoice" />
+  <PrintDocument printing={printing}>
+    <InvoicePrint invoice={invoice} />
+  </PrintDocument>
+  ```
+
+  `usePrint` (`hooks/use-print.ts`) prints from a separate frame (react-to-print) with the app's
+  stylesheets left out, applying the clinic's layout. Call it before any early return; never pass
+  `printing.target` yourself. `autoPrint: true` prints once the record and layout are ready (the
+  `?print=1` links).
+
+- **Server-rendered print pages** (report print view, signed forms) use `printHtmlPage` from
+  `lib/print.ts`, so they get the same sheet and stylesheet.
+- Long documents run onto as many sheets as they need; table headers repeat on each sheet and a
+  table row is never split. Change how every document prints in `lib/print.ts` and
+  `components/print/`, nowhere else.

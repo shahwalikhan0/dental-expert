@@ -22,6 +22,7 @@ import {
   BookOpen,
   Languages,
   KeyRound,
+  Printer,
 } from 'lucide-react'
 
 const settingsCategories = [
@@ -52,6 +53,13 @@ const settingsCategories = [
     icon: Receipt,
     href: '/settings/billing',
     color: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/30',
+  },
+  {
+    title: 'Printing',
+    description: 'Leave room for your letterhead on every printed page',
+    icon: Printer,
+    href: '/settings/printing',
+    color: 'text-sky-600 bg-sky-50 dark:text-sky-400 dark:bg-sky-950/30',
   },
   {
     title: 'Communication settings',
