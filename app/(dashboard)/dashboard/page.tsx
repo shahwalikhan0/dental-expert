@@ -46,6 +46,7 @@ import { useTrail } from '@/components/ui/trail'
 import { formatTime } from '@/lib/appointment-utils'
 import { useSession } from 'next-auth/react'
 import { holderCan, type Permission } from '@/lib/rbac'
+import { DashboardSchedule } from '@/components/schedule/dashboard-schedule'
 
 interface DashboardStats {
   /**
@@ -394,6 +395,9 @@ export default function DashboardPage() {
             <span>Still owed on issued invoices</span>
           )}
       </div>
+
+      {/* Who is free for the rest of the day, and how busy each hour was */}
+      {holderCan(holder, 'appointments:read') && <DashboardSchedule to={trail.to} />}
 
       {/* The day itself, ahead of the analysis of it */}
       <div className="grid gap-4 lg:grid-cols-7">

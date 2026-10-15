@@ -4,6 +4,7 @@ import {
   UserPlus,
   CalendarCheck,
   Calendar,
+  CalendarRange,
   Stethoscope,
   Receipt,
   Package,
@@ -113,6 +114,13 @@ export const navigation: NavSection[] = [
             title: 'Waitlist',
             href: '/appointments/waitlist',
             icon: Clock,
+          },
+          // Who is free when, across every dentist and assistant, and how many
+          // patients each hour saw. The dashboard shows today's; this is any day.
+          {
+            title: 'Clinician Schedule',
+            href: '/appointments/schedule',
+            icon: CalendarRange,
           },
           /*
            * Walk-ins sat at the top level, beside Recare and Treatments, as

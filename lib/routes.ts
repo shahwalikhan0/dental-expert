@@ -19,6 +19,7 @@ export const APP_ROUTES = [
   '/appointments/[id]/edit',
   '/appointments/new',
   '/appointments/queue',
+  '/appointments/schedule',
   '/appointments/waitlist',
   '/attendance',
   '/attendance/[userId]',

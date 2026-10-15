@@ -152,6 +152,7 @@ interface Appointment {
     lastName: string
     specialization: string | null
   }
+  assistant: { id: string; firstName: string; lastName: string } | null
 }
 
 export default function AppointmentsPage() {
@@ -497,6 +498,13 @@ export default function AppointmentsPage() {
                   }))
                 }
               />
+              {/* Who is free when, across dentists and assistants */}
+              <Button variant="outline" asChild>
+                <Link href={trail.to('/appointments/schedule')}>
+                  <CalendarRange className="h-4 w-4 mr-2" />
+                  Clinician schedule
+                </Link>
+              </Button>
               <Button asChild>
                 <Link href="/appointments/new">
                   <Plus className="h-4 w-4 mr-2" />
@@ -826,6 +834,12 @@ export default function AppointmentsPage() {
                         {appointment.doctor.specialization && (
                           <div className="text-sm text-muted-foreground">
                             {appointment.doctor.specialization}
+                          </div>
+                        )}
+                        {appointment.assistant && (
+                          <div className="text-sm text-muted-foreground">
+                            Assisted by {appointment.assistant.firstName}{' '}
+                            {appointment.assistant.lastName}
                           </div>
                         )}
                       </TableCell>

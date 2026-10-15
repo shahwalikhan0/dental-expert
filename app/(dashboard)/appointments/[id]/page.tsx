@@ -106,6 +106,8 @@ interface Appointment {
     specialization: string | null
     phone: string | null
   }
+  /** The dental assistant at the chair, when there was one. */
+  assistant: { id: string; firstName: string; lastName: string } | null
   treatments: Array<{
     id: string
     treatmentNo: string
@@ -149,6 +151,9 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   const { toast } = useToast()
   // Raising the bill is the desk's act (review 4.3); offered to those who may.
   const canBill = useCan('billing:write') === true
+  // The assistant's name opens their staff record for those who may read it;
+  // for everyone else it is just the name, not a link to a refusal.
+  const canReadStaff = useCan('staff:read') === true
 
   /**
    * The API's own reason, as a toast. These handlers used to log a failure to
@@ -681,7 +686,18 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 <Stethoscope className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold">{getDoctorName(appointment.doctor)}</h3>
+                <h3 className="font-semibold">
+                  {canReadStaff ? (
+                    <Link
+                      href={trail.to(`/staff/${appointment.doctor.id}`)}
+                      className="hover:underline"
+                    >
+                      {getDoctorName(appointment.doctor)}
+                    </Link>
+                  ) : (
+                    getDoctorName(appointment.doctor)
+                  )}
+                </h3>
                 {appointment.doctor.specialization && (
                   <p className="text-sm text-muted-foreground">
                     {appointment.doctor.specialization}
@@ -690,6 +706,23 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 {appointment.doctor.phone && (
                   <p className="text-sm text-muted-foreground">
                     {formatPhone(appointment.doctor.phone)}
+                  </p>
+                )}
+                {appointment.assistant && (
+                  <p className="text-sm text-muted-foreground">
+                    Assisted by{' '}
+                    {canReadStaff ? (
+                      <Link
+                        href={trail.to(`/staff/${appointment.assistant.id}`)}
+                        className="font-medium text-foreground hover:underline"
+                      >
+                        {appointment.assistant.firstName} {appointment.assistant.lastName}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-foreground">
+                        {appointment.assistant.firstName} {appointment.assistant.lastName}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>

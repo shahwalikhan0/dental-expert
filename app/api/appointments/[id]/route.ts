@@ -25,7 +25,7 @@ import {
 } from '@/lib/appointment-status'
 import { minutesBetween } from '@/lib/appointment-wait'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
-import { findDentist, NOT_A_DENTIST } from '@/lib/clinicians'
+import { findAssistant, findDentist, NOT_A_DENTIST, NOT_AN_ASSISTANT } from '@/lib/clinicians'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { holderCan } from '@/lib/rbac'
 
@@ -57,6 +57,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             phone: true,
           },
         },
+        assistant: { select: { id: true, firstName: true, lastName: true } },
         visitor: {
           select: { id: true, name: true, phone: true, convertedPatientId: true },
         },
@@ -128,6 +129,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       chiefComplaint,
       notes,
       doctorId,
+      assistantId,
       cancellationReason,
     } = body
 
@@ -141,6 +143,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (priority !== undefined && !isEnumMember(Priority, priority)) {
       return enumRefusal('priority', priority, Priority)
+    }
+    if (assistantId != null && typeof assistantId !== 'string') {
+      return NextResponse.json({ error: NOT_AN_ASSISTANT }, { status: 400 })
     }
     if (
       duration !== undefined &&
@@ -197,6 +202,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const durationChanged = nextDuration !== existingAppointment.duration
     const nextStatus: string = status ?? existingAppointment.status
     const statusChanged = status !== undefined && status !== existingAppointment.status
+    // Left out leaves the assistant as they are; null or '' takes them off.
+    const nextAssistantId: string | null =
+      assistantId === undefined ? existingAppointment.assistantId : assistantId || null
+    const assistantChanged = nextAssistantId !== existingAppointment.assistantId
 
     /**
      * Status follows lib/appointment-status.ts.
@@ -256,6 +265,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // One person cannot be both people at the chair, whichever of the two
+    // this request changes.
+    if (nextAssistantId && nextAssistantId === nextDoctorId) {
+      return NextResponse.json(
+        { error: 'The dentist and the assistant must be two different people.' },
+        { status: 400 }
+      )
+    }
+
+    // The assistant gets the dentist's rule: a new one, and the one on a moved
+    // appointment, must be an active dental assistant here. Unlike the
+    // dentist, the assistant can still be put right after the visit, because
+    // who assisted is what the clinic counts afterwards.
+    if (nextAssistantId && (assistantChanged || moved)) {
+      const assistant = await findAssistant(hospitalId, nextAssistantId)
+      if (!assistant) {
+        return NextResponse.json({ error: NOT_AN_ASSISTANT }, { status: 400 })
+      }
+    }
+
     // Rebooking a deactivated patient is booking them (finding 22).
     if (moved && existingAppointment.patientId) {
       const patient = await prisma.patient.findFirst({
@@ -304,17 +333,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (chiefComplaint !== undefined) updateData.chiefComplaint = chiefComplaint
     if (notes !== undefined) updateData.notes = notes
     if (doctorId !== undefined) updateData.doctorId = doctorId
+    if (assistantChanged) updateData.assistantId = nextAssistantId
 
     // FR-004 on the reschedule path. Duration changes move the
     // interval just as a time change does, so they have to re-check too — the
     // previous version only looked at date, time and doctor, so stretching a
     // 30-minute appointment to 90 minutes over a colleague's slot went through.
+    // Adding or swapping the assistant re-checks as well: the slot has not
+    // moved, but somebody new has been put in it.
     let conflictWarnings: Awaited<ReturnType<typeof findAppointmentConflicts>> = []
     if (
       (scheduledDate !== undefined ||
         scheduledTime !== undefined ||
         doctorId !== undefined ||
-        duration !== undefined) &&
+        duration !== undefined ||
+        assistantChanged) &&
       !ENDED_STATUSES.includes(nextStatus)
     ) {
       const conflicts = await findAppointmentConflicts({
@@ -323,6 +356,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         timezone,
         duration: nextDuration,
         doctorId: nextDoctorId,
+        assistantId: nextAssistantId,
         excludeAppointmentId: id,
       })
 
@@ -373,6 +407,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             lastName: true,
           },
         },
+        assistant: { select: { id: true, firstName: true, lastName: true } },
         visitor: { select: { id: true, name: true, phone: true } },
       },
     })
@@ -521,6 +556,7 @@ export async function DELETE(
         patientId: appointment.patientId,
         visitorId: appointment.visitorId,
         doctorId: appointment.doctorId,
+        assistantId: appointment.assistantId,
       },
       ...requestContext(request.headers),
     })

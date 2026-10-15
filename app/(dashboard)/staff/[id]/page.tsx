@@ -372,7 +372,16 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 <Clock className="h-4 w-4" />
                 Work schedule
               </CardTitle>
-              <CardDescription>Weekly work schedule for {staff.firstName}</CardDescription>
+              <CardDescription>
+                Weekly work schedule for {staff.firstName}.{' '}
+                {/* The week as it is booked, beside the week as it is planned */}
+                <Link
+                  href={trail.to('/appointments/schedule?view=week')}
+                  className="text-primary hover:underline"
+                >
+                  See this week on the clinician schedule
+                </Link>
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {staff.shifts.length === 0 ? (

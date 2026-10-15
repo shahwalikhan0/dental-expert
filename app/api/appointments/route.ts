@@ -19,7 +19,7 @@ import { validateVisitor } from '@/lib/visitors'
 import { scheduleRefusal } from '@/lib/appointment-availability'
 import { INACTIVE_PATIENT } from '@/lib/appointment-status'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
-import { findDentist, NOT_A_DENTIST } from '@/lib/clinicians'
+import { findAssistant, findDentist, NOT_A_DENTIST, NOT_AN_ASSISTANT } from '@/lib/clinicians'
 import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 
 /**
@@ -168,6 +168,7 @@ export async function GET(request: NextRequest) {
               specialization: true,
             },
           },
+          assistant: { select: { id: true, firstName: true, lastName: true } },
           visitor: { select: { id: true, name: true, phone: true, convertedPatientId: true } },
         },
         orderBy: orderByFrom(sortFromParams(searchParams), APPOINTMENT_SORTS, {
@@ -224,6 +225,7 @@ export async function POST(request: NextRequest) {
     const {
       patientId,
       doctorId,
+      assistantId: rawAssistantId,
       scheduledDate,
       scheduledTime,
       duration = 30,
@@ -253,6 +255,22 @@ export async function POST(request: NextRequest) {
 
     if (!doctorId || !scheduledDate || !scheduledTime) {
       return NextResponse.json({ error: 'Doctor, date, and time are required' }, { status: 400 })
+    }
+
+    // Optional. Missing, null and '' all mean "no assistant on this visit".
+    if (rawAssistantId != null && typeof rawAssistantId !== 'string') {
+      return NextResponse.json({ error: NOT_AN_ASSISTANT }, { status: 400 })
+    }
+    const assistantId: string | null = rawAssistantId || null
+
+    // One person cannot be both people at the chair. Somebody who holds both
+    // roles appears in both pickers, so this is a real mistake to catch, and
+    // it would also count the visit twice on their day.
+    if (assistantId && assistantId === doctorId) {
+      return NextResponse.json(
+        { error: 'The dentist and the assistant must be two different people.' },
+        { status: 400 }
+      )
     }
 
     const visitorError = visitor ? validateVisitor(visitor) : null
@@ -339,7 +357,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: NOT_A_DENTIST }, { status: 400 })
     }
 
-    // FR-004: refuse (or warn about) an overlap on the doctor. This compares
+    // The same rule for the assistant: an active dental assistant at this
+    // clinic, the people `/api/staff/assistants` offers.
+    if (assistantId && !(await findAssistant(hospitalId, assistantId))) {
+      return NextResponse.json({ error: NOT_AN_ASSISTANT }, { status: 400 })
+    }
+
+    // FR-004: refuse (or warn about) an overlap on the doctor, or on the
+    // assistant, who cannot be at two chairs at once either. This compares
     // intervals, not start times — see lib/appointment-conflicts.ts.
     const conflicts = await findAppointmentConflicts({
       hospitalId,
@@ -347,6 +372,7 @@ export async function POST(request: NextRequest) {
       duration,
       timezone,
       doctorId,
+      assistantId,
     })
 
     let conflictWarnings: typeof conflicts = []
@@ -388,6 +414,7 @@ export async function POST(request: NextRequest) {
           patientId: patientId ?? null,
           visitorId,
           doctorId,
+          assistantId,
           startsAt,
           duration,
           appointmentType,
@@ -408,6 +435,7 @@ export async function POST(request: NextRequest) {
           },
           visitor: { select: { id: true, name: true, phone: true } },
           doctor: { select: { id: true, firstName: true, lastName: true } },
+          assistant: { select: { id: true, firstName: true, lastName: true } },
         },
       })
     })

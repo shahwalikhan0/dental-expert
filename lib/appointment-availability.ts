@@ -73,14 +73,46 @@ export async function dayAvailability(
     }) as Promise<AvailabilityRow[]>,
   ])
 
-  const hours = hoursOn(hospital?.workingHours, day)
+  return availabilityFrom({
+    workingHours: hospital?.workingHours,
+    settings,
+    rows,
+    day,
+    staffId: doctorId,
+  })
+}
+
+/**
+ * The same answer from rows already fetched, for one member of staff.
+ *
+ * Split out so the clinic's schedule (lib/schedule.ts) can work out every
+ * clinician's day from one set of queries rather than three per person, and
+ * still apply exactly the rules booking does.
+ */
+export function availabilityFrom({
+  workingHours,
+  settings,
+  rows,
+  day,
+  staffId,
+}: {
+  workingHours: string | null | undefined
+  settings: AppointmentSettings
+  /** Clinic-wide rows and this person's own; anybody else's are ignored. */
+  rows: AvailabilityRow[]
+  day: string
+  staffId: string
+}): DayAvailability {
+  const own = rows.filter((row) => row.staffId === null || row.staffId === staffId)
+
+  const hours = hoursOn(workingHours, day)
   if (!hours) return { closed: CLINIC_CLOSED, hours: null, shift: null, blocked: [], settings }
 
-  const closure = closureOn(rows, day)
+  const closure = closureOn(own, day)
   if (closure) return { closed: closure.reason, hours, shift: null, blocked: [], settings }
 
   const blocked: Obstacle[] = [
-    ...blockedIntervals(rows, day).map((i) => ({ ...i, what: 'a closure' })),
+    ...blockedIntervals(own, day).map((i) => ({ ...i, what: 'a closure' })),
     // The lunch break the clinic's own hours may carry for this weekday...
     ...(hours.lunch ? [{ ...hours.lunch, what: 'the lunch break' }] : []),
     // ...and the simple clinic-wide one Settings → Appointments offers.
@@ -89,7 +121,7 @@ export async function dayAvailability(
       : []),
   ].filter((i) => minutesOf(i.end) > minutesOf(i.start))
 
-  return { closed: null, hours, shift: shiftOn(rows, day, doctorId), blocked, settings }
+  return { closed: null, hours, shift: shiftOn(own, day, staffId), blocked, settings }
 }
 
 /**

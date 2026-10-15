@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -46,6 +46,15 @@ interface Doctor {
   specialization: string | null
 }
 
+interface Assistant {
+  id: string
+  firstName: string
+  lastName: string
+}
+
+/** Radix `Select` cannot hold '', so "No assistant" needs a value of its own. */
+const NO_ASSISTANT = 'none'
+
 interface TimeSlot {
   time: string
   available: boolean
@@ -78,6 +87,10 @@ export default function NewAppointmentPage() {
 
   // Data
   const [doctors, setDoctors] = useState<Doctor[]>([])
+  // Loaded on their own, after the dentists: the assistant is optional, so a
+  // slow or failed list must not hold up the form or the booking.
+  const [assistants, setAssistants] = useState<Assistant[]>([])
+  const [assistantsState, setAssistantsState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
 
@@ -92,9 +105,22 @@ export default function NewAppointmentPage() {
   const [selectedDate, setSelectedDate] = useState(
     /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') ?? '') ? searchParams.get('date')! : ''
   )
-  const [selectedTime, setSelectedTime] = useState(
-    /^\d{2}:\d{2}$/.test(searchParams.get('time') ?? '') ? searchParams.get('time')! : ''
+  const [selectedTime, setSelectedTime] = useState('')
+  /**
+   * The time a link handed over, held until the dentist's slots arrive.
+   *
+   * It used to go straight into `selectedTime`, and the slot loader below —
+   * which clears the time whenever the question changes — cleared it on its
+   * first run, so a slot clicked in the book arrived with the dentist and the
+   * day but no time. It is chosen now once the slots are back, and only if
+   * that time is one of them and still free.
+   */
+  const handedTime = useRef(
+    /^\d{2}:\d{2}$/.test(searchParams.get('time') ?? '') ? searchParams.get('time') : null
   )
+  // A free slot linked from the dashboard carries the assistant who is free
+  // in it as well. Only sent if the list below actually offers them.
+  const [selectedAssistant, setSelectedAssistant] = useState(searchParams.get('assistantId') ?? '')
   const [duration, setDuration] = useState('30')
   const [appointmentType, setAppointmentType] = useState('CONSULTATION')
   const [priority, setPriority] = useState('NORMAL')
@@ -138,6 +164,36 @@ export default function NewAppointmentPage() {
 
     fetchData()
   }, [])
+
+  useEffect(() => {
+    let current = true
+    fetch('/api/staff/assistants')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load the assistants')
+        const data = await response.json()
+        if (!current) return
+        setAssistants(data.assistants ?? [])
+        setAssistantsState('ready')
+      })
+      .catch((err) => {
+        console.error('Error fetching assistants:', err)
+        if (current) setAssistantsState('failed')
+      })
+    return () => {
+      current = false
+    }
+  }, [])
+
+  /**
+   * The assistant this booking will actually carry: the one chosen, if the
+   * list offers them and they are not the dentist chosen above. An id from a
+   * link that is not on the list (or a list that never loaded) books with no
+   * assistant rather than being refused, and the picker shows exactly that.
+   */
+  const assistantOptions = assistants.filter((a) => a.id !== selectedDoctor)
+  const assistantId = assistantOptions.some((a) => a.id === selectedAssistant)
+    ? selectedAssistant
+    : ''
 
   /**
    * The times this dentist has free on this day, for an appointment this long.
@@ -185,6 +241,13 @@ export default function NewAppointmentPage() {
 
         if (data.available) {
           setTimeSlots(data.slots)
+          // A time handed over by a link is offered once, on the first slots
+          // to arrive; after that the receptionist is choosing.
+          const wanted = handedTime.current
+          handedTime.current = null
+          if (wanted && data.slots.some((s: TimeSlot) => s.time === wanted && s.available)) {
+            setSelectedTime(wanted)
+          }
         } else {
           setTimeSlots([])
           setSlotsError(data.reason || 'No slots available')
@@ -247,6 +310,7 @@ export default function NewAppointmentPage() {
             ? { visitor: { name: visitorName.trim(), phone: visitorPhone.trim() || null } }
             : { patientId: selectedPatient!.id }),
           doctorId: selectedDoctor,
+          assistantId: assistantId || null,
           scheduledDate: selectedDate,
           scheduledTime: selectedTime,
           duration: parseInt(duration),
@@ -404,6 +468,43 @@ export default function NewAppointmentPage() {
                         <SelectItem key={doctor.id} value={doctor.id}>
                           Dr. {doctor.firstName} {doctor.lastName}
                           {doctor.specialization && ` (${doctor.specialization})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
+
+              <FormField
+                label="Assisted by"
+                htmlFor="appointment-assistant"
+                hint={
+                  assistantsState === 'failed'
+                    ? "Couldn't load the assistants. The appointment can be booked without one."
+                    : 'Optional'
+                }
+              >
+                {(control) => (
+                  <Select
+                    // Empty while loading, so the placeholder says so.
+                    value={assistantsState === 'loading' ? '' : assistantId || NO_ASSISTANT}
+                    // Radix reports '' when the value arrives in the same render as its
+                    // option (the list loading with an assistant already chosen), which
+                    // would quietly drop them. "No assistant" has a value of its own,
+                    // so '' is never a choice somebody made.
+                    onValueChange={(id) => {
+                      if (id) setSelectedAssistant(id === NO_ASSISTANT ? '' : id)
+                    }}
+                    disabled={assistantsState !== 'ready'}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue placeholder="Loading assistants…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ASSISTANT}>No assistant</SelectItem>
+                      {assistantOptions.map((assistant) => (
+                        <SelectItem key={assistant.id} value={assistant.id}>
+                          {assistant.firstName} {assistant.lastName}
                         </SelectItem>
                       ))}
                     </SelectContent>

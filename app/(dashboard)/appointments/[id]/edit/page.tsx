@@ -41,6 +41,15 @@ interface Doctor {
   specialization: string | null
 }
 
+interface Assistant {
+  id: string
+  firstName: string
+  lastName: string
+}
+
+/** Radix `Select` cannot hold '', so "No assistant" needs a value of its own. */
+const NO_ASSISTANT = 'none'
+
 interface TimeSlot {
   time: string
   available: boolean
@@ -59,6 +68,7 @@ interface Appointment {
   notes: string | null
   patientId: string | null
   doctorId: string
+  assistantId: string | null
   /** Null on a walk-in, which has a visitor instead. */
   patient: {
     id: string
@@ -77,6 +87,7 @@ interface Appointment {
     firstName: string
     lastName: string
   }
+  assistant: Assistant | null
 }
 
 export default function EditAppointmentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -96,11 +107,16 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const trail = useTrail(appointment ? `Edit ${appointment.appointmentNo}` : null)
   const [doctors, setDoctors] = useState<Doctor[]>([])
+  // Loaded on their own: the assistant is optional, so a slow or failed list
+  // must not hold up the form or the save.
+  const [assistants, setAssistants] = useState<Assistant[]>([])
+  const [assistantsState, setAssistantsState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
 
   // Form state
   const [selectedDoctor, setSelectedDoctor] = useState('')
+  const [selectedAssistant, setSelectedAssistant] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedTime, setSelectedTime] = useState('')
   const [duration, setDuration] = useState('30')
@@ -125,6 +141,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           setAppointment(data)
           // Set form values
           setSelectedDoctor(data.doctorId)
+          setSelectedAssistant(data.assistantId ?? '')
           setSelectedDate(data.scheduledDate.slice(0, 10))
           setSelectedTime(data.scheduledTime)
           setDuration(data.duration.toString())
@@ -152,6 +169,44 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
 
     fetchData()
   }, [id, reload])
+
+  useEffect(() => {
+    let current = true
+    fetch('/api/staff/assistants')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load the assistants')
+        const data = await response.json()
+        if (!current) return
+        setAssistants(data.assistants ?? [])
+        setAssistantsState('ready')
+      })
+      .catch((err) => {
+        console.error('Error fetching assistants:', err)
+        if (current) setAssistantsState('failed')
+      })
+    return () => {
+      current = false
+    }
+  }, [])
+
+  /**
+   * Who the picker offers, and who the save sends.
+   *
+   * The assistant already on the appointment is always an option, even when
+   * the list no longer has them (deactivated since) or never arrived: the
+   * form sends the assistant on every save, and an option missing from the
+   * list would otherwise read as "No assistant" and take them off unasked.
+   * The dentist chosen above is left out — one person cannot be both.
+   */
+  const assistantOptions = [
+    ...assistants,
+    ...(appointment?.assistant && !assistants.some((a) => a.id === appointment.assistant!.id)
+      ? [appointment.assistant]
+      : []),
+  ].filter((a) => a.id !== selectedDoctor)
+  const assistantId = assistantOptions.some((a) => a.id === selectedAssistant)
+    ? selectedAssistant
+    : ''
 
   // Fetch available time slots when doctor and date change
   useEffect(() => {
@@ -221,6 +276,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doctorId: selectedDoctor,
+          assistantId: assistantId || null,
           scheduledDate: selectedDate,
           scheduledTime: selectedTime,
           duration: parseInt(duration),
@@ -320,7 +376,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 <Calendar className="h-5 w-5" />
                 Schedule
               </CardTitle>
-              <CardDescription>Update the doctor, date, or time</CardDescription>
+              <CardDescription>Update the doctor, assistant, date, or time</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField label="Doctor" required htmlFor="appointment-doctor" error={errors.doctor}>
@@ -340,6 +396,42 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                         <SelectItem key={doctor.id} value={doctor.id}>
                           Dr. {doctor.firstName} {doctor.lastName}
                           {doctor.specialization && ` (${doctor.specialization})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
+
+              <FormField
+                label="Assisted by"
+                htmlFor="appointment-assistant"
+                hint={
+                  assistantsState === 'failed'
+                    ? "Couldn't load the assistants. The rest of the appointment can still be saved."
+                    : 'Optional'
+                }
+              >
+                {(control) => (
+                  <Select
+                    value={assistantId || NO_ASSISTANT}
+                    // Radix reports '' when the value arrives in the same render as its
+                    // option (the list loading with an assistant already chosen), which
+                    // would quietly drop them. "No assistant" has a value of its own,
+                    // so '' is never a choice somebody made.
+                    onValueChange={(value) => {
+                      if (value) setSelectedAssistant(value === NO_ASSISTANT ? '' : value)
+                    }}
+                    disabled={assistantsState !== 'ready'}
+                  >
+                    <SelectTrigger {...control}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ASSISTANT}>No assistant</SelectItem>
+                      {assistantOptions.map((assistant) => (
+                        <SelectItem key={assistant.id} value={assistant.id}>
+                          {assistant.firstName} {assistant.lastName}
                         </SelectItem>
                       ))}
                     </SelectContent>

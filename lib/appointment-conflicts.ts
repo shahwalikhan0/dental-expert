@@ -87,12 +87,14 @@ export interface ConflictQuery {
   /** Only to word the clash — the overlap test itself is timezone-free. */
   timezone: string
   doctorId?: string | null
+  /** The assistant on the booking, who cannot be at two chairs at once either. */
+  assistantId?: string | null
   /** The appointment being rescheduled, which must not clash with itself. */
   excludeAppointmentId?: string | null
 }
 
 export interface AppointmentConflict {
-  resource: 'doctor'
+  resource: 'doctor' | 'assistant'
   appointmentId: string
   appointmentNo: string
   scheduledTime: string
@@ -104,15 +106,17 @@ export interface AppointmentConflict {
 }
 
 /**
- * Every appointment that overlaps the proposed slot on the same doctor. Empty
- * means the slot is free.
+ * Every appointment that overlaps the proposed slot on the same doctor, or
+ * that already has the proposed assistant at the chair. Empty means the slot
+ * is free.
  */
 export async function findAppointmentConflicts(
   query: ConflictQuery
 ): Promise<AppointmentConflict[]> {
   const { hospitalId, startsAt, duration, timezone, doctorId } = query
+  const assistantId = query.assistantId || null
 
-  if (!doctorId) return []
+  if (!doctorId && !assistantId) return []
 
   const candidates = await prisma.appointment.findMany({
     where: {
@@ -122,7 +126,11 @@ export async function findAppointmentConflicts(
         lt: endsAt(startsAt, duration),
       },
       status: { notIn: [...BLOCKING_STATUSES_EXCLUDED] as never },
-      doctorId,
+      OR: [
+        ...(doctorId ? [{ doctorId }] : []),
+        // The assistant is busy whichever role they hold on the other visit.
+        ...(assistantId ? [{ assistantId }, { doctorId: assistantId }] : []),
+      ],
       ...(query.excludeAppointmentId ? { id: { not: query.excludeAppointmentId } } : {}),
     },
     select: {
@@ -131,19 +139,24 @@ export async function findAppointmentConflicts(
       startsAt: true,
       duration: true,
       doctorId: true,
+      assistantId: true,
       patient: { select: { firstName: true, lastName: true } },
       visitor: { select: { name: true } },
       doctor: { select: { firstName: true, lastName: true } },
+      assistant: { select: { firstName: true, lastName: true } },
     },
   })
 
   const conflicts: AppointmentConflict[] = []
 
   for (const existing of candidates) {
-    // The SQL narrows to this dentist already; the check is repeated here so
+    // The SQL narrows to these people already; the check is repeated here so
     // the function is correct on the rows it is given rather than only on the
     // rows the query happens to return.
-    if (existing.doctorId !== doctorId) continue
+    const dentistBusy = !!doctorId && existing.doctorId === doctorId
+    const assistantBusy =
+      !!assistantId && (existing.assistantId === assistantId || existing.doctorId === assistantId)
+    if (!dentistBusy && !assistantBusy) continue
 
     if (!intervalsOverlap(startsAt, duration, existing.startsAt, existing.duration)) {
       continue
@@ -158,16 +171,21 @@ export async function findAppointmentConflicts(
     ).scheduledTime
 
     const doctorName = `Dr. ${existing.doctor.firstName} ${existing.doctor.lastName}`.trim()
+    const assistantName =
+      existing.assistantId === assistantId && existing.assistant
+        ? `${existing.assistant.firstName} ${existing.assistant.lastName}`.trim()
+        : doctorName
+    const resourceName = dentistBusy ? doctorName : assistantName
     conflicts.push({
-      resource: 'doctor',
+      resource: dentistBusy ? 'doctor' : 'assistant',
       appointmentId: existing.id,
       appointmentNo: existing.appointmentNo,
       scheduledTime: startTime,
       endTime,
       duration: existing.duration,
       patientName,
-      resourceName: doctorName,
-      message: `${doctorName} is with ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
+      resourceName,
+      message: `${resourceName} is with ${patientName} from ${startTime} to ${endTime} (${existing.appointmentNo})`,
     })
   }
 

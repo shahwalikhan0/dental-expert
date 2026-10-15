@@ -385,6 +385,7 @@ model Staff {
   hospital      Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   appointments  Appointment[]  @relation("DoctorAppointments")
+  assisting     Appointment[]  @relation("AssistantAppointments")
   treatments    Treatment[]
   prescriptions Prescription[]
   availability  Availability[]
@@ -706,6 +707,12 @@ model Appointment {
   visitorId String?
   doctorId  String
 
+  /// The dental assistant working the chair with the dentist, when there is
+  /// one. Optional: plenty of visits have none. Recorded so an assistant's day
+  /// can be planned like a dentist's — who is free when, and how many patients
+  /// each of them saw — which the dentist alone could not say.
+  assistantId String?
+
   /// The instant the appointment starts, in UTC. A clinic books a wall-clock
   /// time ("Thursday at 15:00"), which the API converts against the clinic's
   /// own timezone on the way in and renders back on the way out — but what is
@@ -755,6 +762,7 @@ model Appointment {
   patient       Patient?       @relation(fields: [patientId], references: [id], onDelete: Restrict)
   visitor       Visitor?       @relation(fields: [visitorId], references: [id], onDelete: Restrict)
   doctor        Staff          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  assistant     Staff?         @relation("AssistantAppointments", fields: [assistantId], references: [id], onDelete: SetNull)
   treatments    Treatment[]
   invoices      Invoice[]
   clinicalNotes ClinicalNote[]
@@ -764,6 +772,7 @@ model Appointment {
   @@index([hospitalId, startsAt])
   @@index([hospitalId, status, startsAt])
   @@index([hospitalId, doctorId, startsAt])
+  @@index([hospitalId, assistantId, startsAt])
   @@index([hospitalId, patientId, startsAt(sort: Desc)])
   @@index([hospitalId, visitorId])
   /// The desk's "what came in overnight" list: online, not yet looked at.
