@@ -560,29 +560,84 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   LAB_TECH: 'Dental laboratory cases and their status',
 }
 
-/** Tailwind classes for a role badge. */
-export const ROLE_COLORS: Record<Role, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
-  CLINIC_MANAGER: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
-  DOCTOR: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  DENTAL_ASSISTANT: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
-  RECEPTIONIST: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
-  ACCOUNTANT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
-  INVENTORY_STAFF: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
-  LAB_TECH: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+/**
+ * Each role's colour: the tint of the sidebar and header for whoever is
+ * signed in, and the colour of their badge everywhere else, so a screen says
+ * whose it is at a glance and a shared front-desk PC left on the manager's
+ * login looks wrong from across the room.
+ *
+ * There is no one standard to copy, so this borrows the conventions people
+ * already read:
+ *
+ * - Dentist, blue: the ceil and navy of clinicians' scrubs, and the colour
+ *   most healthcare software gives the clinician.
+ * - Dental Assistant, teal: the chair-side support colour of most scrub
+ *   colour codes. Next to the dentist's blue, but not to be confused with it.
+ * - Front Desk, orange: warm and visible, the help-desk and "first point of
+ *   contact" colour.
+ * - Accounts / Cashier, green: money, in every ledger and banking app.
+ * - Inventory / Store, yellow: the safety yellow of stores and warehouses
+ *   (ISO 3864, ANSI Z535).
+ * - Lab Technician, fuchsia: the purple of pathology and laboratory coding.
+ * - Clinic Manager, violet: oversight and authority.
+ * - Administrator, rose: the "careful, this account can change anything"
+ *   red that consoles give elevated access.
+ *
+ * Eight hues spread round the wheel, so no two roles share one. Colour is
+ * never the only signal: the header names the role as well (WCAG 1.4.1).
+ *
+ * `badge` is literal Tailwind classes (the build only sees whole strings);
+ * `light` and `dark` are the same colour as HSL channels, for the tint, a
+ * shade darker on a light page and lighter on a dark one so it stays visible
+ * on both.
+ */
+export const ROLE_THEMES: Record<Role, { badge: string; light: string; dark: string }> = {
+  ADMIN: {
+    badge: 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300',
+    light: '347 77% 50%',
+    dark: '351 95% 71%',
+  },
+  CLINIC_MANAGER: {
+    badge: 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300',
+    light: '262 83% 58%',
+    dark: '255 92% 76%',
+  },
+  DOCTOR: {
+    badge: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
+    light: '221 83% 53%',
+    dark: '213 94% 68%',
+  },
+  DENTAL_ASSISTANT: {
+    badge: 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300',
+    light: '175 84% 32%',
+    dark: '172 66% 50%',
+  },
+  RECEPTIONIST: {
+    badge: 'bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300',
+    light: '21 90% 48%',
+    dark: '27 96% 61%',
+  },
+  ACCOUNTANT: {
+    badge: 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300',
+    light: '142 76% 36%',
+    dark: '142 69% 58%',
+  },
+  INVENTORY_STAFF: {
+    badge: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300',
+    light: '45 93% 47%',
+    dark: '50 98% 64%',
+  },
+  LAB_TECH: {
+    badge: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950/50 dark:text-fuchsia-300',
+    light: '292 84% 49%',
+    dark: '292 91% 73%',
+  },
 }
 
-/** shadcn Badge variants, for the compact badge in the user menu. */
-export const ROLE_BADGE_VARIANTS: Record<Role, string> = {
-  ADMIN: 'destructive',
-  CLINIC_MANAGER: 'default',
-  DOCTOR: 'default',
-  DENTAL_ASSISTANT: 'secondary',
-  RECEPTIONIST: 'secondary',
-  ACCOUNTANT: 'outline',
-  INVENTORY_STAFF: 'outline',
-  LAB_TECH: 'secondary',
-}
+/** Tailwind classes for a role badge. */
+export const ROLE_COLORS = Object.fromEntries(
+  Object.entries(ROLE_THEMES).map(([role, theme]) => [role, theme.badge])
+) as Record<Role, string>
 
 /** Every role, in the order §4 lists them. Use for pickers and filters. */
 export const ALL_ROLES = [
@@ -671,9 +726,16 @@ export function roleColor(role: string | undefined | null): string {
   return ROLE_COLORS[role as Role] ?? 'bg-gray-100 text-gray-700'
 }
 
-export function roleBadgeVariant(role: string | undefined | null): string {
-  if (!role) return 'secondary'
-  return ROLE_BADGE_VARIANTS[role as Role] ?? 'secondary'
+/**
+ * The role's colour as CSS custom properties, for the element the tinted
+ * surfaces sit under. globals.css (`.role-tint`) picks `--role-light` or
+ * `--role-dark` by theme. No role, or one this build does not know, gives
+ * nothing, and the surfaces keep their plain glass.
+ */
+export function roleThemeStyle(role: string | undefined | null): Record<string, string> {
+  const theme = role ? ROLE_THEMES[role as Role] : undefined
+  if (!theme) return {}
+  return { '--role-light': theme.light, '--role-dark': theme.dark }
 }
 
 export function roleDescription(role: string | undefined | null): string {

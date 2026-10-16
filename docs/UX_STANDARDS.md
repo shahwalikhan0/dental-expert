@@ -187,6 +187,11 @@ const { confirmed, reason } = await confirm({
   Footer: outline **Cancel** on the left, primary (or destructive) on the right.
 - **Segmented choices** (a view, a mode): `SegmentedControl` (radiogroup, arrow keys). Page
   sections with their own content: `Tabs`.
+- **Role colour:** the sidebar and header are washed in the signed-in role's colour, and the
+  header names the role. One map, `ROLE_THEMES` in `lib/rbac.ts`, gives every role its colour
+  for the shell and for its badge (`roleColor`). Admin rose, Manager violet, Dentist blue,
+  Assistant teal, Front Desk orange, Accounts green, Inventory yellow, Lab fuchsia. Change a
+  colour there and nowhere else, and never reuse a role's colour to mean something else.
 
 ## 7. Wording
 

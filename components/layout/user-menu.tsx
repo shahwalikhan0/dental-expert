@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { roleBadgeVariant, roleLabel } from '@/lib/rbac'
+import { roleColor, roleLabel } from '@/lib/rbac'
 
 interface UserMenuProps {
   user: {
@@ -37,7 +37,9 @@ export function UserMenu({ user }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-          <Avatar className="h-10 w-10">
+          {/* Ringed in the role's colour rather than filled with it: white
+              initials on the inventory yellow would not be legible. */}
+          <Avatar className="h-10 w-10 ring-2 ring-[hsl(var(--role))] ring-offset-2 ring-offset-background">
             <AvatarFallback className="bg-primary text-primary-foreground">
               {initials}
             </AvatarFallback>
@@ -49,13 +51,8 @@ export function UserMenu({ user }: UserMenuProps) {
           <div className="flex flex-col space-y-2">
             <p className="text-sm font-medium leading-none">{user.name}</p>
             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-            <Badge
-              variant={
-                roleBadgeVariant(user.role) as 'default' | 'secondary' | 'destructive' | 'outline'
-              }
-              className="w-fit text-xs"
-            >
-              {user.role}
+            <Badge className={`${roleColor(user.role)} w-fit border-0 text-xs`}>
+              {roleLabel(user.role)}
             </Badge>
           </div>
         </DropdownMenuLabel>

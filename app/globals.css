@@ -420,6 +420,32 @@
   }
 
   /*
+   * The signed-in role's colour (lib/rbac.ts, ROLE_THEMES), handed to the
+   * shell as `--role-light` and `--role-dark` and resolved here by theme.
+   *
+   * `.role-surface` lays it over a surface as a wash on top of its own
+   * background, so glass stays glass, just tinted. It is a background-image
+   * rather than a colour so it stacks on `.glass` instead of replacing it. A
+   * session with no known role sets neither variable, `--role` is then
+   * invalid, and the wash simply is not drawn.
+   */
+  .role-tint {
+    --role: var(--role-light);
+  }
+
+  .dark .role-tint {
+    --role: var(--role-dark);
+  }
+
+  .role-surface.role-surface {
+    background-image: linear-gradient(
+      hsl(var(--role) / var(--role-wash, 0.24)),
+      hsl(var(--role) / var(--role-wash, 0.24))
+    );
+    border-color: hsl(var(--role) / 0.3);
+  }
+
+  /*
    * Without `backdrop-filter` there is no blur, and a 72%-opaque panel over
    * arbitrary page content is unreadable rather than merely plain. Those
    * browsers get an opaque surface, which is exactly what they had before.

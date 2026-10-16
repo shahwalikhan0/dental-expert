@@ -19,7 +19,7 @@ import {
   ROLE_LABELS,
   ROLE_COLORS,
   ROLE_DESCRIPTIONS,
-  ROLE_BADGE_VARIANTS,
+  ROLE_THEMES,
   SECONDARY_ROLES,
   can,
   canAll,
@@ -55,7 +55,7 @@ describe('the role set', () => {
       expect(ROLE_LABELS[role], `${role} has no label`).toBeTruthy()
       expect(ROLE_COLORS[role], `${role} has no colour`).toBeTruthy()
       expect(ROLE_DESCRIPTIONS[role], `${role} has no description`).toBeTruthy()
-      expect(ROLE_BADGE_VARIANTS[role], `${role} has no badge variant`).toBeTruthy()
+      expect(ROLE_THEMES[role], `${role} has no theme`).toBeTruthy()
     }
   })
 

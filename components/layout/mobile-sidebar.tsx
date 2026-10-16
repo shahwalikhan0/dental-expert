@@ -67,7 +67,7 @@ export function MobileSidebar({
       />
 
       {/* Sidebar panel */}
-      <div className="glass glass-raised animate-in slide-in-from-left fixed inset-y-0 left-0 flex w-[min(288px,80vw)] flex-col rounded-r-2xl duration-200">
+      <div className="glass glass-raised role-surface animate-in slide-in-from-left fixed inset-y-0 left-0 flex w-[min(288px,80vw)] flex-col rounded-r-2xl duration-200">
         {/* Header */}
         <div className="flex h-14 items-center justify-between border-b border-[hsl(var(--glass-ring)/0.08)] px-4">
           <Link

@@ -64,7 +64,7 @@ export function Sidebar({
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          'glass glass-raised flex h-full flex-col overflow-hidden rounded-2xl transition-[width] duration-300 ease-in-out',
+          'glass glass-raised role-surface flex h-full flex-col overflow-hidden rounded-2xl transition-[width] duration-300 ease-in-out',
           isCollapsed ? 'w-16' : 'w-64'
         )}
       >
