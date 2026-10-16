@@ -105,7 +105,7 @@ export function MobileSidebar({
           <nav className="flex flex-col gap-1 p-3">
             {navigation.map((section, sectionIndex) => (
               <div key={section.title} className={sectionIndex > 0 ? 'mt-4' : ''}>
-                <h4 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                <h4 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   {section.title}
                 </h4>
                 <div className="flex flex-col gap-0.5">

@@ -161,7 +161,7 @@ export function Sidebar({
               <div key={section.title} className={sectionIndex > 0 ? 'mt-5' : ''}>
                 {/* Section Title - hidden when collapsed */}
                 {!isCollapsed && (
-                  <h4 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  <h4 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     {section.title}
                   </h4>
                 )}
@@ -332,7 +332,7 @@ export function Sidebar({
 
         {/* Footer */}
         <div className={cn('border-t py-3 text-center', RULE, isCollapsed ? 'px-2' : 'px-4')}>
-          <p className="text-[10px] text-muted-foreground/70">
+          <p className="text-[10px] text-muted-foreground">
             {isCollapsed ? 'v1.0' : 'Dental Expert v1.0'}
           </p>
         </div>

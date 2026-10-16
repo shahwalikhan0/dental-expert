@@ -446,6 +446,27 @@
   }
 
   /*
+   * The text on a washed surface, a step further from the background than the
+   * page's own, because the wash pulls the background towards the text.
+   *
+   * Measured (WCAG 2 contrast, every role, both themes, the wash composited
+   * over the glass): the page's grey fell to 3.4:1 on the light sidebar and
+   * the sky-blue accent to 1.9:1. These keep every role at 5:1 or better, so
+   * the smallest text in the shell (the 10px section titles) passes AA. Set
+   * on the surface, so the rest of the page and anything that opens in a
+   * portal keep the normal tokens.
+   */
+  .role-surface.role-surface {
+    --muted-foreground: 220 16% 35%;
+    --primary: 201 90% 27%;
+  }
+
+  .dark .role-surface.role-surface {
+    --muted-foreground: 214 22% 76%;
+    --primary: 199 95% 74%;
+  }
+
+  /*
    * Without `backdrop-filter` there is no blur, and a 72%-opaque panel over
    * arbitrary page content is unreadable rather than merely plain. Those
    * browsers get an opaque surface, which is exactly what they had before.
