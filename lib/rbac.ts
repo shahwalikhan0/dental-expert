@@ -586,48 +586,59 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
  * Eight hues spread round the wheel, so no two roles share one. Colour is
  * never the only signal: the header names the role as well (WCAG 1.4.1).
  *
- * `badge` is literal Tailwind classes (the build only sees whole strings);
- * `light` and `dark` are the same colour as HSL channels, for the tint, a
- * shade darker on a light page and lighter on a dark one so it stays visible
- * on both.
+ * `name` is what the user guide calls the colour. `badge` is literal
+ * Tailwind classes (the build only sees whole strings). `light` and `dark` are
+ * the same colour as HSL channels, for the tint: a shade darker on a light
+ * page and lighter on a dark one, so it stays visible on both.
  */
-export const ROLE_THEMES: Record<Role, { badge: string; light: string; dark: string }> = {
+export const ROLE_THEMES: Record<
+  Role,
+  { name: string; badge: string; light: string; dark: string }
+> = {
   ADMIN: {
+    name: 'Rose',
     badge: 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300',
     light: '347 77% 50%',
     dark: '351 95% 71%',
   },
   CLINIC_MANAGER: {
+    name: 'Violet',
     badge: 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300',
     light: '262 83% 58%',
     dark: '255 92% 76%',
   },
   DOCTOR: {
+    name: 'Blue',
     badge: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
     light: '221 83% 53%',
     dark: '213 94% 68%',
   },
   DENTAL_ASSISTANT: {
+    name: 'Teal',
     badge: 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300',
     light: '175 84% 32%',
     dark: '172 66% 50%',
   },
   RECEPTIONIST: {
+    name: 'Orange',
     badge: 'bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300',
     light: '21 90% 48%',
     dark: '27 96% 61%',
   },
   ACCOUNTANT: {
+    name: 'Green',
     badge: 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300',
     light: '142 76% 36%',
     dark: '142 69% 58%',
   },
   INVENTORY_STAFF: {
+    name: 'Yellow',
     badge: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300',
     light: '45 93% 47%',
     dark: '50 98% 64%',
   },
   LAB_TECH: {
+    name: 'Fuchsia',
     badge: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950/50 dark:text-fuchsia-300',
     light: '292 84% 49%',
     dark: '292 91% 73%',

@@ -188,10 +188,26 @@ const { confirmed, reason } = await confirm({
 - **Segmented choices** (a view, a mode): `SegmentedControl` (radiogroup, arrow keys). Page
   sections with their own content: `Tabs`.
 - **Role colour:** the sidebar and header are washed in the signed-in role's colour, and the
-  header names the role. One map, `ROLE_THEMES` in `lib/rbac.ts`, gives every role its colour
-  for the shell and for its badge (`roleColor`). Admin rose, Manager violet, Dentist blue,
-  Assistant teal, Front Desk orange, Accounts green, Inventory yellow, Lab fuchsia. Change a
+  header names the role, so colour is never the only signal. The colour comes from the account's
+  main role, not the second clinical one. One map, `ROLE_THEMES` in `lib/rbac.ts`, gives every
+  role its colour for the shell, its badge (`roleColor`) and its card in the user guide. Change a
   colour there and nowhere else, and never reuse a role's colour to mean something else.
+
+  | Role             | Colour  | Light theme | Dark theme | Why                                            |
+  | ---------------- | ------- | ----------- | ---------- | ---------------------------------------------- |
+  | Administrator    | Rose    | `#e11d48`   | `#fb7185`  | The "elevated access" red of admin consoles    |
+  | Clinic Manager   | Violet  | `#7c3aed`   | `#a78bfa`  | Oversight and authority                        |
+  | Dentist          | Blue    | `#2563eb`   | `#60a5fa`  | Clinicians' scrubs; the clinician in health IT |
+  | Dental Assistant | Teal    | `#0d9488`   | `#2dd4bf`  | Chair-side support in scrub colour codes       |
+  | Front Desk       | Orange  | `#ea580c`   | `#fb923c`  | Warm, visible, the first point of contact      |
+  | Accounts         | Green   | `#16a34a`   | `#4ade80`  | Money                                          |
+  | Inventory        | Yellow  | `#eab308`   | `#facc15`  | Safety yellow of stores (ISO 3864, ANSI Z535)  |
+  | Lab Technician   | Fuchsia | `#c026d3`   | `#e879f9`  | The purple of pathology and laboratory coding  |
+
+  The sidebar takes the colour at 24% over its glass and the header at 16%. On those surfaces the
+  grey text and the accent are a step stronger than on the page, which keeps every role at 5:1
+  contrast or better in both themes (`.role-surface` in `app/globals.css`). Measure again if a
+  colour or the wash strength changes.
 
 ## 7. Wording
 

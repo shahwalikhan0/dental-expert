@@ -156,7 +156,7 @@ export default async function DocsPage() {
               <SectionHeading
                 audience="Administrators and managers"
                 title="Roles"
-                description="Everybody has one role, and it decides which parts of the app they see. Somebody who also treats patients can be given a second, clinical role, and sees both."
+                description="Everybody has one role, and it decides which parts of the app they see. Somebody who also treats patients can be given a second, clinical role, and sees both. Each role has its own colour: the sidebar and the top bar take it when you sign in, and the bar names your role, so you can tell at a glance whose screen is open."
               />
               <RoleCards />
             </section>
