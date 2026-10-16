@@ -1,3 +1,670 @@
+# Bug report — 16 October 2026: every role, every module, and how they link
+
+**Date:** 16 October 2026
+**Build:** `main` at `0ddf809` (role colours, readable text on them, and their docs)
+**Environment:** `next dev` on `http://localhost:3001`, database `test_db`
+**Clinic:** _Demo Dental Clinic_ (the seeded demo clinic)
+**Tester:** Claude (scripted sweeps with each role's session, four browser passes, and code inspection)
+
+The 12 October report follows this one, unchanged.
+
+## How this was tested
+
+The point of this pass was linkage between roles and modules. The questions were: can each role reach what it should and nothing else, and does a record made by one role arrive correctly in the modules other roles use? Payments, refunds, the till and the AI features were left out, as asked.
+
+1. **Page sweep.** All 84 dashboard pages were opened as each of the eight roles, 672 visits in all. Each result (opened, bounced, or not found) was compared with `ROUTE_PERMISSIONS` in `lib/rbac.ts`.
+2. **API matrix.** 90 `GET` endpoints were called as each role, 720 calls in all. Each status was compared with the permission the route asks for.
+3. **Write controls.** Each list, detail, new and edit page was opened as the roles that can read it but not write it. Every "New", "Edit", "Delete" and status button they were shown was noted, and the `POST`/`PUT`/`DELETE` behind it was sent with that role's session.
+4. **Four flow passes, in the browser, signed in as the role doing each step:**
+   - **Front desk:** walk-in to patient, booking, check-in, queue, check-out, waitlist, recare, communications, and the patient's statement.
+   - **Clinical:** dentist and assistant on the same visit: chart, perio, notes, signing, treatments, plans, estimates, prescriptions, and lab cases.
+   - **Back office:** invoices and discount approval from treatments, inventory from purchase order to stock use, lab orders, reports, and exports.
+   - **Admin:** a new staff member in each of the eight roles, signed in as each one, plus invites, settings, import, the audit log, attendance and staff performance.
+
+The sidebar and header colours from `9aefb65` were checked for every role in the admin pass, and they match `ROLE_THEMES`.
+
+## Summary
+
+| #   | Module                 | Severity | Title                                                                                     |
+| --- | ---------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| 1   | Sign-in / roles        | High     | A role change does not reach a user who is already signed in                              |
+| 2   | Sign-in / staff        | High     | A deactivated user stays signed in and keeps working                                      |
+| 3   | Treatments             | High     | Signing a treatment lifts the guard on completed and cancelled treatments                 |
+| 4   | Prescriptions          | High     | A dental assistant can delete a dentist's prescription, and no audit entry is written     |
+| 5   | Waitlist               | High     | The waitlist says patients are notified, but nobody is, and an entry cannot be booked     |
+| 6   | Every module / roles   | High     | Create, edit and status buttons are shown to roles the server refuses                     |
+| 7   | Print / settings       | Medium   | The clinic's letterhead never appears on the statement, the estimate or the day book      |
+| 8   | Lab                    | Medium   | The lab order edit form is half refused for the roles that open it                        |
+| 9   | Reports                | Medium   | The export menu is shown to roles without `reports:export`                                |
+| 10  | Billing                | Medium   | A manager's or administrator's own discount is approved by themselves                     |
+| 11  | Dashboard              | Medium   | The low-stock card is shown to every role, and the money card links to a refused page     |
+| 12  | Staff performance      | Medium   | Performance leaves out the last day and counts revenue that was never invoiced            |
+| 13  | Audit log              | Medium   | The audit log shows only the old value, and search misses the new one                     |
+| 14  | Audit log              | Medium   | Several modules write no audit entry at all                                               |
+| 15  | Walk-ins               | Medium   | Discard, New walk-in and Register are shown to roles that cannot use them                 |
+| 16  | Walk-ins               | Medium   | Converting a walk-in refuses a phone number that registration allows                      |
+| 17  | Appointments           | Medium   | "Book appointment" from the patient record or Recare loses the patient                    |
+| 18  | Communications         | Medium   | Send forms are shown to roles that cannot send, and there is no message history           |
+| 19  | Staff / booking        | Medium   | A second dentist set up by clinical role is missing from booking                          |
+| 20  | Settings               | Medium   | Saving Settings → Appointments unchanged turns on a buffer and a lunch break              |
+| 21  | Settings               | Medium   | The clinic's details cannot be saved with the seeded website                              |
+| 22  | User menu              | Medium   | Profile and Settings in the user menu bounce six of the eight roles                       |
+| 23  | Patient forms          | Medium   | Forms cannot be filled in, and their PDF prints "N/A" for every answer                    |
+| 24  | Data import            | Medium   | Staff import lets a manager create administrators and turns unknown roles into Front Desk |
+| 25  | Treatment plans        | Medium   | Front Desk and Accounts cannot open the estimate they hand to patients                    |
+| 26  | Appointments           | Medium   | No screen records a treatment against the visit it happened in                            |
+| 27  | Dashboard              | Medium   | "Pending" counts every future appointment                                                 |
+| 28  | Clinical notes         | Medium   | An assistant can rewrite a dentist's unsigned note                                        |
+| 29  | Navigation             | Low      | The breadcrumb links to Dashboard and Settings for roles that cannot open them            |
+| 30  | Navigation             | Low      | Links to pages the role cannot open, across several modules                               |
+| 31  | Recare                 | Low      | "Recare types" and "Send reminder" are shown to roles that cannot use them                |
+| 32  | Staff performance      | Low      | The performance page opens for the Dentist and fails                                      |
+| 33  | Reports                | Low      | Accounts holds `reports:export` but can export nothing through the API                    |
+| 34  | Dental chart / perio   | Low      | The Clinic Manager is offered chart and perio editing that is refused                     |
+| 35  | Treatments             | Low      | The addendum form is offered to the Dental Assistant, who is refused                      |
+| 36  | Inventory / treatments | Low      | Stock used is not linked to a treatment or patient                                        |
+| 37  | Perio                  | Low      | Perio accepts impossible readings and saves empty exams                                   |
+| 38  | Lab                    | Low      | A lab order never records who created it                                                  |
+| 39  | Appointments           | Low      | Edit is offered on a completed appointment, and Check in on a future day                  |
+| 40  | Treatments / lab       | Low      | A treatment does not show the lab case made for it                                        |
+| 41  | Attendance             | Low      | The register and the report disagree on unmarked days                                     |
+| 42  | Reports                | Low      | Payment-method shares in financial analytics show 125% and -25%                           |
+| 43  | Patients / roles       | Low      | Accounts and the Lab Technician see a patient's appointments, and the rows bounce         |
+| 44  | Patients               | Low      | The referral code on New Patient is dropped                                               |
+| 45  | Patients               | Low      | Phones sent through the API are not normalised                                            |
+| 46  | Staff                  | Low      | The staff page does not count an assistant's appointments                                 |
+| 47  | Navigation             | Low      | Catalogues are missing from the menu for roles that can open them                         |
+| 48  | Data import            | Low      | Import has no template, keeps bad phones, drops leading zeros and links to missing pages  |
+| 49  | RBAC                   | Low      | `/settings/audit` is in the route table but does not exist                                |
+| 50  | Settings / roles       | Low      | Accounts holds `billing:config` but can configure nothing                                 |
+
+---
+
+## High
+
+### 1. A role change does not reach a user who is already signed in
+
+**Roles:** all
+
+The role is copied into the JWT only at sign-in (`lib/auth.config.ts:80-90`, inside `if (user)`). After that, `requirePermission` (`lib/api-helpers.ts`) and the middleware trust `session.user.role` from the token. Sessions last 480 minutes.
+
+**Reproduced:** QA16 Receptionist was signed in, then changed to Accountant by the administrator (`PATCH /api/staff/:id`, 200). On the old session:
+
+- `/api/auth/session` still said `RECEPTIONIST`.
+- `/api/appointments` still returned 200, and `/api/billing/reports` and `/api/billing/receivables` still returned 403.
+- The sidebar was still the Front Desk menu, the header chip still said "Front Desk", and the colour was still orange.
+
+Only a new sign-in gave the Accountant's menu, colour and access. A demotion takes nothing away until the user signs out.
+
+**Fix:** keep a `roleVersion` (or `updatedAt`) on the user. Check it in the `jwt` callback at most once a minute, and reload the role or end the session when it has moved on.
+
+### 2. A deactivated user stays signed in and keeps working
+
+**Roles:** all
+
+`isActive` is checked only at sign-in. Nothing checks it on later requests (`lib/api-helpers.ts:85-95`, the `jwt` callback in `lib/auth.config.ts`).
+
+**Reproduced:** QA16 LabTech was signed in, then deactivated by the administrator (`DELETE /api/staff/:id`, 200, audited as `staff.deactivated`). On the old session, `/api/lab-orders` and `/api/patients` still returned 200, `/lab` rendered normally, and a `POST /api/lab-orders` reached validation (400) instead of being refused. A new sign-in was refused, as it should be. Someone who has left keeps read and write access for the rest of the session.
+
+**Fix:** the same check as in 1. An inactive user, or a user whose clinic is suspended, gets a 401 and is sent to `/login`.
+
+### 3. Signing a treatment lifts the guard on completed and cancelled treatments
+
+**Roles:** Dental Assistant, Dentist (anyone with `clinical:write`)
+
+Before signing, a completed or cancelled treatment can only be changed with `clinical:delete`. After signing, the same request goes through.
+
+**Reproduced** on TRT202610160001, completed and signed by the dentist:
+
+1. As the Dental Assistant, `PUT {cost: 1500}` → 200.
+2. As the Dental Assistant, `PUT {status: "CANCELLED"}` → 200. The treatment left the accountant's unbilled list (4 items → 3).
+3. As the Dentist, `PUT {status: "COMPLETED"}` on the cancelled, signed treatment → 200, so it was reopened.
+4. Control: the same kind of edit on an unsigned completed treatment (TRT202610160002) → 400 "Cannot modify completed or cancelled treatments".
+
+Nothing records these changes.
+
+**Cause:** `app/api/treatments/[id]/route.ts:196-199` applies the guard only `if (!signed && …)`. After signing, the route compares only `CLINICAL_NOTE_FIELDS` (`lib/clinical-notes.ts:23-34`, line 168 of the route), which has no `status` or `cost`. Lines 237-251 have no status transition check.
+
+**Fix:** once signed, refuse `status`, `cost`, `procedureId`, `toothNumbers` and `doctorId` outright (an addendum is the way to correct a signed record). Keep the completed/cancelled guard regardless of signing.
+
+### 4. A dental assistant can delete a dentist's prescription, and no audit entry is written
+
+**Roles:** Dental Assistant (and anyone with `clinical:write`)
+
+`DELETE /api/prescriptions/[id]` checks `clinical:write` (`app/api/prescriptions/[id]/route.ts:96`). The rest of the app deletes clinical records with `clinical:delete`, which only the Administrator holds. The prescription is hard-deleted and there is no `recordAudit` call, so there is no trace of who did it.
+
+The screens offer it too: `canDelete = useCan('clinical:write')` on the prescription detail (`app/(dashboard)/prescriptions/[id]/page.tsx:104`) and list (`prescriptions/page.tsx:76`).
+
+**Reproduced:** the Dentist wrote RX20260004. The Dental Assistant, who is shown "Delete prescription" on its page, sent the `DELETE` → 200 "Prescription deleted", and a later `GET` returned 404. The audit log has `prescription.created` for it and nothing else. The same assistant gets 403 "Only a dentist can write a prescription" when trying to write one.
+
+**Fix:** require `clinical:delete` in the route and the UI, and record an audit entry with the prescription's contents. Consider cancelling a prescription instead of deleting it.
+
+### 5. The waitlist says patients are notified, but nobody is, and an entry cannot be booked
+
+**Roles:** Front Desk, Clinic Manager
+
+**Reproduced:** QA16Bilal was put on the waitlist for Dr. Ayesha, Monday afternoon. An appointment in that slot was cancelled, and QA16Bilal was then booked into it with the normal form.
+
+- **Notified, but not sent.** After the cancel, the entry was `NOTIFIED`, but no SMS or email exists for the patient. `app/api/appointments/[id]/route.ts:460-490` only returns `_waitlistNotifications`, and nothing in `app/` or `components/` reads it. `lib/services/smart-scheduler.ts:64` says the "caller handles actual SMS sending". The waitlist page says patients are "automatically notified".
+- **No way to book.** The waitlist has no "Book" action. `bookFromWaitlist` (`lib/services/smart-scheduler.ts:182`) is never called, so after the booking the entry stayed `NOTIFIED` with `bookedAt` empty, and "Booked" stayed 0.
+- **No way to close.** Remove shows only on `ACTIVE` rows (`app/(dashboard)/appointments/waitlist/page.tsx:517`), and the default "Waiting" filter hides `NOTIFIED` rows, so the entry cannot be closed.
+
+**Fix:** a "Book" action that opens New Appointment with the patient, dentist and freed slot filled in, and calls `bookFromWaitlist` on save. Remove on every open status. Either send the notification through the communications module or change the wording to "marked to contact".
+
+### 6. Create, edit and status buttons are shown to roles the server refuses
+
+**Roles:** Dentist, Clinic Manager, Front Desk, Dental Assistant, Accounts, Lab Technician
+
+Pages are gated on the module's read permission. `ROUTE_PERMISSIONS` has no entries for `/new` or `/edit`, and many screens show their write buttons without checking a permission. The server refuses the save with 403, so nothing is written, but the user fills in a whole form to be told "Forbidden".
+
+| Role             | Shown, refused on save                                                                                                                                                                                                                              |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dentist          | Invoices: New, Edit, Issue, Notes & due date, Record Payment (`billing/invoices/[id]/page.tsx:512-548`, list `:185-187`, `:372-389`). Inventory: New item, Edit, Record movement, Acknowledge, New transaction, New PO, Receive goods, New supplier |
+| Clinic Manager   | Inventory: the same as the Dentist. New/edit treatment, plan, prescription and prescription template. Lab: New lab order, Update status, vendor New/Edit/Delete                                                                                     |
+| Front Desk       | Lab: New lab order, edit, Update status                                                                                                                                                                                                             |
+| Dental Assistant | New patient and patient edit, by URL                                                                                                                                                                                                                |
+| Accounts         | New patient and patient edit, by URL                                                                                                                                                                                                                |
+| Lab Technician   | New patient and patient edit, by URL                                                                                                                                                                                                                |
+
+**Reproduced** (examples): the Dentist's "Issue invoice" → 403, toast "Couldn't issue invoice INV-202610-0023 Forbidden". The Dentist's "Save changes" on an invoice edit → 403. "Acknowledge" on a stock alert as the Dentist and as the Clinic Manager → 403. "Update status" on LAB20260005 as Front Desk and as the Clinic Manager → 403.
+
+Nothing under `app/(dashboard)/inventory/**` or `components/inventory/**` uses `useCan`. The invoice pages check only `billing:discount` and `billing:void`. The staff form does this right: the Dentist opening `/staff/new` is told they cannot add staff.
+
+**Fix:** add `/…/new` and `/…/[id]/edit` entries to `ROUTE_PERMISSIONS` at the module's write permission, and wrap every create, edit and status control in `useCan('<module>:write')`.
+
+---
+
+## Medium
+
+### 7. The clinic's letterhead never appears on the statement, the estimate or the day book
+
+**Roles:** all, including the Administrator
+
+There are two causes:
+
+- **The response is read wrongly.** `/api/settings/clinic` returns `{ success, data }` (`route.ts:96-99`). The pages read `payload.hospital ?? payload.clinic ?? payload`, so they get the wrapper object and no clinic fields:
+  - statement: `app/(dashboard)/patients/[id]/statement/page.tsx:85-87`
+  - estimate: `app/(dashboard)/treatments/plans/[id]/estimate/page.tsx:108-110`
+  - day book: `app/(dashboard)/appointments/page.tsx:336-341` reads `settings?.clinic?.workingHours ?? settings?.workingHours`
+- **The route is refused to the people who print.** `GET /api/settings/clinic` needs `settings:read` (`route.ts:51`). The Dentist, Front Desk, Accounts and Dental Assistant get 403.
+
+**Effect:**
+
+- The statement heading falls back to "Statement", even for the Clinic Manager, whose call returns 200. The printed statement has no clinic phone and drops the "To settle this balance… please call" line, although the patient owed Rs 3,600.
+- The estimate header falls back to "Treatment estimate".
+- The day book keeps its default of 09:00–21:00 (`:222`). For a clinic open 09:00–20:00, it offers cells up to 20:45. "Book 20:45 with Dr. Priya Kumar" opens a form whose slot list ends at 7:30 PM, so no time is selected. Its 15-minute cells do not match the clinic's 30-minute slots.
+- The Dental Assistant and the Lab Technician can open the statement by URL (it inherits `/patients → patients:read`). Its ledger is refused (`billing:read`) and the page shows "could not load".
+
+**Fix:** read `payload.data`. Serve the clinic's name, address, phone and hours from an endpoint every staff role can read, as `/api/settings/print` already is.
+
+### 8. The lab order edit form is half refused for the roles that open it
+
+**Roles:** Lab Technician, Front Desk, Clinic Manager
+
+On `/lab/orders/[id]/edit`:
+
+- The tooth picker loads `/api/dental-chart`, which needs `clinical:read`. That is 403 for the Lab Technician and Front Desk. The Lab Technician holds `lab:write`, so it is their own form that half loads.
+- The treatment picker loads `/api/lab-orders/treatments` (`components/lab/treatment-picker.tsx:56`), which needs `lab:write`. That is 403 for the Clinic Manager and Front Desk, and the page shows "Forbidden".
+- Front Desk's save is refused (see 6), with a toast that says only "Forbidden".
+- The Lab Technician's save works (200), and the treatment link is kept.
+
+**Fix:** the tooth picker on a lab order should not need the clinical chart, or should fall back to a plain tooth list quietly. Gate the edit page on `lab:write`.
+
+### 9. The export menu is shown to roles without `reports:export`
+
+**Roles:** Dentist, Dental Assistant, Front Desk
+
+`app/(dashboard)/reports/page.tsx:351-362` shows Export (CSV, Excel, PDF) to everyone who can open Reports. Every export returns 403 for these three roles.
+
+**Fix:** show the menu with `useCan('reports:export')`.
+
+### 10. A manager's or administrator's own discount is approved by themselves
+
+**Roles:** Clinic Manager, Administrator
+
+FR-013 says a discount above the threshold needs someone else's approval. `app/api/invoices/route.ts:394` and `app/api/invoices/[id]/route.ts:476` mark the discount approved straight away when the person creating it holds `billing:discount`.
+
+**Reproduced:** the Clinic Manager created INV-202610-0022 with a Rs 1,500 discount on Rs 5,000, above the Rs 1,000 threshold. It was created `APPROVED`, with the manager as both requester and approver, and could be issued at once. The approval route itself refuses self-approval (`discount-approval/route.ts:82-88`), and the accountant's path works (see Checked and working).
+
+**Fix:** record the approver separately from the creator, and require a different person, or at least an approval step and an audit entry, for discounts above the threshold.
+
+### 11. The low-stock card is shown to every role, and the money card links to a refused page
+
+**Roles:** every role with a dashboard
+
+- **Low stock.** The stats API returns `lowStockItems` without a permission check (`app/api/dashboard/stats/route.ts` around `:285-300` and `:452`). The dashboard shows the card to everyone (`app/(dashboard)/dashboard/page.tsx:318-345`), with item names and levels, and its "View inventory" link (`:646`) goes to `/inventory/alerts`, which Front Desk cannot open.
+- **Collected this month** (`:376`) links to `/billing/reports`, which needs `reports:financial`. The Dentist and Front Desk see the card and bounce on the click.
+
+**Fix:** return and show low stock only with `inventory:read`. Link the money card to `/billing/invoices`, or make it a link only with `reports:financial`.
+
+### 12. Performance leaves out the last day and counts revenue that was never invoiced
+
+**Roles:** Administrator, Clinic Manager
+
+`app/api/staff/[id]/performance/route.ts` parses the dates as UTC midnight and filters with `lte: end` (`:27-28`, `:50-53`, `:75-78`). Everything on the last day of the range is left out, and the range starts five hours late in Karachi. "Revenue" is the sum of the treatments' list prices (around `:95`), not what was invoiced.
+
+**Reproduced** for Dr. Priya Kumar, 1–16 October (the page's default range):
+
+|                        | Performance page | Reports / appointments API |
+| ---------------------- | ---------------- | -------------------------- |
+| Appointments           | 9                | 12                         |
+| Completed appointments | 1                | 2                          |
+| Treatments completed   | 4                | 8                          |
+| Revenue                | Rs 4,800         | Rs 225 invoiced            |
+
+With the end date moved to 17 October, the API returns 12 / 2 / 8, and "revenue" becomes Rs 19,800.50 against the same Rs 225 invoiced.
+
+**Fix:** use the clinic's day boundaries (`lib/clinic-time`), with the end exclusive at the next day's start, and take revenue from invoice lines, as the reports do.
+
+### 13. The audit log shows only the old value, and search misses the new one
+
+**Roles:** Administrator, Clinic Manager
+
+- `app/api/audit-log/route.ts:66` returns `details: log.oldValues || log.newValues`. An update shows what the record was, never what it became. Examples from this pass: changing QA16 Receptionist to Accountant shows `{"role":"RECEPTIONIST"}`; approving a discount shows `{"discountApprovalStatus":"PENDING"}`; cancelling an invoice shows `{"status":"DRAFT"}`; moving a lab order to SENT_TO_LAB shows `{"status":"CREATED"}`.
+- Search covers `action`, `entityType` and `oldValues` but not `newValues` (`:44-50`). Searching INV-202610-0020, PO20260006 or LAB20260005 finds nothing.
+- No entry names a patient (`invoice.created` shows a raw `patientId`), and the entity filter offers only Patient, Appointment, Invoice, User and Treatment.
+
+**Fix:** return both, and show a before → after diff. Search both. Show the patient's name where the entity belongs to one.
+
+### 14. Several modules write no audit entry at all
+
+**Roles:** Administrator, Clinic Manager (who read the log)
+
+These changed records with no entry in the audit log:
+
+- lab order create; lab vendor create and edit
+- inventory item create and edit; supplier create and edit; purchase order draft
+- visitor (walk-in) create
+- medication create, edit and deactivate; procedure create (edit and delete are audited)
+- form template create, edit and delete; form submission
+- staff invite create and cancel
+- prescription delete (see 4)
+
+**Fix:** call `recordAudit` in each route, as invoices, patients and treatments already do.
+
+### 15. Discard, New walk-in and Register are shown to roles that cannot use them
+
+**Roles:** Front Desk, Clinic Manager, Lab Technician, Accounts
+
+`app/(dashboard)/walk-ins/page.tsx:169` and `:254-272`, and `walk-ins/[id]`, show their buttons without checks:
+
+- **Discard** is shown to Front Desk, the Clinic Manager and the Lab Technician. It needs `patients:delete` (`app/api/visitors/[id]/route.ts:99`), which only the Administrator holds.
+- **New walk-in** links to `/appointments/new`, which Accounts and the Lab Technician cannot open.
+- **Register** needs `patients:write`, which the Lab Technician does not hold.
+
+**Reproduced:** Discard → 403 for the Lab Technician, Front Desk and the Clinic Manager; 200 for the Administrator. The page itself tells the desk to "discard the rest".
+
+**Fix:** gate each on its permission. Discarding a walk-in that never became a patient probably should not need `patients:delete`; `appointments:write` fits the people who create them.
+
+### 16. Converting a walk-in refuses a phone number that registration allows
+
+**Roles:** Front Desk
+
+Patient registration allows a household to share a phone, with a warning. `app/api/visitors/[id]/convert/route.ts:80-100` refuses the conversion outright when the walk-in's phone already belongs to a patient.
+
+**Reproduced:** walk-in "QA16 Walkin Rehan" was booked with QA16Asma's number (PAT202600004). Converting it gave 409 "That phone number already belongs to QA16Asma Front (PAT202600004)". At the same moment, `POST /api/patients` with the same number gave 201 with `sharedPhoneWith`. The conversion worked only after the phone was changed.
+
+**Fix:** use the same shared-phone rule as `POST /api/patients`: warn and offer to link the family.
+
+### 17. "Book appointment" from the patient record or Recare loses the patient
+
+**Roles:** Front Desk, Clinic Manager
+
+`/appointments/new?patientId=…` is meant to open with the patient chosen. It opened with the picker empty on all four attempts, and booking failed with "Select a patient". From Recare, the reason ("Scale and polish") is filled in but the patient is not. The browser fetched the patient twice (200), but the result was never applied. `/billing/invoices/new?patientId=` preselects correctly with the same picker.
+
+**Cause:** `app/(dashboard)/appointments/new/page.tsx:349` replaces the form with a `PageSkeleton` while the dentists load. That unmounts `PatientPicker` (`components/patients/patient-picker.tsx:118-142`), and when it mounts again it does not pick up the preselected id. It was seen in development under React StrictMode (`reactStrictMode: true`); it was not checked on a production build.
+
+**Fix:** keep the form mounted and show the skeleton only in the dentist field, or have the picker reload whenever `defaultPatientId` is set and nothing is selected.
+
+### 18. Send forms are shown to roles that cannot send, and there is no message history
+
+**Roles:** Dentist, Dental Assistant, Accounts
+
+- The Send SMS and Send email forms on `app/(dashboard)/communications/page.tsx` are shown to these roles. The send returns 403.
+- The SMS and email history tabs are placeholders (`:136-190`, `:201`, `:213-270`, `:282`).
+- The patient record has no list of messages sent to the patient.
+
+**Fix:** show the send forms with `communications:write`. List sent messages from the communications log, on the page and on the patient record.
+
+### 19. A second dentist set up by clinical role is missing from booking
+
+**Roles:** Front Desk, and patients booking online
+
+A staff member whose second, clinical role is DOCTOR but whose main role is something else (an owner-dentist set up as Clinic Manager, for example) appears on the schedule, gets slots and is accepted as a dentist by the server. They are missing from:
+
+- `/api/staff/doctors` (`route.ts:15-19` filters on `user.role`), which feeds every dentist picker: New Appointment, edit, calendar, queue, waitlist and New Treatment. Reproduced with QA16 ClinicManager given the DOCTOR role: `/api/schedule` listed them with 22 slots, and the New Treatment picker offered only the other three dentists
+- public online booking (`app/api/public/[slug]/booking/route.ts:54`)
+- their staff page, which shows no Performance link and no appointment or treatment counts (`app/(dashboard)/staff/[id]/page.tsx:173`, `:336` check `user.role === 'DOCTOR'`)
+
+**Fix:** use `DENTIST_WHERE` from `lib/clinicians.ts`, which the schedule already uses, in all three places.
+
+### 20. Saving Settings → Appointments unchanged turns on a buffer and a lunch break
+
+**Roles:** Administrator, Clinic Manager
+
+The page's own defaults (`app/(dashboard)/settings/appointments/page.tsx:48-57`) are a 10-minute buffer, lunch 13:00–14:00 and 365 days ahead. The server's `DEFAULT_APPOINTMENT_SETTINGS` has no buffer and no lunch. A clinic that has never saved this page is shown the page's defaults, and clicking Save without changing anything writes them, which changes the slots offered.
+
+This clinic now has the four setting rows written during the test (see Test data), so its page shows the true values. Any clinic that has never saved the page still shows the wrong ones.
+
+**Fix:** load the defaults from the server, or export one set of defaults and use it in both places.
+
+### 21. The clinic's details cannot be saved with the seeded website
+
+**Roles:** Administrator, Clinic Manager
+
+The demo clinic's website is `www.example.com`. `z.string().url()` (`app/api/settings/clinic/route.ts:24-27`) refuses it because it has no scheme. Pressing Save without changing anything gives "Couldn't save the clinic settings — website: Invalid URL" (400). Nothing on the page can be saved (name, address, hours, portal) until someone edits a field they were not trying to change, and the form does not mark the field.
+
+**Fix:** add `https://` when the scheme is missing, and show the error on the field.
+
+### 22. Profile and Settings in the user menu bounce six of the eight roles
+
+**Roles:** every role except Administrator and Clinic Manager
+
+Both items go to `/settings` (`components/layout/user-menu.tsx:60`, `:64`), which needs `settings:read`. Everyone else is bounced to their landing page. Only `/settings/password` is exempt in the middleware; `/settings/profile` is not.
+
+**Fix:** send Profile to `/settings/profile`, exempt it as `/settings/password` is, and show Settings only with `settings:read`.
+
+### 23. Forms cannot be filled in, and their PDF prints "N/A" for every answer
+
+**Roles:** every role with the patient record's Forms tab
+
+- No screen fills in a form for a patient, and the Forms tab has no PDF or print link. Submissions exist only through the API.
+- The PDF looks answers up by `field.label` (`app/api/forms/[id]/pdf/route.ts:72-75`), while the form renderer stores them by `field.id`. Every answer prints "N/A".
+- The Dental Assistant is shown "Save Review"; saving gives a "Forbidden" toast (`PUT` 403). The API refuses Accounts and the Lab Technician the same way.
+- The status picker starts at "Pending" (`SUBMITTED`), which the `PUT` refuses with 400 "Invalid status", so "Save Review" without changing the status fails for everyone.
+
+**Fix:** a "Fill in form" action on the patient record. Look answers up by `field.id`, falling back to the label for old submissions. Gate review on `patients:write`, and accept `SUBMITTED` in the `PUT`.
+
+### 24. Staff import lets a manager create administrators and turns unknown roles into Front Desk
+
+**Roles:** Clinic Manager, Administrator
+
+**Reproduced** (validation only; nothing was committed): the Clinic Manager uploaded a staff file with the roles `ADMIN`, `NURSE` and `ACCOUNTANT`. Validation passed with no errors or warnings. On the staff form the same manager gets 403 "Only an administrator can make somebody an administrator", and `NURSE` is not a role.
+
+**From the code, not run:** commit would create the administrator, try to write `NURSE`, and turn `ACCOUNTANT`, `CLINIC_MANAGER`, `DENTAL_ASSISTANT` and `INVENTORY_STAFF` into `RECEPTIONIST`. The field is free text documented as "DOCTOR, RECEPTIONIST, NURSE, LAB_TECH, ADMIN" (`lib/import/schema-definitions.ts:276-281`), and the commit's `roleMap` (`app/api/data-import/commit/route.ts:362-375`) falls back to `RECEPTIONIST` with no `staffChangeRefusal` check.
+
+**Fix:** validate against the `Role` enum and refuse unknown values. Run `staffChangeRefusal` for each row.
+
+### 25. Front Desk and Accounts cannot open the estimate they hand to patients
+
+**Roles:** Front Desk, Accounts
+
+The treatment plan estimate is under `/treatments`, which needs `clinical:read`. Front Desk and Accounts discuss cost with patients, but have no link to the estimate and are bounced if they open it by URL.
+
+**Fix:** a patient-facing estimate under billing (`billing:read`), or a link from the patient's billing tab to an estimate route gated on `billing:read`.
+
+### 26. No screen records a treatment against the visit it happened in
+
+**Roles:** Dentist, Dental Assistant
+
+`/treatments/new` reads `?appointmentId=` (`page.tsx:142`) and links the treatment to the visit, but nothing links there. The appointment page (`app/(dashboard)/appointments/[id]/page.tsx:360-445`) offers only Check out and Edit, `/treatments/new` has no appointment field, and the patient's Treatments tab has no "New treatment" button. The visit's Treatments card, the invoice's "This visit" tag and the visit filter on unbilled treatments all depend on the link. In this pass, a visit-linked treatment could only be made through the API.
+
+**Fix:** a "Record treatment" button on an in-progress or completed appointment, opening `/treatments/new?appointmentId=…&patientId=…`.
+
+### 27. "Pending" counts every future appointment
+
+**Roles:** every role with a dashboard
+
+`app/api/dashboard/stats/route.ts:130-139` counts every `SCHEDULED` or `CONFIRMED` appointment with `startsAt >= now`, on any later day. The dashboard shows it under today's count (`page.tsx:364-372`). **Reproduced:** the API returned `{today: 4, completed: 2, pending: 8}`; today's four were in progress, no-show, completed and completed, and all 8 "pending" were on 18 and 19 October.
+
+**Fix:** limit it to the rest of today, or label it "upcoming".
+
+### 28. An assistant can rewrite a dentist's unsigned note
+
+**Roles:** Dental Assistant (and anyone with `clinical:write`)
+
+`PUT /api/clinical-notes/[id]` (`route.ts:64`) does not check who wrote the note; `DELETE` in the same file does. **Reproduced:** the Dentist wrote CN2026100001, the Dental Assistant replaced its text (200), and the Dentist signed it. The Notes tab shows the assistant's text as "Dr. Priya · Signed", with no record of the change.
+
+**Fix:** only the author edits an unsigned note. Others add to it, or the change is recorded with who made it.
+
+---
+
+## Low
+
+### 29. The breadcrumb links to Dashboard and Settings for roles that cannot open them
+
+**Roles:** Lab Technician, Inventory, Accounts (Dashboard); every role except Administrator and Clinic Manager (Settings)
+
+`components/ui/breadcrumb.tsx:135` always links the home icon to `/dashboard`. The Lab Technician, Inventory and Accounts roles have no dashboard, so it bounces them. On `/settings/procedures` and `/settings/password`, the "Settings" crumb links to `/settings`.
+
+**Fix:** home goes to `landingPageFor(role)`, and a crumb is a link only when the role can open it.
+
+### 30. Links to pages the role cannot open, across several modules
+
+Each of these bounces the user to their landing page without saying why:
+
+- **Treatment → invoice** ("Billed on INV-…"), for the Dental Assistant: `app/(dashboard)/treatments/[id]/page.tsx:467`, `:925`
+- **Invoice → treatment, appointment and inventory**, for Accounts: `billing/invoices/[id]/page.tsx:703-708`, `:640-641`, `:684`
+- **Lab order → treatment and invoice**, for the Lab Technician: `lab/orders/[id]/page.tsx:381`, `:402`
+- **Appointment → treatments card**, for Front Desk: `appointments/[id]/page.tsx:751-754`
+
+**Fix:** render the link only when the role can open its target, as `useScheduleLinks` does, and plain text otherwise.
+
+### 31. "Recare types" and "Send reminder" are shown to roles that cannot use them
+
+**Roles:** Dentist, Dental Assistant, Front Desk
+
+- "Recare types" (`app/(dashboard)/recare/page.tsx:408-413`) links to `/settings/recare`, which none of the three can open.
+- "Send reminder" (`:495-520`) returns 403 for the Dentist and Dental Assistant.
+
+**Fix:** gate them on `settings:read` and `communications:write`.
+
+### 32. The performance page opens for the Dentist and fails
+
+**Roles:** Dentist
+
+`/staff/[id]/performance` is gated on `staff:read`, the `/staff` prefix. Its data needs `staff:hr` (`app/api/staff/[id]/performance/route.ts:12`). The Performance button is hidden from the Dentist, but the URL opens a page that never loads.
+
+**Fix:** add a `/staff/…/performance` entry at `staff:hr`.
+
+### 33. Accounts holds `reports:export` but can export nothing through the API
+
+**Roles:** Accounts
+
+`/api/reports/export` builds every export by calling `/api/reports/analytics`, which requires `reports:operational` (`app/api/reports/analytics/route.ts:511`). Every type, `financial` included, returns 403 for Accounts. No screen Accounts can open uses this endpoint (`/billing/reports` exports in the browser), so nothing is broken today, but the permission does nothing.
+
+**Fix:** let analytics accept `reports:financial` for `type=financial`.
+
+### 34. The Clinic Manager is offered chart and perio editing that is refused
+
+**Roles:** Clinic Manager
+
+The dental chart's tooth dialog (`components/dental-chart/dental-chart.tsx` around `:591`) and the perio panel's "Record a chart" (`components/clinical/perio-panel.tsx:253`) show their edit controls to anyone who can read them; the patient page passes no `canWrite` (`patients/[id]/page.tsx:742`, `:750`). Saves return 403 with a "Forbidden" toast for the Clinic Manager. The Notes card, by contrast, hides "New note" from them.
+
+**Fix:** gate editing on `clinical:write`.
+
+### 35. The addendum form is offered to the Dental Assistant, who is refused
+
+**Roles:** Dental Assistant
+
+`app/(dashboard)/treatments/[id]/page.tsx:368-373` shows "Add addendum" on every signed treatment. The route needs `clinical:sign` (`addenda/route.ts:63`), so the assistant's save gets 403 and a "Forbidden" toast.
+
+**Fix:** use the same check as the API.
+
+### 36. Stock used is not linked to a treatment or patient
+
+**Roles:** Inventory, Dentist
+
+- Completing a treatment with "QA16 prophy paste" in its materials changed no stock: `materialsUsed` is free text.
+- "Used in treatment" in the stock dialog (`components/inventory/stock-movement-dialog.tsx:53`) has no treatment or patient field, and the transactions list has no reference column.
+- The `lib/rbac.ts` comment for the Dental Assistant mentions "procedure-linked consumption", which does not exist.
+
+Stock used cannot be traced to a patient, and material cost cannot be reported per procedure.
+
+**Fix:** let a treatment record items used, writing the stock movement with the treatment's id.
+
+### 37. Perio accepts impossible readings and saves empty exams
+
+**Roles:** Dentist
+
+`POST /api/perio` with no measurements and one tooth finding of `{toothNumber: 17, mobility: "abc"}` returned 201. The exam was saved with 0 measurements and an all-empty finding, and it now appears in the patient's perio history.
+
+**Cause:** `app/api/perio/route.ts:146` does `Number(f.mobility)` without validation, and the "Nothing was recorded" check (around `:119`) counts tooth findings, not values.
+
+**Fix:** validate each finding, and refuse an exam with no values.
+
+### 38. A lab order never records who created it
+
+**Roles:** all who read lab orders
+
+`app/api/lab-orders/route.ts:256-272` does not set `createdBy`. The order page shows "Raised by —" even for a case the Dentist created.
+
+**Fix:** set it from the session's staff id.
+
+### 39. Edit is offered on a completed appointment, and Check in on a future day
+
+**Roles:** Front Desk, Clinic Manager
+
+On `app/(dashboard)/appointments/[id]/page.tsx`:
+
+- Edit is shown on a completed appointment (`:413-418`). The full form opens, and every change is refused with 400 ("Only a scheduled or confirmed appointment can be moved").
+- Check in is shown on an appointment days ahead (`:363`). The API refuses it with a clear message. The No-show button beside it does check the time.
+
+**Fix:** hide Edit once completed, cancelled or no-show, and show Check in only on the appointment's day.
+
+### 40. A treatment does not show the lab case made for it
+
+**Roles:** Dentist, Dental Assistant
+
+A lab order links to its treatment, and the lab order page shows the treatment. The treatment page does not show the lab order: `GET /api/treatments/[id]` does not include `labOrders`.
+
+The patient timeline does show the case, but with the raw work type "CROWN".
+
+**Fix:** include the lab orders and show them on the treatment page, with their status.
+
+### 41. The register and the report disagree on unmarked days
+
+**Roles:** Administrator, Clinic Manager
+
+The attendance register counts a day left at its default as present. The detail page and the report count it as unmarked. With one day marked absent, the register row read "4P 1A", while the detail and report read Present 0, Absent 1, Not marked 4, Attendance 0%.
+
+**Fix:** one rule in both: unmarked is unmarked.
+
+### 42. Payment-method shares in financial analytics show 125% and -25%
+
+**Roles:** Administrator, Clinic Manager, Accounts
+
+Reports → Financial → Payment method breakdown showed "CASH Rs 500.00 125.0%, CARD -Rs 100.00 -25.0%". Card refunds exceeded card receipts in the period, and `getFinancialAnalytics` (`app/api/reports/analytics/route.ts`) divides each method's net by the total net (Rs 400).
+
+**Fix:** compute shares against gross payments, and show refunds as their own line.
+
+### 43. Accounts and the Lab Technician see a patient's appointments, and the rows bounce
+
+**Roles:** Accounts, Lab Technician
+
+`GET /api/patients/[id]` (around `:64`) and the timeline (`:77-79`) return appointments without checking `appointments:read`. The patient page shows them (`page.tsx:534`, `:968-971`), and clicking one bounces.
+
+**Fix:** include appointments only with `appointments:read`.
+
+### 44. The referral code on New Patient is dropped
+
+**Roles:** Front Desk
+
+The form sends a referral code (`app/(dashboard)/patients/new/page.tsx:152`), but `POST /api/patients` (`route.ts:211-231`) does not read it, and there is no field for it in the schema. QA16Asma was registered with `REF-QA16XX`, and the code is stored nowhere.
+
+**Fix:** store it, or remove the field.
+
+### 45. Phones sent through the API are not normalised
+
+**Roles:** all who search patients
+
+`POST /api/patients` (`route.ts:275-278`) stores the phone as sent; only the form's phone input normalises it. QA16Bilal, created through the API as "+92 300 1600161", is stored that way, while QA16Asma, created on the form with the same number, is stored as `03001600161`. The shared-phone check did not match them, and searching 03001600161, 3001600161 or "0300 1600161" never finds QA16Bilal. `/patients/new` also never shows the `sharedPhoneWith` the API returns.
+
+**Fix:** normalise in the API, not only in the form.
+
+### 46. The staff page does not count an assistant's appointments
+
+**Roles:** Administrator, Clinic Manager
+
+Appointment counts on the staff page come from the dentist relation only (`app/api/staff/[id]/route.ts:114-120`), and the page shows the figure for dentists only (`staff/[id]/page.tsx:336`). Bilal Ahmed, the assistant on 3 visits, shows no figure. `GET /api/appointments?assistantId=` is ignored and returns the whole day. The clinician schedule does show his visits.
+
+**Fix:** count `assistantId` for assistants, and accept the filter.
+
+### 47. Catalogues are missing from the menu for roles that can open them
+
+**Roles:** Front Desk, Accounts, Inventory, Lab Technician
+
+These roles hold `masters:read`, and `/settings/procedures` and `/medications` open for them read-only by URL. Neither is in their menu: in `config/nav.ts` the catalogues are children of Treatments and Prescriptions, and `getNavigationForRole` drops a child when its parent (`clinical:read`) is hidden.
+
+**Fix:** show a child the role can open even when the parent is hidden, or move catalogues to their own section.
+
+### 48. Import has no template, keeps bad phones, drops leading zeros and links to missing pages
+
+**Roles:** Administrator, Clinic Manager
+
+On Settings → Import:
+
+- There is no template to download for any entity.
+- An invalid phone is only a warning, and the row is imported.
+- Leading zeros are dropped from numbers that look numeric, phones included (`lib/import/parsers.ts:47-50`).
+- After a successful import, the links to view invoices and payments go to `/invoices` and `/payments`, which do not exist (`app/(dashboard)/settings/import/page.tsx:1043`).
+
+**Fix:** a template per entity; refuse invalid phones; keep values as text; link to `/billing/invoices` and `/billing/payments`.
+
+### 49. `/settings/audit` is in the route table but does not exist
+
+`ROUTE_PERMISSIONS` has an entry for `/settings/audit`. There is no page (404), and nothing links to it. **Fix:** remove the entry.
+
+### 50. Accounts holds `billing:config` but can configure nothing
+
+**Roles:** Accounts
+
+`lib/rbac.ts` gives Accounts `billing:config` for "fee schedules, tax settings". Nothing in the code checks it. `/settings/billing` redirects Accounts to `/billing`, and its APIs need `settings:write`, so they return 403.
+
+**Fix:** gate the billing settings page and its save on `billing:config`, or drop the permission.
+
+---
+
+## Notes
+
+These were looked at and are not bugs:
+
+- **Sign-in rate limiting uses `X-Forwarded-For`.** It is safe in production: Caddy replaces the header with the real address (`header_up X-Forwarded-For {remote_host}`), and the app listens only on 127.0.0.1.
+- **The password page opens for every role.** That is by design: everyone must be able to change their own password.
+
+## Checked and working
+
+- **Page access:** all 672 page visits matched `ROUTE_PERMISSIONS`. No role opened a page it should not, and none was refused one it should open.
+- **API access:** all 720 `GET` calls matched the permissions in `lib/rbac.ts`, except Accounts' export (33).
+- **Writes from read-only roles:** every write sent by a role without the write permission was refused with 403. The exceptions are 3, 4 and 28, where the route checks the wrong permission or none.
+- **New staff in every role:** a QA16 account was made in each of the eight roles, each audited. Each signed in to its landing page, with the header chip, sidebar menu and colour matching `ROLE_THEMES`. Every link in every role's sidebar opened with no error. After a role change and a new sign-in, the menu, colour and access all switched.
+- **Second role:** a Clinic Manager given the DOCTOR role gets both sets of permissions and both menus, and keeps the Clinic Manager's colour.
+- **Visit flow:** booking, check-in, queue, called in, check-out. The status reached the appointment book, the queue, the patient record and the dashboard. The schedule's free slots and the "seen" counts per hour agreed.
+- **Double booking:** refused for the same dentist and for the same assistant, naming the clash.
+- **Clinical:**
+  - Notes: the assistant writes but cannot sign or add addenda; the dentist signs, countersigns and adds addenda; a signed note cannot be edited or deleted.
+  - Chart and perio: the dentist and assistant write, the manager reads, other roles are refused.
+  - Prescriptions: created from catalogue medicines, from a template, and from a treatment (the tooth carries over); the print view is complete.
+  - Plans: a 3-item plan of Rs 19,300.50 went from draft to accepted, and its items became treatments; plan, items, treatments and estimate all total Rs 19,300.50, and a two-tooth item is billed once.
+  - Recall: completing a cleaning linked to "Scale and polish" moved the recall from 20 November 2026 to 16 April 2027. A filling, with no recall link, moved nothing.
+- **Billing from treatments:** a new procedure reached the unbilled list and New Invoice at its price once its treatment was in progress. An invoice of Rs 3,600 moved every total by exactly that amount, in agreement across the billing summary, ageing, receivables, financial analytics, the dashboard, the invoice list, the patient's billing tab, the ledger and the statement.
+- **Discount approval from Accounts:** an accountant's discount above the threshold waits for approval; issuing while it waits is refused; approving their own is refused; the manager approves, and the invoice shows both names.
+- **Inventory:** a purchase order received in two deliveries (over-receiving refused), two batches with expiry dates, adjustments needing a batch, an assistant's stock use, and a low-stock alert that appeared and cleared with the minimum level.
+- **Lab:** the Lab Technician moved a case from sent to delivered one stage at a time (skipping a stage is refused), and the Dentist set it fitted. Every role that reads lab saw the same status, and the trail shows who moved each stage.
+- **Walk-ins and families:** a walk-in with an unshared number converted to a patient and kept its visit; a guarantor link shows on both records.
+- **Settings reach the book:** changing slot length, buffer and lunch changed the slots and the schedule for Front Desk at once, and changing them back restored them. A print layout change reached the Dentist and Front Desk.
+- **Invites:** an invite was listed as pending, not as staff; the Dentist sees the list without Resend or Cancel.
+
+## Test data
+
+Everything below is in `test_db`, in _Demo Dental Clinic_. Names start with `QA16`.
+
+- **Staff:** eight QA16 staff members, one per role, all deactivated at the end of the pass. QA16 Receptionist is now an Accountant (from 1), and QA16 ClinicManager has the DOCTOR role (from 19). Their emails are `qa16.<role>@example.test`.
+- **Patients:** `PAT202600003`–`PAT202600009` (QA16Clinical, QA16Asma, QA16Bilal, QA16Child, QA16Same Phone, QA16Admin, and QA16Rehan, the converted walk-in).
+- **Appointments:** `APT202610160001`–`APT202610160011`, on 16 and 19 October. One waitlist entry is left `NOTIFIED` (5).
+- **Treatments:** `TRT202610160001`–`TRT202610160006`. 0001 was cancelled and reopened in 3. **Plan:** PLN2026100003.
+- **Clinical:** notes CN2026100001–0002; prescriptions RX20260002–0003 (RX20260004 was deleted in 4); two prescription templates; dental chart entries and four perio exams, one of them empty (37).
+- **Invoices:** `INV-202610-0020` (pending, Rs 3,600 owed) and `INV-202610-0024` (pending); `0021`–`0023` cancelled. No payments were made.
+- **Inventory:** QA16 Supplier 26066, two QA16 items, and PO20260006 (received).
+- **Lab:** vendor QA16 Lab 02232; orders LAB20260003 (fitted), LAB20260004 and LAB20260005.
+- **Walk-ins:** two discarded by the Administrator, one converted.
+- **Catalogue:** a QA16 procedure and a QA16 medication, both deactivated.
+- **Forms:** form template "QA16 Consent Check" with one unreviewed submission.
+- **Invites:** one, cancelled. **Imports:** two jobs, cancelled before commit; their uploaded files remain in storage.
+- **Settings:** four `appointments.*` setting rows now exist where the clinic had none. Their values were set back to a 30-minute slot, no buffer and no lunch break, which is what the clinic had by default (see 20).
+
+---
+
 # Bug report — 12 October 2026: a new clinic, every module, every role
 
 **Date:** 12 October 2026
