@@ -76,15 +76,6 @@ export async function POST(req: NextRequest) {
     const weak = validatePassword(newPassword)
     if (weak) return NextResponse.json({ error: weak }, { status: 400 })
 
-    if (await bcrypt.compare(newPassword, account.password)) {
-      // Reusing the same password would satisfy an expiry without changing
-      // anything, which makes the expiry theatre.
-      return NextResponse.json(
-        { error: 'The new password must be different from the old one' },
-        { status: 400 }
-      )
-    }
-
     await prisma.user.update({
       where: { id: account.id },
       data: {

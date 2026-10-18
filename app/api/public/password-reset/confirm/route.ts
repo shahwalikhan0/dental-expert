@@ -100,15 +100,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: complaint }, { status: 400 })
     }
 
-    // Reusing the password that is already set is not a reset, and it is
-    // usually somebody who has remembered it half way through.
-    if (account.password && (await bcrypt.compare(password, account.password))) {
-      return NextResponse.json(
-        { error: 'That is your current password. Choose a different one.' },
-        { status: 400 }
-      )
-    }
-
     const hashed = await bcrypt.hash(password, 10)
 
     // `resetToken: token` in the where clause is what makes this safe to run

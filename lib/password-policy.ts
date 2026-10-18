@@ -19,7 +19,8 @@
  *
  * Between 8 and 32 characters, the same everywhere a password is set — signup,
  * an invitation, the staff screen, a reset, the portal. There are no
- * capital-letter, number or symbol requirements, and no clinic can add any:
+ * capital-letter, number or symbol requirements, no "must differ from the
+ * current one" check, and no clinic can add any:
  * composition rules push people towards `Password1!` and a sticky note, which
  * NIST SP 800-63B stopped recommending for that reason. Length is the part
  * that actually makes a password hard to guess.
@@ -27,13 +28,6 @@
 export const MINIMUM_PASSWORD_LENGTH = 8
 
 export const MAXIMUM_PASSWORD_LENGTH = 32
-
-/**
- * bcrypt silently truncates past 72 bytes. Thirty-two characters is under that
- * for any ordinary keyboard, but not for thirty-two emoji, and the part past
- * the limit would be ignored at both hashing and checking.
- */
-const BCRYPT_MAX_BYTES = 72
 
 /**
  * The rule, written the way a person would say it.
@@ -58,10 +52,6 @@ export function validatePassword(password: unknown): string | null {
 
   if (password.length > MAXIMUM_PASSWORD_LENGTH) {
     return `Password must be ${MAXIMUM_PASSWORD_LENGTH} characters or fewer`
-  }
-
-  if (new TextEncoder().encode(password).length > BCRYPT_MAX_BYTES) {
-    return 'Password has too many special characters — use fewer emoji or symbols'
   }
 
   return null

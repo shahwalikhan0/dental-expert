@@ -7,7 +7,7 @@ import { resolveLogin } from '@/lib/login'
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(1),
   /** Which clinic, for a person who holds an account at more than one. */
   clinic: z.string().optional(),
 })

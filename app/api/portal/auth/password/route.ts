@@ -48,15 +48,6 @@ export async function POST(request: Request) {
   const refusal = validatePassword(newPassword)
   if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
 
-  // Catching the commonest way a temporary password becomes permanent: the
-  // patient types it again because it is the one they have written down.
-  if (await bcrypt.compare(newPassword, account.passwordHash)) {
-    return NextResponse.json(
-      { error: 'Please choose a password different from your current one.' },
-      { status: 400 }
-    )
-  }
-
   await prisma.patientPortalAccount.update({
     where: { id: caller.session.accountId },
     data: {

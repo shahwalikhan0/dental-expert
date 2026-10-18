@@ -31,7 +31,7 @@ const loginSchema = z.object({
   // Trimmed and lower-cased: an address is the same address in any case, and
   // a capital typed by habit used to fail the sign-in (finding 29).
   email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(1, 'Enter your password'),
 })
 
 type LoginFormData = z.infer<typeof loginSchema>
