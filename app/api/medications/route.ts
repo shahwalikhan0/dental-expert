@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { duplicateMedicationMessage, findDuplicateMedication } from '@/lib/medication-catalogue'
 
 // GET — list medications with search, category filter, pagination
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
 
 // POST — create a medication
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -136,6 +137,22 @@ export async function POST(request: NextRequest) {
         contraindications: contraindications || null,
         sideEffects: sideEffects || null,
       },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.MEDICATION_CREATED,
+      entityType: 'Medication',
+      entityId: medication.id,
+      newValues: {
+        name: medication.name,
+        genericName: medication.genericName,
+        form: medication.form,
+        strength: medication.strength,
+        defaultDosage: medication.defaultDosage,
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json({ success: true, data: medication }, { status: 201 })

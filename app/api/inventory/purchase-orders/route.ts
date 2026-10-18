@@ -221,17 +221,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (status === PurchaseOrderStatus.ORDERED) {
-      await recordAudit({
-        hospitalId,
-        userId: session?.user?.id,
-        action: AUDIT_ACTIONS.PURCHASE_ORDER_PLACED,
-        entityType: 'PurchaseOrder',
-        entityId: created.id,
-        newValues: { orderNumber: created.orderNumber, totalAmount: totals.totalAmount },
-        ...requestContext(request.headers),
-      })
-    }
+    // Placed or only drafted, the order is on the trail from the moment it
+    // exists (16 Oct, finding 14) — placing a draft later is its own entry.
+    await recordAudit({
+      hospitalId,
+      userId: session?.user?.id,
+      action:
+        status === PurchaseOrderStatus.ORDERED
+          ? AUDIT_ACTIONS.PURCHASE_ORDER_PLACED
+          : AUDIT_ACTIONS.PURCHASE_ORDER_DRAFTED,
+      entityType: 'PurchaseOrder',
+      entityId: created.id,
+      newValues: { orderNumber: created.orderNumber, totalAmount: totals.totalAmount },
+      ...requestContext(request.headers),
+    })
 
     return NextResponse.json({ success: true, data: created }, { status: 201 })
   } catch (err: any) {

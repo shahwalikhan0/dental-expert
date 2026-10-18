@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { validateVisitor } from '@/lib/visitors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 /**
  * Walk-ins who have not been registered.
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
  * which dentist is free.
  */
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('patients:write')
+  const { error, hospitalId, user } = await requirePermission('patients:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -87,6 +88,16 @@ export async function POST(request: NextRequest) {
         phone: body.phone ? String(body.phone).trim() : null,
         notes: body.notes ? String(body.notes).trim() : null,
       },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.VISITOR_CREATED,
+      entityType: 'Visitor',
+      entityId: visitor.id,
+      newValues: { name: visitor.name, phone: visitor.phone },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json({ visitor }, { status: 201 })

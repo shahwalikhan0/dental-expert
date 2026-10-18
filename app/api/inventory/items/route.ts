@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { InventoryItemType } from '@prisma/client'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { ITEM_NUMBER_FIELDS, negativeField, normaliseSku } from '@/lib/inventory-items'
 import { reconcileStockAlerts } from '@/lib/stock-alerts'
 
@@ -283,6 +284,25 @@ export async function POST(request: NextRequest) {
       })
 
       return created
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: session?.user?.id ?? null,
+      action: AUDIT_ACTIONS.INVENTORY_ITEM_CREATED,
+      entityType: 'InventoryItem',
+      entityId: item.id,
+      newValues: {
+        sku: item.sku,
+        name: item.name,
+        itemType: item.itemType,
+        unit: item.unit,
+        openingStock,
+        minimumStock: item.minimumStock,
+        purchasePrice: price,
+        sellingPrice: item.sellingPrice == null ? null : Number(item.sellingPrice),
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json(

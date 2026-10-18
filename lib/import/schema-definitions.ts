@@ -3,6 +3,8 @@
  * validation rules, enum aliases, and FK resolution hints for each entity.
  */
 
+import { ALL_ROLES, ROLE_LABELS } from '@/lib/rbac'
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -177,6 +179,26 @@ export const PAYMENT_STATUS_ALIASES: Record<string, string> = {
   paid: 'COMPLETED',
 }
 
+/**
+ * The names people use on screen, so a file written from the staff list reads
+ * back: "Dentist", "Front Desk", "Accounts / Cashier". The values themselves
+ * match case-insensitively without an alias. Anything else is refused rather
+ * than guessed (16 Oct, finding 24) — `NURSE` is not a role here.
+ */
+export const ROLE_ALIASES: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(ROLE_LABELS).map(([role, label]) => [label, role])),
+  Admin: 'ADMIN',
+  Manager: 'CLINIC_MANAGER',
+  Doctor: 'DOCTOR',
+  Assistant: 'DENTAL_ASSISTANT',
+  Reception: 'RECEPTIONIST',
+  Receptionist: 'RECEPTIONIST',
+  Accounts: 'ACCOUNTANT',
+  Cashier: 'ACCOUNTANT',
+  Inventory: 'INVENTORY_STAFF',
+  'Lab Tech': 'LAB_TECH',
+}
+
 // ---------------------------------------------------------------------------
 // Entity schemas
 // ---------------------------------------------------------------------------
@@ -275,9 +297,11 @@ const STAFF_FIELDS: FieldDefinition[] = [
   { name: 'email', type: 'string', required: true, description: 'Email address (used for login)' },
   {
     name: 'role',
-    type: 'string',
+    type: 'enum',
     required: false,
-    description: 'Role: DOCTOR, RECEPTIONIST, NURSE, LAB_TECH, ADMIN',
+    description: `Role: ${ALL_ROLES.join(', ')} (Front Desk if blank). Only an administrator can import an ADMIN`,
+    enumValues: [...ALL_ROLES],
+    enumAliases: ROLE_ALIASES,
   },
   { name: 'dateOfBirth', type: 'date', required: false, description: 'Date of birth' },
   {

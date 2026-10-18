@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getAuthenticatedHospital, requirePermission } from '@/lib/api-helpers'
 import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import prisma from '@/lib/prisma'
-import { PRINT_CATEGORY, PRINT_KEYS, readPrintLayout } from '@/lib/print-settings'
+import { PRINT_CATEGORY, PRINT_KEYS, readLetterhead, readPrintLayout } from '@/lib/print-settings'
 import { PRINT_LIMITS, type PrintLayout } from '@/lib/print'
 
 /**
@@ -13,6 +13,11 @@ import { PRINT_LIMITS, type PrintLayout } from '@/lib/print'
  * GET is open to everyone signed in to the clinic, not only to people who can
  * read settings: a dentist printing a prescription needs the layout as much as
  * the person who set it.
+ *
+ * It carries the clinic's letterhead details too (`clinic`, see
+ * ClinicLetterhead in lib/print.ts), for the same reason: the statement, the
+ * estimate and the day book are used by people who cannot read
+ * `/api/settings/clinic`.
  */
 
 const mm = (key: keyof typeof PRINT_LIMITS, label: string) =>
@@ -36,8 +41,11 @@ export async function GET() {
   }
 
   try {
-    const layout = await readPrintLayout(prisma, hospitalId)
-    return NextResponse.json({ success: true, data: layout })
+    const [layout, clinic] = await Promise.all([
+      readPrintLayout(prisma, hospitalId),
+      readLetterhead(prisma, hospitalId),
+    ])
+    return NextResponse.json({ success: true, data: layout, clinic })
   } catch (err) {
     console.error('Get print settings error:', err)
     return NextResponse.json({ error: 'Failed to get print settings' }, { status: 500 })

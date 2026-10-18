@@ -102,6 +102,8 @@ function shiftDay(day: string, by: number): string {
 }
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+/** The day the book draws for a clinic that has not set its opening hours. */
+const DEFAULT_BOOK_HOURS = { open: '09:00', close: '21:00' }
 
 /** Sentence-case names for the appointment types, for the filter and the badge. */
 const TYPE_OPTIONS = [
@@ -210,7 +212,11 @@ export default function AppointmentsPage() {
     requestedView === 'calendar' ? 'calendar' : requestedView === 'week' ? 'week' : 'list'
   const todayDay = clinicToday ?? browserDay()
   const bookDay = searchParams.get('day') || todayDay
-  const [book, setBook] = useState<{ appointments: BookAppointment[]; day: string } | null>(null)
+  const [book, setBook] = useState<{
+    appointments: BookAppointment[]
+    day: string
+    slotMinutes?: number
+  } | null>(null)
   /**
    * The week the book is showing, as its Sunday.
    *
@@ -220,7 +226,7 @@ export default function AppointmentsPage() {
    */
   const [week, setWeek] = useState<WeekAppointment[] | null>(null)
   const [bookDoctors, setBookDoctors] = useState<BookDoctor[]>([])
-  const [bookHours, setBookHours] = useState({ open: '09:00', close: '21:00' })
+  const [bookHours, setBookHours] = useState(DEFAULT_BOOK_HOURS)
 
   const setViewMode = (mode: ViewMode) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -323,13 +329,20 @@ export default function AppointmentsPage() {
         const [dayRes, doctorsRes, settingsRes] = await Promise.all([
           fetch(`/api/appointments/today?date=${bookDay}`),
           fetch('/api/staff/doctors'),
-          fetch('/api/settings/clinic').catch(() => null),
+          // The print settings carry the clinic's hours and are open to every
+          // role; the clinic route needs `settings:read`, which most of the
+          // people reading the book do not hold.
+          fetch('/api/settings/print').catch(() => null),
         ])
 
         if (cancelled) return
 
         const dayData = await dayRes.json()
-        setBook({ appointments: dayData.appointments ?? [], day: dayData.day ?? bookDay })
+        setBook({
+          appointments: dayData.appointments ?? [],
+          day: dayData.day ?? bookDay,
+          slotMinutes: dayData.slotMinutes,
+        })
 
         const doctorsData = await doctorsRes.json().catch(() => ({}))
         setBookDoctors(doctorsData.doctors ?? [])
@@ -337,11 +350,16 @@ export default function AppointmentsPage() {
         // Opening hours frame the grid. A clinic that has not set them gets the
         // default day rather than an empty page.
         const settings = settingsRes?.ok ? await settingsRes.json().catch(() => null) : null
-        const hours = settings?.clinic?.workingHours ?? settings?.workingHours
+        const hours = settings?.clinic?.workingHours
         const parsed = typeof hours === 'string' ? JSON.parse(hours) : hours
         const weekday = WEEKDAYS[new Date(`${bookDay}T12:00:00`).getDay()]
         const today = parsed?.[weekday]
-        if (today?.open && today?.close) setBookHours({ open: today.open, close: today.close })
+        // Set either way, so a day without hours does not keep the last day's.
+        setBookHours(
+          today?.open && today?.close
+            ? { open: today.open, close: today.close }
+            : DEFAULT_BOOK_HOURS
+        )
       } catch {
         if (!cancelled) setBook({ appointments: [], day: bookDay })
       }
@@ -754,6 +772,7 @@ export default function AppointmentsPage() {
                   doctors={bookDoctors}
                   openFrom={bookHours.open}
                   closeAt={bookHours.close}
+                  slotMinutes={book.slotMinutes}
                   href={(a) => trail.to(`/appointments/${a.id}`)}
                   onPick={(doctorId, time) =>
                     router.push(

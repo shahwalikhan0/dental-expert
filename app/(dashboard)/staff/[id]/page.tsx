@@ -61,6 +61,7 @@ interface StaffDetail {
     id: string
     email: string
     role: string
+    clinicalRole: string | null
     isActive: boolean
     createdAt: string
   }
@@ -147,6 +148,10 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const canEdit = canWrite && (staff.user.role !== 'ADMIN' || canManageAdmins)
+  // A dentist by either role, as DENTIST_WHERE (lib/clinicians.ts) has it for
+  // booking: an owner-dentist set up as Clinic Manager has DOCTOR as the
+  // second, clinical role (bug report 16 Oct, finding 19).
+  const isDentist = staff.user.role === 'DOCTOR' || staff.user.clinicalRole === 'DOCTOR'
 
   // Withheld, not empty: the server leaves these out for anybody without
   // `staff:hr`, and the screen says so rather than show a row of dashes.
@@ -170,7 +175,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
         description={staff.employeeId}
         actions={
           <>
-            {canSeePerformance && staff.user.role === 'DOCTOR' && (
+            {canSeePerformance && isDentist && (
               <Button variant="outline" asChild>
                 <Link href={trail.to(`/staff/${staff.id}/performance`)}>
                   <BarChart3 className="h-4 w-4 mr-2" />
@@ -333,7 +338,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium">{displayDate(staff.joiningDate)}</p>
                   </div>
                 </div>
-                {staff.user.role === 'DOCTOR' && (
+                {isDentist && (
                   <>
                     <Separator />
                     <div className="grid grid-cols-3 gap-4">

@@ -217,8 +217,8 @@ export default function NewInvoicePage() {
   )
 
   // Everything the patient is let off: the discount, and any treatment
-  // charged below its own price. Over the threshold it needs a reason and,
-  // unless the person raising it may approve discounts, a manager's approval.
+  // charged below its own price. Over the threshold it needs a reason and
+  // another approver's decision — never the approval of whoever raised it.
   const shortfall = priceShortfall(items)
   const concession = round2(totals.discountAmount + shortfall)
   const needsReason =
@@ -492,8 +492,8 @@ export default function NewInvoicePage() {
                       ? ` (including ${formatCurrency(shortfall)} of treatments charged below their price)`
                       : ''}{' '}
                     is above the {formatCurrency(billing.discountApprovalThreshold)} threshold. A
-                    manager approves it before the invoice can be issued, unless you may approve
-                    discounts yourself.
+                    manager or the administrator other than you approves it before the invoice can
+                    be issued.
                   </p>
                 </div>
               )}

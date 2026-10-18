@@ -19,6 +19,7 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { isWebsite, WEBSITE_HINT, withScheme } from '@/lib/website'
 import { Save, Upload, Trash2, Loader2, Copy } from 'lucide-react'
 import { OnlineBookingCard } from '@/components/settings/online-booking-card'
 
@@ -289,11 +290,16 @@ export default function ClinicSettingsPage() {
     for (const [field, message] of REQUIRED) {
       if (!formData[field].trim()) found[field] = message
     }
+    // Without a scheme is fine — the route adds `https://` — but it has to be
+    // an address. Said here, on the field, rather than as the route's toast.
+    if (formData.website.trim() && !isWebsite(formData.website)) found.website = WEBSITE_HINT
     setErrors(found)
-    const first = REQUIRED.find(([field]) => found[field])
+    const first = [...REQUIRED.map(([field]) => field), 'website' as const].find(
+      (field) => found[field]
+    )
     if (first) {
       toast(toastError('save the clinic settings', 'Check the highlighted fields.'))
-      const element = document.getElementById(first[0])
+      const element = document.getElementById(first)
       element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       element?.focus({ preventScroll: true })
       return
@@ -313,6 +319,8 @@ export default function ClinicSettingsPage() {
           body: JSON.stringify(payload),
         })
       )
+      // Show the website as it was stored, with its scheme.
+      setFormData((prev) => ({ ...prev, website: withScheme(prev.website) }))
 
       // The page stays put after a save, so the guard is told the work is safe.
       formRef.reset()
@@ -498,7 +506,7 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
 
-                  <FormField label="Website" htmlFor="website">
+                  <FormField label="Website" htmlFor="website" error={errors.website}>
                     {(control) => (
                       <Input
                         {...control}

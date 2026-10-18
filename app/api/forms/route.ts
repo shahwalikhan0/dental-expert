@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // GET: List form submissions for the hospital (staff view)
 export async function GET(req: NextRequest) {
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
 
 // POST: Create a submission (staff creates on behalf of patient, or assigns form)
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('patients:write')
+  const { error, hospitalId, user } = await requirePermission('patients:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -65,6 +66,18 @@ export async function POST(req: NextRequest) {
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
+    // A retired form is kept for the submissions it already has, not offered
+    // for new ones — the Forms tab lists active templates only.
+    if (!template.isActive) {
+      return NextResponse.json({ error: `${template.name} is no longer in use` }, { status: 409 })
+    }
+    if (patientId) {
+      const patient = await prisma.patient.findFirst({
+        where: { id: patientId, hospitalId },
+        select: { id: true },
+      })
+      if (!patient) return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+    }
 
     const submission = await prisma.formSubmission.create({
       data: {
@@ -76,6 +89,23 @@ export async function POST(req: NextRequest) {
         signature: signature || null,
         signedAt: signature ? new Date() : null,
       },
+    })
+
+    // That it was filled in, for whom, and whether signed — never the
+    // answers, which are the patient's health history and stay on the record.
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.FORM_SUBMITTED,
+      entityType: 'FormSubmission',
+      entityId: submission.id,
+      newValues: {
+        template: template.name,
+        patientId: submission.patientId,
+        appointmentId: submission.appointmentId,
+        signed: !!submission.signedAt,
+      },
+      ...requestContext(req.headers),
     })
 
     return NextResponse.json({ submission }, { status: 201 })

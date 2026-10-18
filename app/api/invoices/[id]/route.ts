@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
-import { discountNeedsApproval, getDiscountApprovalThreshold } from '@/lib/cashier'
+import {
+  discountNeedsApproval,
+  getDiscountApprovalThreshold,
+  otherDiscountApproverExists,
+} from '@/lib/cashier'
 import { calculateInvoiceTotals, discountProblem, resolveTaxRate } from '@/lib/billing-utils'
 import { DiscountType, InvoiceStatus } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
@@ -118,7 +122,7 @@ const INVOICE_DETAIL = {
 
 // GET - Get single invoice with full details
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('billing:read')
+  const { error, hospitalId, user } = await requirePermission('billing:read')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -155,7 +159,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     })
 
-    return NextResponse.json({ ...invoice, clinic })
+    // A discount waits for someone other than whoever asked for it. Where the
+    // person asking is the clinic's only approver, the approval route lets
+    // them approve it themselves with a note (see otherDiscountApproverExists);
+    // the screen needs to know that to offer it.
+    const soleDiscountApprover =
+      invoice.discountApprovalStatus === 'PENDING' &&
+      !!user?.id &&
+      invoice.discountRequestedById === user.id &&
+      holderCan(user, 'billing:discount') &&
+      !(await otherDiscountApproverExists(prisma, hospitalId, user.id))
+
+    return NextResponse.json({ ...invoice, clinic, soleDiscountApprover })
   } catch (error) {
     const known = knownErrorResponse(error)
     if (known) return known
@@ -473,26 +488,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                   : `A discount of ${now.amount} is above the ${threshold} approval threshold and needs a reason`
               )
             }
-            if (holderCan(user, 'billing:discount')) {
-              approvalStatus = 'APPROVED'
-              updateData = {
-                ...updateData,
-                discountApprovalStatus: 'APPROVED',
-                discountRequestedById: user?.id ?? null,
-                discountApprovedById: user?.id ?? null,
-                discountDecidedAt: new Date(),
-                discountDecisionNote: null,
-              }
-            } else {
-              approvalStatus = 'PENDING'
-              updateData = {
-                ...updateData,
-                discountApprovalStatus: 'PENDING',
-                discountRequestedById: user?.id ?? null,
-                discountApprovedById: null,
-                discountDecidedAt: null,
-                discountDecisionNote: null,
-              }
+            // PENDING whoever edits it, a manager or the administrator
+            // included: the edit is a new request, and another approver
+            // decides it (finding 10, 16 Oct).
+            approvalStatus = 'PENDING'
+            updateData = {
+              ...updateData,
+              discountApprovalStatus: 'PENDING',
+              discountRequestedById: user?.id ?? null,
+              discountApprovedById: null,
+              discountDecidedAt: null,
+              discountDecisionNote: null,
             }
           } else {
             approvalStatus = 'NOT_REQUIRED'

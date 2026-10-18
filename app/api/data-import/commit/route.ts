@@ -14,6 +14,8 @@ import { requireFeature } from '@/lib/plan-gate'
 import { generateInvoiceNo, generatePaymentNo } from '@/lib/billing-utils'
 import { lockInvoice, readSettlement, settleInvoice } from '@/lib/invoice-settlement'
 import { IMPORTED_PAYMENT_NOTE, importedInvoiceFigures } from '@/lib/import/invoice-figures'
+import { importedStaffRole } from '@/lib/import/staff-role'
+import type { RoleHolder } from '@/lib/rbac'
 import type { PaymentStatus } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
@@ -71,6 +73,9 @@ export async function POST(req: NextRequest) {
         }
         const { value } = coerceValue(rawValue, field)
         row[field.name] = value
+        // A role cell that resolved to nothing is refused, a blank one is
+        // Front Desk; only the raw cell tells the two apart.
+        if (job.entityType === 'staff' && field.name === 'role') row._rawRole = rawValue
       }
       transformedRows.push(row)
     }
@@ -93,6 +98,7 @@ export async function POST(req: NextRequest) {
         case 'staff':
           ;({ successCount, errorCount } = await importStaff(
             hospitalId,
+            session?.user,
             transformedRows,
             skipErrorRows,
             importErrors
@@ -314,12 +320,23 @@ async function importPatients(
 
 async function importStaff(
   hospitalId: string,
+  actor: RoleHolder | undefined | null,
   rows: Record<string, any>[],
   skipErrors: boolean,
   errors: { row: number; message: string }[]
 ) {
   let successCount = 0,
     errorCount = 0
+
+  // The staff form's rules for the role, as validation applied them
+  // (16 Oct, finding 24). Without skipping, a refused role stops the import
+  // before anybody is created, not halfway through the file.
+  if (!skipErrors) {
+    for (const row of rows) {
+      const role = importedStaffRole(actor, row._rawRole, row.role)
+      if (!role.ok) throw new RowError(`Row ${row._rowNum}: ${role.message}`)
+    }
+  }
 
   for (const row of rows) {
     try {
@@ -358,21 +375,8 @@ async function importStaff(
       const tempPassword = crypto.randomUUID().slice(0, 12)
       const hashedPassword = await bcrypt.hash(tempPassword, 10)
 
-      // Determine role
-      const roleMap: Record<string, string> = {
-        DOCTOR: 'DOCTOR',
-        RECEPTIONIST: 'RECEPTIONIST',
-        NURSE: 'NURSE',
-        LAB_TECH: 'LAB_TECH',
-        ADMIN: 'ADMIN',
-        Doctor: 'DOCTOR',
-        Receptionist: 'RECEPTIONIST',
-        Nurse: 'NURSE',
-        doctor: 'DOCTOR',
-        receptionist: 'RECEPTIONIST',
-        nurse: 'NURSE',
-      }
-      const role = roleMap[row.role] || 'RECEPTIONIST'
+      const role = importedStaffRole(actor, row._rawRole, row.role)
+      if (!role.ok) throw new RowError(`Row ${row._rowNum}: ${role.message}`)
 
       await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
@@ -382,7 +386,7 @@ async function importStaff(
             name: `${firstName} ${lastName}`.trim(),
             phone: row.phone,
             password: hashedPassword,
-            role: role as any,
+            role: role.role,
             mustChangePassword: true,
           },
         })

@@ -7,6 +7,7 @@ import { sendInviteEmail } from '@/lib/email-helpers'
 import { INVITABLE_ROLES } from '@/lib/rbac'
 import { INVITATION_FILTER, invitationStatus, inviteExpiry, isInvitation } from '@/lib/invitations'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { emailEquals, emailField } from '@/lib/email-address'
 import { planName } from '@/lib/plans'
 import { getTenant } from '@/lib/tenant'
@@ -107,6 +108,24 @@ export async function POST(request: Request) {
             isActive: false,
           },
         })
+
+    // Who offered which role to which address (16 Oct, finding 14). The token
+    // is never recorded — it is the invitation itself.
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.STAFF_INVITED,
+      entityType: 'User',
+      entityId: invite.id,
+      newValues: {
+        email: invite.email,
+        name: invite.name,
+        role: invite.role,
+        expiresAt: invite.inviteExpiresAt,
+        ...(existing ? { resent: true } : {}),
+      },
+      ...requestContext(request.headers),
+    })
 
     // Get hospital name for the email
     const hospital = await prisma.hospital.findUnique({

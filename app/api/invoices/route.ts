@@ -12,7 +12,6 @@ import type { Prisma } from '@prisma/client'
 import { overdueInvoiceWhere } from '@/lib/invoice-figures'
 import { clinicTimezone, dayRangeIn } from '@/lib/appointment-time'
 import { discountNeedsApproval, getDiscountApprovalThreshold } from '@/lib/cashier'
-import { holderCan } from '@/lib/rbac'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import {
@@ -357,10 +356,11 @@ export async function POST(request: NextRequest) {
       // configurable threshold." What counts is everything the patient is let
       // off: the discount, plus any treatment priced below its own price
       // (invoice review 4.1). Over the threshold it needs a reason, and
-      // someone holding `billing:discount` to stand behind it. Reception
-      // raises invoices but does not hold that capability, so their request is
-      // recorded PENDING and a manager decides; the invoice cannot leave DRAFT
-      // until they do.
+      // someone holding `billing:discount` to stand behind it — someone other
+      // than whoever raised it. It is recorded PENDING whoever asks, a manager
+      // or the administrator included (finding 10, 16 Oct), and the invoice
+      // cannot leave DRAFT until another approver decides through the
+      // discount-approval route.
       const shortfall = await treatmentPriceShortfall(tx, hospitalId, lines)
       const concession = concessionOf(
         calculatedTotals.discountAmount,
@@ -391,13 +391,7 @@ export async function POST(request: NextRequest) {
         }
 
         approval.discountRequestedById = user?.id ?? null
-        if (holderCan(user, 'billing:discount')) {
-          approval.discountApprovalStatus = 'APPROVED'
-          approval.discountApprovedById = user?.id ?? null
-          approval.discountDecidedAt = new Date()
-        } else {
-          approval.discountApprovalStatus = 'PENDING'
-        }
+        approval.discountApprovalStatus = 'PENDING'
       }
 
       const invoiceNo = await generateInvoiceNo(tx, hospitalId)

@@ -91,12 +91,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
  * Soft, and deliberately so. The visit happened; a clinic that saw somebody
  * should still be able to answer for the appointment afterwards, and the
  * appointment's foreign key would refuse a hard delete anyway.
+ *
+ * Needs `appointments:write`, not `patients:delete`. A walk-in is not a patient
+ * record, and it is made by booking one — the desk that books walk-ins is the
+ * desk that decides on them. `patients:delete` left the queue's own "discard
+ * the rest" to the Administrator alone (bug report 16 Oct, finding 15).
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId, user } = await requirePermission('patients:delete')
+  const { error, hospitalId, user } = await requirePermission('appointments:write')
   if (error || !hospitalId || !user?.id) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

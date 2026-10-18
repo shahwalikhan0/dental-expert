@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { BillingRefusal, billingRefusalResponse, lockInvoice } from '@/lib/invoice-settlement'
+import { otherDiscountApproverExists } from '@/lib/cashier'
 
 /**
  * POST /api/invoices/[id]/discount-approval — the second half of FR-013.
@@ -81,10 +82,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       // The person who asked for the discount must not be the one approving it,
       // even where they hold the capability — that is the whole point of FR-013.
-      if (invoice.discountRequestedById && invoice.discountRequestedById === user.id) {
+      //
+      // One exception, so a practice with a single approver is not left with
+      // discounts nobody can ever decide (finding 10, 16 Oct): when nobody else
+      // in the clinic holds `billing:discount`, the requester may approve their
+      // own, but only with a note saying why, and it is recorded as a
+      // self-approval so an auditor can find every one. To withdraw their own
+      // request they edit the discount, as before.
+      const ownRequest =
+        !!invoice.discountRequestedById && invoice.discountRequestedById === user.id
+      const selfApproved =
+        ownRequest &&
+        body.decision === 'APPROVE' &&
+        !(await otherDiscountApproverExists(tx, hospitalId, user.id))
+      if (ownRequest && !selfApproved) {
         throw new BillingRefusal(
           403,
           'A discount cannot be approved by the person who requested it'
+        )
+      }
+      if (selfApproved && !body.note) {
+        throw new BillingRefusal(
+          400,
+          'You are the only approver in the clinic, so approving your own discount needs a note saying why'
         )
       }
 
@@ -101,9 +121,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           discountRequestedBy: { select: { id: true, name: true } },
         },
       })
-      return { invoice, updated }
+      return { invoice, updated, selfApproved }
     })
-    const { invoice, updated } = outcome
+    const { invoice, updated, selfApproved } = outcome
 
     // The decision is on the invoice already. It goes here too because the
     // audit screen is where somebody looks for "what was approved this month,
@@ -111,8 +131,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await recordAudit({
       hospitalId,
       userId: user.id,
-      action:
-        body.decision === 'APPROVE'
+      action: selfApproved
+        ? AUDIT_ACTIONS.DISCOUNT_SELF_APPROVED
+        : body.decision === 'APPROVE'
           ? AUDIT_ACTIONS.DISCOUNT_APPROVED
           : AUDIT_ACTIONS.DISCOUNT_REJECTED,
       entityType: 'Invoice',
@@ -124,6 +145,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         decision: body.decision,
         note: body.note ?? null,
         requestedById: invoice.discountRequestedById,
+        ...(selfApproved ? { selfApproved: true, reason: 'No other approver in the clinic' } : {}),
       },
       ...requestContext(req.headers),
     })

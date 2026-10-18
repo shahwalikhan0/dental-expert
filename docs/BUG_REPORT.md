@@ -10,7 +10,7 @@ The 12 October report follows this one, unchanged.
 
 ## Resolution — 19 October 2026
 
-The six High findings are fixed. The Medium and Low findings are still open, apart from 17, which the fix for 5 needed.
+The six High findings and all the Medium findings (7–28) are fixed. The Low findings are still open. 17 was fixed with 5; the Medium fixes are listed after the High ones.
 
 - **1 and 2 — Sessions.** The account is now read again on every request that reaches the server: every API route and every server-rendered page (`lib/account-standing.ts`, called from the `jwt` callback in `lib/auth.ts`).
   - The role, second role and clinic-administrator flag come from the database, not from sign-in. A role change applies to the next request.
@@ -29,6 +29,39 @@ The six High findings are fixed. The Medium and Low findings are still open, apa
   - **Forms:** every `/new` and `/[id]/edit` page now needs the permission its save needs (`FORM_ROUTE_PERMISSIONS` in `lib/rbac.ts`). So does the refund page and the prescription template page. A refused form goes back to the record or list it came from.
   - **Buttons:** create, edit and status buttons are shown only to roles that can save them, in invoices, inventory, lab, treatments, plans and prescription templates. "Process refund" now needs `billing:refund`. "Sign note" and "Add addendum" on a treatment now need `clinical:sign`.
 - **17 — Patient preselection.** Fixed alongside 5: the picker now records the hand-over when the patient arrives, not when it asks for them. Booking from the patient record, Recare and the waitlist arrives with the patient chosen.
+
+**Medium findings**
+
+- **7 — Letterhead.** `GET /api/settings/print`, open to every staff role, now also returns the clinic's name, address, phones, email, website and hours (`clinic`, from `readLetterhead`). The statement, the estimate and the day book read it from there.
+  - The statement now needs `billing:read`; a refused role goes back to the patient record.
+  - The day book uses the clinic's hours for the day shown, and draws one row per slot at the clinic's slot length, which `/api/appointments/today` now returns.
+- **8 — Lab order forms.** The tooth picker only loads the chart for `clinical:read` holders and is a plain tooth list otherwise. The treatment picker only loads, and only shows, with `lab:write`.
+- **9 — Export menu.** Shown only with `reports:export`.
+- **10 — Own discounts.** A discount above the threshold always waits for a second person, whoever asks; the create and edit routes no longer approve it on the spot.
+  - In a clinic where nobody else holds `billing:discount`, the requester may approve their own, with a required note. It is audited as `invoice.discount.self_approved`.
+- **11 — Dashboard cards.** Low stock is returned and shown only with `inventory:read`. "Collected this month" links to `/billing/reports` with `reports:financial`, and to `/billing/payments` otherwise.
+- **12 — Performance.** Uses the clinic's day boundaries, with the end date included. Revenue is what was invoiced for the dentist's treatments, as in Reports → Staff productivity.
+- **13 — Audit log.** Entries return old and new values, and the page shows each change as before → after. Search covers both. Entries show the patient's name, and the entity filter lists the types actually in the log.
+- **14 — Missing audit entries.** Every route the finding lists now writes one. Edits record only the fields that changed, and a form submission records the template and patient, never the answers.
+- **15 — Walk-in buttons.** Discard needs `appointments:write` (route and button). New walk-in needs `appointments:write`; Register needs `patients:write`.
+- **16 — Walk-in phone.** Conversion follows registration's shared-phone rule: it succeeds and names who shares the number. A duplicate CNIC is still refused.
+- **18 — Communications.**
+  - The send forms need `communications:write`, and the SMS and email tabs list real history.
+  - The patient record has a Messages tab, from the new `GET /api/patients/[id]/messages`.
+  - Found while fixing this: the existing history endpoints did not filter by clinic. They now go through `lib/message-history.ts`, which always does.
+- **19 — Second dentist.** The dentist list, online booking (the API and the page) and the staff screens include anyone whose main or clinical role is DOCTOR.
+- **20 — Appointment settings.** The page's defaults are the server's `DEFAULT_APPOINTMENT_SETTINGS`. No lunch break and no booking limit show as empty fields, and blank is read as unset.
+- **21 — Website.** A website without a scheme is saved with `https://`. An invalid one is shown on the field.
+- **22 — User menu.** Profile goes to `/settings/profile`, which every role can open. Settings is shown only with `settings:read`.
+- **23 — Forms.**
+  - The patient's Forms tab has "Fill in form" (`patients:write`) and a print/PDF link per submission.
+  - The PDF finds answers by field id. Review needs `patients:write`, and saving without changing the status works.
+  - Submitting refuses a retired template.
+- **24 — Staff import.** The role must be a real role (on-screen names accepted). Each row goes through `staffChangeRefusal` at validation and at commit, so a manager cannot import administrators.
+- **25 — Estimate for the desk.** `/billing/estimates/[id]` (`billing:read`) shows the same estimate as the treatment plan's, from an endpoint that returns only what the estimate prints. The patient's Billing tab lists the estimates.
+- **26 — Treatment for a visit.** In-progress and completed appointments have "Record treatment" (`clinical:write`). New Treatment shows the visit it is for. The patient's Treatments tab has "New treatment".
+- **27 — Pending.** Counts the rest of today only, in the clinic's timezone.
+- **28 — Unsigned notes.** Only the author may edit an unsigned note (403 for anyone else).
 
 ## How this was tested
 

@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
@@ -66,6 +67,11 @@ export default function EditLabOrderPage() {
   const params = useParams()
   const orderId = params.id as string
   const { toast } = useToast()
+  // The Lab Technician edits cases but holds no clinical read, and the chart
+  // behind the tooth picker is clinical. Without it the picker is a plain
+  // tooth list rather than a request the server refuses (bug report 16 Oct,
+  // finding 8).
+  const canReadChart = useCan('clinical:read') === true
 
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -309,7 +315,7 @@ export default function EditLabOrderPage() {
                   setTeeth(next)
                   setTeethTouched(true)
                 }}
-                patientId={form.patientId || null}
+                patientId={canReadChart ? form.patientId || null : null}
               />
             </FormField>
             <FormField label="Shade">

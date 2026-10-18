@@ -76,28 +76,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: cnicResult.error }, { status: 400 })
     }
 
-    // The same two uniqueness rules the ordinary registration path enforces.
-    // Converting must not be a way round them.
-    const clash = await prisma.patient.findFirst({
-      where: {
-        hospitalId,
-        OR: [{ phone }, ...(cnicResult.value ? [{ cnic: cnicResult.value }] : [])],
-      },
-      select: { id: true, patientId: true, firstName: true, lastName: true, phone: true },
-    })
-
-    if (clash) {
-      return NextResponse.json(
-        {
-          error:
-            clash.phone === phone
-              ? `That phone number already belongs to ${clash.firstName} ${clash.lastName} (${clash.patientId})`
-              : `That CNIC already belongs to ${clash.firstName} ${clash.lastName} (${clash.patientId})`,
-          existingPatient: clash,
-        },
-        { status: 409 }
-      )
+    // The same rules the ordinary registration path (`POST /api/patients`)
+    // enforces. Converting must be neither a way round them nor stricter than
+    // them: a CNIC is unique, a phone may be shared by a household and is only
+    // reported back. Refusing the shared phone here (bug report 16 Oct, finding
+    // 16) sent the desk off to invent a number for the walk-in's record.
+    if (cnicResult.value) {
+      const holder = await prisma.patient.findFirst({
+        where: { hospitalId, cnic: cnicResult.value },
+        select: { id: true, patientId: true, firstName: true, lastName: true },
+      })
+      if (holder) {
+        return NextResponse.json(
+          {
+            error: `That CNIC already belongs to ${holder.firstName} ${holder.lastName} (${holder.patientId})`,
+            existingPatient: holder,
+          },
+          { status: 409 }
+        )
+      }
     }
+
+    const sharesPhoneWith = await prisma.patient.findFirst({
+      where: { hospitalId, phone },
+      select: { id: true, patientId: true, firstName: true, lastName: true },
+    })
 
     const patientId = await nextPatientId(prisma, hospitalId)
     const now = new Date()
@@ -151,7 +154,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ...requestContext(request.headers),
     })
 
-    return NextResponse.json({ success: true, patient }, { status: 201 })
+    // As registration does: who else is on this number, after the fact.
+    return NextResponse.json(
+      {
+        success: true,
+        patient,
+        ...(sharesPhoneWith && {
+          sharedPhoneWith: {
+            id: sharesPhoneWith.id,
+            patientId: sharesPhoneWith.patientId,
+            name: `${sharesPhoneWith.firstName} ${sharesPhoneWith.lastName}`,
+          },
+        }),
+      },
+      { status: 201 }
+    )
   } catch (err) {
     console.error('Error converting visitor:', err)
     return NextResponse.json({ error: 'Failed to register this visitor' }, { status: 500 })

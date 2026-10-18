@@ -48,7 +48,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json()
     const { status, reviewNotes } = body
 
-    if (!['REVIEWED', 'APPROVED', 'REJECTED'].includes(status)) {
+    // SUBMITTED ("Pending") too: the picker opens on the current status, and
+    // saving notes without changing it was refused as an invalid status
+    // (16 Oct, finding 23).
+    if (!['SUBMITTED', 'REVIEWED', 'APPROVED', 'REJECTED'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
 

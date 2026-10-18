@@ -76,7 +76,9 @@ export default function PatientStatementPage() {
       try {
         const [ledgerRes, clinicRes] = await Promise.all([
           fetch(`/api/patients/${params.id}/ledger?family=${family}`),
-          fetch('/api/settings/clinic'),
+          // Not /api/settings/clinic: that needs `settings:read`, which the desk
+          // printing a statement does not hold. See ClinicLetterhead.
+          fetch('/api/settings/print'),
         ])
 
         if (!cancelled && ledgerRes.ok) setData(await ledgerRes.json())
@@ -84,7 +86,7 @@ export default function PatientStatementPage() {
         // still a statement, so a failure here does not fail the page.
         if (!cancelled && clinicRes.ok) {
           const payload = await clinicRes.json()
-          setClinic(payload.hospital ?? payload.clinic ?? payload)
+          setClinic(payload.clinic ?? null)
         }
       } catch {
         // `data` stays empty: the page says it could not load, with a retry.

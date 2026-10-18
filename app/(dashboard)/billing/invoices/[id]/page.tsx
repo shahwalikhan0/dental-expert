@@ -106,6 +106,8 @@ interface Invoice {
   discountDecisionNote: string | null
   discountRequestedBy: { id: string; name: string } | null
   discountApprovedBy: { id: string; name: string } | null
+  /** The viewer asked for this discount and is the clinic's only approver. */
+  soleDiscountApprover?: boolean
   appointment: {
     id: string
     appointmentNo: string
@@ -482,6 +484,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         : null
   const ownRequest =
     !!invoice.discountRequestedBy && invoice.discountRequestedBy.id === session?.user?.id
+  // Nobody else can approve it, so the requester may, with a note (finding 10).
+  const selfApproval = ownRequest && !!invoice.soleDiscountApprover
   // The date the invoice bears: the day it was issued, or the draft's date.
   const invoiceDate = invoice.issuedAt ?? invoice.createdAt
   // Every payment, then its refunds as negative rows, so the history adds up
@@ -979,9 +983,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 )}
 
                 {approval === 'PENDING' &&
-                  (canApproveDiscounts && !ownRequest ? (
+                  (canApproveDiscounts && (!ownRequest || selfApproval) ? (
                     <div className="space-y-2 border-t pt-3">
-                      <Label htmlFor="decisionNote">Note (required to reject)</Label>
+                      {selfApproval && (
+                        <p className="text-muted-foreground">
+                          Nobody else in the clinic can approve discounts, so you may approve your
+                          own. Say why in the note; it is recorded as a self-approval.
+                        </p>
+                      )}
+                      <Label htmlFor="decisionNote">
+                        {selfApproval ? 'Note (required)' : 'Note (required to reject)'}
+                      </Label>
                       <Textarea
                         id="decisionNote"
                         rows={2}
@@ -999,17 +1011,20 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         >
                           Approve
                         </SubmitButton>
-                        <SubmitButton
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDecision('REJECT')}
-                          busy={deciding === 'REJECT'}
-                          busyLabel="Rejecting…"
-                          disabled={deciding !== null}
-                        >
-                          Reject
-                        </SubmitButton>
+                        {/* Their own request is withdrawn by editing it. */}
+                        {!selfApproval && (
+                          <SubmitButton
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDecision('REJECT')}
+                            busy={deciding === 'REJECT'}
+                            busyLabel="Rejecting…"
+                            disabled={deciding !== null}
+                          >
+                            Reject
+                          </SubmitButton>
+                        )}
                       </div>
                     </div>
                   ) : (

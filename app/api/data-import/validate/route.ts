@@ -6,6 +6,7 @@ import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS, coerceValue } from '@/lib/import/schema-definitions'
 import type { FieldDefinition } from '@/lib/import/schema-definitions'
 import { importedInvoiceFigures } from '@/lib/import/invoice-figures'
+import { importedStaffRole } from '@/lib/import/staff-role'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { requireFeature } from '@/lib/plan-gate'
 
@@ -18,7 +19,7 @@ interface ValidationError {
 }
 
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -78,13 +79,30 @@ export async function POST(req: NextRequest) {
         transformedRow[field.name] = value
         rawRow[field.name] = rawValue
 
-        if (coerceError) {
+        // A staff role that is not a role is reported below, as an error.
+        const checkedBelow = job.entityType === 'staff' && field.name === 'role'
+        if (coerceError && !checkedBelow) {
           errors.push({
             row: i + 1,
             field: field.name,
             value: rawValue,
             message: coerceError,
             severity: field.required && !value ? 'error' : 'warning',
+          })
+        }
+      }
+
+      // The staff form's rules for the role, row by row: a real role, and
+      // ADMIN only from an administrator. Commit checks the same again.
+      if (job.entityType === 'staff') {
+        const role = importedStaffRole(user, rawRow.role, transformedRow.role)
+        if (!role.ok) {
+          errors.push({
+            row: i + 1,
+            field: 'role',
+            value: rawRow.role ?? '',
+            message: role.message,
+            severity: 'error',
           })
         }
       }

@@ -13,7 +13,7 @@ import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
 import { ExportMenu } from '@/components/ui/export-menu'
 import { Activity, Shield, UserCog, FileText, CreditCard, Calendar } from 'lucide-react'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AUDIT_GROUPS, auditLabel, auditTone } from '@/lib/audit-labels'
+import { AUDIT_GROUPS, auditEntityLabel, auditLabel, auditTone } from '@/lib/audit-labels'
 import { BLANK, displayDateTime, isoDay } from '@/lib/dates'
 
 interface AuditEntry {
@@ -21,11 +21,54 @@ interface AuditEntry {
   action: string
   entityType: string
   entityId: string | null
-  details: string | null
+  /** What the record was, and what it became — either may be missing. */
+  oldValues: Record<string, unknown> | string | null
+  newValues: Record<string, unknown> | string | null
+  /** The patient the record belongs to, where it belongs to one. */
+  patient: { id: string; patientNo: string; name: string } | null
   ipAddress: string | null
   createdAt: string
   user: { name: string; email: string; role: string } | null
 }
+
+type Values = AuditEntry['oldValues']
+
+function showValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return BLANK
+  if (Array.isArray(value)) return value.map(showValue).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/**
+ * One line per field: `field: before → after` for what changed, `field: value`
+ * for what the entry only states (16 Oct, finding 13 — the screen showed the
+ * old value alone, so an update read as the record it used to be).
+ *
+ * An entry with only one side is a creation or a removal, and lists that side
+ * as it is rather than a column of arrows to nothing.
+ */
+function changeLines(before: Values, after: Values): string[] {
+  if (typeof before === 'string' || typeof after === 'string') {
+    return [before, after].filter((v): v is string => typeof v === 'string' && !!v)
+  }
+  if (!before && !after) return []
+  if (!before) return Object.entries(after!).map(([k, v]) => `${k}: ${showValue(v)}`)
+  if (!after) return Object.entries(before).map(([k, v]) => `${k}: was ${showValue(v)}`)
+
+  const lines: string[] = []
+  for (const [key, was] of Object.entries(before)) {
+    const now = key in after ? showValue(after[key]) : BLANK
+    lines.push(`${key}: ${showValue(was)} → ${now}`)
+  }
+  for (const [key, value] of Object.entries(after)) {
+    if (!(key in before)) lines.push(`${key}: ${showValue(value)}`)
+  }
+  return lines
+}
+
+/** The cell shows the first few; all of them are in the tooltip and the export. */
+const SHOWN_LINES = 4
 
 /**
  * The badge colour and wording come from lib/audit-labels.ts.
@@ -52,13 +95,14 @@ const ACTION_OPTIONS = AUDIT_GROUPS.map((group) => ({
   label: group.label,
 }))
 
-const ENTITY_OPTIONS = ['Patient', 'Appointment', 'Invoice', 'User', 'Treatment'].map((entity) => ({
-  value: entity,
-  label: entity,
-}))
-
 export default function AuditLogPage() {
   const [logs, setLogs] = useState<AuditEntry[]>([])
+  /**
+   * The entity filter offers the kinds of record this clinic's log holds, as
+   * the route reports them — it used to offer five, typed in here, while the
+   * log held twenty-odd.
+   */
+  const [entityTypes, setEntityTypes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [total, setTotal] = useState(0)
@@ -93,6 +137,7 @@ export default function AuditLogPage() {
       if (requestId !== latestRequest.current) return
       setLogs(data.data)
       setTotal(data.pagination.total)
+      setEntityTypes(data.entityTypes ?? [])
     } catch {
       // Said in the grid, with a retry, rather than as an empty list.
       if (requestId === latestRequest.current) setFailed(true)
@@ -107,6 +152,16 @@ export default function AuditLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
 
+  const entityOptions = [
+    ...new Set([
+      ...entityTypes,
+      // A filter arriving in the address bar stays nameable before the list loads.
+      ...(list.filters.entity !== 'all' ? [list.filters.entity] : []),
+    ]),
+  ]
+    .map((entity) => ({ value: entity, label: auditEntityLabel(entity) }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
   // The file keeps a sortable timestamp to the second; the screen shows the
   // ordinary date and time.
   const exportRows = () =>
@@ -115,9 +170,12 @@ export default function AuditLogPage() {
       User: l.user?.name || 'System',
       Role: l.user?.role || BLANK,
       Action: auditLabel(l.action),
-      Entity: l.entityType,
+      Entity: auditEntityLabel(l.entityType),
       'Entity ID': l.entityId || BLANK,
-      Details: l.details || BLANK,
+      Patient: l.patient ? `${l.patient.name} (${l.patient.patientNo})` : BLANK,
+      Changes: changeLines(l.oldValues, l.newValues).join('; ') || BLANK,
+      Before: l.oldValues ? showValue(l.oldValues) : BLANK,
+      After: l.newValues ? showValue(l.newValues) : BLANK,
       IP: l.ipAddress || BLANK,
     }))
 
@@ -139,7 +197,7 @@ export default function AuditLogPage() {
             value={list.search}
             onChange={list.setSearch}
             aria-label="Search the audit log"
-            placeholder="Search by action, entity or details…"
+            placeholder="Search by action, entity or details, before or after…"
           />
         }
         filters={
@@ -156,7 +214,7 @@ export default function AuditLogPage() {
               plural="entities"
               value={list.filters.entity}
               onValueChange={(entity) => list.setFilter('entity', entity)}
-              options={ENTITY_OPTIONS}
+              options={entityOptions}
             />
           </>
         }
@@ -175,7 +233,7 @@ export default function AuditLogPage() {
             },
             {
               label: 'Entity',
-              value: filterValueLabel(ENTITY_OPTIONS, list.filters.entity),
+              value: filterValueLabel(entityOptions, list.filters.entity),
               onClear: () => list.setFilter('entity', 'all'),
             },
           ],
@@ -192,7 +250,7 @@ export default function AuditLogPage() {
                 <TableHead>Who</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Entity</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead>Change</TableHead>
                 <TableHead>IP</TableHead>
               </TableRow>
             </TableHeader>
@@ -215,6 +273,7 @@ export default function AuditLogPage() {
             >
               {logs.map((log) => {
                 const Icon = ENTITY_ICONS[log.entityType] || ENTITY_ICONS.default
+                const lines = changeLines(log.oldValues, log.newValues)
                 return (
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
@@ -234,11 +293,28 @@ export default function AuditLogPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="text-sm">{log.entityType}</span>
+                        <span className="text-sm">{auditEntityLabel(log.entityType)}</span>
                       </div>
+                      {log.patient && (
+                        <div className="text-xs text-muted-foreground">
+                          {log.patient.name} · {log.patient.patientNo}
+                        </div>
+                      )}
                     </TableCell>
-                    <TableCell className="max-w-[28rem] text-sm text-muted-foreground">
-                      <span className="block truncate">{log.details || BLANK}</span>
+                    <TableCell
+                      className="max-w-[28rem] text-sm text-muted-foreground"
+                      title={lines.length ? lines.join('\n') : undefined}
+                    >
+                      {lines.length === 0
+                        ? BLANK
+                        : lines.slice(0, SHOWN_LINES).map((line, i) => (
+                            <span key={i} className="block truncate">
+                              {line}
+                            </span>
+                          ))}
+                      {lines.length > SHOWN_LINES && (
+                        <span className="block text-xs">+{lines.length - SHOWN_LINES} more</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {log.ipAddress || BLANK}

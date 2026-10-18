@@ -48,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   // Parse form fields and submission data
-  let templateFields: Array<{ label: string; type: string }> = []
+  let templateFields: Array<{ id?: string; label: string; type: string }> = []
   try {
     templateFields =
       typeof submission.template.fields === 'string'
@@ -68,12 +68,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     /* empty */
   }
 
-  // Build fields array for PDF
-  const fields = templateFields.map((field) => ({
-    label: field.label || 'Field',
-    value: String(submittedData[field.label] ?? submittedData[field.label?.toLowerCase()] ?? 'N/A'),
-    type: field.type,
-  }))
+  // The form renderer stores each answer under the field's id; the label
+  // lookup is kept for submissions written by label before it (16 Oct,
+  // finding 23 — every answer printed "N/A"). Headings and paragraphs are not
+  // questions, and the signature is printed below as an image.
+  const fields = templateFields
+    .filter((field) => !['heading', 'paragraph', 'signature'].includes(field.type))
+    .map((field) => ({
+      label: field.label || 'Field',
+      value: printedAnswer(
+        (field.id !== undefined ? submittedData[field.id] : undefined) ??
+          submittedData[field.label] ??
+          submittedData[field.label?.toLowerCase()]
+      ),
+      type: field.type,
+    }))
 
   // No clinic header: it is printed on the clinic's letterhead.
   const html = generateFormPdfHtml(
@@ -99,4 +108,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       'Content-Disposition': `inline; filename="${submission.template.name.replace(/\s+/g, '-')}-${patientName.replace(/\s+/g, '-')}.html"`,
     },
   })
+}
+
+/** An answer as words: a ticked box is "Yes", several choices are a list. */
+function printedAnswer(value: unknown): string {
+  if (value === undefined || value === null || value === '') return 'N/A'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : 'N/A'
+  return String(value)
 }

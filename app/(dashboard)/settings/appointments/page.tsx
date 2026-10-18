@@ -25,7 +25,19 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { displayDate } from '@/lib/dates'
+import { DEFAULT_APPOINTMENT_SETTINGS } from '@/lib/appointment-settings'
 import { Plus, Save, Trash2 } from 'lucide-react'
+
+/**
+ * What the form shows for a setting the clinic has never saved: the server's
+ * own defaults, the ones the book is already running on. The page kept a set
+ * of its own — a 10-minute buffer and a lunch hour the server does not have —
+ * so saving the page unchanged turned both on (bug report 16 Oct, finding 20).
+ * No lunch break and no booking limit are empty fields.
+ */
+const FORM_DEFAULTS = Object.fromEntries(
+  Object.entries(DEFAULT_APPOINTMENT_SETTINGS).map(([key, value]) => [key, value?.toString() ?? ''])
+) as Record<keyof typeof DEFAULT_APPOINTMENT_SETTINGS, string>
 
 interface Holiday {
   id: string
@@ -46,16 +58,9 @@ export default function AppointmentSettingsPage() {
   const [holidayErrors, setHolidayErrors] = useState<{ name?: string; date?: string }>({})
   const [addingHoliday, setAddingHoliday] = useState(false)
 
-  const [settings, setSettings] = useState({
-    slotDuration: '30',
-    bufferTime: '10',
-    lunchBreakStart: '13:00',
-    lunchBreakEnd: '14:00',
-    maxAdvanceBookingDays: '365',
-    reminderHoursBefore: '24',
-    // FR-004: BLOCK refuses a clashing booking, WARN records it and flags it.
-    doubleBookingPolicy: 'BLOCK',
-  })
+  // FR-004: `doubleBookingPolicy` BLOCK refuses a clashing booking, WARN
+  // records it and flags it.
+  const [settings, setSettings] = useState(FORM_DEFAULTS)
 
   // The settings are what the page edits, so the page waits for them: shown
   // before they arrive, the defaults could be saved over the clinic's own.
@@ -325,7 +330,7 @@ export default function AppointmentSettingsPage() {
               <FormField
                 label="Maximum advance booking (days)"
                 htmlFor="maxAdvanceBookingDays"
-                hint="How far in advance patients can book appointments"
+                hint="How far in advance appointments can be booked. Leave empty for no limit."
               >
                 {(control) => (
                   <Input

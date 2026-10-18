@@ -93,12 +93,22 @@ export const AUDIT_ACTIONS = {
   /// A lab case moving through the laboratory (§5.8). Was its own
   /// `LabOrderHistory` table recording exactly this and nothing else.
   LAB_ORDER_STATUS_CHANGED: 'lab_order.status_changed',
+  /// The case raised, and the laboratories it can go to (16 Oct, finding 14).
+  /// Before these the trail began at the first status change, so nobody could
+  /// say who had sent a patient's work out, or who had added the lab.
+  LAB_ORDER_CREATED: 'lab_order.created',
+  LAB_VENDOR_CREATED: 'lab_vendor.created',
+  LAB_VENDOR_UPDATED: 'lab_vendor.updated',
 
   /// Goods booked in against a purchase order (§5.7). Receipt moves stock and
   /// commits the clinic to paying for it, and it is the one inventory event
   /// nobody can reconstruct from the stock level afterwards.
   GOODS_RECEIVED: 'purchase_order.received',
   PURCHASE_ORDER_PLACED: 'purchase_order.placed',
+  /// Saved as a draft, not yet sent to the supplier. Placing it is
+  /// PURCHASE_ORDER_PLACED; a draft is recorded too so the trail shows who
+  /// started an order that someone else later placed.
+  PURCHASE_ORDER_DRAFTED: 'purchase_order.drafted',
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
 
   /// Somebody signed in and then reached for something their role does not
@@ -115,6 +125,10 @@ export const AUDIT_ACTIONS = {
   /// auditor reads end to end.
   DISCOUNT_APPROVED: 'invoice.discount.approved',
   DISCOUNT_REJECTED: 'invoice.discount.rejected',
+  /// The clinic's only approver approving their own discount — allowed solely
+  /// because nobody else holds `billing:discount`, and kept apart from
+  /// DISCOUNT_APPROVED so every one of them can be listed (16 Oct, finding 10).
+  DISCOUNT_SELF_APPROVED: 'invoice.discount.self_approved',
 
   /// FR-014 — money leaving. The one financial movement that is not recoverable
   /// from the invoice arithmetic alone.
@@ -145,6 +159,8 @@ export const AUDIT_ACTIONS = {
   /// somebody's record that the clinic should be able to account for later.
   VISITOR_CONVERTED: 'visitor.converted',
   VISITOR_DISCARDED: 'visitor.discarded',
+  /// A walk-in written down at the desk — the start of the two above.
+  VISITOR_CREATED: 'visitor.created',
 
   /// Money and record changes (bug report 12 Oct, finding 24). Before these,
   /// the trail recorded refunds and discount decisions and nothing else about
@@ -177,11 +193,33 @@ export const AUDIT_ACTIONS = {
   STAFF_UPDATED: 'staff.updated',
   STAFF_DEACTIVATED: 'staff.deactivated',
   STAFF_REACTIVATED: 'staff.reactivated',
+  /// An invitation offers a role in the clinic to whoever opens the email, so
+  /// who sent it, for which role, and who withdrew it belong in the trail.
+  STAFF_INVITED: 'staff.invited',
+  STAFF_INVITE_CANCELLED: 'staff.invite_cancelled',
 
+  PROCEDURE_CREATED: 'procedure.created',
   PROCEDURE_DEACTIVATED: 'procedure.deactivated',
+  /// The medicines a prescription can be written from. A changed strength or
+  /// a withdrawn drug changes what the next prescription says.
+  MEDICATION_CREATED: 'medication.created',
+  MEDICATION_UPDATED: 'medication.updated',
+  MEDICATION_DEACTIVATED: 'medication.deactivated',
+  INVENTORY_ITEM_CREATED: 'inventory_item.created',
+  INVENTORY_ITEM_UPDATED: 'inventory_item.updated',
   INVENTORY_ITEM_DELETED: 'inventory_item.deleted',
+  SUPPLIER_CREATED: 'supplier.created',
+  SUPPLIER_UPDATED: 'supplier.updated',
   SUPPLIER_DELETED: 'supplier.deleted',
   STOCK_ADJUSTED: 'stock.adjusted',
+
+  /// Consent and intake forms: the template a patient is asked to sign, and
+  /// the signed answers. A template edited after patients signed it is the
+  /// question this answers.
+  FORM_TEMPLATE_CREATED: 'form_template.created',
+  FORM_TEMPLATE_UPDATED: 'form_template.updated',
+  FORM_TEMPLATE_DELETED: 'form_template.deleted',
+  FORM_SUBMITTED: 'form.submitted',
 
   SETTINGS_UPDATED: 'settings.updated',
   CLINIC_UPDATED: 'settings.clinic.updated',
@@ -248,6 +286,27 @@ export function diffValues(
   }
 
   return { before: b, after: a, changed }
+}
+
+/**
+ * A form template's fields as one line an auditor can read and compare:
+ * `Allergies (textarea, required); Consent (signature, required)`. The fields
+ * themselves are a JSON array, which the trail would otherwise either record
+ * whole on every save or compare as "[object Object]".
+ */
+export function formFieldsSummary(
+  fields: ReadonlyArray<{ label?: string; type?: string; required?: boolean; options?: unknown[] }>
+): string {
+  return fields
+    .map((f) => {
+      const traits = [
+        f.type,
+        f.required ? 'required' : null,
+        f.options?.length ? `${f.options.length} options` : null,
+      ].filter(Boolean)
+      return `${f.label ?? ''} (${traits.join(', ')})`
+    })
+    .join('; ')
 }
 
 export interface AuditEntry {

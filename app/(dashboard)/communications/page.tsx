@@ -10,6 +10,8 @@ import { PageHeader } from '@/components/ui/page-header'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
+import { MessageHistory } from '@/components/communications/message-history'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { MessageSquare, Mail, FileText, Send } from 'lucide-react'
 import { TemplatesTab } from './templates-tab'
@@ -19,6 +21,12 @@ type EmailErrors = Partial<Record<'to' | 'subject' | 'body', string>>
 
 export default function CommunicationsPage() {
   const { toast } = useToast()
+  // Sending is `communications:write`; the Dentist, the Dental Assistant and
+  // Accounts read the history but were shown send forms the server refused
+  // (bug report 16 Oct, finding 18).
+  const canSend = useCan('communications:write') === true
+  // Bumped after a send, so the history shows the message just sent.
+  const [sent, setSent] = useState(0)
   const [sendingSms, setSendingSms] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
 
@@ -58,6 +66,7 @@ export default function CommunicationsPage() {
       )
 
       toast(toastSuccess('SMS sent'))
+      setSent((n) => n + 1)
       setSmsPhone('')
       setSmsMessage('')
     } catch (error) {
@@ -95,6 +104,7 @@ export default function CommunicationsPage() {
       )
 
       toast(toastSuccess('Email sent'))
+      setSent((n) => n + 1)
       setEmailTo('')
       setEmailSubject('')
       setEmailBody('')
@@ -130,76 +140,84 @@ export default function CommunicationsPage() {
 
         {/* SMS Tab */}
         <TabsContent value="sms">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Send SMS</CardTitle>
-                <CardDescription>Send individual or bulk SMS messages</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  label="Phone number"
-                  required
-                  htmlFor="sms-phone"
-                  error={smsErrors.phone}
-                  hint="A Pakistani mobile, 11 digits"
-                >
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      value={smsPhone}
-                      onChange={(phone) => {
-                        setSmsPhone(phone)
-                        if (phone.trim()) setSmsErrors((e) => ({ ...e, phone: undefined }))
-                      }}
-                    />
-                  )}
-                </FormField>
+          <div className={`grid grid-cols-1 gap-6 ${canSend ? 'lg:grid-cols-2' : ''}`}>
+            {canSend && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send SMS</CardTitle>
+                  <CardDescription>Send individual or bulk SMS messages</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    label="Phone number"
+                    required
+                    htmlFor="sms-phone"
+                    error={smsErrors.phone}
+                    hint="A Pakistani mobile, 11 digits"
+                  >
+                    {(control) => (
+                      <PhoneInput
+                        {...control}
+                        value={smsPhone}
+                        onChange={(phone) => {
+                          setSmsPhone(phone)
+                          if (phone.trim()) setSmsErrors((e) => ({ ...e, phone: undefined }))
+                        }}
+                      />
+                    )}
+                  </FormField>
 
-                <FormField
-                  label="Message"
-                  required
-                  htmlFor="sms-message"
-                  error={smsErrors.message}
-                  hint={`${smsMessage.length}/500 characters`}
-                >
-                  {(control) => (
-                    <Textarea
-                      {...control}
-                      placeholder="Type your message here (max 500 characters)"
-                      rows={5}
-                      maxLength={500}
-                      value={smsMessage}
-                      onChange={(e) => {
-                        setSmsMessage(e.target.value)
-                        if (e.target.value.trim())
-                          setSmsErrors((prev) => ({ ...prev, message: undefined }))
-                      }}
-                    />
-                  )}
-                </FormField>
+                  <FormField
+                    label="Message"
+                    required
+                    htmlFor="sms-message"
+                    error={smsErrors.message}
+                    hint={`${smsMessage.length}/500 characters`}
+                  >
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        placeholder="Type your message here (max 500 characters)"
+                        rows={5}
+                        maxLength={500}
+                        value={smsMessage}
+                        onChange={(e) => {
+                          setSmsMessage(e.target.value)
+                          if (e.target.value.trim())
+                            setSmsErrors((prev) => ({ ...prev, message: undefined }))
+                        }}
+                      />
+                    )}
+                  </FormField>
 
-                <SubmitButton
-                  type="button"
-                  onClick={handleSendSMS}
-                  busy={sendingSms}
-                  busyLabel="Sending…"
-                  icon={Send}
-                  className="w-full"
-                >
-                  Send SMS
-                </SubmitButton>
-              </CardContent>
-            </Card>
+                  <SubmitButton
+                    type="button"
+                    onClick={handleSendSMS}
+                    busy={sendingSms}
+                    busyLabel="Sending…"
+                    icon={Send}
+                    className="w-full"
+                  >
+                    Send SMS
+                  </SubmitButton>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
                 <CardTitle>SMS history</CardTitle>
-                <CardDescription>Recent SMS communications</CardDescription>
+                <CardDescription>
+                  The latest SMS messages: sent from here, reminders, recalls and waitlist offers
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">SMS history will be displayed here</p>
-                {/* SMS history table/list will go here */}
+                <MessageHistory
+                  url="/api/communications/sms?limit=50"
+                  reloadKey={sent}
+                  showPatient
+                  emptyDescription="SMS messages the clinic sends appear here."
+                />
               </CardContent>
             </Card>
           </div>
@@ -207,81 +225,85 @@ export default function CommunicationsPage() {
 
         {/* Email Tab */}
         <TabsContent value="email">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Send email</CardTitle>
-                <CardDescription>Compose and send emails to patients</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  label="To (email address)"
-                  required
-                  htmlFor="email-to"
-                  error={emailErrors.to}
-                >
-                  {(control) => (
-                    <Input
-                      {...control}
-                      type="email"
-                      placeholder="patient@example.com"
-                      value={emailTo}
-                      onChange={(e) => setEmailTo(e.target.value)}
-                    />
-                  )}
-                </FormField>
+          <div className={`grid grid-cols-1 gap-6 ${canSend ? 'lg:grid-cols-2' : ''}`}>
+            {canSend && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send email</CardTitle>
+                  <CardDescription>Compose and send emails to patients</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    label="To (email address)"
+                    required
+                    htmlFor="email-to"
+                    error={emailErrors.to}
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="email"
+                        placeholder="patient@example.com"
+                        value={emailTo}
+                        onChange={(e) => setEmailTo(e.target.value)}
+                      />
+                    )}
+                  </FormField>
 
-                <FormField
-                  label="Subject"
-                  required
-                  htmlFor="email-subject"
-                  error={emailErrors.subject}
-                >
-                  {(control) => (
-                    <Input
-                      {...control}
-                      placeholder="Email subject"
-                      value={emailSubject}
-                      onChange={(e) => setEmailSubject(e.target.value)}
-                    />
-                  )}
-                </FormField>
+                  <FormField
+                    label="Subject"
+                    required
+                    htmlFor="email-subject"
+                    error={emailErrors.subject}
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        placeholder="Email subject"
+                        value={emailSubject}
+                        onChange={(e) => setEmailSubject(e.target.value)}
+                      />
+                    )}
+                  </FormField>
 
-                <FormField label="Message" required htmlFor="email-body" error={emailErrors.body}>
-                  {(control) => (
-                    <Textarea
-                      {...control}
-                      placeholder="Type your email message here"
-                      rows={8}
-                      value={emailBody}
-                      onChange={(e) => setEmailBody(e.target.value)}
-                    />
-                  )}
-                </FormField>
+                  <FormField label="Message" required htmlFor="email-body" error={emailErrors.body}>
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        placeholder="Type your email message here"
+                        rows={8}
+                        value={emailBody}
+                        onChange={(e) => setEmailBody(e.target.value)}
+                      />
+                    )}
+                  </FormField>
 
-                <SubmitButton
-                  type="button"
-                  onClick={handleSendEmail}
-                  busy={sendingEmail}
-                  busyLabel="Sending…"
-                  icon={Send}
-                  className="w-full"
-                >
-                  Send email
-                </SubmitButton>
-              </CardContent>
-            </Card>
+                  <SubmitButton
+                    type="button"
+                    onClick={handleSendEmail}
+                    busy={sendingEmail}
+                    busyLabel="Sending…"
+                    icon={Send}
+                    className="w-full"
+                  >
+                    Send email
+                  </SubmitButton>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
                 <CardTitle>Email history</CardTitle>
-                <CardDescription>Recent email communications</CardDescription>
+                <CardDescription>The latest emails the clinic has sent</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Email history will be displayed here
-                </p>
-                {/* Email history table/list will go here */}
+                <MessageHistory
+                  url="/api/communications/email?limit=50"
+                  reloadKey={sent}
+                  showPatient
+                  emptyDescription="Emails the clinic sends appear here."
+                />
               </CardContent>
             </Card>
           </div>

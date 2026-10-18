@@ -12,6 +12,7 @@
  * `SMSGateway`. That is deliberately the whole extension point.
  */
 import prisma from '@/lib/prisma'
+import { messageHistory } from '@/lib/message-history'
 import { SendRefusal } from '@/lib/services/send-refusal'
 import {
   communicationPreferences,
@@ -346,7 +347,9 @@ class SMSService {
     return smsLog.status
   }
 
+  /** This clinic's SMS history — see lib/message-history.ts. */
   async getSMSHistory(filters: {
+    hospitalId: string
     patientId?: string
     phone?: string
     status?: string
@@ -354,27 +357,8 @@ class SMSService {
     to?: Date
     limit?: number
   }) {
-    const where: any = {}
-
-    if (filters.patientId) where.patientId = filters.patientId
-    if (filters.phone) where.recipient = { contains: filters.phone }
-    if (filters.status) where.status = filters.status
-    if (filters.from || filters.to) {
-      where.createdAt = {}
-      if (filters.from) where.createdAt.gte = filters.from
-      if (filters.to) where.createdAt.lte = filters.to
-    }
-
-    return prisma.messageLog.findMany({
-      where: { ...where, channel: 'SMS' },
-      include: {
-        template: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: filters.limit || 100,
-    })
+    const { phone, ...rest } = filters
+    return messageHistory({ ...rest, recipient: phone, channel: 'SMS' })
   }
 
   async checkBalance(): Promise<{ balance: number; currency: string }> {

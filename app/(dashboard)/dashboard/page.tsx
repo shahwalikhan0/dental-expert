@@ -55,6 +55,8 @@ interface DashboardStats {
    * and their cards and charts are left off the page.
    */
   showsMoney?: boolean
+  /** False without `inventory:read`: no stock figures, and no stock card. */
+  showsStock?: boolean
   overview: {
     totalPatients: number
     newPatientsThisMonth: number
@@ -275,6 +277,7 @@ export default function DashboardPage() {
   const showsMoney = stats.showsMoney !== false
   const revenueGrowth = stats.overview.revenueGrowth ?? 0
   const revenueTrend = growth(revenueGrowth)
+  const showsStock = stats.showsStock !== false
   const lowStock = stats.recentActivity.lowStockItems ?? []
   const upcoming = stats.recentActivity.upcomingAppointments ?? []
 
@@ -315,7 +318,7 @@ export default function DashboardPage() {
       {/* What you came here to do */}
       {quickActions}
 
-      {lowStock.length > 0 && (
+      {showsStock && lowStock.length > 0 && (
         <Card className="border-amber-300 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-950/20">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -371,9 +374,12 @@ export default function DashboardPage() {
             {stats.overview.pendingAppointments} pending
           </span>
         )}
+        {/* The collections report needs `reports:financial`; without it the
+            payments behind the figure are the list to go to (bug report
+            16 Oct, finding 11). */}
         {showsMoney &&
           stat(
-            '/billing/reports',
+            holderCan(holder, 'reports:financial') ? '/billing/reports' : '/billing/payments',
             'Collected this month',
             TrendingUp,
             formatCurrency(stats.overview.thisMonthRevenue ?? 0, WHOLE_RUPEES),
@@ -640,7 +646,7 @@ export default function DashboardPage() {
 
       {/* All items in stock: said once, quietly, rather than as a third of the
           screen given over to good news. */}
-      {lowStock.length === 0 && (
+      {showsStock && lowStock.length === 0 && (
         <p className="text-center text-sm text-muted-foreground">
           All inventory items are above their minimum stock level.{' '}
           <Link href="/inventory" className="text-primary hover:underline">

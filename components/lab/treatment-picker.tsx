@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { displayDate } from '@/lib/dates'
+import { useCan } from '@/hooks/use-can'
 
 interface TreatmentOption {
   id: string
@@ -27,6 +28,10 @@ const NONE = 'none'
  * The crown for Bilal's 46 had nothing joining it to the preparation it was
  * made for. This offers the patient's own treatments, newest first; the API
  * checks again that the one chosen is this patient's.
+ *
+ * The list is behind `lab:write`, the capability the save needs. The forms
+ * that use this are gated on it too; the check here keeps a role without it
+ * from being shown "Forbidden" under the field (bug report 16 Oct, finding 8).
  */
 export function LabTreatmentPicker({
   patientId,
@@ -40,8 +45,10 @@ export function LabTreatmentPicker({
   const [options, setOptions] = useState<TreatmentOption[]>([])
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
+  const canPick = useCan('lab:write')
 
   useEffect(() => {
+    if (!canPick) return
     if (!patientId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setOptions([])
@@ -69,7 +76,9 @@ export function LabTreatmentPicker({
     return () => {
       cancelled = true
     }
-  }, [patientId])
+  }, [patientId, canPick])
+
+  if (canPick === false) return null
 
   const describe = (t: TreatmentOption) =>
     [

@@ -42,9 +42,14 @@ export interface BookDoctor {
   lastName: string
 }
 
-/** How tall one slot is. Enough to read two lines in a 30-minute block. */
-const SLOT_HEIGHT = 28
-const SLOT_MINUTES = 15
+/**
+ * How tall a minute is: 28px for fifteen, enough to read two lines in a
+ * 30-minute block. The scale stays the same whatever the clinic's slot length.
+ */
+const MINUTE_HEIGHT = 28 / 15
+
+/** Finer than this and the rows are too thin to click or read. */
+const FINEST_SLOT_MINUTES = 15
 
 const subjectOf = (a: BookAppointment) =>
   a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : (a.visitor?.name ?? 'Unknown')
@@ -55,6 +60,7 @@ export function AppointmentBook({
   doctors,
   openFrom,
   closeAt,
+  slotMinutes = FINEST_SLOT_MINUTES,
   href,
   onPick,
 }: {
@@ -65,6 +71,8 @@ export function AppointmentBook({
   /** The clinic's opening hours, as HH:MM. */
   openFrom: string
   closeAt: string
+  /** The clinic's slot length; one row per slot. */
+  slotMinutes?: number
   /** Where an appointment block goes. */
   href: (appointment: BookAppointment) => string
   /** Clicking empty space books that slot — this is the click-cost fix. */
@@ -72,12 +80,14 @@ export function AppointmentBook({
 }) {
   const start = minutesOf(openFrom)
   const end = minutesOf(closeAt)
+  const step = Math.max(FINEST_SLOT_MINUTES, slotMinutes)
+  const slotHeight = step * MINUTE_HEIGHT
 
   const slots = useMemo(() => {
     const rows: number[] = []
-    for (let minute = start; minute < end; minute += SLOT_MINUTES) rows.push(minute)
+    for (let minute = start; minute < end; minute += step) rows.push(minute)
     return rows
-  }, [start, end])
+  }, [start, end, step])
 
   // An appointment outside opening hours still has to appear. A book that
   // silently drops the emergency seen at 21:30 is worse than one that shows it
@@ -128,7 +138,7 @@ export function AppointmentBook({
           <div key={`row-${minute}`} className="contents">
             <div
               className="sticky left-0 z-10 bg-background border-r border-b px-2 text-[11px] text-muted-foreground text-right tabular-nums"
-              style={{ height: SLOT_HEIGHT }}
+              style={{ height: slotHeight }}
             >
               {/* Only on the hour: a label every fifteen minutes is noise. */}
               {minute % 60 === 0 ? timeOf(minute) : ''}
@@ -146,7 +156,7 @@ export function AppointmentBook({
                   onPick &&
                     'hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset'
                 )}
-                style={{ height: SLOT_HEIGHT }}
+                style={{ height: slotHeight }}
               />
             ))}
           </div>
@@ -163,7 +173,7 @@ export function AppointmentBook({
           book an empty slot landed on this layer instead. */}
       <div
         className="relative pointer-events-none"
-        style={{ marginTop: -slots.length * SLOT_HEIGHT }}
+        style={{ marginTop: -slots.length * slotHeight }}
       >
         <div
           className="grid min-w-[640px] pointer-events-none"
@@ -171,17 +181,13 @@ export function AppointmentBook({
         >
           <div />
           {columns.map((doctor) => (
-            <div
-              key={doctor.id}
-              className="relative"
-              style={{ height: slots.length * SLOT_HEIGHT }}
-            >
+            <div key={doctor.id} className="relative" style={{ height: slots.length * slotHeight }}>
               {(byDoctor.get(doctor.id) ?? []).map((appointment) => {
                 const from = minutesOf(appointment.scheduledTime)
-                const top = ((from - start) / SLOT_MINUTES) * SLOT_HEIGHT
+                const top = (from - start) * MINUTE_HEIGHT
                 const height = Math.max(
-                  SLOT_HEIGHT - 2,
-                  (appointment.duration / SLOT_MINUTES) * SLOT_HEIGHT - 2
+                  FINEST_SLOT_MINUTES * MINUTE_HEIGHT - 2,
+                  appointment.duration * MINUTE_HEIGHT - 2
                 )
 
                 return (
@@ -203,7 +209,7 @@ export function AppointmentBook({
                       {appointment.tokenNumber ? `#${appointment.tokenNumber.slice(-3)} ` : ''}
                       {subjectOf(appointment)}
                     </span>
-                    {height > SLOT_HEIGHT && (
+                    {height > FINEST_SLOT_MINUTES * MINUTE_HEIGHT && (
                       <span className="truncate block opacity-80">
                         {formatTime(appointment.scheduledTime)} · {appointment.duration}m
                       </span>

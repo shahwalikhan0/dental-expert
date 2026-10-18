@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { BookingForm } from '@/components/booking/booking-form'
 import { localDay } from '@/lib/appointment-time'
 import { bookableDays, readBookingSettings } from '@/lib/booking/rules'
+import { DENTIST_WHERE } from '@/lib/clinicians'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -100,8 +101,10 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
     )
   }
 
+  // DENTIST_WHERE: the dentists the slots and booking routes accept, a
+  // second, clinical DOCTOR role included.
   const dentists = await prisma.staff.findMany({
-    where: { hospitalId: clinic.id, isActive: true, user: { role: 'DOCTOR' } },
+    where: { hospitalId: clinic.id, ...DENTIST_WHERE },
     select: { id: true, firstName: true, lastName: true, specialization: true },
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
   })

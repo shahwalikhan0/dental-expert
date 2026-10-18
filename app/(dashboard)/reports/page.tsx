@@ -187,6 +187,9 @@ export default function ReportsPage() {
   // The financial tab and the invoiced column need `reports:financial`, as the
   // server does; the operational reports are open to roles that hold no money.
   const seesMoney = useCan('reports:financial') === true
+  // Every export is refused without `reports:export` (bug report 16 Oct,
+  // finding 9), so the menu is not offered.
+  const canExport = useCan('reports:export') === true
 
   // Analytics data state
   const [patientAnalytics, setPatientAnalytics] = useState<PatientAnalytics | null>(null)
@@ -350,16 +353,18 @@ export default function ReportsPage() {
             )}
             {/* Held at no value, so it stays an "Export" button and choosing the
                 same format twice exports twice. */}
-            <Select value="" onValueChange={(value) => handleExport(value as 'html' | 'excel')}>
-              <SelectTrigger className="w-[140px]" aria-label="Export">
-                <Download className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Export" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="html">Print view (HTML)</SelectItem>
-                <SelectItem value="excel">Export as Excel</SelectItem>
-              </SelectContent>
-            </Select>
+            {canExport && (
+              <Select value="" onValueChange={(value) => handleExport(value as 'html' | 'excel')}>
+                <SelectTrigger className="w-[140px]" aria-label="Export">
+                  <Download className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Export" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="html">Print view (HTML)</SelectItem>
+                  <SelectItem value="excel">Export as Excel</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <IconTooltip label="Refresh">
               <Button
                 variant="outline"

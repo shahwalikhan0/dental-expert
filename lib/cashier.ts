@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { expectedTotals, type MethodTotal } from '@/lib/till'
+import { ALL_ROLES, can } from '@/lib/rbac'
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -66,6 +67,42 @@ export async function getDiscountApprovalThreshold(hospitalId: string): Promise<
 
 export function discountNeedsApproval(discountAmount: number, threshold: number): boolean {
   return discountAmount > threshold
+}
+
+/** Roles that carry `billing:discount`, read from the permission table. */
+const DISCOUNT_APPROVER_ROLES = ALL_ROLES.filter((role) => can(role, 'billing:discount'))
+
+/**
+ * Is there anyone in the clinic, other than `userId`, who could approve a
+ * discount? Active, signed-up accounts only — an invitation nobody accepted
+ * cannot approve anything.
+ *
+ * A discount above the threshold always waits for a second person (finding
+ * 10, 16 Oct). The exception is the practice with one approver: an owner who
+ * is the only administrator and has no manager would otherwise raise a
+ * discount nobody could ever approve. There, and only there, the approval
+ * route lets them approve their own, as an explicit step with a note, and it
+ * is recorded as a self-approval rather than an ordinary one.
+ */
+export async function otherDiscountApproverExists(
+  db: Db,
+  hospitalId: string,
+  userId: string
+): Promise<boolean> {
+  const other = await db.user.findFirst({
+    where: {
+      hospitalId,
+      id: { not: userId },
+      isActive: true,
+      password: { not: null },
+      OR: [
+        { role: { in: DISCOUNT_APPROVER_ROLES } },
+        { clinicalRole: { in: DISCOUNT_APPROVER_ROLES } },
+      ],
+    },
+    select: { id: true },
+  })
+  return !!other
 }
 
 // ────────────────────────────────────────────────────────────────────────────

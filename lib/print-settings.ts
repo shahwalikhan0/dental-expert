@@ -7,7 +7,7 @@
  * lib/print.ts.
  */
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { normalisePrintLayout, type PrintLayout } from '@/lib/print'
+import { normalisePrintLayout, type ClinicLetterhead, type PrintLayout } from '@/lib/print'
 
 export const PRINT_CATEGORY = 'print'
 
@@ -32,5 +32,25 @@ export async function readPrintLayout(db: Db, hospitalId: string): Promise<Print
     headerMm: stored[PRINT_KEYS.headerMm],
     footerMm: stored[PRINT_KEYS.footerMm],
     sideMm: stored[PRINT_KEYS.sideMm],
+  })
+}
+
+/** The clinic's name, address, phone and hours, or null if the clinic is gone. */
+export async function readLetterhead(db: Db, hospitalId: string): Promise<ClinicLetterhead | null> {
+  return db.hospital.findUnique({
+    where: { id: hospitalId },
+    select: {
+      name: true,
+      tagline: true,
+      address: true,
+      city: true,
+      state: true,
+      postalCode: true,
+      phone: true,
+      alternatePhone: true,
+      email: true,
+      website: true,
+      workingHours: true,
+    },
   })
 }

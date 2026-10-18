@@ -27,6 +27,7 @@ import { formatPhone } from '@/lib/utils'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useCan } from '@/hooks/use-can'
 
 /**
  * Walk-ins — people the clinic has seen but not registered.
@@ -67,6 +68,11 @@ export default function WalkInsPage() {
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const sort = useSort({ column: 'createdAt', direction: 'desc' })
+  // Each action is offered only to whoever the server lets do it. A walk-in is
+  // made by booking one, so New walk-in and Discard go with the appointment
+  // book; Register makes a patient record.
+  const canBook = useCan('appointments:write') === true
+  const canRegister = useCan('patients:write') === true
 
   const [visitors, setVisitors] = useState<Visitor[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -165,12 +171,14 @@ export default function WalkInsPage() {
         title="Walk-ins"
         description="Seen but not registered. Register the ones who come back; discard the rest."
         actions={
-          <Button asChild>
-            <Link href={trail.to('/appointments/new?walkIn=1')}>
-              <Plus className="h-4 w-4 mr-2" />
-              New walk-in
-            </Link>
-          </Button>
+          canBook && (
+            <Button asChild>
+              <Link href={trail.to('/appointments/new?walkIn=1')}>
+                <Plus className="h-4 w-4 mr-2" />
+                New walk-in
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -222,8 +230,12 @@ export default function WalkInsPage() {
                   ? 'No walk-in matches that search.'
                   : 'Walk-ins stay here until they are registered as a patient or discarded.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New walk-in'}
-              emptyActionHref={list.isFiltered ? undefined : trail.to('/appointments/new?walkIn=1')}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canBook ? 'New walk-in' : undefined
+              }
+              emptyActionHref={
+                list.isFiltered || !canBook ? undefined : trail.to('/appointments/new?walkIn=1')
+              }
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {rows.map((visitor) => (
@@ -251,28 +263,32 @@ export default function WalkInsPage() {
                   </TableCell>
                   <GridActionsCell>
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
-                          <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                          Register
-                        </Link>
-                      </Button>
-                      <IconTooltip label={`Discard ${visitor.name}`}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
-                          disabled={busyId === visitor.id}
-                          onClick={() => discard(visitor)}
-                          aria-label={`Discard ${visitor.name}`}
-                        >
-                          {busyId === visitor.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
+                      {canRegister && (
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
+                            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                            Register
+                          </Link>
                         </Button>
-                      </IconTooltip>
+                      )}
+                      {canBook && (
+                        <IconTooltip label={`Discard ${visitor.name}`}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            disabled={busyId === visitor.id}
+                            onClick={() => discard(visitor)}
+                            aria-label={`Discard ${visitor.name}`}
+                          >
+                            {busyId === visitor.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </IconTooltip>
+                      )}
                     </div>
                   </GridActionsCell>
                 </ClickableRow>

@@ -33,6 +33,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
+import { DuplicateDetector } from '@/components/patients/duplicate-detector'
+import { useCan } from '@/hooks/use-can'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { formatToken } from '@/lib/tokens'
@@ -91,6 +93,10 @@ export default function WalkInPage() {
   const visitorId = params.id as string
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  // Discard goes with the appointment book that made the walk-in; Register
+  // makes a patient record. Each is offered only to whoever the server allows.
+  const canDiscard = useCan('appointments:write') === true
+  const canRegister = useCan('patients:write') === true
 
   const [visitor, setVisitor] = useState<Visitor | null>(null)
   const [loading, setLoading] = useState(true)
@@ -170,12 +176,20 @@ export default function WalkInPage() {
           gender: form.gender || null,
         }),
       })
-      const data = await readJson<{ patient: { id: string; patientId: string } }>(res)
+      const data = await readJson<{
+        patient: { id: string; patientId: string }
+        sharedPhoneWith?: { id: string; patientId: string; name: string }
+      }>(res)
 
+      // A shared phone is allowed, as it is at registration, but the desk is
+      // told whose it is — the family can be linked from the new record.
+      const shared = data.sharedPhoneWith
+        ? ` This phone number is also ${data.sharedPhoneWith.name}'s (${data.sharedPhoneWith.patientId}); link them under Family if they share an account.`
+        : ''
       toast(
         toastSuccess(
           'Walk-in registered',
-          `${form.firstName} ${form.lastName} is now ${data.patient.patientId}. Their visits came with them.`
+          `${form.firstName} ${form.lastName} is now ${data.patient.patientId}. Their visits came with them.${shared}`
         )
       )
       router.push(`/patients/${data.patient.id}`)
@@ -254,7 +268,8 @@ export default function WalkInPage() {
         }
         description={`${formatPhone(visitor.phone) || 'No phone number'} · first seen ${displayDate(visitor.createdAt)}`}
         actions={
-          !decided && (
+          !decided &&
+          canDiscard && (
             <Button variant="outline" className="text-destructive" onClick={discard}>
               <Trash2 className="h-4 w-4 mr-2" />
               Discard
@@ -335,7 +350,7 @@ export default function WalkInPage() {
         </CardContent>
       </Card>
 
-      {!decided && (
+      {!decided && canRegister && (
         <form ref={formRef} onSubmit={convert} noValidate>
           <Card>
             <CardHeader>
@@ -422,6 +437,17 @@ export default function WalkInPage() {
                   />
                 </div>
               </div>
+
+              {/* The same soft check registration runs: a shared phone or a
+                  returning patient is shown, not refused. */}
+              <DuplicateDetector
+                firstName={form.firstName}
+                lastName={form.lastName}
+                phone={form.phone}
+                email={form.email}
+                dateOfBirth={form.dateOfBirth}
+                onSelect={(existingId) => router.push(trail.to(`/patients/${existingId}`))}
+              />
 
               <div className="flex justify-end">
                 <SubmitButton busy={saving} busyLabel="Registering…" icon={UserPlus}>

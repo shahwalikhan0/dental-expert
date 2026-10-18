@@ -2,6 +2,7 @@
 // Supports: Hostinger, Gmail SMTP, Custom SMTP
 
 import prisma from '@/lib/prisma'
+import { messageHistory } from '@/lib/message-history'
 import { SendRefusal } from '@/lib/services/send-refusal'
 import {
   communicationPreferences,
@@ -286,7 +287,9 @@ class EmailService {
     })
   }
 
+  /** This clinic's email history — see lib/message-history.ts. */
   async getEmailHistory(filters: {
+    hospitalId: string
     patientId?: string
     email?: string
     status?: string
@@ -294,27 +297,8 @@ class EmailService {
     to?: Date
     limit?: number
   }) {
-    const where: any = {}
-
-    if (filters.patientId) where.patientId = filters.patientId
-    if (filters.email) where.recipient = { contains: filters.email }
-    if (filters.status) where.status = filters.status
-    if (filters.from || filters.to) {
-      where.createdAt = {}
-      if (filters.from) where.createdAt.gte = filters.from
-      if (filters.to) where.createdAt.lte = filters.to
-    }
-
-    return prisma.messageLog.findMany({
-      where: { ...where, channel: 'EMAIL' },
-      include: {
-        template: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: filters.limit || 100,
-    })
+    const { email, ...rest } = filters
+    return messageHistory({ ...rest, recipient: email, channel: 'EMAIL' })
   }
 
   private isValidEmail(email: string): boolean {

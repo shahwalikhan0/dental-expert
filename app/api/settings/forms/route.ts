@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, formFieldsSummary, recordAudit, requestContext } from '@/lib/audit'
 
 const fieldSchema = z.object({
   id: z.string(),
@@ -69,7 +70,7 @@ export async function GET() {
 
 // POST: Create form template
 export async function POST(req: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -87,6 +88,21 @@ export async function POST(req: NextRequest) {
         fields: data.fields as any,
         isActive: data.isActive ?? true,
       },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.FORM_TEMPLATE_CREATED,
+      entityType: 'FormTemplate',
+      entityId: template.id,
+      newValues: {
+        name: template.name,
+        type: template.type,
+        isActive: template.isActive,
+        fields: formFieldsSummary(data.fields),
+      },
+      ...requestContext(req.headers),
     })
 
     return NextResponse.json({ template }, { status: 201 })

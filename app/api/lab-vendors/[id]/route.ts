@@ -4,9 +4,31 @@ import { prisma } from '@/lib/prisma'
 import { VendorStatus } from '@prisma/client'
 import { requireFeature } from '@/lib/plan-gate'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
+
+/** What an edit's audit entry compares, before and after. */
+const AUDITED_FIELDS = {
+  code: true,
+  name: true,
+  contactPerson: true,
+  email: true,
+  phone: true,
+  alternatePhone: true,
+  address: true,
+  city: true,
+  taxRegistrationNo: true,
+  nationalTaxNo: true,
+  specializations: true,
+  avgTurnaround: true,
+  rating: true,
+  paymentTerms: true,
+  creditLimit: true,
+  notes: true,
+  status: true,
+} as const
 
 /** Accepts the legacy lowercase status values as well as the enum casing. */
 function parseStatus(value: unknown): VendorStatus | null {
@@ -47,7 +69,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update lab vendor
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('lab:write')
+  const { error, hospitalId, user } = await requirePermission('lab:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -63,7 +85,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const existing = await prisma.vendor.findFirst({
       where: { id, hospitalId, kind: 'LAB', deletedAt: null },
-      select: { id: true },
+      select: { id: true, ...AUDITED_FIELDS },
     })
 
     if (!existing) {
@@ -118,8 +140,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const limit = parseCreditLimit(creditLimit)
     if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 400 })
 
-    await prisma.vendor.update({
+    const updated = await prisma.vendor.update({
       where: { id },
+      select: AUDITED_FIELDS,
       data: {
         code,
         name,
@@ -142,6 +165,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         ...(parseStatus(body.status) ? { status: parseStatus(body.status)! } : {}),
       },
     })
+
+    // Only what changed, before and after (16 Oct, finding 14).
+    const change = diffValues(existing, updated)
+    if (change.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.LAB_VENDOR_UPDATED,
+        entityType: 'Vendor',
+        entityId: id,
+        oldValues: change.before,
+        newValues: { name: updated.name, ...change.after },
+        ...requestContext(request.headers),
+      })
+    }
 
     return NextResponse.json({ success: true, message: 'Lab vendor updated successfully' })
   } catch (error) {

@@ -6,7 +6,8 @@ import { useToast } from '@/hooks/use-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { isoDay } from '@/lib/dates'
+import { displayDate, isoDay } from '@/lib/dates'
+import { formatTime } from '@/lib/appointment-utils'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { User, Stethoscope, Save } from 'lucide-react'
+import { User, Stethoscope, Save, CalendarCheck } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { PatientPicker } from '@/components/patients/patient-picker'
 import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
@@ -43,6 +44,16 @@ interface Patient {
   /** On a patient fetched by id. The search answers with `age` instead. */
   dateOfBirth?: string | null
   age?: number | null
+}
+
+/** The visit a treatment is being recorded against, from `?appointmentId=`. */
+interface Visit {
+  id: string
+  appointmentNo: string
+  scheduledDate: string
+  scheduledTime: string
+  patientId: string | null
+  doctor: { id: string; firstName: string; lastName: string } | null
 }
 
 interface Doctor {
@@ -179,6 +190,38 @@ export default function NewTreatmentPage() {
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
+  const [visit, setVisit] = useState<Visit | null>(null)
+
+  /**
+   * The visit, when the treatment is recorded from an appointment's "Record
+   * treatment" (bug report 16 Oct, finding 26). The id alone linked it
+   * invisibly; the screen now says which visit, and its dentist is the
+   * starting choice of doctor.
+   */
+  useEffect(() => {
+    if (!preselectedAppointmentId) return
+    let cancelled = false
+    const loadVisit = async () => {
+      try {
+        const data = await readJson<Visit>(
+          await fetch(`/api/appointments/${preselectedAppointmentId}`)
+        )
+        if (cancelled) return
+        setVisit(data)
+        if (data.doctor) {
+          const doctorId = data.doctor.id
+          setFormData((prev) => (prev.doctorId ? prev : { ...prev, doctorId }))
+        }
+      } catch (error) {
+        // The link is still sent; the route checks it against the patient.
+        console.error('Error fetching the visit:', error)
+      }
+    }
+    loadVisit()
+    return () => {
+      cancelled = true
+    }
+  }, [preselectedAppointmentId])
 
   // Fetch initial data. The handed-over patient (`?patientId=`) is fetched by
   // the picker itself, by id — see `initialPatientId` below.
@@ -238,7 +281,14 @@ export default function NewTreatmentPage() {
 
   const handlePatientChange = (patient: Patient | null) => {
     setSelectedPatient(patient)
-    setFormData((prev) => ({ ...prev, patientId: patient?.id ?? '' }))
+    // Choosing somebody else unlinks the visit: it is the other patient's, and
+    // the route would refuse the pair.
+    const keepsVisit = !patient || !visit?.patientId || patient.id === visit.patientId
+    setFormData((prev) => ({
+      ...prev,
+      patientId: patient?.id ?? '',
+      appointmentId: keepsVisit ? prev.appointmentId : '',
+    }))
     if (patient) setErrors((prev) => ({ ...prev, patient: undefined }))
   }
 
@@ -332,6 +382,25 @@ export default function NewTreatmentPage() {
                 />
               )}
             </FormField>
+            {visit && formData.appointmentId === visit.id && (
+              <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <CalendarCheck className="h-4 w-4 shrink-0" />
+                <span>
+                  For the visit{' '}
+                  <Link
+                    href={trail.to(`/appointments/${visit.id}`)}
+                    className="font-medium text-foreground hover:underline"
+                  >
+                    {visit.appointmentNo}
+                  </Link>{' '}
+                  on {displayDate(visit.scheduledDate)} at {formatTime(visit.scheduledTime)}
+                  {visit.doctor
+                    ? ` with Dr. ${visit.doctor.firstName} ${visit.doctor.lastName}`
+                    : ''}
+                  .
+                </span>
+              </p>
+            )}
           </CardContent>
         </Card>
 

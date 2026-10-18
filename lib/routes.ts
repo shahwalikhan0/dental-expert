@@ -25,6 +25,7 @@ export const APP_ROUTES = [
   '/attendance/[userId]',
   '/attendance/report',
   '/billing',
+  '/billing/estimates/[id]',
   '/billing/invoices',
   '/billing/invoices/[id]',
   '/billing/invoices/[id]/edit',

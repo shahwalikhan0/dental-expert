@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { localDay } from '@/lib/appointment-time'
 import { bookableDays, readBookingSettings } from '@/lib/booking/rules'
+import { DENTIST_WHERE } from '@/lib/clinicians'
 
 /**
  * GET /api/public/[slug]/booking — everything the booking page needs to render.
@@ -50,8 +51,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       )
     }
 
+    // The same dentists the slots and booking routes accept, a second,
+    // clinical DOCTOR role included (bug report 16 Oct, finding 19).
     const dentists = await prisma.staff.findMany({
-      where: { hospitalId: hospital.id, isActive: true, user: { role: 'DOCTOR' } },
+      where: { hospitalId: hospital.id, ...DENTIST_WHERE },
       select: { id: true, firstName: true, lastName: true, specialization: true },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     })

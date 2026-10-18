@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { sendInviteEmail } from '@/lib/email-helpers'
 import { invitationStatus, inviteeName, inviteExpiry, isInvitation } from '@/lib/invitations'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 /**
  * An invitation is a `User` row with no password — see lib/invitations.ts. Both
@@ -32,7 +33,7 @@ async function loadInvitation(id: string, hospitalId: string) {
 
 // Cancel/revoke an invite
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('staff:write')
+  const { error, hospitalId, user } = await requirePermission('staff:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -51,6 +52,22 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     // behind would keep that address from ever being invited again.
     await prisma.user.delete({ where: { id } })
 
+    // The row is gone, so this entry is what is left of the invitation.
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.STAFF_INVITE_CANCELLED,
+      entityType: 'User',
+      entityId: id,
+      oldValues: {
+        email: invite.email,
+        name: invite.name,
+        role: invite.role,
+        status: invitationStatus(invite),
+      },
+      ...requestContext(request.headers),
+    })
+
     return NextResponse.json({
       success: true,
       message: 'Invite cancelled successfully',
@@ -65,7 +82,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
 // Resend an invite
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('staff:write')
+  const { error, hospitalId, user } = await requirePermission('staff:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -83,6 +100,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // the old version this does not refuse one that has lapsed.
     const expiresAt = inviteExpiry()
     await prisma.user.update({ where: { id }, data: { inviteExpiresAt: expiresAt } })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.STAFF_INVITED,
+      entityType: 'User',
+      entityId: id,
+      oldValues: { expiresAt: invite.inviteExpiresAt },
+      newValues: { email: invite.email, role: invite.role, expiresAt, resent: true },
+      ...requestContext(request.headers),
+    })
 
     const [hospital, inviter] = await Promise.all([
       prisma.hospital.findUnique({ where: { id: hospitalId }, select: { name: true } }),

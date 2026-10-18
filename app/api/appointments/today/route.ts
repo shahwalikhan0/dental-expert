@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { clinicTimezone, dayRangeIn, localDay, withWallClock } from '@/lib/appointment-time'
 import { averageWait, waitingFor } from '@/lib/appointment-wait'
+import { readAppointmentSettings } from '@/lib/appointment-settings'
 import { knownErrorResponse } from '@/lib/api-errors'
 
 /**
@@ -31,7 +32,10 @@ export async function GET(request: NextRequest) {
     // "Today" is the clinic's today. On a host running in UTC, a Karachi
     // clinic's morning belongs to the server's previous day for its first five
     // hours, and the queue used to empty itself at 05:00 local.
-    const timezone = await clinicTimezone(prisma, hospitalId)
+    const [timezone, settings] = await Promise.all([
+      clinicTimezone(prisma, hospitalId),
+      readAppointmentSettings(prisma, hospitalId),
+    ])
     const day = requestedDate || localDay(new Date(), timezone)
     const where: any = {
       hospitalId,
@@ -128,6 +132,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       appointments,
       day,
+      // The day book draws its rows at the clinic's slot length, so a cell is
+      // a time the booking form will actually offer.
+      slotMinutes: settings.slotDuration,
       queue: {
         waiting,
         inProgress,

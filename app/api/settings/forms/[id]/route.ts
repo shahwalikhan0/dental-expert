@@ -3,6 +3,13 @@ import prisma from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
 import { z } from 'zod'
 import { knownErrorResponse } from '@/lib/api-errors'
+import {
+  AUDIT_ACTIONS,
+  diffValues,
+  formFieldsSummary,
+  recordAudit,
+  requestContext,
+} from '@/lib/audit'
 
 const fieldSchema = z.object({
   id: z.string(),
@@ -86,7 +93,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 // PUT: Update template
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -113,6 +120,29 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     })
 
+    // Only what changed, before and after (16 Oct, finding 14). A template
+    // edited after patients signed it is exactly what this is here to show.
+    const auditable = (t: typeof existing) => ({
+      name: t.name,
+      description: t.description,
+      type: t.type,
+      isActive: t.isActive,
+      fields: Array.isArray(t.fields) ? formFieldsSummary(t.fields as any[]) : null,
+    })
+    const change = diffValues(auditable(existing), auditable(template))
+    if (change.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.FORM_TEMPLATE_UPDATED,
+        entityType: 'FormTemplate',
+        entityId: id,
+        oldValues: change.before,
+        newValues: { name: template.name, ...change.after },
+        ...requestContext(req.headers),
+      })
+    }
+
     return NextResponse.json({ template })
   } catch (err) {
     // A 400 naming the field, not a heading over an issue list (finding 25).
@@ -124,9 +154,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 // DELETE: Delete template
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -140,16 +170,33 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
+    // Recorded either way (16 Oct, finding 14); `deactivated` says which.
+    const audit = (deactivated: boolean) =>
+      recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.FORM_TEMPLATE_DELETED,
+        entityType: 'FormTemplate',
+        entityId: id,
+        oldValues: { name: existing.name, type: existing.type, isActive: existing.isActive },
+        newValues: deactivated
+          ? { isActive: false, submissions: existing._count.submissions, deactivated: true }
+          : null,
+        ...requestContext(req.headers),
+      })
+
     if (existing._count.submissions > 0) {
       // Soft-delete by deactivating
       await prisma.formTemplate.update({
         where: { id },
         data: { isActive: false },
       })
+      await audit(true)
       return NextResponse.json({ message: 'Template deactivated (has submissions)' })
     }
 
     await prisma.formTemplate.delete({ where: { id } })
+    await audit(false)
     return NextResponse.json({ message: 'Template deleted' })
   } catch (err) {
     console.error('Delete form template error:', err)

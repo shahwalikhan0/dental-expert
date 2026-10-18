@@ -31,6 +31,7 @@ import {
   Stethoscope,
   FileText,
   Receipt,
+  ClipboardPlus,
 } from 'lucide-react'
 import {
   appointmentTypeConfig,
@@ -155,6 +156,8 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
   // The assistant's name opens their staff record for those who may read it;
   // for everyone else it is just the name, not a link to a refusal.
   const canReadStaff = useCan('staff:read') === true
+  // Recording what was done in the chair is a clinician's act.
+  const canRecordTreatment = useCan('clinical:write') === true
 
   /**
    * The API's own reason, as a toast. These handlers used to log a failure to
@@ -390,6 +393,27 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 Check out
               </Button>
             )}
+            {/* What was done at this visit, recorded against it (bug report 16
+              Oct, finding 26). The link is what the visit's Treatments card,
+              the invoice's "This visit" tag and the unbilled-treatments filter
+              read. A walk-in has no patient record to hold a treatment yet. */}
+            {canRecordTreatment &&
+              appointment.patient &&
+              ['IN_PROGRESS', 'COMPLETED'].includes(appointment.status) && (
+                <Button
+                  variant={appointment.status === 'COMPLETED' ? 'outline' : 'default'}
+                  asChild
+                >
+                  <Link
+                    href={trail.to(
+                      `/treatments/new?appointmentId=${appointment.id}&patientId=${appointment.patient.id}`
+                    )}
+                  >
+                    <ClipboardPlus className="h-4 w-4 mr-2" />
+                    Record treatment
+                  </Link>
+                </Button>
+              )}
             {canBillVisit && appointment.patient && (
               <Button asChild>
                 <Link

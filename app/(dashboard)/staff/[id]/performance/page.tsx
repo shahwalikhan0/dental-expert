@@ -229,7 +229,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total revenue</p>
+                <p className="text-sm text-muted-foreground">Invoiced</p>
                 <p className="text-2xl font-bold">{formatCurrency(data.revenue.total)}</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-950/40">
@@ -237,7 +237,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
-              Avg: {formatCurrency(data.revenue.averagePerTreatment)} / treatment
+              Avg: {formatCurrency(data.revenue.averagePerTreatment)} / treatment billed
             </p>
           </CardContent>
         </Card>
@@ -416,7 +416,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
               <TrendingUp className="h-4 w-4" />
               Procedure breakdown
             </CardTitle>
-            <CardDescription>Revenue and count by procedure category</CardDescription>
+            <CardDescription>Completed and invoiced, by procedure category</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

@@ -522,6 +522,12 @@ export const FORM_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]
   ['/lab/orders/*/edit', 'lab:write'],
   ['/patients/new', 'patients:write'],
   ['/patients/*/edit', 'patients:write'],
+  // Not a form, but a page under a module that needs more than the module's
+  // read: the statement is the patient's ledger, which is `billing:read`.
+  // Inheriting `patients:read` opened it to the assistant and the lab
+  // technician, who were shown "could not load" (bug report 16 Oct, finding
+  // 7). Listed here for the wildcard; a refusal returns them to the record.
+  ['/patients/*/statement', 'billing:read'],
   // Writing a prescription is the dentist's alone; the API refuses anybody
   // without `clinical:sign`. A template is wording, and any clinician may
   // keep one.

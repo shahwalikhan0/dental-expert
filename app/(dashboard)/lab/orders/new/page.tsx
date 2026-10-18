@@ -23,6 +23,7 @@ import { BackLink, useTrail } from '@/components/ui/trail'
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { WORK_TYPES } from '@/lib/lab-orders'
 import { LabTreatmentPicker } from '@/components/lab/treatment-picker'
 import {
@@ -57,6 +58,11 @@ export default function NewLabOrderPage() {
   // patient by id (lib/prefill.ts behaviour), not by searching a page of the register.
   const preselectedPatientId = searchParams.get('patientId')
   const { toast } = useToast()
+  // The Lab Technician raises cases but holds no clinical read, and the chart
+  // behind the tooth picker is clinical. Without it the picker is a plain
+  // tooth list rather than a request the server refuses (bug report 16 Oct,
+  // finding 8).
+  const canReadChart = useCan('clinical:read') === true
 
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -237,12 +243,16 @@ export default function NewLabOrderPage() {
 
             <FormField
               label="Teeth"
-              hint={selectedPatient ? undefined : 'Choose the patient to see their chart.'}
+              hint={
+                selectedPatient || !canReadChart
+                  ? undefined
+                  : 'Choose the patient to see their chart.'
+              }
             >
               <ToothPicker
                 selected={teeth}
                 onChange={setTeeth}
-                patientId={selectedPatient?.id ?? null}
+                patientId={canReadChart ? (selectedPatient?.id ?? null) : null}
                 age={selectedPatient?.age ?? null}
                 dateOfBirth={selectedPatient?.dateOfBirth ?? null}
               />

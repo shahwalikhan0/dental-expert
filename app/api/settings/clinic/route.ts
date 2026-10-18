@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { z } from 'zod'
 import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { isWebsite, WEBSITE_HINT, withScheme } from '@/lib/website'
 
 const optionalString = z.preprocess(
   (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
@@ -20,9 +21,11 @@ const clinicInfoSchema = z.object({
     (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
     z.string().email().optional()
   ),
+  // `www.example.com` is how people write a website, and is the seeded one.
+  // Given `https://` rather than refused: see lib/website.ts.
   website: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-    z.string().url().optional()
+    (val) => (typeof val === 'string' ? withScheme(val) || undefined : val),
+    z.string().refine(isWebsite, WEBSITE_HINT).optional()
   ),
   address: z.string().min(1),
   city: z.string().min(1),

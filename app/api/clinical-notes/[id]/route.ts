@@ -74,6 +74,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!existing) return NextResponse.json({ error: 'Note not found' }, { status: 404 })
 
     const signed = isSigned(existing)
+
+    // An unsigned note is its author's draft, as DELETE below says. Anyone
+    // else rewriting it would put their words under the author's name, and
+    // the author's signature on top, with no trail (16 Oct, finding 28).
+    if (!signed && existing.authorId !== user.id) {
+      return NextResponse.json(
+        { error: 'Only the clinician who wrote a note can edit it before it is signed' },
+        { status: 403 }
+      )
+    }
+
     const changes = signed
       ? diffClinicalFields(
           existing as unknown as Record<string, unknown>,

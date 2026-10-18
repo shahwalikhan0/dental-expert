@@ -61,6 +61,30 @@ export const DEFAULT_PRINT_LAYOUT: PrintLayout = {
 }
 
 /**
+ * The clinic's own details, as a screen that prints shows them: the name and
+ * address heading a statement or an estimate, the phone a patient is told to
+ * call, and the opening hours that frame the day book.
+ *
+ * Served beside the layout by `GET /api/settings/print`, which every staff
+ * member can read. `/api/settings/clinic` needs `settings:read`, and the people
+ * who hand a patient a statement mostly do not hold it (bug report 16 Oct,
+ * finding 7). `workingHours` is the stored JSON, per weekday.
+ */
+export interface ClinicLetterhead {
+  name: string
+  tagline: string | null
+  address: string | null
+  city: string | null
+  state: string | null
+  postalCode: string | null
+  phone: string | null
+  alternatePhone: string | null
+  email: string | null
+  website: string | null
+  workingHours: string | null
+}
+
+/**
  * Inclusive bounds, in millimetres. The floors are there because printers
  * cannot put ink at the very edge of a sheet; the ceilings leave at least half
  * an A5 sheet for the document itself.

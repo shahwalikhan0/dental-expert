@@ -5,7 +5,9 @@ import { averageWait } from '@/lib/appointment-wait'
 import { requirePermission } from '@/lib/api-helpers'
 import { parseRange } from '@/lib/attendance'
 import { personalRecord } from '@/lib/attendance-records'
-import { localDay, clinicTimezone } from '@/lib/appointment-time'
+import { localDay, clinicTimezone, dayRangeIn } from '@/lib/appointment-time'
+import { invoicedLines } from '@/lib/invoiced'
+import { money } from '@/lib/invoice-figures'
 
 // GET - Get staff member's performance statistics
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,13 +22,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    // Default to current month if no dates provided
-    const now = new Date()
-    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-
-    const start = startDate ? new Date(startDate) : defaultStart
-    const end = endDate ? new Date(endDate) : defaultEnd
+    // The period is a run of clinic days, this month to today by default. The
+    // dates were parsed as UTC midnights and compared with `lte`, which left
+    // the whole last day out and started the first five hours late in Karachi
+    // (bug report 16 Oct, finding 12). Now each bound is a clinic midnight and
+    // the end is the start of the day after, exclusive — as on the reports.
+    const timezone = await clinicTimezone(prisma, hospitalId)
+    const today = localDay(new Date(), timezone)
+    const range = parseRange(startDate, endDate, today)
+    if ('error' in range) {
+      return NextResponse.json({ error: range.error }, { status: 400 })
+    }
+    const window = {
+      gte: dayRangeIn(range.from, timezone).gte,
+      lt: dayRangeIn(range.to, timezone).lt,
+    }
 
     // Get staff info - scoped to hospital
     const staff = await prisma.staff.findFirst({
@@ -49,10 +59,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: {
         hospitalId,
         doctorId: id,
-        startsAt: {
-          gte: start,
-          lte: end,
-        },
+        startsAt: window,
       },
       select: {
         id: true,
@@ -79,15 +86,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: {
         hospitalId,
         doctorId: id,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
+        createdAt: window,
       },
       select: {
         id: true,
         status: true,
-        cost: true,
         procedure: {
           select: {
             category: true,
@@ -104,20 +107,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       cancelled: treatments.filter((t) => t.status === 'CANCELLED').length,
     }
 
-    // Revenue calculation
-    const completedTreatments = treatments.filter((t) => t.status === 'COMPLETED')
-    const totalRevenue = completedTreatments.reduce((sum, t) => sum + Number(t.cost), 0)
+    // Revenue is what was invoiced for this dentist's treatments in the
+    // period, as Reports → Staff productivity counts it (lib/invoiced.ts). It
+    // was the list price of every treatment completed, billed or not.
+    const lines = (await invoicedLines(hospitalId, window)).filter((line) => line.doctor?.id === id)
+    const totalRevenue = money(lines.reduce((sum, line) => sum + line.amount, 0))
+    const treatmentsBilled = new Set(lines.map((line) => line.treatmentId)).size
 
-    // Procedure breakdown
+    // Procedure breakdown: how many were completed, and what was invoiced.
     const procedureBreakdown: Record<string, { count: number; revenue: number }> = {}
-    completedTreatments.forEach((t) => {
-      const category = t.procedure.category
-      if (!procedureBreakdown[category]) {
-        procedureBreakdown[category] = { count: 0, revenue: 0 }
-      }
-      procedureBreakdown[category].count++
-      procedureBreakdown[category].revenue += Number(t.cost)
-    })
+    const categoryRow = (category: string) =>
+      (procedureBreakdown[category] ??= { count: 0, revenue: 0 })
+    for (const t of treatments) {
+      if (t.status === 'COMPLETED') categoryRow(t.procedure.category).count++
+    }
+    for (const line of lines) {
+      if (!line.procedure) continue
+      const row = categoryRow(line.procedure.category)
+      row.revenue = money(row.revenue + line.amount)
+    }
 
     // Get unique patients treated
     const uniquePatients = await prisma.treatment.groupBy({
@@ -125,10 +133,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: {
         hospitalId,
         doctorId: id,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
+        createdAt: window,
         status: 'COMPLETED',
       },
     })
@@ -138,22 +143,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: {
         hospitalId,
         doctorId: id,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
+        createdAt: window,
       },
     })
 
     // From the attendance register — the same figures the person's attendance
     // record shows. The page used to read an `attendance` block this route
     // stopped sending when the old attendance model went (39fdd2e), and
-    // crashed on every open. Null when the period cannot be read as a range
-    // or the person has never signed in (they are not on the register).
-    const today = localDay(new Date(), await clinicTimezone(prisma, hospitalId))
-    const range = parseRange(startDate, endDate, today)
-    const record =
-      'error' in range ? null : await personalRecord(hospitalId, staff.userId, range.from, range.to)
+    // crashed on every open. Null when the person has never signed in (they
+    // are not on the register).
+    const record = await personalRecord(hospitalId, staff.userId, range.from, range.to)
     const attendance = record
       ? {
           userId: staff.userId,
@@ -176,17 +175,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         specialization: staff.specialization,
       },
       period: {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: range.from,
+        end: range.to,
       },
       appointments: appointmentStats,
       treatments: treatmentStats,
       revenue: {
         total: totalRevenue,
-        averagePerTreatment:
-          completedTreatments.length > 0
-            ? Math.round(totalRevenue / completedTreatments.length)
-            : 0,
+        averagePerTreatment: treatmentsBilled > 0 ? Math.round(totalRevenue / treatmentsBilled) : 0,
       },
       procedureBreakdown: Object.entries(procedureBreakdown).map(([category, data]) => ({
         category,

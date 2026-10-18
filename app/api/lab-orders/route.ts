@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { requireFeature } from '@/lib/plan-gate'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // GET - Fetch all lab orders with filters
 export async function GET(request: NextRequest) {
@@ -160,7 +161,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new lab order
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('lab:write')
+  const { error, hospitalId, user } = await requirePermission('lab:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -285,6 +286,23 @@ export async function POST(request: NextRequest) {
           },
         },
       },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.LAB_ORDER_CREATED,
+      entityType: 'LabOrder',
+      entityId: labOrder.id,
+      newValues: {
+        orderNumber: labOrder.orderNumber,
+        patientId,
+        labVendor: labOrder.labVendor?.name ?? labVendorId,
+        workType: labOrder.workType,
+        treatmentId: labOrder.treatmentId,
+        estimatedCost: Number(estimatedCost),
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json(

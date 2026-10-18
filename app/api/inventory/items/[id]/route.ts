@@ -4,13 +4,35 @@ import { prisma } from '@/lib/prisma'
 import { reconcileStockAlerts } from '@/lib/stock-alerts'
 import { Prisma, StockTransactionType } from '@prisma/client'
 import { knownErrorResponse } from '@/lib/api-errors'
-import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import {
   ITEM_NUMBER_FIELDS,
   negativeField,
   normaliseSku,
   OPEN_ORDER_STATUSES,
 } from '@/lib/inventory-items'
+
+/** What an edit's audit entry compares, before and after. */
+const AUDITED_FIELDS = {
+  sku: true,
+  name: true,
+  itemType: true,
+  unit: true,
+  category: true,
+  minimumStock: true,
+  reorderLevel: true,
+  maximumStock: true,
+  purchasePrice: true,
+  sellingPrice: true,
+  taxCode: true,
+  taxPercentage: true,
+  batchTracking: true,
+  expiryTracking: true,
+  isActive: true,
+  storageLocation: true,
+  preferredSupplierId: true,
+  medicationId: true,
+} as const
 
 function stockStatus(currentStock: number, minimumStock: number, reorderLevel: number) {
   if (currentStock <= 0) return 'out_of_stock'
@@ -123,7 +145,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update inventory item
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('inventory:write')
+  const { error, hospitalId, user } = await requirePermission('inventory:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -134,7 +156,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const existing = await prisma.inventoryItem.findFirst({
       where: { id, hospitalId, deletedAt: null },
-      select: { id: true, sku: true, currentStock: true, minimumStock: true },
+      select: { id: true, currentStock: true, ...AUDITED_FIELDS },
     })
 
     if (!existing) {
@@ -212,7 +234,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ? { connect: { id: body.preferredSupplierId } }
       : { disconnect: true }
 
-    await prisma.inventoryItem.update({ where: { id }, data })
+    const updated = await prisma.inventoryItem.update({
+      where: { id },
+      data,
+      select: AUDITED_FIELDS,
+    })
+
+    // Only what changed, before and after (16 Oct, finding 14).
+    const change = diffValues(existing, updated)
+    if (change.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.INVENTORY_ITEM_UPDATED,
+        entityType: 'InventoryItem',
+        entityId: id,
+        oldValues: change.before,
+        newValues: { sku: updated.sku, name: updated.name, ...change.after },
+        ...requestContext(request.headers),
+      })
+    }
 
     // Changing the minimum can raise an alert — and, now, clear one. This used
     // only to raise: lowering an item's minimum back down left the LOW_STOCK

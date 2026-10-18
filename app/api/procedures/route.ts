@@ -5,6 +5,7 @@ import { ProcedureCategory } from '@prisma/client'
 import { requirePermission } from '@/lib/api-helpers'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
 import { linkDefaultRecareProcedures } from '@/lib/recare'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // Generate unique procedure code
 async function generateProcedureCode(category: string, hospitalId: string): Promise<string> {
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new procedure
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -211,6 +212,22 @@ export async function POST(request: NextRequest) {
     await linkDefaultRecareProcedures(prisma, hospitalId, [procedure.id]).catch((err) =>
       console.error('Linking a new procedure to the default recalls failed:', err)
     )
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.PROCEDURE_CREATED,
+      entityType: 'Procedure',
+      entityId: procedure.id,
+      newValues: {
+        code: procedure.code,
+        name: procedure.name,
+        category: procedure.category,
+        basePrice: price,
+        defaultDuration: procedure.defaultDuration,
+      },
+      ...requestContext(request.headers),
+    })
 
     return NextResponse.json(procedure, { status: 201 })
   } catch (error) {

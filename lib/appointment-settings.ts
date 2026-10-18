@@ -89,7 +89,8 @@ export const APPOINTMENT_KEYS = {
  * empty one.
  */
 function asNumber(raw: string | undefined, fallback: number, min: number, max: number): number {
-  if (raw === undefined) return fallback
+  // Empty is unset: the settings page saves a field left blank as ''.
+  if (raw === undefined || raw.trim() === '') return fallback
   let value: unknown = raw
   try {
     value = JSON.parse(raw)
@@ -136,10 +137,11 @@ export async function readAppointmentSettings(
     // Half a break is not a break. Both ends, in order, or neither.
     lunchBreakStart: lunchStart && lunchEnd && lunchEnd > lunchStart ? lunchStart : null,
     lunchBreakEnd: lunchStart && lunchEnd && lunchEnd > lunchStart ? lunchEnd : null,
-    maxAdvanceBookingDays:
-      stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays) === undefined
-        ? null
-        : asNumber(stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays), 365, 1, 3650),
+    // Blank is "no limit", as a missing row is. Read as a number it was 0, and
+    // clamped to a horizon of one day.
+    maxAdvanceBookingDays: !stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays)?.trim()
+      ? null
+      : asNumber(stored.get(APPOINTMENT_KEYS.maxAdvanceBookingDays), 365, 1, 3650),
     reminderHoursBefore: asNumber(stored.get(APPOINTMENT_KEYS.reminderHoursBefore), 24, 1, 168),
     doubleBookingPolicy:
       stripQuotes(stored.get(APPOINTMENT_KEYS.doubleBookingPolicy)) === 'WARN' ? 'WARN' : 'BLOCK',

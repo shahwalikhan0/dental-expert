@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requirePermission } from '@/lib/api-helpers'
+import { AUDIT_ACTIONS, formFieldsSummary, recordAudit, requestContext } from '@/lib/audit'
 
 const DEFAULT_TEMPLATES = [
   {
@@ -351,8 +352,8 @@ const DEFAULT_TEMPLATES = [
 ]
 
 // POST: Seed default form templates for the hospital
-export async function POST() {
-  const { error, hospitalId } = await requirePermission('settings:write')
+export async function POST(req: NextRequest) {
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -382,6 +383,27 @@ export async function POST() {
             isDefault: true,
             isActive: true,
           },
+        })
+      )
+    )
+
+    // Each default template is a template the clinic now asks patients to
+    // sign, recorded as any other would be (16 Oct, finding 14).
+    await Promise.all(
+      created.map((t, i) =>
+        recordAudit({
+          hospitalId,
+          userId: user?.id ?? null,
+          action: AUDIT_ACTIONS.FORM_TEMPLATE_CREATED,
+          entityType: 'FormTemplate',
+          entityId: t.id,
+          newValues: {
+            name: t.name,
+            type: t.type,
+            isDefault: true,
+            fields: formFieldsSummary(DEFAULT_TEMPLATES[i].fields),
+          },
+          ...requestContext(req?.headers),
         })
       )
     )

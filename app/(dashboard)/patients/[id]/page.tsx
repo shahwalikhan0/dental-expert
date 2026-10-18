@@ -39,9 +39,11 @@ import { FamilyCard } from '@/components/patients/family-card'
 import { ClinicalNotesCard } from '@/components/patients/clinical-notes-card'
 import { PatientLedger } from '@/components/billing/patient-ledger'
 import { CreateInvoiceBar } from '@/components/billing/create-invoice-bar'
+import { PatientEstimates } from '@/components/billing/patient-estimates'
 import { useSession } from 'next-auth/react'
 import { holderCan } from '@/lib/rbac'
 import { useCan } from '@/hooks/use-can'
+import { MessageHistory } from '@/components/communications/message-history'
 import { prescriberName } from '@/lib/prescribing'
 import {
   Calendar,
@@ -57,6 +59,7 @@ import {
   Heart,
   AlertCircle,
   FileCheck,
+  MessageSquare,
   History,
   Pill,
   TestTube,
@@ -168,6 +171,7 @@ const PATIENT_TABS = [
   'prescriptions',
   'billing',
   'forms',
+  'messages',
 ]
 
 /**
@@ -180,6 +184,8 @@ const PATIENT_TABS = [
  */
 const CLINICAL_TABS = ['dental-chart', 'perio', 'treatments', 'notes', 'prescriptions']
 const BILLING_TABS = ['billing']
+/** What the clinic sent the patient: `communications:read`, as its route needs. */
+const MESSAGE_TABS = ['messages']
 
 /**
  * Which status vocabulary a timeline entry's status belongs to. Invoices and
@@ -222,6 +228,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const canWriteBilling = holderCan(holder, 'billing:write')
   const canReadLab = holderCan(holder, 'lab:read')
   const canBook = holderCan(holder, 'appointments:write')
+  const canReadMessages = holderCan(holder, 'communications:read')
   // Merging and deactivating are both behind `patients:delete` on the server
   // — see their routes for why a merge is not a `patients:write` act.
   const canRetire = holderCan(holder, 'patients:delete')
@@ -246,7 +253,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const visibleTabs = PATIENT_TABS.filter(
     (tab) =>
       (canReadClinical || !CLINICAL_TABS.includes(tab)) &&
-      (canReadBilling || !BILLING_TABS.includes(tab))
+      (canReadBilling || !BILLING_TABS.includes(tab)) &&
+      (canReadMessages || !MESSAGE_TABS.includes(tab))
   )
   const activeTab = visibleTabs.includes(requestedTab) ? requestedTab : 'overview'
 
@@ -566,6 +574,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <FileCheck className="h-4 w-4" />
             <span>Forms</span>
           </TabsTrigger>
+          {canReadMessages && (
+            <TabsTrigger value="messages" className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span>Messages</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Overview Tab */}
@@ -999,9 +1013,21 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         {canReadClinical && (
           <TabsContent value="treatments" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Treatment history</CardTitle>
-                <CardDescription>Past procedures and treatments</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Treatment history</CardTitle>
+                  <CardDescription>Past procedures and treatments</CardDescription>
+                </div>
+                {/* Recording one needs `clinical:write`, as the treatment route
+                  does (bug report 16 Oct, finding 26). */}
+                {canWriteClinical && patient.isActive && (
+                  <Button asChild>
+                    <Link href={trail.to(`/treatments/new?patientId=${patient.id}`)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      New treatment
+                    </Link>
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {(patient.treatments ?? []).length === 0 ? (
@@ -1150,6 +1176,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               <CreateInvoiceBar patientId={patient.id} to={trail.to} />
             )}
             <PatientLedger patientId={patient.id} />
+            <PatientEstimates patientId={patient.id} to={trail.to} />
           </TabsContent>
         )}
 
@@ -1157,6 +1184,29 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         <TabsContent value="forms" className="space-y-6">
           <PatientFormSubmissions patientId={patient.id} />
         </TabsContent>
+
+        {/* Messages Tab — every SMS, email and WhatsApp message sent to the
+          patient, from the message log (bug report 16 Oct, finding 18). */}
+        {canReadMessages && activeTab === 'messages' && (
+          <TabsContent value="messages" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Messages</CardTitle>
+                <CardDescription>
+                  What the clinic has sent this patient: messages from the desk, reminders, recalls
+                  and waitlist offers
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MessageHistory
+                  url={`/api/patients/${patient.id}/messages`}
+                  showChannel
+                  emptyDescription="Messages sent to this patient appear here."
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
       {canRetire && (
         <MergeDialog

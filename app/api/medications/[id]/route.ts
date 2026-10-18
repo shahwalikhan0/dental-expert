@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, diffValues, recordAudit, requestContext } from '@/lib/audit'
 import { duplicateMedicationMessage, findDuplicateMedication } from '@/lib/medication-catalogue'
 
 // GET — single medication
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT — update medication
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -79,6 +80,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const medication = await prisma.medication.update({ where: { id }, data })
 
+    // Only what changed, before and after (16 Oct, finding 14).
+    const change = diffValues(existing, data)
+    if (change.changed.length > 0) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.MEDICATION_UPDATED,
+        entityType: 'Medication',
+        entityId: id,
+        oldValues: change.before,
+        newValues: { name: medication.name, ...change.after },
+        ...requestContext(request.headers),
+      })
+    }
+
     return NextResponse.json({ success: true, data: medication })
   } catch (err: any) {
     console.error('Error updating medication:', err)
@@ -94,7 +110,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId } = await requirePermission('settings:write')
+  const { error, hospitalId, user } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -107,6 +123,19 @@ export async function DELETE(
     }
 
     await prisma.medication.update({ where: { id }, data: { isActive: false } })
+
+    if (existing.isActive) {
+      await recordAudit({
+        hospitalId,
+        userId: user?.id ?? null,
+        action: AUDIT_ACTIONS.MEDICATION_DEACTIVATED,
+        entityType: 'Medication',
+        entityId: id,
+        oldValues: { isActive: true },
+        newValues: { name: existing.name, strength: existing.strength, isActive: false },
+        ...requestContext(request.headers),
+      })
+    }
 
     return NextResponse.json({ success: true, message: 'Medication deactivated' })
   } catch (err: any) {

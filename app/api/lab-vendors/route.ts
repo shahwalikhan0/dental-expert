@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma, VendorStatus } from '@prisma/client'
 import { requireFeature } from '@/lib/plan-gate'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new lab vendor
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('lab:write')
+  const { error, hospitalId, user } = await requirePermission('lab:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -196,6 +197,23 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         status,
       },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.LAB_VENDOR_CREATED,
+      entityType: 'Vendor',
+      entityId: vendor.id,
+      newValues: {
+        code: vendor.code,
+        name: vendor.name,
+        phone: vendor.phone,
+        status: vendor.status,
+        paymentTerms: vendor.paymentTerms,
+        creditLimit: vendor.creditLimit == null ? null : Number(vendor.creditLimit),
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json(

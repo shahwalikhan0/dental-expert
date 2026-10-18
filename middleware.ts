@@ -55,6 +55,15 @@ const publicRoutes = [
 const CHANGE_PASSWORD_PATH = '/settings/password'
 
 /**
+ * A person's own profile — their language and the like — exempt from the
+ * capability check for the same reason: it is under `/settings` by URL, and
+ * the user menu's Profile sent six of the eight roles back to their landing
+ * page (bug report 16 Oct, finding 22). It is also where `landingPageFor`
+ * sends somebody who can open nothing else.
+ */
+const PROFILE_PATH = '/settings/profile'
+
+/**
  * The signed-out pages whose forms carry a password.
  *
  * Their forms are `method="post"` (bug report 12 Oct, finding 3): a form
@@ -211,7 +220,7 @@ export default auth((req) => {
     return NextResponse.redirect(new URL(CHANGE_PASSWORD_PATH, nextUrl))
   }
 
-  if (pathname === CHANGE_PASSWORD_PATH) return NextResponse.next()
+  if (pathname === CHANGE_PASSWORD_PATH || pathname === PROFILE_PATH) return NextResponse.next()
 
   // Check capability-based access. A user may hold a second clinical role, so
   // the check is against the union — see RoleHolder in lib/rbac.

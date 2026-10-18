@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { roleColor, roleLabel } from '@/lib/rbac'
+import { useCan } from '@/hooks/use-can'
 
 interface UserMenuProps {
   user: {
@@ -26,6 +27,9 @@ interface UserMenuProps {
 
 export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter()
+  // Settings needs `settings:read`; offered to anybody else it only bounced
+  // them home (bug report 16 Oct, finding 22). Profile is everyone's.
+  const canOpenSettings = useCan('settings:read') === true
   const initials = user.name
     .split(' ')
     .map((n) => n[0])
@@ -57,14 +61,16 @@ export function UserMenu({ user }: UserMenuProps) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push('/settings')}>
+        <DropdownMenuItem onClick={() => router.push('/settings/profile')}>
           <User className="mr-2 h-4 w-4" />
           <span>Profile</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push('/settings')}>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Settings</span>
-        </DropdownMenuItem>
+        {canOpenSettings && (
+          <DropdownMenuItem onClick={() => router.push('/settings')}>
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Settings</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"

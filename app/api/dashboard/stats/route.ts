@@ -58,6 +58,16 @@ export async function GET(req: NextRequest) {
    */
   const showsMoney = holderCan({ role: user.role, clinicalRole: user.clinicalRole }, 'billing:read')
 
+  /**
+   * The same for stock. Item names and levels were returned to every role and
+   * the card linked to stock alerts that Front Desk cannot open (bug report
+   * 16 Oct, finding 11); without `inventory:read` they are not fetched.
+   */
+  const showsStock = holderCan(
+    { role: user.role, clinicalRole: user.clinicalRole },
+    'inventory:read'
+  )
+
   try {
     const now = new Date()
 
@@ -127,13 +137,16 @@ export async function GET(req: NextRequest) {
           },
         }),
 
-        // Pending appointments (upcoming)
+        // Still to come today. The page shows this beside today's count, and
+        // it counted every booked appointment on any later day as well (bug
+        // report 16 Oct, finding 27).
         prisma.appointment.count({
           where: {
             hospitalId,
             status: { in: ['SCHEDULED', 'CONFIRMED'] },
             startsAt: {
               gte: now,
+              lt: todayEnd,
             },
           },
         }),
@@ -285,7 +298,8 @@ export async function GET(req: NextRequest) {
         }),
 
         // Low stock items (using raw query to compare fields)
-        prisma.$queryRaw`
+        showsStock
+          ? prisma.$queryRaw`
         SELECT
           id,
           name,
@@ -299,7 +313,8 @@ export async function GET(req: NextRequest) {
         AND "hospitalId" = ${hospitalId}
         ORDER BY ("minimumStock" - "currentStock") DESC
         LIMIT 10
-      `,
+      `
+          : [],
       ])
     } catch (queryError: any) {
       console.error('Database query error:', {
@@ -405,6 +420,7 @@ export async function GET(req: NextRequest) {
       // Tells the page which cards it has figures for, so it can leave the
       // money cards out rather than show "Rs 0" to somebody who may not see.
       showsMoney,
+      showsStock,
       overview: {
         totalPatients,
         newPatientsThisMonth,

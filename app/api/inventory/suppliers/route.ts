@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { Prisma, VendorStatus } from '@prisma/client'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { parseCreditLimit, parsePaymentTerms, parseRating } from '@/lib/vendor-fields'
 
 const VENDOR_STATUSES = Object.values(VendorStatus) as string[]
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new supplier
 export async function POST(request: NextRequest) {
-  const { error, hospitalId } = await requirePermission('inventory:write')
+  const { error, hospitalId, user } = await requirePermission('inventory:write')
 
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -182,7 +183,24 @@ export async function POST(request: NextRequest) {
         rating: rating.value ?? null,
         notes: notes || null,
       },
-      select: { id: true },
+      select: { id: true, code: true, name: true, phone: true, status: true, paymentTerms: true },
+    })
+
+    await recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.SUPPLIER_CREATED,
+      entityType: 'Vendor',
+      entityId: supplier.id,
+      newValues: {
+        code: supplier.code,
+        name: supplier.name,
+        phone: supplier.phone,
+        status: supplier.status,
+        paymentTerms: supplier.paymentTerms,
+        creditLimit: creditLimit.value ?? null,
+      },
+      ...requestContext(request.headers),
     })
 
     return NextResponse.json(

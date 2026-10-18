@@ -28,6 +28,7 @@ export const AUDIT_LABELS: Record<string, string> = {
 
   [AUDIT_ACTIONS.DISCOUNT_APPROVED]: 'Discount approved',
   [AUDIT_ACTIONS.DISCOUNT_REJECTED]: 'Discount refused',
+  [AUDIT_ACTIONS.DISCOUNT_SELF_APPROVED]: 'Own discount approved (sole approver)',
   [AUDIT_ACTIONS.REFUND_ISSUED]: 'Refund issued',
   [AUDIT_ACTIONS.TILL_OPENED]: 'Till opened',
   [AUDIT_ACTIONS.TILL_CLOSED]: 'Till closed',
@@ -37,12 +38,17 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.ATTENDANCE_MARKED]: 'Attendance marked',
   [AUDIT_ACTIONS.VISITOR_CONVERTED]: 'Walk-in registered',
   [AUDIT_ACTIONS.VISITOR_DISCARDED]: 'Walk-in discarded',
+  [AUDIT_ACTIONS.VISITOR_CREATED]: 'Walk-in added',
   [AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED]: 'Booked online',
   [AUDIT_ACTIONS.PATIENTS_MERGED]: 'Patient records merged',
   [AUDIT_ACTIONS.PASSWORD_RESET_REQUESTED]: 'Password reset requested',
   [AUDIT_ACTIONS.PASSWORD_RESET_COMPLETED]: 'Password reset completed',
 
   [AUDIT_ACTIONS.LAB_ORDER_STATUS_CHANGED]: 'Lab case moved',
+  [AUDIT_ACTIONS.LAB_ORDER_CREATED]: 'Lab case raised',
+  [AUDIT_ACTIONS.LAB_VENDOR_CREATED]: 'Lab added',
+  [AUDIT_ACTIONS.LAB_VENDOR_UPDATED]: 'Lab changed',
+  [AUDIT_ACTIONS.PURCHASE_ORDER_DRAFTED]: 'Purchase order drafted',
   [AUDIT_ACTIONS.GOODS_RECEIVED]: 'Goods received',
   [AUDIT_ACTIONS.PURCHASE_ORDER_PLACED]: 'Purchase order placed',
   [AUDIT_ACTIONS.PURCHASE_ORDER_CANCELLED]: 'Purchase order cancelled',
@@ -63,7 +69,10 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.TREATMENT_SIGNED]: 'Treatment signed',
   [AUDIT_ACTIONS.CLINICAL_NOTE_SIGNED]: 'Clinical note signed',
   [AUDIT_ACTIONS.PRESCRIPTION_CREATED]: 'Prescription written',
+  [AUDIT_ACTIONS.PRESCRIPTION_DELETED]: 'Prescription deleted',
   [AUDIT_ACTIONS.TREATMENT_DELETED]: 'Treatment deleted',
+  [AUDIT_ACTIONS.TREATMENT_STATUS_OVERRIDDEN]: 'Signed treatment overridden',
+  [AUDIT_ACTIONS.FORM_SUBMITTED]: 'Form filled in',
 
   [AUDIT_ACTIONS.PATIENT_DEACTIVATED]: 'Patient deactivated',
   [AUDIT_ACTIONS.PATIENT_REACTIVATED]: 'Patient reactivated',
@@ -74,9 +83,22 @@ export const AUDIT_LABELS: Record<string, string> = {
   [AUDIT_ACTIONS.STAFF_UPDATED]: 'Staff member changed',
   [AUDIT_ACTIONS.STAFF_DEACTIVATED]: 'Staff member deactivated',
   [AUDIT_ACTIONS.STAFF_REACTIVATED]: 'Staff member reactivated',
+  [AUDIT_ACTIONS.STAFF_INVITED]: 'Staff member invited',
+  [AUDIT_ACTIONS.STAFF_INVITE_CANCELLED]: 'Invitation cancelled',
 
+  [AUDIT_ACTIONS.PROCEDURE_CREATED]: 'Procedure added',
   [AUDIT_ACTIONS.PROCEDURE_DEACTIVATED]: 'Procedure withdrawn',
+  [AUDIT_ACTIONS.MEDICATION_CREATED]: 'Medication added',
+  [AUDIT_ACTIONS.MEDICATION_UPDATED]: 'Medication changed',
+  [AUDIT_ACTIONS.MEDICATION_DEACTIVATED]: 'Medication withdrawn',
+  [AUDIT_ACTIONS.FORM_TEMPLATE_CREATED]: 'Form template added',
+  [AUDIT_ACTIONS.FORM_TEMPLATE_UPDATED]: 'Form template changed',
+  [AUDIT_ACTIONS.FORM_TEMPLATE_DELETED]: 'Form template deleted',
+  [AUDIT_ACTIONS.INVENTORY_ITEM_CREATED]: 'Stock item added',
+  [AUDIT_ACTIONS.INVENTORY_ITEM_UPDATED]: 'Stock item changed',
   [AUDIT_ACTIONS.INVENTORY_ITEM_DELETED]: 'Stock item deleted',
+  [AUDIT_ACTIONS.SUPPLIER_CREATED]: 'Supplier added',
+  [AUDIT_ACTIONS.SUPPLIER_UPDATED]: 'Supplier changed',
   [AUDIT_ACTIONS.SUPPLIER_DELETED]: 'Supplier deleted',
   [AUDIT_ACTIONS.STOCK_ADJUSTED]: 'Stock moved',
 
@@ -130,6 +152,7 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.PAYMENT_RECORDED,
       AUDIT_ACTIONS.DISCOUNT_APPROVED,
       AUDIT_ACTIONS.DISCOUNT_REJECTED,
+      AUDIT_ACTIONS.DISCOUNT_SELF_APPROVED,
       AUDIT_ACTIONS.REFUND_ISSUED,
       AUDIT_ACTIONS.TILL_OPENED,
       AUDIT_ACTIONS.TILL_CLOSED,
@@ -142,13 +165,17 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.TREATMENT_SIGNED,
       AUDIT_ACTIONS.CLINICAL_NOTE_SIGNED,
       AUDIT_ACTIONS.PRESCRIPTION_CREATED,
+      AUDIT_ACTIONS.PRESCRIPTION_DELETED,
       AUDIT_ACTIONS.TREATMENT_DELETED,
+      AUDIT_ACTIONS.TREATMENT_STATUS_OVERRIDDEN,
+      AUDIT_ACTIONS.FORM_SUBMITTED,
     ],
   },
   {
     key: 'patients',
     label: 'Patients',
     actions: [
+      AUDIT_ACTIONS.VISITOR_CREATED,
       AUDIT_ACTIONS.VISITOR_CONVERTED,
       AUDIT_ACTIONS.VISITOR_DISCARDED,
       AUDIT_ACTIONS.PUBLIC_BOOKING_CREATED,
@@ -169,6 +196,8 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
       AUDIT_ACTIONS.STAFF_UPDATED,
       AUDIT_ACTIONS.STAFF_DEACTIVATED,
       AUDIT_ACTIONS.STAFF_REACTIVATED,
+      AUDIT_ACTIONS.STAFF_INVITED,
+      AUDIT_ACTIONS.STAFF_INVITE_CANCELLED,
     ],
   },
   {
@@ -187,11 +216,19 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
     key: 'stock',
     label: 'Stock and lab',
     actions: [
+      AUDIT_ACTIONS.LAB_ORDER_CREATED,
       AUDIT_ACTIONS.LAB_ORDER_STATUS_CHANGED,
+      AUDIT_ACTIONS.LAB_VENDOR_CREATED,
+      AUDIT_ACTIONS.LAB_VENDOR_UPDATED,
       AUDIT_ACTIONS.GOODS_RECEIVED,
+      AUDIT_ACTIONS.PURCHASE_ORDER_DRAFTED,
       AUDIT_ACTIONS.PURCHASE_ORDER_PLACED,
       AUDIT_ACTIONS.PURCHASE_ORDER_CANCELLED,
+      AUDIT_ACTIONS.INVENTORY_ITEM_CREATED,
+      AUDIT_ACTIONS.INVENTORY_ITEM_UPDATED,
       AUDIT_ACTIONS.INVENTORY_ITEM_DELETED,
+      AUDIT_ACTIONS.SUPPLIER_CREATED,
+      AUDIT_ACTIONS.SUPPLIER_UPDATED,
       AUDIT_ACTIONS.SUPPLIER_DELETED,
       AUDIT_ACTIONS.STOCK_ADJUSTED,
     ],
@@ -201,7 +238,14 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
     label: 'Configuration',
     actions: [
       AUDIT_ACTIONS.SETTINGS_UPDATED,
+      AUDIT_ACTIONS.PROCEDURE_CREATED,
       AUDIT_ACTIONS.PROCEDURE_DEACTIVATED,
+      AUDIT_ACTIONS.MEDICATION_CREATED,
+      AUDIT_ACTIONS.MEDICATION_UPDATED,
+      AUDIT_ACTIONS.MEDICATION_DEACTIVATED,
+      AUDIT_ACTIONS.FORM_TEMPLATE_CREATED,
+      AUDIT_ACTIONS.FORM_TEMPLATE_UPDATED,
+      AUDIT_ACTIONS.FORM_TEMPLATE_DELETED,
       AUDIT_ACTIONS.CLINIC_UPDATED,
       AUDIT_ACTIONS.SECURITY_UPDATED,
       AUDIT_ACTIONS.COMMUNICATIONS_UPDATED,
@@ -209,6 +253,55 @@ export const AUDIT_GROUPS: { key: string; label: string; actions: string[] }[] =
     ],
   },
 ]
+
+/**
+ * What to call each kind of record the trail names.
+ *
+ * The entity filter is built from the types the clinic's log actually holds
+ * (the route returns them), so a new kind of entry appears there without
+ * anyone remembering to add it; this only gives it a readable name. A type
+ * missing here is shown as written.
+ */
+export const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  Appointment: 'Appointment',
+  Attendance: 'Attendance',
+  CashierSession: 'Till session',
+  ClinicalNote: 'Clinical note',
+  FormSubmission: 'Form',
+  FormTemplate: 'Form template',
+  Hospital: 'Clinic',
+  InventoryItem: 'Stock item',
+  Invoice: 'Invoice',
+  LabOrder: 'Lab case',
+  Medication: 'Medication',
+  Patient: 'Patient',
+  PatientPortalAccount: 'Portal account',
+  Payment: 'Payment',
+  Permission: 'Permission',
+  Prescription: 'Prescription',
+  Procedure: 'Procedure',
+  PurchaseOrder: 'Purchase order',
+  Recare: 'Recall',
+  Setting: 'Settings',
+  Staff: 'Staff member',
+  Subscription: 'Subscription',
+  Treatment: 'Treatment',
+  User: 'User account',
+  Vendor: 'Supplier or lab',
+  Visitor: 'Walk-in',
+  // Data imports record the kind of row imported.
+  patients: 'Import: patients',
+  appointments: 'Import: appointments',
+  treatments: 'Import: treatments',
+  invoices: 'Import: invoices',
+  payments: 'Import: payments',
+  inventory: 'Import: inventory',
+  staff: 'Import: staff',
+}
+
+export function auditEntityLabel(entityType: string): string {
+  return AUDIT_ENTITY_LABELS[entityType] ?? entityType
+}
 
 /**
  * What to call this action.

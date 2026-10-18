@@ -68,6 +68,7 @@ interface Staff {
   user: {
     id: string
     role: string
+    clinicalRole?: string | null
     isActive: boolean
     email: string
   }
@@ -463,14 +464,18 @@ export default function StaffPage() {
                             Edit
                           </DropdownMenuItem>
                         )}
-                        {canSeePerformance && member.user.role === 'DOCTOR' && (
-                          <DropdownMenuItem
-                            onClick={() => router.push(trail.to(`/staff/${member.id}/performance`))}
-                          >
-                            <BarChart3 className="h-4 w-4 mr-2" />
-                            Performance
-                          </DropdownMenuItem>
-                        )}
+                        {canSeePerformance &&
+                          (member.user.role === 'DOCTOR' ||
+                            member.user.clinicalRole === 'DOCTOR') && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(trail.to(`/staff/${member.id}/performance`))
+                              }
+                            >
+                              <BarChart3 className="h-4 w-4 mr-2" />
+                              Performance
+                            </DropdownMenuItem>
+                          )}
                         {canChange(member.user.role) && member.isActive && (
                           <>
                             <DropdownMenuSeparator />
