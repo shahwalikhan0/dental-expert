@@ -11,6 +11,7 @@ import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -99,6 +100,10 @@ export default function PurchaseOrderPage() {
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState<Busy>(null)
   const { toast } = useToast()
+  // Placing, cancelling, deleting and receiving are all `inventory:write` on
+  // the server. A reader (the dentist, the manager) sees the order and its
+  // deliveries, without the buttons or the receiving column.
+  const canWrite = useCan('inventory:write') === true
 
   const fetchOrder = useCallback(async () => {
     setLoading(true)
@@ -250,7 +255,8 @@ export default function PurchaseOrderPage() {
       </div>
     )
 
-  const canReceive = order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED'
+  const canReceive =
+    canWrite && (order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED')
   const outstanding = order.items.reduce((sum, line) => sum + line.outstanding, 0)
 
   return (
@@ -267,47 +273,49 @@ export default function PurchaseOrderPage() {
         }
         back={back}
         actions={
-          <>
-            {order.status === 'DRAFT' && (
-              <>
-                <Button variant="outline" onClick={() => remove(order)} disabled={busy !== null}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
+          canWrite && (
+            <>
+              {order.status === 'DRAFT' && (
+                <>
+                  <Button variant="outline" onClick={() => remove(order)} disabled={busy !== null}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                  <SubmitButton
+                    type="button"
+                    icon={Send}
+                    busy={busy === 'place'}
+                    busyLabel="Placing order…"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      patch(
+                        'place',
+                        { status: 'ORDERED' },
+                        'Order placed',
+                        `place order ${order.orderNumber}`
+                      )
+                    }
+                  >
+                    Place order
+                  </SubmitButton>
+                </>
+              )}
+              {(order.status === 'DRAFT' || order.status === 'ORDERED') && (
                 <SubmitButton
                   type="button"
-                  icon={Send}
-                  busy={busy === 'place'}
-                  busyLabel="Placing order…"
+                  variant="outline"
+                  icon={XCircle}
+                  className="text-destructive"
+                  busy={busy === 'cancel'}
+                  busyLabel="Cancelling…"
                   disabled={busy !== null}
-                  onClick={() =>
-                    patch(
-                      'place',
-                      { status: 'ORDERED' },
-                      'Order placed',
-                      `place order ${order.orderNumber}`
-                    )
-                  }
+                  onClick={() => cancelOrder(order)}
                 >
-                  Place order
+                  Cancel order
                 </SubmitButton>
-              </>
-            )}
-            {(order.status === 'DRAFT' || order.status === 'ORDERED') && (
-              <SubmitButton
-                type="button"
-                variant="outline"
-                icon={XCircle}
-                className="text-destructive"
-                busy={busy === 'cancel'}
-                busyLabel="Cancelling…"
-                disabled={busy !== null}
-                onClick={() => cancelOrder(order)}
-              >
-                Cancel order
-              </SubmitButton>
-            )}
-          </>
+              )}
+            </>
+          )
         }
       />
 

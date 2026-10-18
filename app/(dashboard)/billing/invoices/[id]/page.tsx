@@ -208,6 +208,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const trail = useTrail(invoice?.invoiceNo ?? null)
   const { toast } = useToast()
 
+  // Editing, issuing and taking payment are all `billing:write` on the server;
+  // a dentist reads the invoice but those buttons could only come back 403
+  // (bug report 16 Oct, finding 6).
+  const canWrite = useCan('billing:write') === true
+
   // Payment dialog state
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(showPaymentDialog)
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
@@ -511,7 +516,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         actions={
           <>
             <PrintButton printing={printing} />
-            {invoice.status === 'DRAFT' && (
+            {canWrite && invoice.status === 'DRAFT' && (
               <>
                 <Button variant="outline" asChild>
                   <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
@@ -532,7 +537,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </SubmitButton>
               </>
             )}
-            {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+            {canWrite && ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
               <Button variant="outline" asChild>
                 <Link href={trail.to(`/billing/invoices/${invoice.id}/edit`)}>
                   <Pencil className="h-4 w-4 mr-2" />
@@ -540,7 +545,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </Link>
               </Button>
             )}
-            {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+            {canWrite && ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
               <Button onClick={() => setPaymentDialogOpen(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
                 Record Payment
@@ -1095,7 +1100,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+      {/* `?action=payment` opens it from a link; not for those who cannot pay in. */}
+      <Dialog open={canWrite && paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK, displayDate, displayDateTime } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
@@ -105,6 +106,9 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
   const [status, setStatus] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  // Moving the case on is `lab:write` (PATCH …/status); the front desk and the
+  // manager can follow the case but the move could only come back 403.
+  const canWrite = useCan('lab:write') === true
 
   /**
    * Load the case. `quiet` refreshes it in place after a status move, without
@@ -258,7 +262,7 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
             </CardContent>
           </Card>
 
-          {moves.length > 0 && (
+          {canWrite && moves.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Move the case on</CardTitle>

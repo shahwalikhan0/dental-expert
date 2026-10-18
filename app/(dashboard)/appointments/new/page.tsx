@@ -75,6 +75,8 @@ export default function NewAppointmentPage() {
   const formRef = useFormGuard()
   const searchParams = useSearchParams()
   const preselectedPatientId = searchParams.get('patientId')
+  // Opened from the waitlist's Book action: the entry is closed by the booking.
+  const waitlistId = searchParams.get('waitlistId')
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -318,6 +320,7 @@ export default function NewAppointmentPage() {
           priority,
           chiefComplaint: chiefComplaint || null,
           notes: notes || null,
+          ...(waitlistId && !isWalkIn ? { waitlistId } : {}),
         }),
       })
 
@@ -326,7 +329,9 @@ export default function NewAppointmentPage() {
         throw new Error(data.error || 'Failed to create appointment')
       }
 
-      router.push('/appointments')
+      // Back to the waitlist the booking came from, where the entry now reads
+      // Booked; otherwise to the book, as before.
+      router.push(waitlistId ? trail.back('/appointments/waitlist') : '/appointments')
     } catch (err) {
       toast(toastError('book the appointment', err))
     } finally {

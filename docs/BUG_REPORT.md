@@ -8,6 +8,28 @@
 
 The 12 October report follows this one, unchanged.
 
+## Resolution — 19 October 2026
+
+The six High findings are fixed. The Medium and Low findings are still open, apart from 17, which the fix for 5 needed.
+
+- **1 and 2 — Sessions.** The account is now read again on every request that reaches the server: every API route and every server-rendered page (`lib/account-standing.ts`, called from the `jwt` callback in `lib/auth.ts`).
+  - The role, second role and clinic-administrator flag come from the database, not from sign-in. A role change applies to the next request.
+  - An account that is deactivated, removed or moved, or whose clinic is suspended, ends the session. API calls get 401. Pages go to `/api/session-ended`, which clears the cookie and shows the sign-in page with the reason.
+  - The browser asks for its session every minute and whenever the tab regains focus. An open screen changes to the new role's menu and colour, or signs out, within that minute (`components/layout/session-watch.tsx`).
+  - Middleware runs on the edge with no database, so it reads the token as it was until the browser next refreshes it. The API is never behind.
+  - Mobile Bearer tokens are checked in the same way.
+- **3 — Signed treatments.** A completed or cancelled treatment's status and cost can no longer change without `clinical:delete`, signed or not. Signed treatments return 409 and point to an addendum. An administrator's override is audited as `treatment.status_overridden`.
+- **4 — Prescription delete.** Deleting a prescription now needs `clinical:delete`, in the route and on screen. Only the Administrator holds it, so dentists can no longer delete prescriptions either. The deletion is audited as `prescription.deleted`, with the prescription's contents.
+- **5 — Waitlist.**
+  - **Texts:** a cancellation queues an SMS to the first three matching patients, through the clinic's normal message queue. It respects their consent for appointment messages, and the message appears in their history.
+  - **Who to phone:** the screen that cancelled says who was texted and who has to be phoned.
+  - **Book:** the waitlist has a Book action. It opens New Appointment with the patient and dentist filled in, and closes the entry as Booked when the booking saves (`bookFromWaitlist`).
+  - **Remove:** works on waiting and offered entries alike. The list opens on "Still waiting", which includes offered patients.
+- **6 — Write controls.**
+  - **Forms:** every `/new` and `/[id]/edit` page now needs the permission its save needs (`FORM_ROUTE_PERMISSIONS` in `lib/rbac.ts`). So does the refund page and the prescription template page. A refused form goes back to the record or list it came from.
+  - **Buttons:** create, edit and status buttons are shown only to roles that can save them, in invoices, inventory, lab, treatments, plans and prescription templates. "Process refund" now needs `billing:refund`. "Sign note" and "Add addendum" on a treatment now need `clinical:sign`.
+- **17 — Patient preselection.** Fixed alongside 5: the picker now records the hand-over when the patient arrives, not when it asks for them. Booking from the patient record, Recare and the waitlist arrives with the patient chosen.
+
 ## How this was tested
 
 The point of this pass was linkage between roles and modules. The questions were: can each role reach what it should and nothing else, and does a record made by one role arrive correctly in the modules other roles use? Payments, refunds, the till and the AI features were left out, as asked.

@@ -58,6 +58,8 @@ function LoginForm() {
    * to block a login.
    */
   const clinicSlug = searchParams.get('clinic')
+  // Sent here because the session ended under them — see app/api/session-ended.
+  const sessionEnded = searchParams.get('ended') === '1'
   const [clinic, setClinic] = useState<{ name: string; logo?: string | null } | null>(null)
 
   /**
@@ -200,6 +202,15 @@ function LoginForm() {
         <CardDescription>
           {clinic ? `Sign in to ${clinic.name}` : 'Sign in to your account'}
         </CardDescription>
+        {sessionEnded && (
+          <p
+            role="status"
+            className="mt-3 rounded-xl border border-border bg-muted/60 px-3 py-2 text-left text-sm text-foreground"
+          >
+            You were signed out because your account or your clinic is no longer active. If you
+            think this is a mistake, ask your clinic&rsquo;s administrator.
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {/*

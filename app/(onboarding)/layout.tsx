@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { SESSION_ENDED_PATH } from '@/lib/session-ended'
 
 export const metadata: Metadata = {
   title: 'Set up your clinic',
@@ -26,7 +27,9 @@ export default async function OnboardingLayout({ children }: { children: React.R
   const session = await auth()
 
   if (!session?.user) {
-    redirect('/login?callbackUrl=%2Fonboarding')
+    // Signed out already, middleware would have sent them to sign in; this is
+    // a session that ended since. See SESSION_ENDED_PATH.
+    redirect(SESSION_ENDED_PATH)
   }
 
   const hospital = session.user.hospitalId

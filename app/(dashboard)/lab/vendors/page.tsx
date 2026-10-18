@@ -59,6 +59,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { statusLabel, statusOptions } from '@/lib/status'
 import { BLANK } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
@@ -160,6 +161,10 @@ export default function LabVendorsPage() {
   const list = useListParams({ defaults: { status: 'all' } })
   // What the route is asked, as a string, so the fetch runs once per question.
   const query = list.apiParams().toString()
+
+  // Adding, editing and deleting a vendor are all `lab:write` on the server;
+  // the front desk and the manager read the list but do not keep it.
+  const canWrite = useCan('lab:write') === true
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -308,10 +313,12 @@ export default function LabVendorsPage() {
         description="Manage external laboratory vendors and their information"
         back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
         actions={
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="mr-2 h-4 w-4" />
-            New vendor
-          </Button>
+          canWrite && (
+            <Button onClick={() => handleOpenDialog()}>
+              <Plus className="mr-2 h-4 w-4" />
+              New vendor
+            </Button>
+          )
         }
       />
 
@@ -410,8 +417,12 @@ export default function LabVendorsPage() {
                   ? 'No laboratory matches these filters.'
                   : 'Lab orders are placed against a vendor, so add the laboratories you work with.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New vendor'}
-              onEmptyAction={list.isFiltered ? list.clear : () => handleOpenDialog()}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New vendor' : undefined
+              }
+              onEmptyAction={
+                list.isFiltered ? list.clear : canWrite ? () => handleOpenDialog() : undefined
+              }
             >
               {vendors.map((vendor) => (
                 <TableRow key={vendor.id}>
@@ -467,30 +478,34 @@ export default function LabVendorsPage() {
                     <StatusBadge kind="vendor" status={vendor.status?.toUpperCase()} />
                   </TableCell>
                   {/* GridActionsCell carries the `row-actions` class. */}
+                  {/* Edit and Delete are the whole menu, so without
+                      `lab:write` there is no menu. */}
                   <GridActionsCell>
-                    <DropdownMenu>
-                      <IconTooltip label="More actions">
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </IconTooltip>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleOpenDialog(vendor)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit…
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(vendor)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete…
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {canWrite && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenDialog(vendor)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit…
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(vendor)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete…
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
                 </TableRow>
               ))}

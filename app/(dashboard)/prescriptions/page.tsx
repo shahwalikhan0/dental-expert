@@ -72,8 +72,9 @@ export default function PrescriptionsPage() {
   // than offered to a form that can only end in a refusal; `null` while the
   // session loads, so it does not flash on and off.
   const canPrescribe = useCan('clinical:sign') === true
-  // Deleting is `clinical:write` on the server; not offered without it.
-  const canDelete = useCan('clinical:write') === true
+  // Deleting is `clinical:delete` on the server (the administrator alone);
+  // not offered without it.
+  const canDelete = useCan('clinical:delete') === true
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
   // The fetch failed — said in the grid, not as an empty list.

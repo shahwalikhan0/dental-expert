@@ -25,6 +25,7 @@ import { TONE_TEXT_CLASS } from '@/lib/status'
 import { formatPhone } from '@/lib/utils'
 import { ArrowLeftRight, Package, Pencil, TriangleAlert } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
+import { useCan } from '@/hooks/use-can'
 
 interface Batch {
   id: string
@@ -98,6 +99,9 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  // Recording a movement and editing are `inventory:write` on the server; a
+  // reader (the dentist, the manager) is not offered either.
+  const canWrite = useCan('inventory:write') === true
 
   const fetchItem = useCallback(async () => {
     setLoading(true)
@@ -169,20 +173,22 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
         }
         back={back}
         actions={
-          <>
-            <Button variant="outline" asChild>
-              <Link href={trail.to(`/inventory/transactions?item=${item.id}&record=1`)}>
-                <ArrowLeftRight className="h-4 w-4 mr-2" />
-                Record movement
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={trail.to(`/inventory/${item.id}/edit`)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
-              </Link>
-            </Button>
-          </>
+          canWrite && (
+            <>
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/inventory/transactions?item=${item.id}&record=1`)}>
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  Record movement
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/inventory/${item.id}/edit`)}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Link>
+              </Button>
+            </>
+          )
         }
       />
 

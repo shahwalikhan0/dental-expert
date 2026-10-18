@@ -16,6 +16,7 @@ import {
   withWallClock,
 } from '@/lib/appointment-time'
 import { validateVisitor } from '@/lib/visitors'
+import { bookFromWaitlist } from '@/lib/services/smart-scheduler'
 import { scheduleRefusal } from '@/lib/appointment-availability'
 import { INACTIVE_PATIENT } from '@/lib/appointment-status'
 import { enumRefusal, isEnumMember, knownErrorResponse } from '@/lib/api-errors'
@@ -234,6 +235,7 @@ export async function POST(request: NextRequest) {
       priority = 'NORMAL',
       chiefComplaint,
       notes,
+      waitlistId,
     } = body
 
     // A patient or a walk-in, and exactly one of the two. The database says the
@@ -405,6 +407,12 @@ export async function POST(request: NextRequest) {
           select: { id: true },
         })
         visitorId = created.id
+      }
+
+      // Booked from the waitlist's Book action: the entry closes with the
+      // booking, in the same write (bug report 16 Oct, finding 5).
+      if (patientId && typeof waitlistId === 'string' && waitlistId) {
+        await bookFromWaitlist(tx, { waitlistId, hospitalId, patientId })
       }
 
       return tx.appointment.create({

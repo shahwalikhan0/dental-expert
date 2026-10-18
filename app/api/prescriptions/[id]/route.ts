@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { knownErrorResponse } from '@/lib/api-errors'
+import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 
 // GET — single prescription with medications
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -89,23 +90,58 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // DELETE — delete prescription
+//
+// `clinical:delete`, as for every other clinical record, not `clinical:write`.
+// It used to be write, so a dental assistant — who may not write a
+// prescription — could destroy a dentist's, and nothing recorded that they had
+// (bug report 16 Oct, finding 4).
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, hospitalId } = await requirePermission('clinical:write')
+  const { error, hospitalId, user } = await requirePermission('clinical:delete')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     const { id } = await params
-    const existing = await prisma.prescription.findFirst({ where: { id, hospitalId } })
+    const existing = await prisma.prescription.findFirst({
+      where: { id, hospitalId },
+      include: {
+        medications: {
+          select: {
+            medicationName: true,
+            dosage: true,
+            frequency: true,
+            duration: true,
+            quantity: true,
+          },
+        },
+      },
+    })
     if (!existing) {
       return NextResponse.json({ error: 'Prescription not found' }, { status: 404 })
     }
 
     await prisma.prescription.delete({ where: { id } })
+
+    // Recorded with what it said, since the row itself is gone.
+    void recordAudit({
+      hospitalId,
+      userId: user?.id ?? null,
+      action: AUDIT_ACTIONS.PRESCRIPTION_DELETED,
+      entityType: 'Prescription',
+      entityId: id,
+      oldValues: {
+        prescriptionNo: existing.prescriptionNo,
+        patientId: existing.patientId,
+        doctorId: existing.doctorId,
+        diagnosis: existing.diagnosis,
+        medications: existing.medications,
+      },
+      ...requestContext(request.headers),
+    })
 
     return NextResponse.json({ success: true, message: 'Prescription deleted' })
   } catch (err: any) {

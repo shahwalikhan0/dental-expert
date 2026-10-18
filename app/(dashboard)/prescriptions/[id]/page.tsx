@@ -101,7 +101,7 @@ export default function PrescriptionDetailPage() {
   /** Why there is no prescription to show: it does not exist, or it did not load. */
   const [problem, setProblem] = useState<'not-found' | 'failed' | null>(null)
   // Deleting is `clinical:write` on the server; not offered without it.
-  const canDelete = useCan('clinical:write') === true
+  const canDelete = useCan('clinical:delete') === true
 
   const load = useCallback(async () => {
     setLoading(true)

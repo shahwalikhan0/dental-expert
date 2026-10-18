@@ -172,6 +172,11 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const myStaffId = session?.user?.staffId
   // Prescribing is a dentist's act, the same capability as signing.
   const canPrescribe = useCan('clinical:sign') === true
+  // Signing a note and adding to a signed one are the same act (`clinical:sign`).
+  const canSign = canPrescribe
+  // Starting, completing, editing and cancelling are `clinical:write`; the
+  // manager reads the record but does not write it (bug report 16 Oct, 6).
+  const canWrite = useCan('clinical:write') === true
   // Raising an invoice is the desk's act; the button is for those who may.
   const canBill = useCan('billing:write') === true
   const [actionLoading, setActionLoading] = useState(false)
@@ -340,7 +345,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
         description={`Created on ${displayDate(treatment.createdAt)}`}
         actions={
           <>
-            {treatment.status === 'PLANNED' && (
+            {canWrite && treatment.status === 'PLANNED' && (
               <SubmitButton
                 type="button"
                 onClick={handleStartTreatment}
@@ -351,13 +356,14 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                 Start treatment
               </SubmitButton>
             )}
-            {treatment.status === 'IN_PROGRESS' && (
+            {canWrite && treatment.status === 'IN_PROGRESS' && (
               <Button onClick={() => setCompleteDialogOpen(true)}>
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Complete treatment…
               </Button>
             )}
-            {treatment.status === 'COMPLETED' &&
+            {canSign &&
+              treatment.status === 'COMPLETED' &&
               !treatment.signedAt &&
               (!myStaffId || myStaffId === treatment.doctor.id) && (
                 <Button onClick={handleSignTreatment} disabled={actionLoading}>
@@ -365,13 +371,14 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   Sign note
                 </Button>
               )}
-            {treatment.signedAt && (
+            {canSign && treatment.signedAt && (
               <Button variant="outline" onClick={() => setAddendumOpen(true)}>
                 <FileText className="h-4 w-4 mr-2" />
                 Add addendum
               </Button>
             )}
-            {!treatment.signedAt &&
+            {canWrite &&
+              !treatment.signedAt &&
               treatment.status !== 'COMPLETED' &&
               treatment.status !== 'CANCELLED' && (
                 <>

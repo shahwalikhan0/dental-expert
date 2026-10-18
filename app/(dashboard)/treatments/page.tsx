@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useListParams } from '@/hooks/use-list-params'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -104,6 +105,10 @@ export default function TreatmentsPage() {
   const trail = useTrail('Treatments')
   const router = useRouter()
   const { toast } = useToast()
+  // Recording, editing, starting and completing a treatment are all
+  // `clinical:write`; the manager reads the record but does not write it
+  // (bug report 16 Oct, finding 6).
+  const canWrite = useCan('clinical:write') === true
   const [treatments, setTreatments] = useState<Treatment[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -224,12 +229,14 @@ export default function TreatmentsPage() {
                 Treatment plans
               </Link>
             </Button>
-            <Button asChild>
-              <Link href="/treatments/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New treatment
-              </Link>
-            </Button>
+            {canWrite && (
+              <Button asChild>
+                <Link href="/treatments/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New treatment
+                </Link>
+              </Button>
+            )}
           </>
         }
       />
@@ -324,8 +331,10 @@ export default function TreatmentsPage() {
                   ? 'Nothing has been carried out under these filters.'
                   : 'No treatment has been recorded yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New treatment'}
-              emptyActionHref={list.isFiltered ? undefined : '/treatments/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New treatment' : undefined
+              }
+              emptyActionHref={list.isFiltered || !canWrite ? undefined : '/treatments/new'}
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {treatments.map((treatment) => (
@@ -395,9 +404,10 @@ export default function TreatmentsPage() {
                   </TableCell>
                   <GridActionsCell>
                     {/* A finished treatment with no appointment has nothing
-                        to offer here; the row opens it. */}
-                    {(treatment.status === 'PLANNED' ||
-                      treatment.status === 'IN_PROGRESS' ||
+                        to offer here, nor an open one to a reader who cannot
+                        write it; the row opens it. */}
+                    {((canWrite &&
+                      (treatment.status === 'PLANNED' || treatment.status === 'IN_PROGRESS')) ||
                       treatment.appointment) && (
                       <DropdownMenu>
                         <IconTooltip label="More actions">
@@ -409,24 +419,26 @@ export default function TreatmentsPage() {
                         </IconTooltip>
                         <DropdownMenuContent align="end">
                           {/* No "View details": the row itself opens the treatment. */}
-                          {treatment.status !== 'COMPLETED' && treatment.status !== 'CANCELLED' && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
-                          {treatment.status === 'PLANNED' && (
+                          {canWrite &&
+                            treatment.status !== 'COMPLETED' &&
+                            treatment.status !== 'CANCELLED' && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => router.push(`/treatments/${treatment.id}/edit`)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                          {canWrite && treatment.status === 'PLANNED' && (
                             <DropdownMenuItem onClick={() => handleStartTreatment(treatment)}>
                               <Play className="h-4 w-4 mr-2" />
                               Start treatment
                             </DropdownMenuItem>
                           )}
-                          {treatment.status === 'IN_PROGRESS' && (
+                          {canWrite && treatment.status === 'IN_PROGRESS' && (
                             <DropdownMenuItem onClick={() => setCompleting(treatment)}>
                               <CheckCircle className="h-4 w-4 mr-2" />
                               Complete treatment…

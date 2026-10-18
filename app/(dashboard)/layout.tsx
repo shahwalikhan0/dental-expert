@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
+import { SESSION_ENDED_PATH } from '@/lib/session-ended'
 
 /**
  * The signed-in clinic, fetched once per request.
@@ -56,8 +57,11 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { session, hospital } = await currentHospital()
 
+  // Middleware has already turned away anybody not signed in, so no session
+  // here means one that has ended since: the account was deactivated or its
+  // clinic suspended. See SESSION_ENDED_PATH.
   if (!session?.user) {
-    redirect('/login')
+    redirect(SESSION_ENDED_PATH)
   }
 
   // A clinic that has not finished setup is sent to it. Safe to do on every

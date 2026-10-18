@@ -23,6 +23,7 @@ import { formatCurrency } from '@/lib/i18n/format'
 import { formatPhone } from '@/lib/utils'
 import { Pencil, Package, Phone, Mail, MapPin, Truck } from 'lucide-react'
 import { BLANK, displayDate } from '@/lib/dates'
+import { useCan } from '@/hooks/use-can'
 
 /**
  * A supplier's record.
@@ -81,6 +82,8 @@ export default function SupplierDetailPage() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  // Editing is `inventory:write` on the server; not offered to a reader.
+  const canWrite = useCan('inventory:write') === true
 
   const trail = useTrail(supplier?.name ?? null)
 
@@ -143,12 +146,14 @@ export default function SupplierDetailPage() {
         badges={<StatusBadge kind="supplier" status={supplier.status} />}
         back={back}
         actions={
-          <Button variant="outline" asChild>
-            <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </Link>
-          </Button>
+          canWrite && (
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Link>
+            </Button>
+          )
         }
       />
 

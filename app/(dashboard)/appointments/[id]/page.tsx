@@ -46,6 +46,7 @@ import {
   cancelAppointmentConfirm,
   noShowConfirm,
 } from '@/components/appointments/appointment-confirms'
+import { waitlistOfferToast } from '@/components/appointments/waitlist-offers'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatToken } from '@/lib/tokens'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -272,6 +273,10 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
       if (!response.ok) {
         await refused(response, action)
         return
+      }
+      if (status === 'CANCELLED') {
+        const offered = waitlistOfferToast(await response.json().catch(() => null))
+        if (offered) toast(offered)
       }
       fetchAppointment()
     } catch (error) {

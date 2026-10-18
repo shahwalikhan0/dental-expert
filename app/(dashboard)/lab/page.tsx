@@ -16,6 +16,7 @@ import {
   GridPagination,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { useCan } from '@/hooks/use-can'
 import { PageHeader } from '@/components/ui/page-header'
 import { ListToolbar } from '@/components/ui/list-toolbar'
 import { SearchInput } from '@/components/ui/search-input'
@@ -100,6 +101,9 @@ export default function LabWorkPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Lab orders')
   const router = useRouter()
+  // Raising and editing a lab case is `lab:write`; the front desk and the
+  // manager follow the cases but do not place them (bug report 16 Oct, 6).
+  const canWrite = useCan('lab:write') === true
   const [orders, setOrders] = useState<LabOrder[]>([])
   const [vendors, setVendors] = useState<LabVendor[]>([])
   const [loading, setLoading] = useState(true)
@@ -266,12 +270,14 @@ export default function LabWorkPage() {
                 Manage vendors
               </Link>
             </Button>
-            <Button asChild>
-              <Link href="/lab/orders/new">
-                <Plus className="mr-2 h-4 w-4" />
-                New lab order
-              </Link>
-            </Button>
+            {canWrite && (
+              <Button asChild>
+                <Link href="/lab/orders/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New lab order
+                </Link>
+              </Button>
+            )}
           </>
         }
       />
@@ -396,8 +402,10 @@ export default function LabWorkPage() {
                   ? 'Nothing is out with a laboratory under these filters.'
                   : 'No lab order has been raised yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New lab order'}
-              emptyActionHref={list.isFiltered ? undefined : '/lab/orders/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New lab order' : undefined
+              }
+              emptyActionHref={list.isFiltered || !canWrite ? undefined : '/lab/orders/new'}
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {orders.map((order) => (
@@ -439,25 +447,29 @@ export default function LabWorkPage() {
                     {formatCurrency(order.estimatedCost)}
                   </TableCell>
                   {/* GridActionsCell carries the `row-actions` class. */}
+                  {/* Editing is the menu's only item, so without `lab:write`
+                      there is no menu: the row still opens the order. */}
                   <GridActionsCell>
-                    <DropdownMenu>
-                      <IconTooltip label="More actions">
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </IconTooltip>
-                      <DropdownMenuContent align="end">
-                        {/* No "View details": the row itself opens the lab order. */}
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/lab/orders/${order.id}/edit`)}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit order
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {canWrite && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          {/* No "View details": the row itself opens the lab order. */}
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/lab/orders/${order.id}/edit`)}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit order
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
                 </ClickableRow>
               ))}

@@ -13,6 +13,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
 import { useListParams } from '@/hooks/use-list-params'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { BLANK, displayDate } from '@/lib/dates'
 import { TONE_TEXT_CLASS, statusOptions, statusTone } from '@/lib/status'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
@@ -60,6 +61,9 @@ export default function StockAlertsPage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  // Acknowledging is `inventory:write` on the server; a reader sees the alerts
+  // but is not offered a button that can only be refused.
+  const canAcknowledge = useCan('inventory:write') === true
 
   const list = useListParams({ defaults: { type: 'all', acknowledged: false } })
   const { type, acknowledged } = list.filters
@@ -288,10 +292,12 @@ export default function StockAlertsPage() {
                         )}
                       </div>
                     ) : (
-                      <Button variant="ghost" size="sm" onClick={() => acknowledge(alert)}>
-                        <Check className="h-4 w-4 mr-1" />
-                        Acknowledge
-                      </Button>
+                      canAcknowledge && (
+                        <Button variant="ghost" size="sm" onClick={() => acknowledge(alert)}>
+                          <Check className="h-4 w-4 mr-1" />
+                          Acknowledge
+                        </Button>
+                      )
                     )}
                   </TableCell>
                 </TableRow>

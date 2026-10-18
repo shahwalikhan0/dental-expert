@@ -20,7 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <SessionProvider>
+      {/* Asked for every minute, as well as on focus: the answer is the account
+          as it stands now, so a role change or a deactivation reaches an open
+          screen within the minute. See components/layout/session-watch.tsx. */}
+      <SessionProvider refetchInterval={60}>
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       </SessionProvider>
     </ThemeProvider>

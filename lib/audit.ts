@@ -161,7 +161,11 @@ export const AUDIT_ACTIONS = {
   TREATMENT_SIGNED: 'treatment.signed',
   CLINICAL_NOTE_SIGNED: 'clinical_note.signed',
   PRESCRIPTION_CREATED: 'prescription.created',
+  PRESCRIPTION_DELETED: 'prescription.deleted',
   TREATMENT_DELETED: 'treatment.deleted',
+  /// A finished, signed treatment cancelled, reopened or re-priced — which only
+  /// `clinical:delete` may do, and never without a line here.
+  TREATMENT_STATUS_OVERRIDDEN: 'treatment.status_overridden',
 
   PATIENT_DEACTIVATED: 'patient.deactivated',
   PATIENT_REACTIVATED: 'patient.reactivated',

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useListParams } from '@/hooks/use-list-params'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -95,6 +96,9 @@ export default function InventoryPage() {
   const trail = useTrail('Inventory')
   const { toast } = useToast()
   const router = useRouter()
+  // A dentist or the manager reads stock (`inventory:read`) but cannot change
+  // it; the create and edit actions are not offered to a certain refusal.
+  const canWrite = useCan('inventory:write') === true
   const [items, setItems] = useState<InventoryItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -229,12 +233,14 @@ export default function InventoryPage() {
                 }))
               }
             />
-            <Button asChild>
-              <Link href="/inventory/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New item
-              </Link>
-            </Button>
+            {canWrite && (
+              <Button asChild>
+                <Link href="/inventory/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New item
+                </Link>
+              </Button>
+            )}
           </>
         }
       />
@@ -342,8 +348,10 @@ export default function InventoryPage() {
                   ? 'No item matches these filters.'
                   : 'Nothing is in the stock list yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New item'}
-              emptyActionHref={list.isFiltered ? undefined : '/inventory/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New item' : undefined
+              }
+              emptyActionHref={!list.isFiltered && canWrite ? '/inventory/new' : undefined}
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {items.map((item) => (
@@ -409,13 +417,17 @@ export default function InventoryPage() {
                       </IconTooltip>
                       <DropdownMenuContent align="end">
                         {/* No "View details": the row itself opens the item. */}
-                        <DropdownMenuItem
-                          onClick={() => router.push(trail.to(`/inventory/${item.id}/edit`))}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                        {canWrite && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => router.push(trail.to(`/inventory/${item.id}/edit`))}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
                         <DropdownMenuItem
                           onClick={() =>
                             router.push(trail.to(`/inventory/transactions?item=${item.id}`))

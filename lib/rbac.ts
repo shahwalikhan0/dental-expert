@@ -498,11 +498,66 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
 ]
 
 /**
+ * The forms: the pages that create or change a record, and the capability the
+ * save needs. `*` stands for one path segment, a record's id.
+ *
+ * The table above gates a module by its read capability, and these pages used
+ * to inherit it. So a dentist, who may read invoices but not write them, could
+ * open New Invoice, fill it in, and be told "Forbidden" on saving — and the
+ * same for inventory, lab cases, treatments and patients (bug report 16 Oct,
+ * finding 6). Each form now asks for what its save asks for.
+ */
+export const FORM_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
+  ['/appointments/new', 'appointments:write'],
+  ['/appointments/*/edit', 'appointments:write'],
+  ['/billing/invoices/new', 'billing:write'],
+  ['/billing/invoices/*/edit', 'billing:write'],
+  ['/billing/payments/*/refund', 'billing:refund'],
+  ['/inventory/new', 'inventory:write'],
+  ['/inventory/*/edit', 'inventory:write'],
+  ['/inventory/purchase-orders/new', 'inventory:write'],
+  ['/inventory/suppliers/new', 'inventory:write'],
+  ['/inventory/suppliers/*/edit', 'inventory:write'],
+  ['/lab/orders/new', 'lab:write'],
+  ['/lab/orders/*/edit', 'lab:write'],
+  ['/patients/new', 'patients:write'],
+  ['/patients/*/edit', 'patients:write'],
+  // Writing a prescription is the dentist's alone; the API refuses anybody
+  // without `clinical:sign`. A template is wording, and any clinician may
+  // keep one.
+  ['/prescriptions/new', 'clinical:sign'],
+  ['/prescriptions/templates/new', 'clinical:write'],
+  // A template's own page is its edit form; there is no read-only view.
+  ['/prescriptions/templates/*', 'clinical:write'],
+  ['/settings/forms/new', 'settings:write'],
+  ['/staff/new', 'staff:write'],
+  ['/staff/*/edit', 'staff:write'],
+  ['/treatments/new', 'clinical:write'],
+  ['/treatments/*/edit', 'clinical:write'],
+  ['/treatments/plans/new', 'clinical:write'],
+  ['/treatments/plans/*/edit', 'clinical:write'],
+]
+
+function matchesForm(pattern: string, pathname: string): boolean {
+  const want = pattern.split('/')
+  const have = pathname.replace(/\/+$/, '').split('/')
+  return want.length === have.length && want.every((part, i) => part === '*' || part === have[i])
+}
+
+/** Whether a path is one of the forms above. */
+export function isFormRoute(pathname: string): boolean {
+  return FORM_ROUTE_PERMISSIONS.some(([pattern]) => matchesForm(pattern, pathname))
+}
+
+/**
  * The capability required to open a dashboard path, or null if the path is
  * open to any authenticated staff member (the dashboard landing page, chat,
  * onboarding, a user's own profile).
  */
 export function permissionForRoute(pathname: string): Permission | null {
+  const form = FORM_ROUTE_PERMISSIONS.find(([pattern]) => matchesForm(pattern, pathname))
+  if (form) return form[1]
+
   let best: readonly [string, Permission] | null = null
   for (const entry of ROUTE_PERMISSIONS) {
     if (pathname === entry[0] || pathname.startsWith(entry[0] + '/')) {

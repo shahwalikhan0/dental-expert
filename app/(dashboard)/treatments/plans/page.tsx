@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useListParams } from '@/hooks/use-list-params'
+import { useCan } from '@/hooks/use-can'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -84,6 +85,9 @@ export default function TreatmentPlansPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Treatment plans')
   const router = useRouter()
+  // Drawing up and editing a plan are `clinical:write`; the manager reads the
+  // plans but does not write them (bug report 16 Oct, finding 6).
+  const canWrite = useCan('clinical:write') === true
   const [plans, setPlans] = useState<TreatmentPlan[]>([])
   const [loading, setLoading] = useState(true)
   // The fetch failed — said in the grid, not as an empty list.
@@ -144,12 +148,14 @@ export default function TreatmentPlansPage() {
         description="Create and manage comprehensive treatment plans"
         back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
         actions={
-          <Button asChild>
-            <Link href="/treatments/plans/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New treatment plan
-            </Link>
-          </Button>
+          canWrite && (
+            <Button asChild>
+              <Link href="/treatments/plans/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New treatment plan
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -229,8 +235,10 @@ export default function TreatmentPlansPage() {
                   ? 'No plan matches these filters.'
                   : 'No treatment plan has been drawn up yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New treatment plan'}
-              emptyActionHref={list.isFiltered ? undefined : '/treatments/plans/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New treatment plan' : undefined
+              }
+              emptyActionHref={list.isFiltered || !canWrite ? undefined : '/treatments/plans/new'}
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {plans.map((plan) => {
@@ -292,8 +300,9 @@ export default function TreatmentPlansPage() {
                     <GridActionsCell>
                       {/* `row-actions` comes with GridActionsCell. No "View
                           details": the row itself opens the plan. A finished or
-                          cancelled plan has nothing left to edit. */}
-                      {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
+                          cancelled plan has nothing left to edit, nor any plan
+                          for a reader without `clinical:write`. */}
+                      {canWrite && plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
                         <DropdownMenu>
                           <IconTooltip label="More actions">
                             <DropdownMenuTrigger asChild>

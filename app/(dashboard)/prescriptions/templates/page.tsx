@@ -38,6 +38,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { useListParams } from '@/hooks/use-list-params'
+import { useCan } from '@/hooks/use-can'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { isInactiveItem } from '@/lib/prescription-templates'
@@ -68,6 +69,9 @@ const STATUS_OPTIONS = statusOptions('prescriptionTemplate')
 export default function PrescriptionTemplatesPage() {
   const trail = useTrail('Prescription templates')
   const router = useRouter()
+  // Adding, editing, retiring and restoring a template are `clinical:write`;
+  // the manager reads them but does not keep them (bug report 16 Oct, 6).
+  const canWrite = useCan('clinical:write') === true
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [templates, setTemplates] = useState<Template[]>([])
@@ -152,12 +156,14 @@ export default function PrescriptionTemplatesPage() {
         title="Prescription templates"
         description="Shared with everyone at this clinic. Using one copies its medicines onto the prescription."
         actions={
-          <Button asChild>
-            <Link href={trail.to('/prescriptions/templates/new')}>
-              <Plus className="mr-2 h-4 w-4" />
-              New template
-            </Link>
-          </Button>
+          canWrite && (
+            <Button asChild>
+              <Link href={trail.to('/prescriptions/templates/new')}>
+                <Plus className="mr-2 h-4 w-4" />
+                New template
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -221,16 +227,20 @@ export default function PrescriptionTemplatesPage() {
                   ? 'Try a medicine name, or the category you filed it under.'
                   : 'Save the prescription you write most often and it will be one click from now on.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New template'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New template' : undefined
+              }
               emptyActionHref={
-                list.isFiltered ? undefined : trail.to('/prescriptions/templates/new')
+                list.isFiltered || !canWrite ? undefined : trail.to('/prescriptions/templates/new')
               }
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {rows.map((template) => (
-                <ClickableRow
+                // A template's page is its edit form, so the row opens it only
+                // for somebody who may save it. Others read the row here.
+                <TemplateRow
                   key={template.id}
-                  href={trail.to(`/prescriptions/templates/${template.id}`)}
+                  href={canWrite ? trail.to(`/prescriptions/templates/${template.id}`) : null}
                   label={`Open template ${template.name}`}
                   className={template.isActive ? undefined : 'opacity-70'}
                 >
@@ -281,43 +291,47 @@ export default function PrescriptionTemplatesPage() {
                   <TableCell className="align-top">
                     <StatusBadge kind="prescriptionTemplate" status={template.isActive} />
                   </TableCell>
+                  {/* Every item here writes, so without `clinical:write` there
+                      is no menu: the row still opens the template. */}
                   <GridActionsCell className="align-top">
-                    <DropdownMenu>
-                      <IconTooltip label="More actions">
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </IconTooltip>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(trail.to(`/prescriptions/templates/${template.id}`))
-                          }
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit template
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {template.isActive ? (
+                    {canWrite && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setActive(template, false)}
+                            onClick={() =>
+                              router.push(trail.to(`/prescriptions/templates/${template.id}`))
+                            }
                           >
-                            <Archive className="h-4 w-4 mr-2" />
-                            Retire template
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit template
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => setActive(template, true)}>
-                            <RotateCcw className="h-4 w-4 mr-2" />
-                            Restore template
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuSeparator />
+                          {template.isActive ? (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setActive(template, false)}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              Retire template
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => setActive(template, true)}>
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Restore template
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
-                </ClickableRow>
+                </TemplateRow>
               ))}
             </GridBody>
           </Table>
@@ -335,5 +349,25 @@ export default function PrescriptionTemplatesPage() {
 
       {ConfirmDialogComponent}
     </div>
+  )
+}
+
+/** A clickable row when there is somewhere to go, a plain one when there is not. */
+function TemplateRow({
+  href,
+  label,
+  className,
+  children,
+}: {
+  href: string | null
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  if (!href) return <TableRow className={className}>{children}</TableRow>
+  return (
+    <ClickableRow href={href} label={label} className={className}>
+      {children}
+    </ClickableRow>
   )
 }

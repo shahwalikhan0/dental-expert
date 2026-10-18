@@ -468,16 +468,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           duration: existingAppointment.duration,
         })
 
-        if (waitlistResult.matchedPatients.length > 0) {
-          // Return the waitlist notification info alongside the appointment
+        if (waitlistResult.offers.length > 0) {
+          // Returned alongside the appointment so the screen that cancelled it
+          // can tell the desk who was texted and who has to be phoned.
           return NextResponse.json({
             ...withWallClock(appointment, timezone),
-            _waitlistNotifications: {
-              patientsNotified: waitlistResult.matchedPatients.length,
-              patients: waitlistResult.matchedPatients.map((p) => ({
-                name: p.patientName,
-                phone: p.patientPhone,
-              })),
+            waitlistOffers: {
+              offers: waitlistResult.offers,
               slotDetails: waitlistResult.slotDetails,
             },
           })

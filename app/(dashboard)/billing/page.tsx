@@ -80,6 +80,8 @@ export default function BillingPage() {
   // menu for the invoice and payment lists, and used to land on "Forbidden"
   // and a row of zeros.
   const canSeeFigures = useCan('reports:financial')
+  // Raising an invoice is `billing:write`; a dentist reads the bills only.
+  const canWrite = useCan('billing:write') === true
   // The figures could not be fetched — said as such, not as a row of zeros.
   const [failed, setFailed] = useState(false)
 
@@ -149,12 +151,14 @@ export default function BillingPage() {
           title="Billing"
           description="Invoices and payments"
           actions={
-            <Button asChild>
-              <Link href="/billing/invoices/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New invoice
-              </Link>
-            </Button>
+            canWrite && (
+              <Button asChild>
+                <Link href="/billing/invoices/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New invoice
+                </Link>
+              </Button>
+            )
           }
         />
         <div className="grid gap-4 sm:grid-cols-2">
@@ -253,12 +257,14 @@ export default function BillingPage() {
                 return rows
               }}
             />
-            <Button asChild>
-              <Link href="/billing/invoices/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New invoice
-              </Link>
-            </Button>
+            {canWrite && (
+              <Button asChild>
+                <Link href="/billing/invoices/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New invoice
+                </Link>
+              </Button>
+            )}
           </>
         }
       />

@@ -5,11 +5,12 @@ import { LanguagePreferenceCard } from '@/components/i18n/language-preference-ca
 import { auth } from '@/lib/auth'
 import { locales } from '@/lib/i18n/config'
 import { prisma } from '@/lib/prisma'
+import { SESSION_ENDED_PATH } from '@/lib/session-ended'
 
 export default async function ProfileSettingsPage() {
   const session = await auth()
   if (!session?.user?.id) {
-    redirect('/login')
+    redirect(SESSION_ENDED_PATH)
   }
 
   const user = await prisma.user.findUnique({
@@ -23,7 +24,7 @@ export default async function ProfileSettingsPage() {
   })
 
   if (!user) {
-    redirect('/login')
+    redirect(SESSION_ENDED_PATH)
   }
 
   return (

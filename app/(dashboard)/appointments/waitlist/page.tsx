@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,11 +40,13 @@ import { FormField } from '@/components/ui/form-field'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
-import { Clock, Plus, Trash2, Users, Bell, CheckCircle2 } from 'lucide-react'
+import { Clock, Plus, Trash2, Users, Bell, CheckCircle2, CalendarPlus } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { statusLabel, statusOptions } from '@/lib/status'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
+import { useCan } from '@/hooks/use-can'
+import { useTrail } from '@/components/ui/trail'
 
 interface WaitlistEntry {
   id: string
@@ -93,12 +96,25 @@ const TIME_LABEL: Record<string, string> = {
   EVENING: 'Evening',
 }
 
-/** The statuses somebody filters by. Expired entries are not offered, as before. */
-const STATUS_OPTIONS = statusOptions('waitlist', ['ACTIVE', 'NOTIFIED', 'BOOKED', 'CANCELLED'])
+/**
+ * The statuses somebody filters by. Expired entries are not offered, as before.
+ * "Still waiting" — on the list or offered a slot — is the default: an offered
+ * patient has not been booked, and used to drop out of sight the moment the
+ * slot was offered.
+ */
+const STATUS_OPTIONS = [
+  { value: 'OPEN', label: 'Still waiting' },
+  ...statusOptions('waitlist', ['ACTIVE', 'NOTIFIED', 'BOOKED', 'CANCELLED']),
+]
+
+/** Entries that can still be booked or removed. */
+const isOpen = (status: string) => status === 'ACTIVE' || status === 'NOTIFIED'
 
 export default function WaitlistPage() {
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  const trail = useTrail('Waitlist')
+  const canWrite = useCan('appointments:write') === true
   const [entries, setEntries] = useState<WaitlistEntry[]>([])
   const [total, setTotal] = useState(0)
   const [summary, setSummary] = useState<Summary>({ active: 0, notified: 0, booked: 0 })
@@ -109,9 +125,9 @@ export default function WaitlistPage() {
 
   /**
    * Search, status and page in the address bar. The list opens on who is
-   * still waiting, as it always did; "All statuses" asks for every entry.
+   * still waiting; "All statuses" asks for every entry.
    */
-  const list = useListParams({ defaults: { status: 'ACTIVE' } })
+  const list = useListParams({ defaults: { status: 'OPEN' } })
   const query = (() => {
     const params = list.apiParams()
     // `apiParams` leaves out a filter at its default, but the route reads no
@@ -209,7 +225,7 @@ export default function WaitlistPage() {
     const name = entry.patient?.name ?? 'this patient'
     const ok = await confirm({
       title: `Remove ${name} from the waitlist?`,
-      description: 'They will no longer be told when a matching slot opens up.',
+      description: 'They will no longer be offered slots that come free.',
       confirmLabel: 'Remove from waitlist',
     })
     if (!ok) return
@@ -241,10 +257,12 @@ export default function WaitlistPage() {
         title="Waitlist"
         description="Manage patients waiting for appointment slots"
         actions={
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add to waitlist
-          </Button>
+          canWrite ? (
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add to waitlist
+            </Button>
+          ) : undefined
         }
       />
 
@@ -431,15 +449,15 @@ export default function WaitlistPage() {
           filters: [
             { label: 'Search', value: list.query, onClear: () => list.setSearch('') },
             {
-              // The default is "Waiting", so only another choice is a filter.
+              // The default is "Still waiting", so only another choice is a filter.
               label: 'Status',
               value:
-                list.filters.status === 'ACTIVE'
+                list.filters.status === 'OPEN'
                   ? null
                   : list.filters.status === 'all'
                     ? 'All statuses'
                     : statusLabel('waitlist', list.filters.status),
-              onClear: () => list.setFilter('status', 'ACTIVE'),
+              onClear: () => list.setFilter('status', 'OPEN'),
             },
           ],
         }}
@@ -453,7 +471,8 @@ export default function WaitlistPage() {
             Waitlist entries
           </CardTitle>
           <CardDescription>
-            Patients are automatically notified when matching slots open up
+            When an appointment is cancelled, the first patients whose preferences match are sent a
+            text offering the slot and marked Notified. Book them from here.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
@@ -480,10 +499,14 @@ export default function WaitlistPage() {
               emptyDescription={
                 list.isFiltered
                   ? 'Nobody on the waitlist matches these filters.'
-                  : 'Add a patient here and they are told as soon as a slot matching their preferences opens up.'
+                  : 'Add a patient here and they are offered a slot matching their preferences when one comes free.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'Add to waitlist'}
-              onEmptyAction={list.isFiltered ? list.clear : () => setDialogOpen(true)}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'Add to waitlist' : undefined
+              }
+              onEmptyAction={
+                list.isFiltered ? list.clear : canWrite ? () => setDialogOpen(true) : undefined
+              }
             >
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
@@ -515,7 +538,23 @@ export default function WaitlistPage() {
                   </TableCell>
                   <TableCell>{displayDate(entry.createdAt)}</TableCell>
                   <GridActionsCell>
-                    {entry.status === 'ACTIVE' && (
+                    {canWrite && isOpen(entry.status) && entry.patient && (
+                      <Button size="sm" variant="outline" asChild>
+                        <Link
+                          href={trail.to(
+                            `/appointments/new?${new URLSearchParams({
+                              patientId: entry.patient.id,
+                              waitlistId: entry.id,
+                              ...(entry.doctor ? { doctorId: entry.doctor.id } : {}),
+                            })}`
+                          )}
+                        >
+                          <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />
+                          Book
+                        </Link>
+                      </Button>
+                    )}
+                    {canWrite && isOpen(entry.status) && (
                       <IconTooltip label="Remove from the waitlist">
                         <Button
                           variant="ghost"

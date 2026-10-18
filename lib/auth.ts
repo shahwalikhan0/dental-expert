@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { authConfig } from './auth.config'
+import { refreshToken } from './account-standing'
 import { z } from 'zod'
 import { requestContext } from './audit'
 import { resolveLogin } from './login'
@@ -34,6 +35,20 @@ const loginSchema = z.object({
 
 export const { auth, signIn, signOut, handlers } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    /**
+     * The shared callback (timeout, password flag), then the account read
+     * again — see lib/account-standing.ts. Not on the request that signs
+     * somebody in, which read the account a moment ago, and not on the edge,
+     * where middleware runs and there is no database.
+     */
+    async jwt(params) {
+      const token = await authConfig.callbacks!.jwt!(params)
+      if (!token || params.user || process.env.NEXT_RUNTIME === 'edge') return token
+      return refreshToken(token)
+    },
+  },
   providers: [
     Credentials({
       async authorize(credentials, request) {

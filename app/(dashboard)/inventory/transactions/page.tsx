@@ -20,6 +20,7 @@ import {
 } from '@/components/inventory/stock-movement-dialog'
 import { ArrowLeftRight, Plus } from 'lucide-react'
 import { useListParams } from '@/hooks/use-list-params'
+import { useCan } from '@/hooks/use-can'
 import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK, displayDate } from '@/lib/dates'
 import { statusOptions } from '@/lib/status'
@@ -52,6 +53,10 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [total, setTotal] = useState(0)
+  // Recording a movement is `inventory:write` on the server — held by the
+  // assistant, who records chair-side consumption, but not by the dentist or
+  // the manager, who read the history only.
+  const canWrite = useCan('inventory:write') === true
 
   /**
    * The item this screen was opened about is the `item` filter.
@@ -137,10 +142,12 @@ export default function TransactionsPage() {
         description="Every receipt, issue, adjustment and write-off."
         back={<BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />}
         actions={
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New transaction
-          </Button>
+          canWrite && (
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New transaction
+            </Button>
+          )
         }
       />
 
@@ -228,8 +235,12 @@ export default function TransactionsPage() {
                   ? 'No movement matches these filters.'
                   : 'Every receipt, issue, adjustment and write-off is recorded here. Nothing has moved yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New transaction'}
-              onEmptyAction={list.isFiltered ? list.clear : () => setDialogOpen(true)}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New transaction' : undefined
+              }
+              onEmptyAction={
+                list.isFiltered ? list.clear : canWrite ? () => setDialogOpen(true) : undefined
+              }
             >
               {transactions.map((transaction) => (
                 <TableRow key={transaction.id}>
@@ -269,7 +280,8 @@ export default function TransactionsPage() {
       </Card>
 
       <StockMovementDialog
-        open={showAddModal}
+        // `record=1` in the address does not open the form for a reader.
+        open={showAddModal && canWrite}
         onOpenChange={setDialogOpen}
         // Only a stocked item is offered for a new movement.
         initialItem={handedItem && handedItem.isActive !== false ? handedItem : null}

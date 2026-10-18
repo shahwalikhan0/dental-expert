@@ -81,6 +81,7 @@ import {
   cancelAppointmentConfirm,
   noShowConfirm,
 } from '@/components/appointments/appointment-confirms'
+import { waitlistOfferToast } from '@/components/appointments/waitlist-offers'
 
 /** Today as YYYY-MM-DD, from the browser's own clock, until the server says. */
 function browserDay(): string {
@@ -356,7 +357,11 @@ export default function AppointmentsPage() {
    * when it refuses. These used to log the failure to the console, so a
    * refused action looked like a menu item that did nothing.
    */
-  const act = async (request: Promise<Response>, action: string, done?: () => void) => {
+  const act = async (
+    request: Promise<Response>,
+    action: string,
+    done?: (data: unknown) => void
+  ) => {
     try {
       const response = await request
       if (!response.ok) {
@@ -364,7 +369,7 @@ export default function AppointmentsPage() {
         toast(toastError(action, data))
         return
       }
-      done?.()
+      if (done) done(await response.json().catch(() => null))
       fetchAppointments()
     } catch (error) {
       toast(toastError(action, error))
@@ -405,14 +410,20 @@ export default function AppointmentsPage() {
       }
     )
 
-  const putStatus = (appointment: Appointment, body: Record<string, unknown>, action: string) =>
+  const putStatus = (
+    appointment: Appointment,
+    body: Record<string, unknown>,
+    action: string,
+    done?: (data: unknown) => void
+  ) =>
     act(
       fetch(`/api/appointments/${appointment.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }),
-      action
+      action,
+      done
     )
 
   const handleConfirm = (appointment: Appointment) =>
@@ -429,7 +440,11 @@ export default function AppointmentsPage() {
     await putStatus(
       appointment,
       { status: 'CANCELLED', ...(reason ? { cancellationReason: reason } : {}) },
-      `cancel appointment ${appointment.appointmentNo}`
+      `cancel appointment ${appointment.appointmentNo}`,
+      (data) => {
+        const offered = waitlistOfferToast(data)
+        if (offered) toast(offered)
+      }
     )
   }
 

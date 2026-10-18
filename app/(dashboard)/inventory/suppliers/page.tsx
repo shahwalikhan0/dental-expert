@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useListParams } from '@/hooks/use-list-params'
+import { useCan } from '@/hooks/use-can'
 import {
   ClickableRow,
   GridActionsCell,
@@ -56,6 +57,9 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [total, setTotal] = useState(0)
+  // Adding and editing a supplier are `inventory:write` on the server; a
+  // reader opens the supplier from the row and is offered nothing to change.
+  const canWrite = useCan('inventory:write') === true
 
   const list = useListParams({ defaults: { status: 'all' } })
   const query = list.apiParams().toString()
@@ -99,12 +103,14 @@ export default function SuppliersPage() {
         description="Who stock is ordered from."
         back={<BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />}
         actions={
-          <Button asChild>
-            <Link href={trail.to('/inventory/suppliers/new')}>
-              <Plus className="h-4 w-4 mr-2" />
-              New supplier
-            </Link>
-          </Button>
+          canWrite && (
+            <Button asChild>
+              <Link href={trail.to('/inventory/suppliers/new')}>
+                <Plus className="h-4 w-4 mr-2" />
+                New supplier
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -170,8 +176,12 @@ export default function SuppliersPage() {
                   ? 'No supplier matches these filters.'
                   : 'Suppliers are who stock is ordered from. Add one to raise a purchase order against it.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New supplier'}
-              emptyActionHref={list.isFiltered ? undefined : '/inventory/suppliers/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New supplier' : undefined
+              }
+              emptyActionHref={
+                !list.isFiltered && canWrite ? '/inventory/suppliers/new' : undefined
+              }
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {suppliers.map((supplier) => (
@@ -193,24 +203,27 @@ export default function SuppliersPage() {
                   <TableCell>{supplier.itemsSupplied}</TableCell>
                   <TableCell>{formatCurrency(supplier.totalBusiness)}</TableCell>
                   <GridActionsCell>
-                    {/* No "View details": the row itself opens the supplier. */}
-                    <DropdownMenu>
-                      <IconTooltip label="More actions">
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </IconTooltip>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit
-                          </Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* No "View details": the row itself opens the supplier.
+                        The menu holds only Edit, so without it there is none. */}
+                    {canWrite && (
+                      <DropdownMenu>
+                        <IconTooltip label="More actions">
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="More actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </IconTooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit
+                            </Link>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </GridActionsCell>
                 </ClickableRow>
               ))}

@@ -15,7 +15,7 @@ import {
 import { billedTreatmentRefusal, liveInvoiceFor } from '@/lib/treatment-billing'
 import { afterTreatmentCompleted } from '@/lib/treatment-completion'
 import { clinicTimezone, withWallClock } from '@/lib/appointment-time'
-import { can, holderCan } from '@/lib/rbac'
+import { holderCan } from '@/lib/rbac'
 import {
   MIN_REASON_LENGTH,
   diffClinicalFields,
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // PUT - Update treatment
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, hospitalId, user, session } = await requirePermission('clinical:write')
+  const { error, hospitalId, user } = await requirePermission('clinical:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -191,17 +191,36 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Pre-signature, the old workflow rule still applies: a completed or
-    // cancelled treatment is not casually editable.
-    if (
-      !signed &&
-      (existingTreatment.status === 'COMPLETED' || existingTreatment.status === 'CANCELLED') &&
-      !can(session.user.role, 'clinical:delete')
-    ) {
-      return NextResponse.json(
-        { error: 'Cannot modify completed or cancelled treatments' },
-        { status: 400 }
-      )
+    // A completed or cancelled treatment is not casually editable, signed or
+    // not. Unsigned, nothing about it changes without `clinical:delete`. Signed,
+    // its clinical content goes through the amendment above, and its status and
+    // price stay where they are without `clinical:delete` — this used to apply
+    // only before signing, so signing a treatment was what let a dental
+    // assistant cancel, re-price or reopen it (bug report 16 Oct, finding 3).
+    // Only a real change counts: the edit form sends both fields back on every
+    // save.
+    const finished =
+      existingTreatment.status === 'COMPLETED' || existingTreatment.status === 'CANCELLED'
+    const changesStatus = body.status !== undefined && body.status !== existingTreatment.status
+    const changesCost =
+      body.cost !== undefined && !existingTreatment.cost.equals(Number(body.cost) || 0)
+    const overridesFinished = finished && (changesStatus || changesCost)
+
+    if (finished && !holderCan(user, 'clinical:delete')) {
+      if (!signed) {
+        return NextResponse.json(
+          { error: 'Cannot modify completed or cancelled treatments' },
+          { status: 400 }
+        )
+      }
+      if (overridesFinished) {
+        return NextResponse.json(
+          {
+            error: `${existingTreatment.treatmentNo} is signed and ${existingTreatment.status.toLowerCase()}. Its status and cost can no longer be changed. Add an addendum to record a correction.`,
+          },
+          { status: 409 }
+        )
+      }
     }
 
     const updateData: any = {}
@@ -354,6 +373,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       return updated
     })
+
+    // Nothing else records a status or price change, so the override does.
+    if (signed && overridesFinished) {
+      void recordAudit({
+        hospitalId,
+        userId: user!.id,
+        action: AUDIT_ACTIONS.TREATMENT_STATUS_OVERRIDDEN,
+        entityType: 'Treatment',
+        entityId: id,
+        oldValues: {
+          treatmentNo: existingTreatment.treatmentNo,
+          status: existingTreatment.status,
+          cost: Number(existingTreatment.cost),
+        },
+        newValues: { status: treatment.status, cost: Number(treatment.cost) },
+        ...requestContext(request.headers),
+      })
+    }
 
     return NextResponse.json(treatment)
   } catch (error) {

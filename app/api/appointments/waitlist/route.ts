@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
+import { OPEN_WAITLIST_STATUSES } from '@/lib/services/smart-scheduler'
 
 // GET /api/appointments/waitlist — List waitlist entries
 export async function GET(req: NextRequest) {
@@ -22,7 +23,11 @@ export async function GET(req: NextRequest) {
     const search = (searchParams.get('search') || '').trim()
 
     const where: any = { hospitalId }
-    if (status) where.status = status
+    // OPEN is everyone still waiting: on the list, or offered a slot and not
+    // yet booked. The page opens on it, so an offered entry stays in sight
+    // until it is booked or removed.
+    if (status === 'OPEN') where.status = { in: [...OPEN_WAITLIST_STATUSES] }
+    else if (status) where.status = status
     if (doctorId) where.doctorId = doctorId
     if (search) {
       const words = search.split(/\s+/).filter(Boolean)
@@ -141,7 +146,7 @@ export async function POST(req: NextRequest) {
       where: {
         hospitalId,
         patientId,
-        status: 'ACTIVE',
+        status: { in: [...OPEN_WAITLIST_STATUSES] },
       },
     })
     if (existing) {
@@ -187,6 +192,13 @@ export async function DELETE(req: NextRequest) {
     })
     if (!entry) {
       return NextResponse.json({ error: 'Waitlist entry not found' }, { status: 404 })
+    }
+
+    if (!(OPEN_WAITLIST_STATUSES as readonly string[]).includes(entry.status)) {
+      return NextResponse.json(
+        { error: 'This entry is already closed. Only a waiting or offered entry can be removed.' },
+        { status: 409 }
+      )
     }
 
     await prisma.waitlist.update({

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { PageHeader } from '@/components/ui/page-header'
 import { ChangePasswordCard } from '@/components/settings/change-password-card'
 import { auth } from '@/lib/auth'
+import { SESSION_ENDED_PATH } from '@/lib/session-ended'
 
 /**
  * Where everybody changes their own password.
@@ -17,7 +18,7 @@ import { auth } from '@/lib/auth'
  */
 export default async function ChangePasswordPage() {
   const session = await auth()
-  if (!session?.user) redirect('/login')
+  if (!session?.user) redirect(SESSION_ENDED_PATH)
 
   const forced = session.user.mustChangePassword === true
 

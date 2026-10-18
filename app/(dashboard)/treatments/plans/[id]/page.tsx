@@ -45,6 +45,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useCan } from '@/hooks/use-can'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
 import { planIsFinished } from '@/lib/treatment-plan-status'
 import { groupByPhase } from '@/lib/treatment-phases'
@@ -129,6 +130,10 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
+  // Every move of the plan (propose, consent, start, complete, cancel), editing
+  // it, and starting a step's treatment are `clinical:write`; the manager reads
+  // the plan but does not write it (bug report 16 Oct, finding 6).
+  const canWrite = useCan('clinical:write') === true
   // Prints the patient estimate, with each step's status for the clinic's file.
   const printing = usePrint({
     documentTitle: plan ? `Treatment plan ${plan.planNumber}` : 'Treatment plan',
@@ -290,19 +295,19 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
         }
         actions={
           <>
-            {plan.status === 'DRAFT' && (
+            {canWrite && plan.status === 'DRAFT' && (
               <Button onClick={() => handleStatusChange('PROPOSED')} disabled={actionLoading}>
                 <FileText className="h-4 w-4 mr-2" />
                 Propose to patient
               </Button>
             )}
-            {plan.status === 'PROPOSED' && !plan.consentGiven && (
+            {canWrite && plan.status === 'PROPOSED' && !plan.consentGiven && (
               <Button onClick={() => setConsentDialogOpen(true)}>
                 <ClipboardCheck className="h-4 w-4 mr-2" />
                 Record consent…
               </Button>
             )}
-            {plan.status === 'ACCEPTED' && (
+            {canWrite && plan.status === 'ACCEPTED' && (
               <Button onClick={() => handleStatusChange('IN_PROGRESS')} disabled={actionLoading}>
                 <Play className="h-4 w-4 mr-2" />
                 Start treatment
@@ -314,13 +319,13 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
               is completed; this is for the plan whose last open step was
               cancelled instead.
             */}
-            {plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
+            {canWrite && plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
               <Button onClick={() => handleStatusChange('COMPLETED')} disabled={actionLoading}>
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Mark plan complete
               </Button>
             )}
-            {!['COMPLETED', 'CANCELLED'].includes(plan.status) && (
+            {canWrite && !['COMPLETED', 'CANCELLED'].includes(plan.status) && (
               <>
                 <Button variant="outline" asChild>
                   <Link href={trail.to(`/treatments/plans/${id}/edit`)}>
@@ -456,6 +461,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                                 {item.treatment.treatmentNo}
                               </Link>
                             ) : (
+                              canWrite &&
                               ['PENDING', 'SCHEDULED'].includes(item.status) &&
                               ['ACCEPTED', 'IN_PROGRESS'].includes(plan.status) && (
                                 <Button size="sm" variant="outline" asChild>

@@ -93,6 +93,9 @@ export default function InvoicesPage() {
   // Cancelling is `billing:void` on the server (DELETE); offering it to a role
   // without it was a menu item that could only come back 403.
   const canVoid = useCan('billing:void') === true
+  // Raising, editing and taking payment on an invoice are `billing:write`; a
+  // dentist reads the bills but does not make them (bug report 16 Oct, 6).
+  const canWrite = useCan('billing:write') === true
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   // The fetch failed — said in the grid, not as an empty list.
@@ -181,12 +184,14 @@ export default function InvoicesPage() {
         title="Invoices"
         description="Manage patient invoices and billing"
         actions={
-          <Button asChild>
-            <Link href="/billing/invoices/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New invoice
-            </Link>
-          </Button>
+          canWrite && (
+            <Button asChild>
+              <Link href="/billing/invoices/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New invoice
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -280,8 +285,10 @@ export default function InvoicesPage() {
                   ? 'Nothing has been billed under these filters.'
                   : 'No invoice has been raised yet.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New invoice'}
-              emptyActionHref={list.isFiltered ? undefined : '/billing/invoices/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New invoice' : undefined
+              }
+              emptyActionHref={list.isFiltered || !canWrite ? undefined : '/billing/invoices/new'}
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {invoices.map((invoice) => {
@@ -367,7 +374,7 @@ export default function InvoicesPage() {
                         </IconTooltip>
                         <DropdownMenuContent align="end">
                           {/* No "View details": the row itself opens the invoice. */}
-                          {invoice.status === 'DRAFT' && (
+                          {canWrite && invoice.status === 'DRAFT' && (
                             <>
                               <DropdownMenuItem
                                 onClick={() => router.push(`/billing/invoices/${invoice.id}/edit`)}
@@ -378,16 +385,17 @@ export default function InvoicesPage() {
                               <DropdownMenuSeparator />
                             </>
                           )}
-                          {['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(`/billing/invoices/${invoice.id}?action=payment`)
-                              }
-                            >
-                              <CreditCard className="h-4 w-4 mr-2" />
-                              Record payment
-                            </DropdownMenuItem>
-                          )}
+                          {canWrite &&
+                            ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(invoice.status) && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/billing/invoices/${invoice.id}?action=payment`)
+                                }
+                              >
+                                <CreditCard className="h-4 w-4 mr-2" />
+                                Record payment
+                              </DropdownMenuItem>
+                            )}
                           {/* Opens the invoice to print it. `window.print()` here
                               printed this list, not the invoice. "Send via
                               Email" sat below it with no handler; there is no

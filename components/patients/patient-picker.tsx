@@ -117,10 +117,15 @@ export function PatientPicker<P extends PickedPatient = PickedPatient>({
 
   // The hand-over: a patient named in the address. Once, and only if the form
   // has not already chosen somebody (a visit that names its own patient wins).
-  const fetchedFor = React.useRef<string | null>(null)
+  //
+  // "Once" is counted when the patient is handed over, not when the request is
+  // made. It used to be the request: React runs an effect twice in development,
+  // the first run's answer was thrown away by its own cleanup, and the second
+  // run saw the id already marked and never asked again — so "Book appointment"
+  // arrived with the picker empty (bug report 16 Oct, finding 17).
+  const handedOver = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!initialPatientId || value || fetchedFor.current === initialPatientId) return
-    fetchedFor.current = initialPatientId
+    if (!initialPatientId || value || handedOver.current === initialPatientId) return
     let current = true
     ;(async () => {
       try {
@@ -129,7 +134,10 @@ export function PatientPicker<P extends PickedPatient = PickedPatient>({
         const response = await fetch(`/api/patients/${encodeURIComponent(initialPatientId)}`)
         if (!response.ok) return
         const data = await response.json()
-        if (current && data.patient) onChange(data.patient as P)
+        if (current && data.patient) {
+          handedOver.current = initialPatientId
+          onChange(data.patient as P)
+        }
       } catch {
         // The picker is still there to search with; nothing is lost.
       }

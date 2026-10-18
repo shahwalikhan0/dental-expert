@@ -26,6 +26,7 @@ import {
   GridPagination,
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
+import { useCan } from '@/hooks/use-can'
 import {
   Search,
   User,
@@ -102,6 +103,9 @@ export default function PaymentsPage() {
   const trail = useTrail('Payments')
   const { toast } = useToast()
   const router = useRouter()
+  // A refund is `billing:refund` on the server; the front desk and dentists
+  // take or read payments but do not give money back.
+  const canRefund = useCan('billing:refund') === true
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Summary>({ totalReceived: 0, totalRefunded: 0 })
@@ -499,16 +503,18 @@ export default function PaymentsPage() {
                         {/* A payment refunded in part can be refunded again —
                             gating on COMPLETED alone hid the action on
                             exactly the payment most likely to need it. */}
-                        {SETTLED.has(payment.status) && payment.status !== 'REFUNDED' && (
-                          <DropdownMenuItem
-                            onClick={() =>
-                              router.push(trail.to(`/billing/payments/${payment.id}/refund`))
-                            }
-                          >
-                            <RotateCcw className="h-4 w-4 mr-2" />
-                            Process Refund
-                          </DropdownMenuItem>
-                        )}
+                        {canRefund &&
+                          SETTLED.has(payment.status) &&
+                          payment.status !== 'REFUNDED' && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(trail.to(`/billing/payments/${payment.id}/refund`))
+                              }
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Process Refund
+                            </DropdownMenuItem>
+                          )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </GridActionsCell>

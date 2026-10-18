@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
-import { holderCan, landingPageFor, permissionForRoute } from '@/lib/rbac'
+import { holderCan, isFormRoute, landingPageFor, permissionForRoute } from '@/lib/rbac'
 import { bucketFor, callerKey, rateLimit } from '@/lib/rate-limit'
 
 // Which capability each dashboard section needs now lives in lib/rbac.ts,
@@ -219,6 +219,17 @@ export default auth((req) => {
   const required = permissionForRoute(pathname)
 
   if (required && !holderCan(holder, required)) {
+    // A form they may not save — New Invoice for a dentist — goes back to the
+    // record or list it was opened from, when they can read that, rather than
+    // all the way home.
+    const parent = isFormRoute(pathname) ? pathname.replace(/\/[^/]+\/?$/, '') : pathname
+    if (parent !== pathname) {
+      const readNeeds = permissionForRoute(parent)
+      if (readNeeds && holderCan(holder, readNeeds)) {
+        return NextResponse.redirect(new URL(parent, nextUrl))
+      }
+    }
+
     // Send them somewhere they can actually use. Redirecting everyone to
     // /dashboard would trap INVENTORY_STAFF in a loop, since they have no
     // dashboard permission either.

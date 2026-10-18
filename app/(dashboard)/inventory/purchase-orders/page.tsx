@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useListParams } from '@/hooks/use-list-params'
+import { useCan } from '@/hooks/use-can'
 import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK, displayDate } from '@/lib/dates'
 import { ClickableRow, GridBody, GridPagination } from '@/components/ui/data-grid'
@@ -42,6 +43,9 @@ export default function PurchaseOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [total, setTotal] = useState(0)
+  // Raising an order is `inventory:write` on the server; a reader sees the
+  // orders but is not offered the form.
+  const canWrite = useCan('inventory:write') === true
 
   const list = useListParams({ defaults: { status: 'all' } })
   const query = list.apiParams().toString()
@@ -85,12 +89,14 @@ export default function PurchaseOrdersPage() {
         description="What has been ordered from suppliers, and what is still to arrive."
         back={<BackLink trail={trail} fallback="/inventory" fallbackLabel="Inventory" />}
         actions={
-          <Button asChild>
-            <Link href="/inventory/purchase-orders/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New purchase order
-            </Link>
-          </Button>
+          canWrite && (
+            <Button asChild>
+              <Link href="/inventory/purchase-orders/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New purchase order
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -161,8 +167,12 @@ export default function PurchaseOrdersPage() {
                   ? 'No order matches these filters.'
                   : 'Raise one when you next order from a supplier — receiving against it is what records the batch and expiry date on the stock.'
               }
-              emptyActionLabel={list.isFiltered ? 'Clear the filters' : 'New purchase order'}
-              emptyActionHref={list.isFiltered ? undefined : '/inventory/purchase-orders/new'}
+              emptyActionLabel={
+                list.isFiltered ? 'Clear the filters' : canWrite ? 'New purchase order' : undefined
+              }
+              emptyActionHref={
+                !list.isFiltered && canWrite ? '/inventory/purchase-orders/new' : undefined
+              }
               onEmptyAction={list.isFiltered ? list.clear : undefined}
             >
               {orders.map((order) => (

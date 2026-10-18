@@ -1,10 +1,11 @@
 import prisma from '@/lib/prisma'
 import { wallClockIn } from '@/lib/appointment-time'
+import { communicationPreferences, mayContact } from '@/lib/communication-preferences'
 
 /**
  * Smart Scheduler Service
  * When an appointment is cancelled, this service finds waitlisted patients
- * who match the freed slot and notifies them.
+ * who match the freed slot and offers it to them by text.
  */
 
 interface CancelledSlot {
@@ -118,17 +119,32 @@ export async function findMatchingWaitlistPatients(slot: CancelledSlot): Promise
   }>
 }
 
+/** One waitlisted patient offered a freed slot, and whether a text went to them. */
+export interface WaitlistOffer {
+  waitlistId: string
+  patientId: string
+  name: string
+  phone: string
+  /** A text offering the slot was queued. When false, `reason` says why and the desk should call. */
+  messaged: boolean
+  reason?: string
+}
+
 /**
- * Process a cancelled appointment — find waitlist matches and mark them as notified
- * Returns the list of patients to notify (caller handles actual SMS sending)
+ * Process a cancelled appointment: offer the freed slot to the first matching
+ * patients on the waitlist.
+ *
+ * Each is sent a text, queued like every other message the clinic sends, so it
+ * goes out with the clinic's own gateway, respects the patient's consent for
+ * appointment messages and appears in their message history. This used to mark
+ * the entries NOTIFIED and send nothing, while the waitlist page told the desk
+ * patients were "automatically notified" (bug report 16 Oct, finding 5).
+ *
+ * A patient who cannot be texted is still offered the slot and marked NOTIFIED;
+ * the cancellation's response names them so the desk can phone instead.
  */
 export async function handleCancellationWaitlist(slot: CancelledSlot): Promise<{
-  matchedPatients: Array<{
-    id: string
-    patientId: string
-    patientName: string
-    patientPhone: string
-  }>
+  offers: WaitlistOffer[]
   slotDetails: {
     date: string
     time: string
@@ -137,11 +153,16 @@ export async function handleCancellationWaitlist(slot: CancelledSlot): Promise<{
 }> {
   const matches = await findMatchingWaitlistPatients(slot)
 
-  // Get doctor name for the notification message
-  const doctor = await prisma.staff.findUnique({
-    where: { id: slot.doctorId },
-    select: { firstName: true, lastName: true },
-  })
+  const [doctor, hospital] = await Promise.all([
+    prisma.staff.findUnique({
+      where: { id: slot.doctorId },
+      select: { firstName: true, lastName: true },
+    }),
+    prisma.hospital.findUnique({
+      where: { id: slot.hospitalId },
+      select: { name: true, phone: true },
+    }),
+  ])
 
   const doctorName = doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'your doctor'
   const dateStr = new Intl.DateTimeFormat('en-PK', {
@@ -150,41 +171,98 @@ export async function handleCancellationWaitlist(slot: CancelledSlot): Promise<{
     month: 'long',
     day: 'numeric',
   }).format(slot.startsAt)
+  const time = wallClockIn(slot.startsAt, slot.timezone).scheduledTime
+  const slotDetails = { date: dateStr, time, doctorName }
 
-  // Mark top matching entries as NOTIFIED (limit to 3 to avoid overbooking)
-  const toNotify = matches.slice(0, 3)
+  // The first three in the queue, so one slot is not offered to the whole list.
+  const toOffer = matches.slice(0, 3)
+  if (toOffer.length === 0) return { offers: [], slotDetails }
 
-  if (toNotify.length > 0) {
-    await prisma.waitlist.updateMany({
-      where: {
-        id: { in: toNotify.map((m) => m.id) },
-      },
-      data: {
-        status: 'NOTIFIED',
-        notifiedAt: new Date(),
-      },
-    })
+  const patients = await prisma.patient.findMany({
+    where: { id: { in: toOffer.map((m) => m.patientId) }, hospitalId: slot.hospitalId },
+    select: { id: true, communicationPrefs: true },
+  })
+  const prefsOf = new Map(patients.map((p) => [p.id, p.communicationPrefs]))
+
+  const body =
+    `${hospital?.name ?? 'Your clinic'}: an appointment with ${doctorName} has come free on ` +
+    `${dateStr} at ${time}.` +
+    (hospital?.phone ? ` Call ${hospital.phone} to book it.` : ' Call the clinic to book it.')
+
+  const now = new Date()
+  const offers: WaitlistOffer[] = []
+
+  for (const match of toOffer) {
+    const decision = mayContact(
+      communicationPreferences(prefsOf.get(match.patientId)),
+      'SMS',
+      'appointmentReminders'
+    )
+    const offer: WaitlistOffer = {
+      waitlistId: match.id,
+      patientId: match.patientId,
+      name: match.patientName,
+      phone: match.patientPhone,
+      messaged: false,
+    }
+
+    if (!match.patientPhone) {
+      offer.reason = 'No mobile number'
+    } else if (!decision.allowed) {
+      offer.reason = decision.reason
+    } else {
+      await prisma.messageLog.create({
+        data: {
+          hospitalId: slot.hospitalId,
+          channel: 'SMS',
+          patientId: match.patientId,
+          recipient: match.patientPhone,
+          body,
+          relatedType: 'Waitlist',
+          relatedId: match.id,
+          scheduledFor: now,
+          status: 'PENDING',
+          // Read by the dispatcher, which re-checks consent at the moment of
+          // sending.
+          metadata: { kind: 'appointmentReminders' },
+        },
+      })
+      offer.messaged = true
+    }
+
+    offers.push(offer)
   }
 
-  return {
-    matchedPatients: toNotify,
-    slotDetails: {
-      date: dateStr,
-      time: wallClockIn(slot.startsAt, slot.timezone).scheduledTime,
-      doctorName,
-    },
-  }
+  await prisma.waitlist.updateMany({
+    where: { id: { in: toOffer.map((m) => m.id) }, hospitalId: slot.hospitalId },
+    data: { status: 'NOTIFIED', notifiedAt: now },
+  })
+
+  return { offers, slotDetails }
 }
 
+/** The waitlist states a patient is still waiting in. */
+export const OPEN_WAITLIST_STATUSES = ['ACTIVE', 'NOTIFIED'] as const
+
 /**
- * Book a waitlisted patient into the freed slot
+ * Close a waitlist entry because its patient has been booked.
+ *
+ * Called by the booking route when New Appointment was opened from the
+ * waitlist's Book action. Scoped to the clinic and the patient, so an entry id
+ * from elsewhere, or for somebody else, closes nothing. Returns whether it did.
  */
-export async function bookFromWaitlist(waitlistId: string, appointmentId: string): Promise<void> {
-  await prisma.waitlist.update({
-    where: { id: waitlistId },
-    data: {
-      status: 'BOOKED',
-      bookedAt: new Date(),
+export async function bookFromWaitlist(
+  db: Pick<typeof prisma, 'waitlist'>,
+  entry: { waitlistId: string; hospitalId: string; patientId: string }
+): Promise<boolean> {
+  const { count } = await db.waitlist.updateMany({
+    where: {
+      id: entry.waitlistId,
+      hospitalId: entry.hospitalId,
+      patientId: entry.patientId,
+      status: { in: [...OPEN_WAITLIST_STATUSES] },
     },
+    data: { status: 'BOOKED', bookedAt: new Date() },
   })
+  return count > 0
 }

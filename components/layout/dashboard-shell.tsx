@@ -7,6 +7,7 @@ import { SidebarProvider } from './sidebar-context'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { KeyboardShortcutHelp } from '@/components/layout/keyboard-shortcut-help'
+import { SessionWatch } from '@/components/layout/session-watch'
 import { cn } from '@/lib/utils'
 import { roleThemeStyle } from '@/lib/rbac'
 
@@ -89,6 +90,7 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
         </SidebarProvider>
       </TooltipProvider>
       <KeyboardShortcutHelp />
+      <SessionWatch role={user.role} clinicalRole={user.clinicalRole} />
     </>
   )
 }
