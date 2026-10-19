@@ -68,6 +68,7 @@ import { toastError, toastSuccess } from '@/lib/toast-utils'
 import { displayDate, isoDay } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { appointmentTypeConfig, formatTime, getDoctorName } from '@/lib/appointment-utils'
+import { ALL_DAY } from '@/lib/working-hours'
 import { subjectName } from '@/lib/visitors'
 import { formatToken } from '@/lib/tokens'
 import { ExportMenu } from '@/components/ui/export-menu'
@@ -103,7 +104,13 @@ function shiftDay(day: string, by: number): string {
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 /** The day the book draws for a clinic that has not set its opening hours. */
-const DEFAULT_BOOK_HOURS = { open: '09:00', close: '21:00' }
+/**
+ * The book's fallback when the clinic's hours cannot be read: the whole day.
+ *
+ * It was 09:00–21:00, which quietly hid any appointment outside those hours
+ * from a clinic whose settings had not loaded.
+ */
+const DEFAULT_BOOK_HOURS = { open: ALL_DAY.open, close: ALL_DAY.close }
 
 /** Sentence-case names for the appointment types, for the filter and the badge. */
 const TYPE_OPTIONS = [
@@ -503,13 +510,6 @@ export default function AppointmentsPage() {
           description="Manage and schedule patient appointments"
           actions={
             <>
-              <SegmentedControl
-                aria-label="View"
-                size="md"
-                value={viewMode}
-                onChange={setViewMode}
-                options={VIEW_OPTIONS}
-              />
               <ExportMenu
                 filename="appointments"
                 getData={() =>
@@ -534,13 +534,13 @@ export default function AppointmentsPage() {
               {/* Who is free when, across dentists and assistants */}
               <Button variant="outline" asChild>
                 <Link href={trail.to('/appointments/schedule')}>
-                  <CalendarRange className="h-4 w-4 mr-2" />
+                  <CalendarRange className="h-4 w-4" />
                   Clinician schedule
                 </Link>
               </Button>
               <Button asChild>
                 <Link href="/appointments/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New appointment
                 </Link>
               </Button>
@@ -558,48 +558,36 @@ export default function AppointmentsPage() {
           happening to notice. This is the list that makes the promise keepable.
         */}
         {pendingReview > 0 && !needsReview && (
-          <Card className="border-amber-500/50 bg-amber-500/5">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="flex items-center gap-3">
-                <Globe className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                <p className="text-sm">
-                  <span className="font-medium">
-                    {pendingReview} online booking{pendingReview === 1 ? '' : 's'}
-                  </span>{' '}
-                  {pendingReview === 1 ? 'is' : 'are'} waiting to be called. The patient was told
-                  the clinic would telephone to confirm.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => list.setFilter('needsReview', true)}
-              >
-                Show them
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+              <Globe className="h-4 w-4" />
+            </span>
+            <p className="min-w-0 flex-1">
+              <span className="font-semibold">
+                {pendingReview} online booking{pendingReview === 1 ? '' : 's'}
+              </span>{' '}
+              {pendingReview === 1 ? 'is' : 'are'} waiting to be called. The patient was told the
+              clinic would telephone to confirm.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => list.setFilter('needsReview', true)}>
+              Show them
+            </Button>
+          </div>
         )}
 
         {needsReview && (
-          <Card className="border-amber-500/50 bg-amber-500/5">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="flex items-center gap-3">
-                <Globe className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                <p className="text-sm">
-                  Showing online bookings nobody has dealt with yet. Confirming, moving or
-                  cancelling one takes it off this list.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => list.setFilter('needsReview', false)}
-              >
-                Show all appointments
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+              <Globe className="h-4 w-4" />
+            </span>
+            <p className="min-w-0 flex-1">
+              Showing online bookings nobody has dealt with yet. Confirming, moving or cancelling
+              one takes it off this list.
+            </p>
+            <Button size="sm" variant="ghost" onClick={() => list.setFilter('needsReview', false)}>
+              Show all appointments
+            </Button>
+          </div>
         )}
 
         <ListToolbar
@@ -667,11 +655,22 @@ export default function AppointmentsPage() {
               },
             ],
           }}
-        />
+        >
+          {/* List, day book or week — how the same appointments are laid out,
+              so it sits with the controls over them rather than in the header. */}
+          <SegmentedControl
+            aria-label="View"
+            size="md"
+            value={viewMode}
+            onChange={setViewMode}
+            options={VIEW_OPTIONS}
+            className="md:ml-auto"
+          />
+        </ListToolbar>
 
         {viewMode === 'week' ? (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-base">
                   Week of {displayDate(weekStartOf(bookDay))}
@@ -680,7 +679,7 @@ export default function AppointmentsPage() {
                   Click a day to open it in the book. An empty column is a day with room on it.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <IconTooltip label="Previous week">
                   <Button
                     variant="outline"
@@ -722,14 +721,14 @@ export default function AppointmentsPage() {
           </Card>
         ) : viewMode === 'calendar' ? (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-base">{displayDate(bookDay)}</CardTitle>
                 <CardDescription>
                   Click an empty slot to book it. Colours follow the appointment&rsquo;s status.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <IconTooltip label="Previous day">
                   <Button
                     variant="outline"

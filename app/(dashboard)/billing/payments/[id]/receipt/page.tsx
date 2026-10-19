@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
-import { Loader2 } from 'lucide-react'
+import { Calendar, CreditCard, FileText, Loader2, ReceiptText, User } from 'lucide-react'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { displayDate } from '@/lib/dates'
 import { useToast } from '@/hooks/use-toast'
 import { usePrint } from '@/hooks/use-print'
@@ -133,123 +137,164 @@ export default function PaymentReceiptPage() {
   const patient = payment.invoice.patient
   const refunded = payment.refunds.reduce((sum, r) => sum + Number(r.amount), 0)
 
+  const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'
+  const method = METHOD_LABELS[payment.paymentMethod] ?? payment.paymentMethod
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       {/* What goes on paper: a template, not this page. */}
       <PrintDocument printing={printing}>
         <ReceiptPrint payment={payment} />
       </PrintDocument>
 
-      <div className="space-y-4">
-        <BackLink trail={trail} fallback="/billing/payments" fallbackLabel="Payments" />
-        <div className="flex justify-end">
-          <PrintButton printing={printing} label="Print receipt" />
-        </div>
-      </div>
+      {/* The payment as a record: who paid, when, how much; printing the
+          receipt is the one thing done from here. */}
+      <ProfileHeader
+        eyebrow={`Receipt · ${payment.paymentNo}`}
+        name={patientName}
+        avatarIcon={ReceiptText}
+        badges={<StatusBadge kind="payment" status={payment.status} />}
+        facts={[
+          { icon: Calendar, label: displayDate(payment.paymentDate) },
+          { icon: CreditCard, label: method },
+          { icon: FileText, label: payment.invoice.invoiceNo },
+        ]}
+        actions={<PrintButton printing={printing} label="Print receipt" />}
+      />
 
-      <div className="rounded-lg border bg-background p-8">
-        <div className="text-center border-b pb-4">
-          <h1 className="text-xl font-bold">{payment.clinic?.name ?? 'Receipt'}</h1>
-          {payment.clinic && (
-            <p className="text-sm text-muted-foreground">
-              {[payment.clinic.address, payment.clinic.city].filter(Boolean).join(', ')}
-              {payment.clinic.phone ? ` · ${payment.clinic.phone}` : ''}
-            </p>
-          )}
-          <p className="mt-3 text-sm font-semibold tracking-wide uppercase">Payment receipt</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 py-5 text-sm border-b">
-          <div>
-            <p className="text-muted-foreground">Receipt no.</p>
-            <p className="font-medium">{payment.paymentNo}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-muted-foreground">Date</p>
-            <p className="font-medium">{displayDate(payment.paymentDate)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Received from</p>
-            <p className="font-medium">
-              {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'}
-            </p>
-            {patient && (
-              <p className="text-xs text-muted-foreground">
-                {patient.patientId}
-                {patient.phone ? ` · ${patient.phone}` : ''}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* The receipt as the patient reads it, on screen. */}
+        <div className="space-y-6 lg:col-span-2">
+          <div className="rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+            <div className="border-b pb-5 text-center">
+              <h2 className="text-xl font-bold tracking-tight">
+                {payment.clinic?.name ?? 'Receipt'}
+              </h2>
+              {payment.clinic && (
+                <p className="text-sm text-muted-foreground">
+                  {[payment.clinic.address, payment.clinic.city].filter(Boolean).join(', ')}
+                  {payment.clinic.phone ? ` · ${payment.clinic.phone}` : ''}
+                </p>
+              )}
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Payment receipt
               </p>
+            </div>
+
+            <InfoGrid className="border-b py-6">
+              <InfoItem label="Receipt no.">{payment.paymentNo}</InfoItem>
+              <InfoItem label="Date">{displayDate(payment.paymentDate)}</InfoItem>
+              <InfoItem label="Received from">
+                {patientName}
+                {patient && (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {patient.patientId}
+                    {patient.phone ? ` · ${patient.phone}` : ''}
+                  </span>
+                )}
+              </InfoItem>
+              <InfoItem label="Against invoice">{payment.invoice.invoiceNo}</InfoItem>
+            </InfoGrid>
+
+            <div className="space-y-3 border-b py-6 text-sm">
+              <div className="flex items-center justify-between rounded-xl bg-muted/60 px-4 py-3">
+                <span className="text-muted-foreground">Amount received</span>
+                <span className="text-2xl font-bold tracking-tight tabular-nums">
+                  {formatCurrency(Number(payment.amount))}
+                </span>
+              </div>
+              <InfoGrid>
+                <InfoItem label="Paid by">{method}</InfoItem>
+                {payment.transactionId && (
+                  <InfoItem label="Reference">
+                    <span className="font-mono text-xs">{payment.transactionId}</span>
+                  </InfoItem>
+                )}
+              </InfoGrid>
+            </div>
+
+            {refunded > 0 && (
+              <div className="space-y-2 border-b py-6 text-sm">
+                <p className="font-semibold">Refunded against this payment</p>
+                {payment.refunds.map((refund) => (
+                  <div
+                    key={refund.id}
+                    className="flex justify-between gap-3 rounded-xl border px-4 py-3"
+                  >
+                    <span className="text-muted-foreground">
+                      {refund.refundNo} · {displayDate(refund.refundedAt)} · {refund.reason}
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      −{formatCurrency(Number(refund.amount))}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex justify-between pt-1 font-semibold">
+                  <span>Net retained</span>
+                  <span className="tabular-nums">
+                    {formatCurrency(Number(payment.amount) - refunded)}
+                  </span>
+                </div>
+              </div>
             )}
-          </div>
-          <div className="text-right">
-            <p className="text-muted-foreground">Against invoice</p>
-            <p className="font-medium">
-              <Link
-                href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
-                className="hover:underline"
-              >
-                {payment.invoice.invoiceNo}
-              </Link>
+
+            <div className="space-y-2 py-6 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Invoice total</span>
+                <span className="tabular-nums">
+                  {formatCurrency(Number(payment.invoice.totalAmount))}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Paid to date</span>
+                <span className="tabular-nums">
+                  {formatCurrency(Number(payment.invoice.paidAmount))}
+                </span>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span>Balance due</span>
+                <span className="tabular-nums">
+                  {formatCurrency(Number(payment.invoice.balanceAmount))}
+                </span>
+              </div>
+            </div>
+
+            {payment.notes && (
+              <p className="border-t pt-3 text-xs text-muted-foreground">{payment.notes}</p>
+            )}
+
+            <p className="mt-4 border-t pt-4 text-center text-xs text-muted-foreground">
+              This receipt acknowledges the amount shown above. Any balance stated remains payable.
             </p>
           </div>
         </div>
 
-        <div className="py-5 space-y-2 text-sm border-b">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Amount received</span>
-            <span className="text-lg font-bold">{formatCurrency(Number(payment.amount))}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Paid by</span>
-            <span>{METHOD_LABELS[payment.paymentMethod] ?? payment.paymentMethod}</span>
-          </div>
-          {payment.transactionId && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Reference</span>
-              <span className="font-mono text-xs">{payment.transactionId}</span>
-            </div>
-          )}
+        <div className="space-y-6">
+          {/* Where this payment came from, one row each. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Related</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LinkList>
+                <LinkRow
+                  href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
+                  icon={FileText}
+                  title={payment.invoice.invoiceNo}
+                  subtitle={`Invoice · balance ${formatCurrency(Number(payment.invoice.balanceAmount))}`}
+                />
+                {patient && (
+                  <LinkRow
+                    href={trail.to(`/patients/${patient.id}`)}
+                    icon={User}
+                    title={patientName}
+                    subtitle={`Patient · ${patient.patientId}`}
+                  />
+                )}
+              </LinkList>
+            </CardContent>
+          </Card>
         </div>
-
-        {refunded > 0 && (
-          <div className="py-5 space-y-2 text-sm border-b">
-            <p className="font-medium">Refunded against this payment</p>
-            {payment.refunds.map((refund) => (
-              <div key={refund.id} className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {refund.refundNo} · {displayDate(refund.refundedAt)} · {refund.reason}
-                </span>
-                <span>−{formatCurrency(Number(refund.amount))}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-medium pt-1">
-              <span>Net retained</span>
-              <span>{formatCurrency(Number(payment.amount) - refunded)}</span>
-            </div>
-          </div>
-        )}
-
-        <div className="py-5 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Invoice total</span>
-            <span>{formatCurrency(Number(payment.invoice.totalAmount))}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Paid to date</span>
-            <span>{formatCurrency(Number(payment.invoice.paidAmount))}</span>
-          </div>
-          <div className="flex justify-between font-medium">
-            <span>Balance due</span>
-            <span>{formatCurrency(Number(payment.invoice.balanceAmount))}</span>
-          </div>
-        </div>
-
-        {payment.notes && (
-          <p className="text-xs text-muted-foreground border-t pt-3">{payment.notes}</p>
-        )}
-
-        <p className="text-xs text-center text-muted-foreground border-t pt-4 mt-4">
-          This receipt acknowledges the amount shown above. Any balance stated remains payable.
-        </p>
       </div>
     </div>
   )

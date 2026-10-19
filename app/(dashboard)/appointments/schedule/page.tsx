@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarCheck,
+  CalendarDays,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -111,11 +119,23 @@ export default function ClinicianSchedulePage() {
     }
   }, [day, view, attempt])
 
+  // The day on screen, as the header's day-book link opens it. Before the
+  // first answer arrives an empty day opens the book on today.
+  const bookDay = day || clinicToday || schedules?.[0]?.day || ''
+
   const header = (
     <PageHeader
       back={<BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />}
       title="Clinician schedule"
       description="Who is free when, and how many patients each hour saw"
+      actions={
+        <Button variant="outline" asChild>
+          <Link href={links.dayBook(bookDay)}>
+            <BookOpen className="h-4 w-4" />
+            Open the day book
+          </Link>
+        </Button>
+      }
     />
   )
 
@@ -147,58 +167,86 @@ export default function ClinicianSchedulePage() {
     <div className="space-y-6">
       {header}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <SegmentedControl
-          aria-label="View"
-          value={view}
-          onChange={(next) => go({ view: next, day: shown })}
-          options={[
-            { value: 'day', label: 'Day', icon: CalendarDays },
-            { value: 'week', label: 'Week', icon: CalendarRange },
-          ]}
-        />
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={view === 'week' ? 'Previous week' : 'Previous day'}
-            onClick={() => go({ day: addDays(shown, -step) })}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={view === 'week' ? 'Next week' : 'Next day'}
-            onClick={() => go({ day: addDays(shown, step) })}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          {clinicToday && (
+      {/* The day or week on screen, then the controls that move it. */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <h2 className="text-lg font-semibold tracking-tight" aria-live="polite">
+          {heading}
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl
+            aria-label="View"
+            value={view}
+            onChange={(next) => go({ view: next, day: shown })}
+            options={[
+              { value: 'day', label: 'Day', icon: CalendarDays },
+              { value: 'week', label: 'Week', icon: CalendarRange },
+            ]}
+          />
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
-              onClick={() => go({ day: clinicToday })}
-              disabled={
-                view === 'day' ? shown === clinicToday : weekStart(shown) === weekStart(clinicToday)
-              }
+              size="icon"
+              aria-label={view === 'week' ? 'Previous week' : 'Previous day'}
+              onClick={() => go({ day: addDays(shown, -step) })}
             >
-              Today
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-          )}
+            {clinicToday && (
+              <Button
+                variant="outline"
+                onClick={() => go({ day: clinicToday })}
+                disabled={
+                  view === 'day'
+                    ? shown === clinicToday
+                    : weekStart(shown) === weekStart(clinicToday)
+                }
+              >
+                Today
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={view === 'week' ? 'Next week' : 'Next day'}
+              onClick={() => go({ day: addDays(shown, step) })}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <Input
+            type="date"
+            aria-label="Go to a day"
+            className="w-auto"
+            value={shown}
+            onChange={(event) => DAY.test(event.target.value) && go({ day: event.target.value })}
+          />
         </div>
-        <Input
-          type="date"
-          aria-label="Go to a day"
-          className="w-auto"
-          value={shown}
-          onChange={(event) => DAY.test(event.target.value) && go({ day: event.target.value })}
-        />
-        <span className="text-sm font-medium" aria-live="polite">
-          {heading}
-        </span>
-        <Button variant="link" asChild className="ml-auto">
-          <Link href={links.dayBook(shown)}>Open the day book</Link>
-        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {[
+          {
+            label: view === 'week' ? 'Free slots this week' : 'Free slots',
+            value: totalFree,
+            icon: CalendarCheck,
+          },
+          { label: 'Patients seen', value: seen.total, icon: Users },
+        ].map((tile) => (
+          <div
+            key={tile.label}
+            className="flex items-start justify-between gap-3 rounded-2xl border bg-card p-5 shadow-sm"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {tile.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{tile.value}</p>
+            </div>
+            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
+              <tile.icon className="h-5 w-5" />
+            </span>
+          </div>
+        ))}
       </div>
 
       <Card className={loading ? 'opacity-60 transition-opacity' : undefined}>

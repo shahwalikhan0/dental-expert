@@ -26,6 +26,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormSection, FormActions } from '@/components/ui/form-section'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -414,7 +415,7 @@ export default function EditInvoicePage() {
         <PageHeader back={back} title={`Edit ${invoiceNo ?? 'invoice'}`} />
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{invoiceNo} is closed and cannot be edited</CardTitle>
+            <CardTitle>{invoiceNo} is closed and cannot be edited</CardTitle>
             <CardDescription>
               This invoice is {statusLabel('invoice', status).toLowerCase()}. To change what is
               owed, issue a refund, or cancel this invoice and raise a new one.
@@ -430,7 +431,7 @@ export default function EditInvoicePage() {
     )
   } else {
     content = (
-      <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <PageHeader
           back={back}
           title={`Edit ${invoiceNo ?? 'invoice'}`}
@@ -446,292 +447,312 @@ export default function EditInvoicePage() {
           }
         />
 
-        {isDraft ? (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Lines</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <InvoiceLinesEditor
-                  lines={items}
-                  onChange={setItems}
-                  showErrors={showErrors}
-                  trailTo={trail.to}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Unbilled treatments</CardTitle>
-                <CardDescription>
-                  {patient?.name ?? 'The patient'}&rsquo;s treatments not yet on an invoice
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <UnbilledTreatmentList
-                  loading={loadingUnbilled}
-                  treatments={unbilled}
-                  visitId={null}
-                  isAdded={(id) => items.some((i) => i.treatmentId === id)}
-                  onAdd={(treatment) =>
-                    setItems((current) => [...current, treatmentLine(treatment)])
-                  }
-                />
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Lock className="h-4 w-4" />
-                Lines
-              </CardTitle>
-              <CardDescription>
-                This invoice has been issued, so its lines and discount are fixed: the patient has
-                been given it, and what it says has to stay said. The notes, terms and due date can
-                still change. To change what is owed, record a payment, issue a refund, or cancel
-                this invoice and raise a new one.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table className="min-w-[560px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-center">Qty</TableHead>
-                    <TableHead className="text-right">Unit price</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {savedLines.map((line, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        {line.description}
-                        {savedTotals.taxRate > 0 && line.taxable && (
-                          <span className="ml-2 text-xs text-muted-foreground">(taxable)</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">{line.quantity}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(line.unitPrice)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(line.amount)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        {/* An issued invoice: why most of it cannot change, said once at the top. */}
+        {!isDraft && (
+          <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/10">
+              <Lock className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              This invoice has been issued, so its lines and discount are fixed: the patient has
+              been given it, and what it says has to stay said. The notes, terms and due date can
+              still change. To change what is owed, record a payment, issue a refund, or cancel this
+              invoice and raise a new one.
+            </span>
+          </div>
         )}
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {isDraft ? 'Discount and tax' : 'Due date'}
-              </CardTitle>
-              {isDraft && (
-                <CardDescription>
-                  A discount — together with any treatment charged below its price — above the
-                  clinic&rsquo;s threshold needs a reason and a manager&rsquo;s approval before the
-                  invoice can be issued.
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isDraft && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField label="Discount type" htmlFor="discountType">
-                      <Select value={discountType} onValueChange={setDiscountType}>
-                        <SelectTrigger id="discountType">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DISCOUNT_TYPES.map((d) => (
-                            <SelectItem key={d.value} value={d.value}>
-                              {d.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormField>
-                    <FormField
-                      label="Discount"
-                      htmlFor="discountValue"
-                      error={fieldErrors.discountValue}
-                    >
-                      {(control) =>
-                        // A fixed discount is money, so it reads and parses as
-                        // money; a percentage stays a plain number up to 100.
-                        discountType === 'PERCENTAGE' ? (
-                          <Input
-                            {...control}
-                            type="number"
-                            min="0"
-                            max={100}
-                            step="0.01"
-                            value={discountValue}
-                            onChange={(e) => setDiscountValue(e.target.value)}
-                          />
-                        ) : (
-                          <MoneyInput
-                            {...control}
-                            value={discountValue}
-                            onChange={(raw) => setDiscountValue(raw)}
-                          />
-                        )
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            {isDraft ? (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Lines</CardTitle>
+                    <CardDescription>
+                      Treatments, products from the inventory, or a custom item
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <InvoiceLinesEditor
+                      lines={items}
+                      onChange={setItems}
+                      showErrors={showErrors}
+                      trailTo={trail.to}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Unbilled treatments</CardTitle>
+                    <CardDescription>
+                      {patient?.name ?? 'The patient'}&rsquo;s treatments not yet on an invoice
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <UnbilledTreatmentList
+                      loading={loadingUnbilled}
+                      treatments={unbilled}
+                      visitId={null}
+                      isAdded={(id) => items.some((i) => i.treatmentId === id)}
+                      onAdd={(treatment) =>
+                        setItems((current) => [...current, treatmentLine(treatment)])
                       }
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lines</CardTitle>
+                  <CardDescription>Fixed since the invoice was issued</CardDescription>
+                </CardHeader>
+                <CardContent className="overflow-x-auto p-0">
+                  <Table className="min-w-[560px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-center">Qty</TableHead>
+                        <TableHead className="text-right">Unit price</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {savedLines.map((line, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {line.description}
+                            {savedTotals.taxRate > 0 && line.taxable && (
+                              <span className="ml-2 text-xs text-muted-foreground">(taxable)</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">{line.quantity}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(line.unitPrice)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(line.amount)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            <FormSection
+              title={isDraft ? 'Discount and due date' : 'Due date'}
+              description={
+                isDraft
+                  ? 'A discount — together with any treatment charged below its price — above the clinic’s threshold needs a reason and a manager’s approval before the invoice can be issued.'
+                  : 'When the balance falls due'
+              }
+            >
+              <div className="space-y-4">
+                {isDraft && (
+                  <>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <FormField label="Discount type" htmlFor="discountType">
+                        <Select value={discountType} onValueChange={setDiscountType}>
+                          <SelectTrigger id="discountType">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DISCOUNT_TYPES.map((d) => (
+                              <SelectItem key={d.value} value={d.value}>
+                                {d.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField
+                        label="Discount"
+                        htmlFor="discountValue"
+                        error={fieldErrors.discountValue}
+                      >
+                        {(control) =>
+                          // A fixed discount is money, so it reads and parses as
+                          // money; a percentage stays a plain number up to 100.
+                          discountType === 'PERCENTAGE' ? (
+                            <Input
+                              {...control}
+                              type="number"
+                              min="0"
+                              max={100}
+                              step="0.01"
+                              value={discountValue}
+                              onChange={(e) => setDiscountValue(e.target.value)}
+                            />
+                          ) : (
+                            <MoneyInput
+                              {...control}
+                              value={discountValue}
+                              onChange={(raw) => setDiscountValue(raw)}
+                            />
+                          )
+                        }
+                      </FormField>
+                    </div>
+                    <FormField
+                      label="Reason for the discount"
+                      htmlFor="discountReason"
+                      required={needsReason}
+                      error={showErrors ? fieldErrors.discountReason : undefined}
+                      hint={
+                        needsReason
+                          ? `${formatCurrency(concession)} off${
+                              shortfall > 0
+                                ? ` (including ${formatCurrency(shortfall)} of treatments charged below their price)`
+                                : ''
+                            } is above the ${formatCurrency(billing.discountApprovalThreshold)} threshold.`
+                          : undefined
+                      }
+                    >
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                        />
+                      )}
                     </FormField>
-                  </div>
+                    {/* The rate is the clinic's today; the server does not take
+                        one from the form. Said in words rather than shown as a
+                        greyed-out box that looks editable. */}
+                    <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                      {billing.rate > 0
+                        ? `${billing.label} is charged at ${billing.rate}% on the taxable lines, the clinic's current rate. It is fixed when the invoice is issued.`
+                        : 'No tax is charged on this invoice.'}
+                    </p>
+                  </>
+                )}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <FormField
-                    label="Reason for the discount"
-                    htmlFor="discountReason"
-                    required={needsReason}
-                    error={showErrors ? fieldErrors.discountReason : undefined}
+                    label="Due date"
+                    htmlFor="dueDate"
+                    error={fieldErrors.dueDate}
                     hint={
-                      needsReason
-                        ? `${formatCurrency(concession)} off${
-                            shortfall > 0
-                              ? ` (including ${formatCurrency(shortfall)} of treatments charged below their price)`
-                              : ''
-                          } is above the ${formatCurrency(billing.discountApprovalThreshold)} threshold.`
-                        : undefined
+                      isDraft
+                        ? 'Leave blank for due on the day it is issued.'
+                        : `Not before ${displayDate(issueDay)}, the day it was issued.`
                     }
                   >
                     {(control) => (
                       <Input
                         {...control}
-                        value={discountReason}
-                        onChange={(e) => setDiscountReason(e.target.value)}
+                        type="date"
+                        min={isDraft ? undefined : issueDay}
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
                       />
                     )}
                   </FormField>
-                  {/* The rate is the clinic's today; the server does not take
-                      one from the form. Said in words rather than shown as a
-                      greyed-out box that looks editable. */}
-                  <p className="text-sm text-muted-foreground">
-                    {billing.rate > 0
-                      ? `${billing.label} is charged at ${billing.rate}% on the taxable lines, the clinic's current rate. It is fixed when the invoice is issued.`
-                      : 'No tax is charged on this invoice.'}
-                  </p>
-                </>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  label="Due date"
-                  htmlFor="dueDate"
-                  error={fieldErrors.dueDate}
-                  hint={
-                    isDraft
-                      ? 'Leave blank for due on the day it is issued.'
-                      : `Not before ${displayDate(issueDay)}, the day it was issued.`
-                  }
-                >
-                  {(control) => (
-                    <Input
-                      {...control}
-                      type="date"
-                      min={isDraft ? undefined : issueDay}
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                    />
-                  )}
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection title="Notes and terms" description="Printed on the invoice">
+              <div className="space-y-4">
+                <FormField label="Notes (visible on invoice)" htmlFor="notes">
+                  <Textarea
+                    id="notes"
+                    rows={3}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Terms and conditions" htmlFor="terms">
+                  <Textarea
+                    id="terms"
+                    rows={3}
+                    value={termsAndConditions}
+                    onChange={(e) => setTermsAndConditions(e.target.value)}
+                  />
                 </FormField>
               </div>
-            </CardContent>
-          </Card>
+            </FormSection>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Total</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {isDraft ? (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatCurrency(totals.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      Discount
-                      {discountType === 'PERCENTAGE' ? ` (${discountNumber ?? 0}%)` : ''}
-                    </span>
-                    <span>−{formatCurrency(totals.discountAmount)}</span>
-                  </div>
-                  {billing.rate > 0 && (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Taxable value</span>
-                        <span>{formatCurrency(totals.taxableAmount)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          {billing.label} ({billing.rate}%)
-                        </span>
-                        <span>{formatCurrency(totals.taxAmount)}</span>
-                      </div>
-                    </>
-                  )}
-                  <div className="flex justify-between border-t pt-2 font-medium">
-                    <span>Total</span>
-                    <span>{formatCurrency(totals.totalAmount)}</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatCurrency(savedTotals.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Discount</span>
-                    <span>−{formatCurrency(savedTotals.discount)}</span>
-                  </div>
-                  {savedTotals.taxRate > 0 && (
+          {/* What it comes to, pinned while the form scrolls */}
+          <div className="space-y-6">
+            <Card className="lg:sticky lg:top-6">
+              <CardHeader className="pb-4">
+                <CardTitle>Total</CardTitle>
+                <CardDescription>
+                  {isDraft ? 'As it will be issued' : 'As it was issued'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {isDraft ? (
+                  <>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tax ({savedTotals.taxRate}%)</span>
-                      <span>{formatCurrency(savedTotals.tax)}</span>
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
                     </div>
-                  )}
-                  <div className="flex justify-between border-t pt-2 font-medium">
-                    <span>Total</span>
-                    <span>{formatCurrency(savedTotals.total)}</span>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Discount
+                        {discountType === 'PERCENTAGE' ? ` (${discountNumber ?? 0}%)` : ''}
+                      </span>
+                      <span className="tabular-nums">−{formatCurrency(totals.discountAmount)}</span>
+                    </div>
+                    {billing.rate > 0 && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Taxable value</span>
+                          <span className="tabular-nums">
+                            {formatCurrency(totals.taxableAmount)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            {billing.label} ({billing.rate}%)
+                          </span>
+                          <span className="tabular-nums">{formatCurrency(totals.taxAmount)}</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="mt-3 flex items-baseline justify-between rounded-xl bg-muted/60 px-4 py-3">
+                      <span className="font-semibold">Total</span>
+                      <span className="text-2xl font-bold tracking-tight tabular-nums">
+                        {formatCurrency(totals.totalAmount)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="tabular-nums">{formatCurrency(savedTotals.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Discount</span>
+                      <span className="tabular-nums">−{formatCurrency(savedTotals.discount)}</span>
+                    </div>
+                    {savedTotals.taxRate > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tax ({savedTotals.taxRate}%)</span>
+                        <span className="tabular-nums">{formatCurrency(savedTotals.tax)}</span>
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-baseline justify-between rounded-xl bg-muted/60 px-4 py-3">
+                      <span className="font-semibold">Total</span>
+                      <span className="text-2xl font-bold tracking-tight tabular-nums">
+                        {formatCurrency(savedTotals.total)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Notes and terms</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField label="Notes (visible on invoice)" htmlFor="notes">
-              <Textarea
-                id="notes"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </FormField>
-            <FormField label="Terms and conditions" htmlFor="terms">
-              <Textarea
-                id="terms"
-                rows={3}
-                value={termsAndConditions}
-                onChange={(e) => setTermsAndConditions(e.target.value)}
-              />
-            </FormField>
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-end gap-3">
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={`/billing/invoices/${invoiceId}`}>Cancel</Link>
           </Button>
@@ -755,7 +776,7 @@ export default function EditInvoicePage() {
               Save &amp; issue
             </SubmitButton>
           )}
-        </div>
+        </FormActions>
       </form>
     )
   }

@@ -12,10 +12,10 @@ import {
 } from '@/components/ui/select'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ClickableRow, GridBody, GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { PageHeader } from '@/components/ui/page-header'
+import { StatTile } from '@/components/billing/stat-tile'
 import {
   Users,
   Stethoscope,
@@ -306,37 +306,24 @@ export default function FinancialReportsPage() {
         {/* Outstanding Report */}
         <TabsContent value="outstanding" className="space-y-6">
           {/* Aging Summary */}
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
-                  <Card key={i}>
-                    <CardContent className="pt-6">
-                      <Skeleton className="h-8 w-24" />
-                    </CardContent>
-                  </Card>
+                  <StatTile key={i} label={'\u00a0'} value={null} loading />
                 ))
               : outstandingData
                 ? // The buckets every ageing screen uses (lib/ageing.ts), counted in
                   // days past each invoice's due date.
                   AGEING_BUCKETS.map((bucket, index) => (
-                    <Card key={bucket.key}>
-                      <CardHeader className="pb-2">
-                        <CardTitle className={`text-sm font-medium ${AGEING_TONES[index]}`}>
-                          {bucket.label}
-                        </CardTitle>
-                        <CardDescription>
-                          {bucket.key === 'notDue' ? 'Within its terms' : 'Days overdue'}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold">
-                          {formatCurrency(outstandingData.aging[bucket.key].amount)}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {outstandingData.aging[bucket.key].count} invoices
-                        </p>
-                      </CardContent>
-                    </Card>
+                    <StatTile
+                      key={bucket.key}
+                      label={bucket.label}
+                      labelClassName={AGEING_TONES[index]}
+                      value={formatCurrency(outstandingData.aging[bucket.key].amount)}
+                      hint={`${outstandingData.aging[bucket.key].count} invoices · ${
+                        bucket.key === 'notDue' ? 'Within its terms' : 'Days overdue'
+                      }`}
+                    />
                   ))
                 : null}
           </div>
@@ -412,35 +399,17 @@ export default function FinancialReportsPage() {
 
         {/* Procedure Revenue Report */}
         <TabsContent value="procedure_revenue" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total invoiced</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">
-                    {formatCurrency(procedureData?.totals.totalRevenue || 0)}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Treatments billed</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">
-                    {procedureData?.totals.totalTreatments || 0}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatTile
+              label="Total invoiced"
+              loading={loading}
+              value={formatCurrency(procedureData?.totals.totalRevenue || 0)}
+            />
+            <StatTile
+              label="Treatments billed"
+              loading={loading}
+              value={procedureData?.totals.totalTreatments || 0}
+            />
           </div>
 
           <Card>
@@ -497,47 +466,22 @@ export default function FinancialReportsPage() {
 
         {/* Doctor Revenue Report */}
         <TabsContent value="doctor_revenue" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total invoiced</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">
-                    {formatCurrency(doctorData?.totals.totalRevenue || 0)}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Treatments billed</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">
-                    {doctorData?.totals.totalTreatments || 0}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Active doctors</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">{doctorData?.totals.doctorCount || 0}</div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatTile
+              label="Total invoiced"
+              loading={loading}
+              value={formatCurrency(doctorData?.totals.totalRevenue || 0)}
+            />
+            <StatTile
+              label="Treatments billed"
+              loading={loading}
+              value={doctorData?.totals.totalTreatments || 0}
+            />
+            <StatTile
+              label="Active doctors"
+              loading={loading}
+              value={doctorData?.totals.doctorCount || 0}
+            />
           </div>
 
           <Card>
@@ -593,33 +537,18 @@ export default function FinancialReportsPage() {
 
         {/* Daily Collection Report */}
         <TabsContent value="daily_collection" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total collection</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {formatCurrency(dailyData?.totals.totalCollection || 0)}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Total payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <div className="text-2xl font-bold">{dailyData?.totals.totalPayments || 0}</div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatTile
+              label="Total collection"
+              tone="success"
+              loading={loading}
+              value={formatCurrency(dailyData?.totals.totalCollection || 0)}
+            />
+            <StatTile
+              label="Total payments"
+              loading={loading}
+              value={dailyData?.totals.totalPayments || 0}
+            />
           </div>
 
           <Card>

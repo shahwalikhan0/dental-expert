@@ -46,7 +46,7 @@ export default function NewSupplierPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title="New supplier"
         back={<BackLink trail={trail} fallback="/inventory/suppliers" fallbackLabel="Suppliers" />}

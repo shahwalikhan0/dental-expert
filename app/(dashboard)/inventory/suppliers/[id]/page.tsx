@@ -4,25 +4,30 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { formatCurrency } from '@/lib/i18n/format'
 import { formatPhone } from '@/lib/utils'
-import { Pencil, Package, Phone, Mail, MapPin, Truck } from 'lucide-react'
-import { BLANK, displayDate } from '@/lib/dates'
+import {
+  ClipboardList,
+  Mail,
+  MapPin,
+  Package,
+  PackageCheck,
+  Pencil,
+  Phone,
+  Star,
+  Truck,
+  User,
+} from 'lucide-react'
+import { displayDate } from '@/lib/dates'
 import { useCan } from '@/hooks/use-can'
 
 /**
@@ -138,213 +143,187 @@ export default function SupplierDetailPage() {
     )
   }
 
+  const initials = supplier.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0))
+    .join('')
+    .toUpperCase()
+
+  const stats = [
+    { label: 'Items supplied', value: supplier.itemsSupplied, icon: Package },
+    { label: 'Orders', value: supplier.totalOrders, icon: ClipboardList },
+    { label: 'Received', value: formatCurrency(supplier.completedBusiness), icon: PackageCheck },
+    { label: 'On order', value: formatCurrency(supplier.pendingBusiness), icon: Truck },
+  ]
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={supplier.name}
-        description={supplier.code}
+      <ProfileHeader
+        name={supplier.name}
+        eyebrow={supplier.code}
+        initials={initials}
         badges={<StatusBadge kind="supplier" status={supplier.status} />}
-        back={back}
+        facts={[
+          ...(supplier.contactPerson ? [{ icon: User, label: supplier.contactPerson }] : []),
+          ...(supplier.phone ? [{ icon: Phone, label: formatPhone(supplier.phone) }] : []),
+          ...(supplier.city ? [{ icon: MapPin, label: supplier.city }] : []),
+          ...(supplier.rating ? [{ icon: Star, label: `${supplier.rating} / 5` }] : []),
+        ]}
         actions={
           canWrite && (
-            <Button variant="outline" asChild>
+            <Button asChild>
               <Link href={trail.to(`/inventory/suppliers/${supplier.id}/edit`)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
+                <Pencil className="h-4 w-4" />
+                Edit supplier
               </Link>
             </Button>
           )
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Items supplied</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{supplier.itemsSupplied}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Orders</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{supplier.totalOrders}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Received</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{formatCurrency(supplier.completedBusiness)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>On order</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{formatCurrency(supplier.pendingBusiness)}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-sm"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {stat.label}
+              </p>
+              <p className="mt-1 truncate text-2xl font-bold tracking-tight">{stat.value}</p>
+            </div>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <stat.icon className="h-5 w-5" />
+            </span>
+          </div>
+        ))}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Contact</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {supplier.contactPerson && <p className="font-medium">{supplier.contactPerson}</p>}
-            {supplier.phone && (
-              <p className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                {formatPhone(supplier.phone)}
-                {supplier.alternatePhone ? ` · ${formatPhone(supplier.alternatePhone)}` : ''}
-              </p>
-            )}
-            {supplier.email && (
-              <p className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                {supplier.email}
-              </p>
-            )}
-            {(supplier.address || supplier.city) && (
-              <p className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <span>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Recent purchase orders</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {supplier.recentPurchaseOrders.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  Nothing has been ordered yet.
+                </p>
+              ) : (
+                <LinkList>
+                  {supplier.recentPurchaseOrders.map((order) => (
+                    <LinkRow
+                      key={order.id}
+                      href={trail.to(`/inventory/purchase-orders/${order.id}`)}
+                      icon={ClipboardList}
+                      title={order.orderNumber ?? 'Draft'}
+                      subtitle={`Placed ${displayDate(order.orderDate)}${
+                        order.expectedDate ? ` · expected ${displayDate(order.expectedDate)}` : ''
+                      } · ${formatCurrency(order.totalAmount)}`}
+                      trailing={<StatusBadge kind="purchaseOrder" status={order.status} />}
+                    />
+                  ))}
+                </LinkList>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Items this supplier is preferred for</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {supplier.itemsSuppliedList.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  No item names this supplier as its preferred source.
+                </p>
+              ) : (
+                <LinkList>
+                  {supplier.itemsSuppliedList.map((item) => (
+                    <LinkRow
+                      key={item.id}
+                      href={trail.to(`/inventory/${item.id}`)}
+                      icon={Package}
+                      title={item.name}
+                      subtitle={`${item.sku} · ${formatCurrency(item.purchasePrice)}`}
+                      trailing={
+                        <span className="text-sm tabular-nums text-muted-foreground">
+                          {item.currentStock} in stock
+                        </span>
+                      }
+                    />
+                  ))}
+                </LinkList>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Contact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Contact person" icon={User}>
+                  {supplier.contactPerson}
+                </InfoItem>
+                <InfoItem label="Phone" icon={Phone}>
+                  {supplier.phone ? formatPhone(supplier.phone) : null}
+                </InfoItem>
+                {supplier.alternatePhone && (
+                  <InfoItem label="Alternate phone" icon={Phone}>
+                    {formatPhone(supplier.alternatePhone)}
+                  </InfoItem>
+                )}
+                <InfoItem label="Email" icon={Mail}>
+                  {supplier.email}
+                </InfoItem>
+                <InfoItem label="Address" icon={MapPin}>
                   {[supplier.address, supplier.city, supplier.state, supplier.postalCode]
                     .filter(Boolean)
-                    .join(', ')}
-                </span>
-              </p>
-            )}
-            {!supplier.contactPerson && !supplier.phone && !supplier.email && (
-              <p className="text-muted-foreground">No contact details on file.</p>
-            )}
-          </CardContent>
-        </Card>
+                    .join(', ') || null}
+                </InfoItem>
+              </InfoGrid>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Trading terms</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Payment terms</span>
-              <span>{supplier.paymentTerms || BLANK}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Credit limit</span>
-              <span>{supplier.creditLimit ? formatCurrency(supplier.creditLimit) : BLANK}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Sales tax number</span>
-              <span>{supplier.taxRegistrationNo || BLANK}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">National tax number</span>
-              <span>{supplier.nationalTaxNo || BLANK}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Rating</span>
-              <span>{supplier.rating ? `${supplier.rating} / 5` : BLANK}</span>
-            </div>
-            {supplier.notes && <p className="pt-2 text-muted-foreground">{supplier.notes}</p>}
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Trading terms</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid>
+                <InfoItem label="Payment terms">{supplier.paymentTerms}</InfoItem>
+                <InfoItem label="Credit limit">
+                  {supplier.creditLimit ? formatCurrency(supplier.creditLimit) : null}
+                </InfoItem>
+                <InfoItem label="Sales tax number">{supplier.taxRegistrationNo}</InfoItem>
+                <InfoItem label="National tax number">{supplier.nationalTaxNo}</InfoItem>
+                <InfoItem label="Rating">
+                  {supplier.rating ? `${supplier.rating} / 5` : null}
+                </InfoItem>
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          {supplier.notes && (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-wrap text-sm">{supplier.notes}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Items this supplier is preferred for</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {supplier.itemsSuppliedList.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No item names this supplier as its preferred source.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">In stock</TableHead>
-                  <TableHead className="text-right">Purchase price</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {supplier.itemsSuppliedList.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                    <TableCell>
-                      <Link href={trail.to(`/inventory/${item.id}`)} className="hover:underline">
-                        {item.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right">{item.currentStock}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(item.purchasePrice)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Recent purchase orders
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {supplier.recentPurchaseOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing has been ordered yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Order</TableHead>
-                  <TableHead>Placed</TableHead>
-                  <TableHead>Expected</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {supplier.recentPurchaseOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell>
-                      <Link
-                        href={trail.to(`/inventory/purchase-orders/${order.id}`)}
-                        className="hover:underline"
-                      >
-                        {order.orderNumber ?? 'Draft'}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{displayDate(order.orderDate)}</TableCell>
-                    <TableCell>{displayDate(order.expectedDate)}</TableCell>
-                    <TableCell>
-                      <StatusBadge kind="purchaseOrder" status={order.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(order.totalAmount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }

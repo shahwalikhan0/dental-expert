@@ -9,25 +9,17 @@ import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { FormField } from '@/components/ui/form-field'
 import { MoneyInput, isInvalidMoney, parseMoney } from '@/components/ui/money-input'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
 import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
-import { User, Plus, Trash2, GripVertical } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { procedureCategoryConfig } from '@/lib/treatment-utils'
 import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK } from '@/lib/dates'
@@ -202,39 +194,37 @@ export default function NewTreatmentPlanPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Patient */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Patient
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FormField label="Patient" htmlFor={FIELD_IDS.patient} required error={errors.patient}>
-              {(control) => (
-                <PatientPicker<Patient>
-                  id={control.id}
-                  aria-describedby={control['aria-describedby']}
-                  aria-invalid={control['aria-invalid']}
-                  value={selectedPatient}
-                  onChange={(patient) => {
-                    setSelectedPatient(patient)
-                    if (patient) clearError('patient')
-                  }}
-                  initialPatientId={preselectedPatientId}
-                />
-              )}
-            </FormField>
-          </CardContent>
-        </Card>
+        <FormSection title="Patient" description="Who this plan is for">
+          <FormField label="Patient" htmlFor={FIELD_IDS.patient} required error={errors.patient}>
+            {(control) => (
+              <PatientPicker<Patient>
+                id={control.id}
+                aria-describedby={control['aria-describedby']}
+                aria-invalid={control['aria-invalid']}
+                value={selectedPatient}
+                onChange={(patient) => {
+                  setSelectedPatient(patient)
+                  if (patient) clearError('patient')
+                }}
+                initialPatientId={preselectedPatientId}
+              />
+            )}
+          </FormField>
+        </FormSection>
 
         {/* Plan details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Plan details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField label="Title" htmlFor={FIELD_IDS.title} required error={errors.title}>
+        <FormSection
+          title="Plan details"
+          description="The title the patient sees on the estimate, and when the work is expected to run"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField
+              label="Title"
+              htmlFor={FIELD_IDS.title}
+              required
+              error={errors.title}
+              className="md:col-span-2"
+            >
               {(control) => (
                 <Input
                   {...control}
@@ -248,7 +238,24 @@ export default function NewTreatmentPlanPage() {
               )}
             </FormField>
 
-            <FormField label="Notes" htmlFor="notes">
+            <FormField label="Expected start date" htmlFor="startDate">
+              <Input
+                id="startDate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Expected end date" htmlFor="expectedEndDate">
+              <Input
+                id="expectedEndDate"
+                type="date"
+                value={expectedEndDate}
+                onChange={(e) => setExpectedEndDate(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Notes" htmlFor="notes" className="md:col-span-2">
               <Textarea
                 id="notes"
                 value={notes}
@@ -257,40 +264,80 @@ export default function NewTreatmentPlanPage() {
                 rows={3}
               />
             </FormField>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Expected start date" htmlFor="startDate">
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </FormField>
-              <FormField label="Expected end date" htmlFor="expectedEndDate">
-                <Input
-                  id="expectedEndDate"
-                  type="date"
-                  value={expectedEndDate}
-                  onChange={(e) => setExpectedEndDate(e.target.value)}
-                />
-              </FormField>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Procedures */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Procedures</CardTitle>
-            <CardDescription>
-              Add procedures to the treatment plan in order of priority
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <FormSection
+          title="Procedures"
+          description="Add procedures to the treatment plan in order of priority"
+        >
+          <div className="space-y-4">
+            {/* The plan's lines, numbered in the order they will be done */}
+            {items.length > 0 ? (
+              <div className="space-y-2">
+                <ol className="space-y-2">
+                  {items.map((item, index) => (
+                    <li
+                      key={index}
+                      className="flex items-start gap-3 rounded-xl border border-border px-4 py-3"
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">{item.procedureName}</span>
+                          <Badge
+                            variant="outline"
+                            className={`${procedureCategoryConfig[item.category]?.bgColor} ${procedureCategoryConfig[item.category]?.color} border-0`}
+                          >
+                            {procedureCategoryConfig[item.category]?.label ?? item.category}
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {item.procedureCode} · Teeth:{' '}
+                          {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
+                        </p>
+                        {item.notes && (
+                          <p className="mt-1 text-sm text-muted-foreground">{item.notes}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 pt-0.5 text-sm font-semibold tabular-nums">
+                        {formatCurrency(item.estimatedCost)}
+                      </span>
+                      <IconTooltip label="Remove this line">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="-my-1 h-8 w-8 shrink-0"
+                          aria-label="Remove this line"
+                          onClick={() => handleRemoveItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </IconTooltip>
+                    </li>
+                  ))}
+                </ol>
+                <div className="flex items-baseline justify-between rounded-xl bg-muted/60 px-4 py-3">
+                  <span className="text-sm font-medium">Total estimated cost</span>
+                  <span className="text-lg font-bold tabular-nums">
+                    {formatCurrency(totalCost)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                No procedures added yet. Add the first one below.
+              </div>
+            )}
+
             {/* The line being added */}
-            <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4 rounded-xl border border-border bg-muted/40 p-4">
+              <p className="text-sm font-semibold">Add a procedure</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormField label="Procedure" htmlFor={FIELD_IDS.procedure} error={errors.procedure}>
                   {(control) => (
                     <ProcedurePicker<Procedure>
@@ -363,89 +410,27 @@ export default function NewTreatmentPlanPage() {
                 onClick={handleAddProcedure}
                 disabled={!selectedProcedure}
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 Add procedure
               </Button>
             </div>
+          </div>
+        </FormSection>
 
-            {/* The plan's lines */}
-            {items.length > 0 && (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>Procedure</TableHead>
-                      <TableHead>Teeth</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <GripVertical className="h-4 w-4 text-muted-foreground" />
-                            {index + 1}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{item.procedureName}</div>
-                          <div className="text-sm text-muted-foreground">{item.procedureCode}</div>
-                          <Badge
-                            variant="outline"
-                            className={`mt-1 ${procedureCategoryConfig[item.category]?.bgColor} ${procedureCategoryConfig[item.category]?.color} border-0`}
-                          >
-                            {procedureCategoryConfig[item.category]?.label ?? item.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatCurrency(item.estimatedCost)}
-                        </TableCell>
-                        <TableCell>
-                          <IconTooltip label="Remove this line">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Remove this line"
-                              onClick={() => handleRemoveItem(index)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </IconTooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-right font-medium">
-                        Total estimated cost
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-lg tabular-nums">
-                        {formatCurrency(totalCost)}
-                      </TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-4">
+        <FormActions
+          hint={
+            items.length > 0
+              ? `${items.length} procedure${items.length === 1 ? '' : 's'} · ${formatCurrency(totalCost)}`
+              : undefined
+          }
+        >
           <Button type="button" variant="outline" asChild>
             <Link href={trail.back('/treatments/plans')}>Cancel</Link>
           </Button>
           <SubmitButton busy={saving} busyLabel="Creating treatment plan…">
             Create treatment plan
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

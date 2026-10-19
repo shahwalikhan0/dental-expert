@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { PageHeader } from '@/components/ui/page-header'
+import { Badge } from '@/components/ui/badge'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { formatCurrency } from '@/lib/i18n/format'
 import { displayDate } from '@/lib/dates'
@@ -13,6 +15,7 @@ import { usePrint } from '@/hooks/use-print'
 import { PrintDocument } from '@/components/print/print-document'
 import { PrintButton } from '@/components/print/print-button'
 import { StatementPrint } from '@/components/print/templates/statement-print'
+import { Receipt, Wallet, Scale } from 'lucide-react'
 
 /**
  * The statement — one page, addressed to whoever settles the bill.
@@ -128,16 +131,34 @@ export default function PatientStatementPage() {
         <StatementPrint statement={data} clinicPhone={clinic?.phone} />
       </PrintDocument>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <BackLink
-          fallback={`/patients/${params.id}?tab=billing`}
-          fallbackLabel="Patient"
-          trail={trail}
+      <PageHeader
+        title="Statement"
+        description={`${patient.firstName} ${patient.lastName} · ${patient.patientId}`}
+        badges={data.scope === 'family' ? <Badge variant="info">Family account</Badge> : null}
+        back={
+          <BackLink
+            fallback={`/patients/${params.id}?tab=billing`}
+            fallbackLabel="Patient"
+            trail={trail}
+          />
+        }
+        actions={<PrintButton printing={printing} />}
+      />
+
+      {/* Where the account stands, before the lines that make it up. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <SummaryTile icon={Receipt} label="Total charged" value={formatCurrency(summary.charged)} />
+        <SummaryTile icon={Wallet} label="Total paid" value={formatCurrency(summary.paid)} />
+        <SummaryTile
+          icon={Scale}
+          label="Balance due"
+          value={formatCurrency(summary.balance)}
+          tone={summary.balance > 0 ? 'owed' : 'clear'}
         />
-        <PrintButton printing={printing} />
       </div>
 
-      <div className="rounded-lg border bg-background p-8">
+      {/* The statement as it reads on paper: a preview of the printed page. */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
           <div>
             <h1 className="text-xl font-semibold">{clinic?.name ?? 'Statement'}</h1>
@@ -150,14 +171,16 @@ export default function PatientStatementPage() {
             )}
           </div>
           <div className="text-right">
-            <p className="text-sm uppercase tracking-[0.08em] text-muted-foreground">Statement</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Statement
+            </p>
             <p className="text-sm">{displayDate(new Date())}</p>
           </div>
         </header>
 
         <section className="grid gap-6 border-b py-6 sm:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Account holder
             </p>
             <p className="mt-1 font-medium">
@@ -174,7 +197,7 @@ export default function PatientStatementPage() {
 
           {data.scope === 'family' && data.family && data.family.members.length > 1 && (
             <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Covering treatment for
               </p>
               <ul className="mt-1 space-y-0.5 text-sm">
@@ -189,51 +212,55 @@ export default function PatientStatementPage() {
           )}
         </section>
 
-        <table className="w-full border-collapse py-6 text-sm">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-2 font-medium">Date</th>
-              <th className="py-2 font-medium">Reference</th>
-              <th className="py-2 font-medium">Detail</th>
-              <th className="py-2 text-right font-medium">Charge</th>
-              <th className="py-2 text-right font-medium">Paid</th>
-              <th className="py-2 text-right font-medium">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                  Nothing has been charged to this account.
-                </td>
+        <div className="-mx-6 overflow-x-auto px-6 sm:-mx-8 sm:px-8">
+          <table className="mt-6 w-full min-w-[560px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2.5 font-medium">Date</th>
+                <th className="py-2.5 font-medium">Reference</th>
+                <th className="py-2.5 font-medium">Detail</th>
+                <th className="py-2.5 text-right font-medium">Charge</th>
+                <th className="py-2.5 text-right font-medium">Paid</th>
+                <th className="py-2.5 text-right font-medium">Balance</th>
               </tr>
-            ) : (
-              entries.map((entry) => (
-                <tr key={`${entry.kind}-${entry.id}`} className="border-b last:border-0">
-                  <td className="py-2 whitespace-nowrap">{displayDate(entry.date)}</td>
-                  <td className="py-2">{entry.reference}</td>
-                  <td className="py-2">{entry.description}</td>
-                  <td className="py-2 text-right tabular-nums">
-                    {entry.debit > 0
-                      ? formatCurrency(entry.debit)
-                      : entry.debit < 0
-                        ? `−${formatCurrency(-entry.debit)}`
-                        : ''}
+            </thead>
+            <tbody>
+              {entries.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    Nothing has been charged to this account.
                   </td>
-                  <td className="py-2 text-right tabular-nums">
-                    {entry.credit > 0 ? formatCurrency(entry.credit) : ''}
-                  </td>
-                  <td className="py-2 text-right tabular-nums">{formatCurrency(entry.balance)}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                entries.map((entry) => (
+                  <tr key={`${entry.kind}-${entry.id}`} className="border-b last:border-0">
+                    <td className="py-2 whitespace-nowrap">{displayDate(entry.date)}</td>
+                    <td className="py-2">{entry.reference}</td>
+                    <td className="py-2">{entry.description}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {entry.debit > 0
+                        ? formatCurrency(entry.debit)
+                        : entry.debit < 0
+                          ? `−${formatCurrency(-entry.debit)}`
+                          : ''}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {entry.credit > 0 ? formatCurrency(entry.credit) : ''}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatCurrency(entry.balance)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <section className="mt-6 flex flex-wrap justify-end gap-10 border-t pt-6">
           {ageing.total > 0 && (
             <div className="text-sm">
-              <p className="mb-2 text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Days past due
               </p>
               <table className="border-collapse">
@@ -270,6 +297,40 @@ export default function PatientStatementPage() {
             To settle this balance or arrange instalments, please call {clinic.phone}.
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+/** One of the three figures above the statement, styled like every index page's tiles. */
+function SummaryTile({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+  /** The balance: amber while something is owed, green once it is clear. */
+  tone?: 'owed' | 'clear'
+}) {
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border bg-card p-5 shadow-sm">
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+          tone === 'owed'
+            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+            : tone === 'clear'
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+              : 'bg-primary/10 text-primary'
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="text-2xl font-bold tracking-tight tabular-nums">{value}</p>
       </div>
     </div>
   )

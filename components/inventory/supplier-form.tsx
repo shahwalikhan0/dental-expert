@@ -14,7 +14,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -161,11 +161,8 @@ export function SupplierForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Identity</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Identity" description="The code orders are matched on, and its standing">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField label="Supplier code" required error={errors.code}>
             {(c) => (
               <Input {...c} value={form.code} onChange={(e) => set('code', e.target.value)} />
@@ -206,14 +203,11 @@ export function SupplierForm({
               />
             )}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Contact</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Contact" description="Who to call and where they are">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField label="Contact person">
             {(c) => (
               <Input
@@ -245,7 +239,7 @@ export function SupplierForm({
               />
             )}
           </FormField>
-          <FormField label="Address" className="sm:col-span-2">
+          <FormField label="Address" className="md:col-span-2">
             {(c) => (
               <Input {...c} value={form.address} onChange={(e) => set('address', e.target.value)} />
             )}
@@ -264,14 +258,11 @@ export function SupplierForm({
               />
             )}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Trading terms</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Trading terms" description="Payment, credit and tax registration">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField label="Payment terms">
             {(c) => (
               <Input
@@ -309,7 +300,7 @@ export function SupplierForm({
               />
             )}
           </FormField>
-          <FormField label="Notes" className="sm:col-span-2">
+          <FormField label="Notes" className="md:col-span-2">
             {(c) => (
               <Textarea
                 {...c}
@@ -319,17 +310,17 @@ export function SupplierForm({
               />
             )}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <FormActions>
         <Button type="button" variant="outline" asChild>
           <Link href={cancelHref}>Cancel</Link>
         </Button>
         <SubmitButton busy={saving} busyLabel={busyLabel} icon={Save}>
           {submitLabel}
         </SubmitButton>
-      </div>
+      </FormActions>
     </form>
   )
 }

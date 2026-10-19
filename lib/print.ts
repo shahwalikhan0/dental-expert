@@ -161,7 +161,11 @@ const MARGIN_BOXES = [
  */
 export function printPageCss(layout: PrintLayout): string {
   const { paperSize, headerMm, footerMm, sideMm } = layout
+  // Writing space in a clinical sheet's left column is given for A4 and
+  // scaled by page height, so an A5 pad keeps its proportions on one sheet.
+  const pageScale = (PAPER_MM[paperSize].height / PAPER_MM.A4.height).toFixed(3)
   return `
+:root { --pd-page: ${pageScale}; }
 @page {
   size: ${paperSize};
   margin: ${headerMm}mm ${sideMm}mm ${footerMm}mm;
@@ -245,7 +249,6 @@ body {
 .pd-right { text-align: right; }
 .pd-small { font-size: 8.5pt; }
 .pd-keep { break-inside: avoid; page-break-inside: avoid; }
-.pd-rx { font-size: 22pt; font-weight: 700; font-family: Georgia, "Times New Roman", serif; margin: 0 0 2mm; }
 
 /* Signature lines, kept together at the end of the document. */
 .pd-signatures { display: flex; justify-content: space-between; gap: 15mm; margin-top: 16mm; break-inside: avoid; }
@@ -254,6 +257,35 @@ body {
 /* A lone signature (a prescription, a receipt) is signed bottom right. */
 .pd-signature:only-child { margin-left: auto; }
 .pd-signature-image { display: block; max-width: 100%; max-height: 22mm; margin: 0 auto 1.5mm; }
+
+/* A clinical sheet's body, ruled down the middle like the clinic's pad from
+   the heading to the signature: patient, dentist, history, examination and
+   plan on the left; the chart, then the document, on the right. A size
+   smaller than other documents, so a simple one is a single sheet. */
+.pd-body { display: flex; align-items: stretch; font-size: 9pt; line-height: 1.4; }
+.pd-body-side { flex: 0 0 42%; min-width: 0; padding-right: 4mm; border-right: 0.75pt solid #111827; }
+.pd-body-main { flex: 1 1 0; min-width: 0; padding-left: 5mm; display: flex; flex-direction: column; }
+.pd-body-foot { margin-top: auto; padding-top: 12mm; break-inside: avoid; }
+.pd-body-foot .pd-signatures { margin-top: 0; }
+.pd-body .pd-section { margin-bottom: 3.5mm; }
+.pd-body .pd-section-title { font-size: 7.5pt; margin-bottom: 1mm; }
+.pd-body .pd-fields { gap: 0.4mm 3mm; }
+/* One label width for the patient and dentist blocks, so their values line
+   up; on paper too narrow for it, each block takes its own labels' width. */
+.pd-body-side .pd-fields { grid-template-columns: minmax(max-content, calc(24mm * var(--pd-page, 1))) minmax(0, 1fr); }
+.pd-body-side .pd-fields dd { overflow-wrap: anywhere; }
+.pd-body .pd-note { font-size: 9pt; margin-bottom: 0; }
+.pd-side-section { margin-bottom: 2.5mm; break-inside: avoid; }
+.pd-side-title { margin: 0 0 1mm; font-size: 9pt; font-weight: 700; }
+.pd-side-content { font-size: 8.5pt; }
+.pd-side-line { margin: 0 0 0.6mm; white-space: pre-line; }
+.pd-write { break-inside: avoid; }
+.pd-chart-block { margin-bottom: 4mm; break-inside: avoid; }
+.pd-chart { display: block; width: 100%; height: auto; }
+.pd-teeth { margin: 1mm 0 0; font-size: 8.5pt; }
+.pd-rx-list { margin: 0; padding-left: 4.5mm; }
+.pd-rx-list li { margin-bottom: 1.8mm; break-inside: avoid; }
+.pd-rx-list .pd-detail { display: block; font-size: 8.5pt; color: #4b5563; }
 
 .pd-printed-on { break-before: avoid; page-break-before: avoid; margin-top: 6mm; font-size: 7.5pt; color: #9ca3af; text-align: right; }
 `

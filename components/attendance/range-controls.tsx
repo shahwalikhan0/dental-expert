@@ -58,27 +58,35 @@ export function RangeControls({
   onChange: (from: string, to: string) => void
 }) {
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="space-y-1">
-        <span className="text-xs text-muted-foreground">From</span>
-        <Input
-          type="date"
-          className="h-9 w-[10.5rem]"
-          value={from}
-          max={to || today || undefined}
-          onChange={(event) => event.target.value && onChange(event.target.value, to)}
-        />
-      </label>
-      <label className="space-y-1">
-        <span className="text-xs text-muted-foreground">To</span>
-        <Input
-          type="date"
-          className="h-9 w-[10.5rem]"
-          value={to}
-          min={from || undefined}
-          onChange={(event) => event.target.value && onChange(from, event.target.value)}
-        />
-      </label>
+    // One bar for the question "which days": the two dates on the left, the
+    // usual ranges as pills on the right.
+    <div className="flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="space-y-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            From
+          </span>
+          <Input
+            type="date"
+            className="h-9 w-[10.5rem]"
+            value={from}
+            max={to || today || undefined}
+            onChange={(event) => event.target.value && onChange(event.target.value, to)}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            To
+          </span>
+          <Input
+            type="date"
+            className="h-9 w-[10.5rem]"
+            value={to}
+            min={from || undefined}
+            onChange={(event) => event.target.value && onChange(from, event.target.value)}
+          />
+        </label>
+      </div>
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((preset) => {
           const [start, end] = today ? preset.range(today) : ['', '']
@@ -88,6 +96,7 @@ export function RangeControls({
               key={preset.label}
               size="sm"
               variant={active ? 'default' : 'outline'}
+              className="rounded-full"
               disabled={!today}
               onClick={() => onChange(start, end)}
             >
@@ -124,7 +133,7 @@ export function DownloadMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" disabled={disabled} className={cn(className)}>
-          <Download className="mr-2 h-4 w-4" />
+          <Download className="h-4 w-4" />
           Download
         </Button>
       </DropdownMenuTrigger>

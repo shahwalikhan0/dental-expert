@@ -51,7 +51,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       <div className={cn('relative flex-1', className)}>
         <Search
           aria-hidden="true"
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         />
         <Input
           ref={innerRef}
@@ -70,9 +70,10 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
               onChange('')
             }
           }}
-          // The browser's own clear control is hidden; ours is drawn the same
-          // in every browser and is announced.
-          className="pl-9 pr-9 [&::-webkit-search-cancel-button]:appearance-none"
+          // A pill, like the search bar of any app people use daily, so it is
+          // recognised before it is read. The browser's own clear control is
+          // hidden; ours is drawn the same in every browser and is announced.
+          className="h-11 rounded-full pl-10 pr-10 [&::-webkit-search-cancel-button]:appearance-none"
           {...props}
         />
         {value && (
@@ -83,7 +84,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
               innerRef.current?.focus()
             }}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" />
           </button>

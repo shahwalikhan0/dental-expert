@@ -64,6 +64,84 @@ export function PrintSection({
   )
 }
 
+/**
+ * The body of a clinical sheet, ruled down the middle like the clinic's own
+ * pad, from just under the heading to the signature. The left column is the
+ * pad's: who the patient and dentist are, then Clinical History, Examination
+ * and Treatment Planning with room to write. The right column opens with the
+ * tooth chart, level with the patient and dentist, and the document itself
+ * (the medicines, the procedure) runs under it.
+ *
+ * `foot` (the signature) sits at the bottom of the right column, level with
+ * the end of the left one, as a pad is signed.
+ */
+export function PrintBody({
+  side,
+  foot,
+  children,
+}: {
+  side: React.ReactNode
+  foot?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="pd-body">
+      <aside className="pd-body-side">{side}</aside>
+      <div className="pd-body-main">
+        <div>{children}</div>
+        {foot && <div className="pd-body-foot">{foot}</div>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A left-column heading with room under it to write by hand.
+ *
+ * The pad this sheet copies leaves Clinical History and Treatment Planning
+ * blank for the dentist's pen. What the record already holds is printed first;
+ * the space is left either way, smaller when something was printed, because a
+ * history taken last month is rarely the whole story today.
+ */
+export function PrintWritingSection({
+  title,
+  children,
+  space,
+}: {
+  title: string
+  children?: React.ReactNode
+  /** Writing room on an A4 sheet, in mm; scaled down for smaller paper. */
+  space: { empty: number; filled: number }
+}) {
+  const filled = children !== null && children !== undefined && children !== false
+  const mm = filled ? space.filled : space.empty
+  return (
+    <section className="pd-side-section">
+      <h2 className="pd-side-title">{title}</h2>
+      {filled && <div className="pd-side-content">{children}</div>}
+      <div className="pd-write" style={{ height: `calc(${mm}mm * var(--pd-page, 1))` }} />
+    </section>
+  )
+}
+
+/**
+ * Short lines for the left column ("Conditions: diabetes"), or null when none
+ * has a value — a function rather than a component, so PrintWritingSection
+ * can tell an empty record from a filled one and leave the larger space.
+ */
+export function sideLines(
+  lines: [label: string, value: React.ReactNode | null | undefined][]
+): React.ReactNode | null {
+  const shown = lines.filter(([, value]) => value !== null && value !== undefined && value !== '')
+  if (shown.length === 0) return null
+  return shown.map(([label, value]) => (
+    <p key={label} className="pd-side-line">
+      {label && <span className="pd-muted">{label}: </span>}
+      {value}
+    </p>
+  ))
+}
+
 /** Label / value pairs. Pairs with an empty value are left out. */
 export function PrintFields({
   fields,

@@ -130,19 +130,27 @@ export function Breadcrumb({ className }: { className?: string }) {
   return (
     <nav
       aria-label="Breadcrumb"
-      className={cn('flex items-center gap-1.5 text-sm text-muted-foreground', className)}
+      className={cn(
+        'flex items-center gap-1 text-[13px] font-medium text-muted-foreground',
+        className
+      )}
     >
-      <Link href="/dashboard" className="hover:text-foreground transition-colors">
+      <Link
+        href="/dashboard"
+        aria-label="Dashboard"
+        className="rounded-md p-1 transition-colors hover:bg-muted hover:text-foreground"
+      >
         <Home className="h-3.5 w-3.5" />
       </Link>
       {crumbs.map((crumb, index) => (
-        <div key={`${index}-${crumb.label}`} className="flex items-center gap-1.5">
-          <ChevronRight className="h-3.5 w-3.5" />
+        <div key={`${index}-${crumb.label}`} className="flex items-center gap-1">
+          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/50" />
           {crumb.href === null ? (
             <span
               className={cn(
                 'truncate',
-                crumb.isLast ? 'font-medium text-foreground max-w-[200px]' : 'max-w-[150px]'
+                'px-1',
+                crumb.isLast ? 'font-semibold text-foreground max-w-[200px]' : 'max-w-[150px]'
               )}
             >
               {crumb.label}
@@ -150,7 +158,7 @@ export function Breadcrumb({ className }: { className?: string }) {
           ) : (
             <Link
               href={crumb.href}
-              className="hover:text-foreground transition-colors truncate max-w-[150px]"
+              className="max-w-[150px] truncate rounded-md px-1 transition-colors hover:bg-muted hover:text-foreground"
             >
               {crumb.label}
             </Link>

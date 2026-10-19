@@ -145,230 +145,177 @@ export function isReadOnlyPermission(permission: Permission | string): boolean {
 /**
  * Specification §4, expressed as code.
  *
- * Each entry below quotes the spec's own "Typical Access" and "Restricted From"
+ * Each role below quotes the spec's own "Typical Access" and "Restricted From"
  * so the mapping can be checked against the document without switching windows.
+ *
+ * The six working roles are written out first. The two that run the clinic are
+ * not: the administrator holds every capability, and the clinic manager every
+ * one but ADMIN_ONLY, so each is a superset of every role below it and stays
+ * one when a capability is added.
  */
+
+/**
+ * Dentist — "Clinical record, charting, treatment plans, prescriptions".
+ * Restricted from "system admin and financial configuration".
+ *
+ * `billing:read` but not `billing:config`: a dentist has to see what their
+ * treatment was billed at to discuss a plan with the patient, and the spec
+ * withholds financial *configuration*, not financial visibility.
+ */
+const DOCTOR: readonly Permission[] = [
+  'patients:read',
+  'patients:write',
+  'clinical:read',
+  'clinical:write',
+  'clinical:sign',
+  'appointments:read',
+  'appointments:write',
+  'billing:read',
+  'inventory:read',
+  'lab:read',
+  'lab:write',
+  'reports:operational',
+  'staff:read',
+  'masters:read',
+  'communications:read',
+]
+
+/**
+ * Dental Assistant — "Assigned patient/chair support, selected notes/tasks".
+ * Restricted from "billing settings, management-only reports".
+ *
+ * Writes clinical records (preparing the visit, recording materials used)
+ * but cannot sign them — the signature belongs to the dentist. Holds
+ * `inventory:write` because chair-side consumption is recorded by whoever is
+ * at the chair (§5.7, procedure-linked consumption).
+ */
+const DENTAL_ASSISTANT: readonly Permission[] = [
+  'patients:read',
+  'clinical:read',
+  'clinical:write',
+  'appointments:read',
+  'appointments:write',
+  'inventory:read',
+  'inventory:write',
+  'lab:read',
+  'lab:write',
+  'reports:operational',
+  'masters:read',
+  'communications:read',
+]
+
+/**
+ * Front Desk / Reception — "Patients, appointments, queue, basic billing".
+ * Restricted from "clinical notes, restricted finance settings".
+ *
+ * No `clinical:read` at all — this is the sharpest line in §4 and the one
+ * the codebase was breaking. Medical alerts still reach the front desk,
+ * because FR-003 alerts live on the patient record under `patients:read`,
+ * not in the clinical chart. "Basic billing" is read and write; discounts,
+ * refunds, closing and configuration are not basic.
+ */
+const RECEPTIONIST: readonly Permission[] = [
+  'patients:read',
+  'patients:write',
+  'appointments:read',
+  'appointments:write',
+  'billing:read',
+  'billing:write',
+  'lab:read',
+  'reports:operational',
+  'masters:read',
+  'communications:read',
+  'communications:write',
+]
+
+/**
+ * Accounts / Cashier — "Invoices, receipts, balances, daily closure".
+ * Restricted from "clinical details beyond minimum needed".
+ *
+ * `patients:read` is the "minimum needed" — a name and contact to raise an
+ * invoice against. No clinical permission of any kind. Processes refunds
+ * (FR-014) but does not approve discounts above the threshold: FR-013 needs
+ * an approver who is not the person entering the transaction, which is the
+ * manager or the administrator.
+ */
+const ACCOUNTANT: readonly Permission[] = [
+  'patients:read',
+  'billing:read',
+  'billing:write',
+  'billing:refund',
+  'billing:closing',
+  'billing:config',
+  'reports:financial',
+  'reports:export',
+  'masters:read',
+  'communications:read',
+]
+
+/**
+ * Inventory / Store — "Items, suppliers, stock, purchase/issue records".
+ * Restricted from "clinical notes and patient finance".
+ *
+ * The narrowest role. No patient access of any kind: stock movements
+ * reference procedures and batches, never a named patient.
+ */
+const INVENTORY_STAFF: readonly Permission[] = ['inventory:read', 'inventory:write', 'masters:read']
+
+/**
+ * Dental laboratory coordination (§5.8). Not one of the seven roles in §4 —
+ * it existed upstream and is kept because §5.8 is a real module with an
+ * external counterparty.
+ *
+ * `patients:read` because a lab case is identified by the patient it belongs
+ * to. No clinical or billing access.
+ */
+const LAB_TECH: readonly Permission[] = ['patients:read', 'lab:read', 'lab:write', 'masters:read']
+
+/**
+ * What only the administrator holds: destroying records outright, and the
+ * accounts themselves. Everything else the clinic manager has as well.
+ */
+const ADMIN_ONLY: readonly Permission[] = ['patients:delete', 'clinical:delete', 'users:manage']
+
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   /**
    * System Administrator — "All configuration, users, permissions, audit tools".
-   * Restricted from "clinical decisions unless also a clinical user".
    *
-   * Everything except `clinical:sign`. An administrator can read and correct a
-   * clinical record, but signing one attests to a clinical finding as the
-   * treating provider, and FR-007 makes that signature the thing the audit
-   * trail hangs off. Granting it to an account whose job is system
-   * configuration would make the signature meaningless. An administrator who
-   * is also a dentist gets a DOCTOR account for their clinical work.
+   * Every capability (19 October 2026). The administrator used to be kept off
+   * `clinical:sign`, on the reading that signing attests as the treating
+   * provider; in practice the owner of a small practice runs it and treats in
+   * it, and "the administrator cannot write a prescription" was the result.
+   * The administrator is now a superset of every role in the clinic.
    */
-  ADMIN: [
-    'patients:read',
-    'patients:write',
-    'patients:delete',
-    'clinical:read',
-    'clinical:write',
-    'clinical:delete',
-    'appointments:read',
-    'appointments:write',
-    'billing:read',
-    'billing:write',
-    'billing:discount',
-    'billing:refund',
-    'billing:closing',
-    'billing:config',
-    'billing:void',
-    'inventory:read',
-    'inventory:write',
-    'lab:read',
-    'lab:write',
-    'reports:operational',
-    'reports:financial',
-    'reports:export',
-    'staff:read',
-    'staff:write',
-    'staff:hr',
-    'attendance:read',
-    'attendance:write',
-    'masters:read',
-    'settings:read',
-    'settings:write',
-    'audit:read',
-    'users:manage',
-    'communications:read',
-    'communications:write',
-  ],
+  ADMIN: [...PERMISSIONS],
 
   /**
    * Clinic Manager — "Dashboards, operations, approvals, reports".
-   * Restricted from "changing signed clinical notes without controlled process".
    *
-   * The approver role: this is who FR-013 and FR-014 escalate to. Reads the
-   * clinical record for oversight but cannot write or sign it, which is what
-   * "without controlled process" means in practice.
-   *
-   * `staff:write` and `settings:write` since 29 September 2026: the clinic
-   * runs as the manager's practice, and its manager could see the Add Staff,
-   * Invite and Data Import screens and was refused on every one. What stays
-   * with the administrator is the administrator account itself — see
-   * `staffChangeRefusal` below — and `users:manage`.
+   * Everything any working role can do, plus the approvals (discounts,
+   * refunds, voids, closing), staff, attendance, settings and the audit log
+   * (19 October 2026: a superset of every role below it, as the administrator
+   * is of every role). What stays with the administrator alone is
+   * ADMIN_ONLY above, and the administrator account itself — see
+   * `staffChangeRefusal` below.
    */
-  CLINIC_MANAGER: [
-    'patients:read',
-    'patients:write',
-    'clinical:read',
-    'appointments:read',
-    'appointments:write',
-    'billing:read',
-    'billing:write',
-    'billing:discount',
-    'billing:refund',
-    'billing:closing',
-    // Cancelling an invoice (invoice review 6.1). The list offered managers
-    // "Cancel invoice" and the route refused them; an invoice raised in error
-    // is the manager's to dispose of, not only the administrator's.
-    'billing:void',
-    'inventory:read',
-    'lab:read',
-    'reports:operational',
-    'reports:financial',
-    'reports:export',
-    'staff:read',
-    'staff:write',
-    'staff:hr',
-    'attendance:read',
-    'attendance:write',
-    'masters:read',
-    'settings:read',
-    'settings:write',
-    'audit:read',
-    'communications:read',
-    'communications:write',
-  ],
+  CLINIC_MANAGER: PERMISSIONS.filter((p) => !ADMIN_ONLY.includes(p)),
 
-  /**
-   * Dentist — "Clinical record, charting, treatment plans, prescriptions".
-   * Restricted from "system admin and financial configuration".
-   *
-   * `billing:read` but not `billing:config`: a dentist has to see what their
-   * treatment was billed at to discuss a plan with the patient, and the spec
-   * withholds financial *configuration*, not financial visibility.
-   */
-  DOCTOR: [
-    'patients:read',
-    'patients:write',
-    'clinical:read',
-    'clinical:write',
-    'clinical:sign',
-    'appointments:read',
-    'appointments:write',
-    'billing:read',
-    'inventory:read',
-    'lab:read',
-    'lab:write',
-    'reports:operational',
-    'staff:read',
-    'masters:read',
-    'communications:read',
-  ],
-
-  /**
-   * Dental Assistant — "Assigned patient/chair support, selected notes/tasks".
-   * Restricted from "billing settings, management-only reports".
-   *
-   * Writes clinical records (preparing the visit, recording materials used)
-   * but cannot sign them — the signature belongs to the dentist. Holds
-   * `inventory:write` because chair-side consumption is recorded by whoever is
-   * at the chair (§5.7, procedure-linked consumption).
-   */
-  DENTAL_ASSISTANT: [
-    'patients:read',
-    'clinical:read',
-    'clinical:write',
-    'appointments:read',
-    'appointments:write',
-    'inventory:read',
-    'inventory:write',
-    'lab:read',
-    'lab:write',
-    'reports:operational',
-    'masters:read',
-    'communications:read',
-  ],
-
-  /**
-   * Front Desk / Reception — "Patients, appointments, queue, basic billing".
-   * Restricted from "clinical notes, restricted finance settings".
-   *
-   * No `clinical:read` at all — this is the sharpest line in §4 and the one
-   * the codebase was breaking. Medical alerts still reach the front desk,
-   * because FR-003 alerts live on the patient record under `patients:read`,
-   * not in the clinical chart. "Basic billing" is read and write; discounts,
-   * refunds, closing and configuration are not basic.
-   */
-  RECEPTIONIST: [
-    'patients:read',
-    'patients:write',
-    'appointments:read',
-    'appointments:write',
-    'billing:read',
-    'billing:write',
-    'lab:read',
-    'reports:operational',
-    'masters:read',
-    'communications:read',
-    'communications:write',
-  ],
-
-  /**
-   * Accounts / Cashier — "Invoices, receipts, balances, daily closure".
-   * Restricted from "clinical details beyond minimum needed".
-   *
-   * `patients:read` is the "minimum needed" — a name and contact to raise an
-   * invoice against. No clinical permission of any kind. Processes refunds
-   * (FR-014) but does not approve discounts above the threshold: FR-013 needs
-   * an approver who is not the person entering the transaction, which is the
-   * manager or the administrator.
-   */
-  ACCOUNTANT: [
-    'patients:read',
-    'billing:read',
-    'billing:write',
-    'billing:refund',
-    'billing:closing',
-    'billing:config',
-    'reports:financial',
-    'reports:export',
-    'masters:read',
-    'communications:read',
-  ],
-
-  /**
-   * Inventory / Store — "Items, suppliers, stock, purchase/issue records".
-   * Restricted from "clinical notes and patient finance".
-   *
-   * The narrowest role. No patient access of any kind: stock movements
-   * reference procedures and batches, never a named patient.
-   */
-  INVENTORY_STAFF: ['inventory:read', 'inventory:write', 'masters:read'],
-
-  /**
-   * Dental laboratory coordination (§5.8). Not one of the seven roles in §4 —
-   * it existed upstream and is kept because §5.8 is a real module with an
-   * external counterparty.
-   *
-   * `patients:read` because a lab case is identified by the patient it belongs
-   * to. No clinical or billing access.
-   */
-  LAB_TECH: ['patients:read', 'lab:read', 'lab:write', 'masters:read'],
+  DOCTOR,
+  DENTAL_ASSISTANT,
+  RECEPTIONIST,
+  ACCOUNTANT,
+  INVENTORY_STAFF,
+  LAB_TECH,
 }
 
 /**
  * The roles a person actually holds.
  *
- * Almost always one. The exception is the owner who also treats patients: §4
- * gives the administrator configuration and oversight, and deliberately
- * withholds `clinical:sign` so that a signature attests as the treating
- * provider (FR-007). One account, one role would force that person to choose
- * between running the clinic and signing their own notes.
+ * Almost always one. A second, clinical role was how an owner who also treats
+ * patients got `clinical:sign` while the administrator was kept off it. The
+ * administrator and the clinic manager now hold it themselves, so a second
+ * role widens only the other working roles — a front-desk member who is also
+ * a dental assistant, say.
  */
 export interface RoleHolder {
   role?: string | null

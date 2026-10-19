@@ -1,7 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CalendarClock, Layers, Package } from 'lucide-react'
+import {
+  AlertTriangle,
+  Boxes,
+  CalendarClock,
+  CalendarX,
+  Hourglass,
+  Layers,
+  Package,
+  PackageX,
+  TrendingDown,
+  Wallet,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -56,20 +67,31 @@ function StatCard({
   value,
   note,
   tone,
+  icon: Icon,
 }: {
   label: string
   value: React.ReactNode
   note?: React.ReactNode
   tone?: StatusTone
+  icon?: React.ComponentType<{ className?: string }>
 }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className={`mt-2 text-3xl font-bold ${tone ? TONE_TEXT_CLASS[tone] : ''}`}>{value}</p>
-        {note && <p className="mt-1 text-sm text-muted-foreground">{note}</p>}
-      </CardContent>
-    </Card>
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p
+          className={`mt-1 text-2xl font-bold tracking-tight ${tone ? TONE_TEXT_CLASS[tone] : ''}`}
+        >
+          {value}
+        </p>
+        {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
+      </div>
+      {Icon && (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -135,25 +157,29 @@ export default function InventoryReportsPage() {
         <TabsContent value="summary" className="space-y-6">
           {body('summary', (d) => (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <StatCard
+                  icon={Boxes}
                   label="Total items"
                   value={d.summary.totalItems}
                   note={`${d.summary.activeItems} active`}
                 />
                 <StatCard
+                  icon={PackageX}
                   label="Out of stock"
                   value={d.summary.outOfStockItems}
                   note="Items need restock"
                   tone="danger"
                 />
                 <StatCard
+                  icon={TrendingDown}
                   label="Low stock"
                   value={d.summary.lowStockItems}
                   note="Items below minimum"
                   tone="progress"
                 />
                 <StatCard
+                  icon={Wallet}
                   label="Inventory value"
                   value={formatCurrency(d.summary.totalInventoryValue ?? 0)}
                   note="Total stock value"
@@ -315,14 +341,16 @@ export default function InventoryReportsPage() {
 
           {body('expiring', (d) => (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
+                  icon={CalendarX}
                   label="Expired batches"
                   value={d.summary.expiredBatches ?? 0}
                   note={`Value: ${formatCurrency(d.summary.expiredValue ?? 0)}`}
                   tone="danger"
                 />
                 <StatCard
+                  icon={Hourglass}
                   label="Expiring soon"
                   value={d.summary.expiringSoonBatches ?? 0}
                   note={`Value: ${formatCurrency(d.summary.expiringSoonValue ?? 0)}`}
@@ -388,14 +416,16 @@ export default function InventoryReportsPage() {
         <TabsContent value="stock_valuation" className="space-y-6">
           {body('stock_valuation', (d) => (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard
+                  icon={Wallet}
                   label="Total stock value"
                   value={formatCurrency(d.totals.totalValue ?? 0)}
                   tone="success"
                 />
-                <StatCard label="Items in stock" value={d.totals.itemsInStock ?? 0} />
+                <StatCard icon={Boxes} label="Items in stock" value={d.totals.itemsInStock ?? 0} />
                 <StatCard
+                  icon={Package}
                   label="Average item value"
                   value={formatCurrency(d.totals.averageItemValue ?? 0)}
                 />

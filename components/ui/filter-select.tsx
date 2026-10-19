@@ -68,7 +68,11 @@ export function FilterSelect({
 }: FilterSelectProps) {
   return (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-      <SelectTrigger id={id} aria-label={label} className={cn('w-full sm:w-[180px]', className)}>
+      <SelectTrigger
+        id={id}
+        aria-label={label}
+        className={cn('h-11 w-full rounded-full px-4 sm:w-[180px]', className)}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

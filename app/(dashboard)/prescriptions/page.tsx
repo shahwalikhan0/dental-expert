@@ -68,7 +68,8 @@ export default function PrescriptionsPage() {
   const trail = useTrail('Prescriptions')
   const { toast } = useToast()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
-  // Only a dentist prescribes (bug report 12 Oct, finding 36). Hidden rather
+  // Prescribing takes `clinical:sign`: dentists, the clinic manager and the
+  // administrator (bug report 12 Oct, finding 36). Hidden rather
   // than offered to a form that can only end in a refusal; `null` while the
   // session loads, so it does not flash on and off.
   const canPrescribe = useCan('clinical:sign') === true
@@ -203,7 +204,7 @@ export default function PrescriptionsPage() {
             {canPrescribe && (
               <Button asChild>
                 <Link href={newHref}>
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New prescription
                 </Link>
               </Button>
@@ -284,10 +285,13 @@ export default function PrescriptionsPage() {
                   label={`Open prescription ${rx.prescriptionNo}`}
                 >
                   <TableCell className="font-mono text-sm">{rx.prescriptionNo}</TableCell>
-                  <TableCell className="font-medium">
-                    {rx.patient.firstName} {rx.patient.lastName}
-                    <br />
-                    <span className="text-xs text-muted-foreground">{rx.patient.patientId}</span>
+                  <TableCell>
+                    <span className="block font-medium">
+                      {rx.patient.firstName} {rx.patient.lastName}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {rx.patient.patientId}
+                    </span>
                   </TableCell>
                   <TableCell>{prescriberName(rx.doctor) || BLANK}</TableCell>
                   <TableCell className="text-sm">{rx.diagnosis || BLANK}</TableCell>

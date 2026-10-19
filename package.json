@@ -45,6 +45,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "npx tsx prisma/seed.ts",
     "storage:migrate": "npx tsx scripts/migrate-storage.ts",
+    "hours:full-week": "npx tsx scripts/full-week-hours.ts",
     "scheduler": "npx tsx --env-file-if-exists=.env scripts/scheduler.ts",
     "jobs:vercel": "npx tsx scripts/write-vercel-crons.ts",
     "db:studio": "prisma studio",

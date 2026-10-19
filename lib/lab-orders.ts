@@ -124,6 +124,17 @@ export function canMoveStatus(from: LabOrderStatus, to: LabOrderStatus): boolean
   return nextStatuses(from).includes(to)
 }
 
+/**
+ * Whether the case's details may still be changed. A cancelled case is closed:
+ * it was offered for editing anyway, and the route took the edit, so a case
+ * nobody is making could be given a new laboratory and a new cost. A fitted
+ * case stays editable, because the laboratory's final bill (the actual cost)
+ * and the quality notes often arrive after the fit.
+ */
+export function isLabOrderEditable(status: string): boolean {
+  return status !== 'CANCELLED'
+}
+
 /** `QUALITY_CHECK` → "Quality check", for refusals a toast can show. */
 export function statusLabel(status: string): string {
   return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ')

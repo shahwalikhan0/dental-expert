@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
@@ -111,6 +110,41 @@ const subjectOf = (a: Appointment) =>
 const phoneOf = (a: Appointment) => a.patient?.phone ?? a.visitor?.phone ?? null
 
 /**
+ * The colour each lane of the board carries: a dot beside its name, its count,
+ * and the tile behind each token, so a glance across the room tells waiting
+ * from in the chair without reading a heading.
+ */
+const TONES = {
+  slate: {
+    dot: 'bg-slate-400',
+    count: 'bg-slate-500/15 text-slate-700 dark:text-slate-300',
+    token: 'bg-slate-500/10 text-slate-700 dark:text-slate-200',
+  },
+  amber: {
+    dot: 'bg-amber-500',
+    count: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+    token: 'bg-amber-500/15 text-amber-800 dark:text-amber-200',
+  },
+  blue: {
+    dot: 'bg-blue-500',
+    count: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+    token: 'bg-blue-500/15 text-blue-800 dark:text-blue-200',
+  },
+  green: {
+    dot: 'bg-emerald-500',
+    count: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+    token: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
+  },
+  red: {
+    dot: 'bg-red-500',
+    count: 'bg-red-500/15 text-red-700 dark:text-red-300',
+    token: 'bg-red-500/10 text-red-800 dark:text-red-200',
+  },
+} as const
+
+type Tone = keyof typeof TONES
+
+/**
  * Declared at module scope, not inside the page.
  *
  * A component created during render is a new component type on every render, so
@@ -130,12 +164,12 @@ function Person({
         {a.patient ? (
           <Link
             href={to(`/patients/${a.patient.id}`)}
-            className="font-medium truncate hover:underline"
+            className="truncate font-semibold hover:underline"
           >
             {subjectOf(a)}
           </Link>
         ) : (
-          <span className="font-medium truncate">{subjectOf(a)}</span>
+          <span className="truncate font-semibold">{subjectOf(a)}</span>
         )}
         {!a.patient && (
           <Badge variant="outline" className="shrink-0 text-xs">
@@ -143,18 +177,19 @@ function Person({
           </Badge>
         )}
       </div>
-      <p className="text-xs text-muted-foreground truncate">
+      <p className="mt-0.5 truncate text-xs text-muted-foreground">
         {formatTime(a.scheduledTime)}
         {phoneOf(a) ? ` · ${formatPhone(phoneOf(a))}` : ''}
         {a.doctor ? ` · Dr. ${a.doctor.firstName} ${a.doctor.lastName}` : ''}
       </p>
       {a.chiefComplaint && (
-        <p className="text-xs text-muted-foreground truncate italic">{a.chiefComplaint}</p>
+        <p className="mt-0.5 truncate text-xs italic text-muted-foreground">{a.chiefComplaint}</p>
       )}
     </div>
   )
 }
 
+/** One lane of the board: its name and count, then a card per person in it. */
 function Column({
   title,
   description,
@@ -168,7 +203,7 @@ function Column({
   title: string
   description: string
   rows: Appointment[]
-  tone: string
+  tone: Tone
   action?: {
     label: string
     icon: React.ReactNode
@@ -180,46 +215,72 @@ function Column({
   searching: boolean
   to: (href: string) => string
 }) {
+  const colours = TONES[tone]
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{title}</CardTitle>
-          <Badge className={tone}>{rows.length}</Badge>
+    <section className="flex flex-col rounded-2xl border bg-muted/40 p-3" aria-label={title}>
+      <header className="px-2 pb-3 pt-1">
+        <div className="flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colours.dot}`} aria-hidden />
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <span
+            className={`ml-auto rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums ${colours.count}`}
+          >
+            {rows.length}
+          </span>
         </div>
-        <CardDescription className="text-xs">{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </header>
+      <div className="flex-1 space-y-3">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">
+          <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
             {searching ? 'Nothing here matches.' : 'Nobody.'}
           </p>
         ) : (
-          rows.map((a) => (
-            <div
-              key={a.id}
-              className="flex items-start gap-3 rounded-lg border px-3 py-2.5 hover:bg-muted/40 transition-colors"
-            >
-              {/* The number, as large as the name. It is what gets called
-                  across the waiting room and read off a slip. */}
-              <div className="shrink-0 text-center">
-                <div className="text-lg font-bold leading-none tabular-nums">
-                  {formatToken(a.tokenNumber)}
+          rows.map((a) => {
+            const showAction = action && (!action.when || action.when(a))
+            return (
+              <article
+                key={a.id}
+                className="rounded-xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+              >
+                <div className="flex items-start gap-3">
+                  {/* The number, larger than the name. It is what gets called
+                      across the waiting room and read off a slip. */}
+                  <div
+                    className={`flex h-14 min-w-14 shrink-0 items-center justify-center rounded-xl px-2 text-2xl font-bold leading-none tabular-nums ${colours.token}`}
+                  >
+                    {formatToken(a.tokenNumber)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <Person appointment={a} to={to} />
+                    {a.waitMinutes != null && a.waitMinutes > 0 && (
+                      <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {a.waitMinutes}m wait
+                      </span>
+                    )}
+                  </div>
+
+                  <IconTooltip label="Open appointment">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="-mr-1 -mt-1 h-8 w-8 shrink-0"
+                      aria-label={`Open appointment ${a.appointmentNo}`}
+                      asChild
+                    >
+                      <Link href={to(`/appointments/${a.id}`)}>
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </IconTooltip>
                 </div>
-                {a.waitMinutes != null && a.waitMinutes > 0 && (
-                  <div className="text-[10px] text-muted-foreground mt-1">{a.waitMinutes}m</div>
-                )}
-              </div>
 
-              <div className="flex-1 min-w-0">
-                <Person appointment={a} to={to} />
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                {action && (!action.when || action.when(a)) && (
+                {showAction && (
                   <Button
                     size="sm"
-                    variant="outline"
+                    className="mt-3 w-full"
                     disabled={busyId === a.id}
                     onClick={() => action.run(a)}
                   >
@@ -228,28 +289,15 @@ function Column({
                     ) : (
                       action.icon
                     )}
-                    <span className="ml-1.5">{action.label}</span>
+                    {action.label}
                   </Button>
                 )}
-                <IconTooltip label="Open appointment">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    aria-label={`Open appointment ${a.appointmentNo}`}
-                    asChild
-                  >
-                    <Link href={to(`/appointments/${a.id}`)}>
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </IconTooltip>
-              </div>
-            </div>
-          ))
+              </article>
+            )
+          })
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -405,12 +453,12 @@ export default function QueuePage() {
       actions={
         <>
           <Button variant="outline" onClick={load}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
           <Button asChild>
             <Link href={trail.to('/appointments/new?walkIn=1')}>
-              <UserPlus className="h-4 w-4 mr-2" />
+              <UserPlus className="h-4 w-4" />
               New walk-in
             </Link>
           </Button>
@@ -435,7 +483,7 @@ export default function QueuePage() {
     <div className="space-y-6">
       {header}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           { label: 'Waiting', value: stats.waiting, icon: Clock },
           { label: 'In the chair', value: stats.inProgress, icon: LogIn },
@@ -443,24 +491,29 @@ export default function QueuePage() {
           // A wait runs from check-in to being called in. The first figure is
           // the waiting room as it stands; the second, those already seen.
           {
-            label: 'Waiting so far, on average',
+            label: 'Average wait so far',
             value: `${stats.avgWaitTime}m`,
             note: `Seen today waited ${stats.avgSeenWaitTime}m`,
             icon: Clock,
           },
         ].map((card) => (
-          <Card key={card.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <card.icon className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">{card.label}</p>
-                <p className="text-xl font-bold">{card.value}</p>
-                {'note' in card && card.note && (
-                  <p className="text-xs text-muted-foreground">{card.note}</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <div
+            key={card.label}
+            className="flex items-start justify-between gap-3 rounded-2xl border bg-card p-5 shadow-sm"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {card.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{card.value}</p>
+              {'note' in card && card.note && (
+                <p className="mt-0.5 text-xs text-muted-foreground">{card.note}</p>
+              )}
+            </div>
+            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
+              <card.icon className="h-5 w-5" />
+            </span>
+          </div>
         ))}
       </div>
 
@@ -495,9 +548,18 @@ export default function QueuePage() {
             },
           ],
         }}
-      />
+      >
+        {/* Said beside the controls so nobody presses Refresh out of doubt. */}
+        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground md:ml-auto">
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:hidden" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Live · updates every 30 seconds
+        </span>
+      </ListToolbar>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid items-start gap-4 lg:grid-cols-3">
         <Column
           title="Expected"
           description="Booked for today and not yet arrived"
@@ -505,7 +567,7 @@ export default function QueuePage() {
           busyId={busyId}
           searching={Boolean(search.trim())}
           to={trail.to}
-          tone="bg-slate-500/15 text-slate-700 dark:text-slate-300"
+          tone="slate"
           action={{
             label: 'Check in',
             icon: <LogIn className="h-3.5 w-3.5" />,
@@ -519,7 +581,7 @@ export default function QueuePage() {
           busyId={busyId}
           searching={Boolean(search.trim())}
           to={trail.to}
-          tone="bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          tone="amber"
           action={{
             label: 'Call in',
             icon: <ArrowRight className="h-3.5 w-3.5" />,
@@ -533,7 +595,7 @@ export default function QueuePage() {
           busyId={busyId}
           searching={Boolean(search.trim())}
           to={trail.to}
-          tone="bg-blue-500/15 text-blue-700 dark:text-blue-300"
+          tone="blue"
           action={{
             label: 'Finish',
             icon: <CheckCircle2 className="h-3.5 w-3.5" />,
@@ -543,7 +605,7 @@ export default function QueuePage() {
       </div>
 
       {(queue.completed.length > 0 || queue.noShow.length > 0) && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid items-start gap-4 lg:grid-cols-2">
           <Column
             title="Finished"
             description="Seen and checked out"
@@ -551,7 +613,7 @@ export default function QueuePage() {
             busyId={busyId}
             searching={Boolean(search.trim())}
             to={trail.to}
-            tone="bg-green-500/15 text-green-700 dark:text-green-300"
+            tone="green"
             // A finished visit with no bill yet is the one the desk has
             // forgotten; it keeps its button until an invoice is raised.
             action={
@@ -572,7 +634,7 @@ export default function QueuePage() {
             busyId={busyId}
             searching={Boolean(search.trim())}
             to={trail.to}
-            tone="bg-red-500/15 text-red-700 dark:text-red-300"
+            tone="red"
           />
         </div>
       )}

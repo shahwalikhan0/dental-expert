@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils'
 
 type ToothType = 'incisor' | 'canine' | 'premolar' | 'upperMolar' | 'lowerMolar' | 'thirdMolar'
 
-interface Shape {
+export interface ToothShape {
   /** The crown outline, filled. */
   outline: string
   /** Fissures and ridges, stroked over it. */
@@ -41,7 +41,7 @@ interface Shape {
  * same way keeps the row readable; turning each one to its true buccal bearing
  * would spin the molars through ninety degrees and make the row look broken.
  */
-const SHAPES: Record<ToothType, Shape> = {
+const SHAPES: Record<ToothType, ToothShape> = {
   // Wide across and shallow front to back — about two to one, which is the
   // proportion that says "incisor" before any of the detail is legible. The
   // flat labial face is the top edge and the incisal ridge runs just behind it.
@@ -112,6 +112,15 @@ export function toothType(tooth: number, arch: 'upper' | 'lower'): ToothType {
   }
 }
 
+/**
+ * The outline and grooves of a tooth, in the 40×40 box above. For drawings
+ * that are not this component: the printed chart (components/print) draws the
+ * same anatomy in black and white on paper.
+ */
+export function toothShape(tooth: number, arch: 'upper' | 'lower'): ToothShape {
+  return SHAPES[toothType(tooth, arch)]
+}
+
 export interface ToothGlyphProps {
   tooth: number
   arch: 'upper' | 'lower'
@@ -119,7 +128,7 @@ export interface ToothGlyphProps {
 }
 
 export function ToothGlyph({ tooth, arch, className }: ToothGlyphProps) {
-  const shape = SHAPES[toothType(tooth, arch)]
+  const shape = toothShape(tooth, arch)
 
   return (
     <svg

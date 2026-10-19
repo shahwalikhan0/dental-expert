@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,7 @@ import { ToastAction } from '@/components/ui/toast'
 import { INVITABLE_ROLES, roleLabel } from '@/lib/rbac'
 import { displayDate } from '@/lib/dates'
 import { toastError, toastSuccess } from '@/lib/toast-utils'
-import { MailPlus, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { MailPlus, RefreshCw, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useCan } from '@/hooks/use-can'
 
@@ -220,7 +220,7 @@ export default function StaffInvitesPage() {
         actions={
           canWrite && (
             <Button onClick={openDialog}>
-              <MailPlus className="h-4 w-4 mr-2" />
+              <MailPlus className="h-4 w-4" />
               Invite someone
             </Button>
           )
@@ -233,25 +233,27 @@ export default function StaffInvitesPage() {
         audit trail that answers "who did this" is weaker for every account whose
         password its owner did not choose.
       */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Why invite rather than add</CardTitle>
-          <CardDescription>
+      <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/10">
+          <ShieldCheck className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Why invite rather than add</p>
+          <p className="mt-0.5 text-blue-900/80 dark:text-blue-200/80">
             Adding a colleague from the Staff screen means choosing their password for them, so you
             know it too. An invitation lets them set their own — which is what makes a signed
             clinical note and the audit log mean something. The link is single-use and expires after
             seven days.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+          </p>
+        </div>
+      </div>
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
-          <Table className="min-w-[880px]">
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Sent</TableHead>
@@ -260,7 +262,7 @@ export default function StaffInvitesPage() {
               </TableRow>
             </TableHeader>
             <GridBody
-              columns={7}
+              columns={6}
               loading={loading}
               failed={failed}
               onRetry={fetchInvites}
@@ -273,8 +275,27 @@ export default function StaffInvitesPage() {
             >
               {paged.rows.map((invite) => (
                 <TableRow key={invite.id}>
-                  <TableCell className="font-medium">{invite.name}</TableCell>
-                  <TableCell>{invite.email}</TableCell>
+                  <TableCell>
+                    {/* Who, with the address the link went to under the name. */}
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                      >
+                        {invite.name
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((part) => part.charAt(0))
+                          .join('')
+                          .toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold">{invite.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">{invite.email}</div>
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell>{roleLabel(invite.role)}</TableCell>
                   <TableCell>
                     <StatusBadge kind="invite" status={invite.status} />
@@ -293,7 +314,7 @@ export default function StaffInvitesPage() {
                           which is the fix for an invitation that has lapsed —
                           so it is offered for an expired one too. */}
                       <Button variant="ghost" size="sm" onClick={() => resend(invite)}>
-                        <RefreshCw className="h-4 w-4 mr-1" />
+                        <RefreshCw className="h-4 w-4" />
                         Resend
                       </Button>
                       <Button
@@ -302,7 +323,7 @@ export default function StaffInvitesPage() {
                         className="text-destructive"
                         onClick={() => cancel(invite)}
                       >
-                        <Trash2 className="h-4 w-4 mr-1" />
+                        <Trash2 className="h-4 w-4" />
                         Cancel
                       </Button>
                     </div>

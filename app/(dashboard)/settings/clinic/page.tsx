@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -52,15 +52,17 @@ type DaySchedule = {
 }
 type WeekSchedule = Record<string, DaySchedule>
 
-const DEFAULT_SCHEDULE: WeekSchedule = {
-  monday: { open: '09:00', close: '20:00', closed: false },
-  tuesday: { open: '09:00', close: '20:00', closed: false },
-  wednesday: { open: '09:00', close: '20:00', closed: false },
-  thursday: { open: '09:00', close: '20:00', closed: false },
-  friday: { open: '09:00', close: '20:00', closed: false },
-  saturday: { open: '09:00', close: '14:00', closed: false },
-  sunday: { open: '', close: '', closed: true },
-}
+/**
+ * The hours a clinic that has saved none is shown: open round the clock,
+ * seven days.
+ *
+ * The app has no opinion about when a practice works. The Closed toggle, the
+ * 24-hour toggle and the per-day times are there for the clinic that works
+ * differently — not a default for every clinic to undo.
+ */
+const DEFAULT_SCHEDULE: WeekSchedule = Object.fromEntries(
+  DAYS.map((day) => [day, { open: '00:00', close: '24:00', closed: false }])
+) as WeekSchedule
 
 function parseSchedule(raw: string | null | undefined): WeekSchedule {
   if (!raw) return { ...DEFAULT_SCHEDULE }
@@ -272,6 +274,24 @@ export default function ClinicSettingsPage() {
     []
   )
 
+  /**
+   * Midnight to midnight, as a toggle.
+   *
+   * `<input type="time">` tops out at 23:59, so a day that runs to the end of
+   * midnight cannot be typed into one — and 23:59 is not the same day, it is a
+   * day with a minute missing at the end of it. Turning this on writes the
+   * `00:00`–`24:00` pair the rest of the application reads as all day; turning
+   * it off puts back an ordinary working day to edit.
+   */
+  const setAllDay = useCallback((day: string, allDay: boolean) => {
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: allDay
+        ? { ...prev[day], open: '00:00', close: '24:00', closed: false }
+        : { ...prev[day], open: '09:00', close: '17:00' },
+    }))
+  }, [])
+
   const copyToAll = useCallback((sourceDay: string) => {
     setSchedule((prev) => {
       const source = prev[sourceDay]
@@ -346,7 +366,7 @@ export default function ClinicSettingsPage() {
   )
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {loading ? (
         <PageSkeleton variant="form" />
       ) : failed ? (
@@ -360,80 +380,71 @@ export default function ClinicSettingsPage() {
 
           <form ref={formRef} className="space-y-6" onSubmit={handleSave} noValidate>
             {/* Clinic Logo */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Clinic logo</CardTitle>
-                <CardDescription>
-                  Upload your clinic logo to display in the sidebar and invoices
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-6">
-                  {/* Preview */}
-                  {logo ? (
-                    <img
-                      src={logo}
-                      alt="Clinic logo"
-                      className="h-20 w-20 rounded-lg object-cover border"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-primary text-primary-foreground text-2xl font-bold border">
-                      {formData.name?.charAt(0) || 'D'}
-                    </div>
-                  )}
+            <FormSection
+              title="Clinic logo"
+              description="Upload your clinic logo to display in the sidebar and invoices"
+            >
+              <div className="flex items-center gap-6">
+                {/* Preview */}
+                {logo ? (
+                  <img
+                    src={logo}
+                    alt="Clinic logo"
+                    className="h-20 w-20 rounded-2xl border object-cover"
+                  />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-2xl font-bold border">
+                    {formData.name?.charAt(0) || 'D'}
+                  </div>
+                )}
 
-                  <div className="flex flex-col gap-2">
-                    {/* Uploads at once, so choosing a file is not unsaved work. */}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                      onChange={handleLogoUpload}
-                      className="hidden"
-                      data-form-guard="ignore"
-                    />
+                <div className="flex flex-col gap-2">
+                  {/* Uploads at once, so choosing a file is not unsaved work. */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    data-form-guard="ignore"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadingLogo}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadingLogo ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    {logo ? 'Change logo' : 'Upload logo'}
+                  </Button>
+                  {logo && (
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       disabled={uploadingLogo}
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={handleLogoRemove}
+                      className="text-destructive hover:text-destructive"
                     >
-                      {uploadingLogo ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="mr-2 h-4 w-4" />
-                      )}
-                      {logo ? 'Change logo' : 'Upload logo'}
+                      <Trash2 className="h-4 w-4" />
+                      Remove logo
                     </Button>
-                    {logo && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={uploadingLogo}
-                        onClick={handleLogoRemove}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Remove logo
-                      </Button>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
-                    </p>
-                  </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Basic Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic information</CardTitle>
-                <CardDescription>Primary clinic details</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <FormSection title="Basic information" description="Primary clinic details">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     label="Clinic name"
@@ -463,16 +474,12 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Contact Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Contact information</CardTitle>
-                <CardDescription>How patients can reach you</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <FormSection title="Contact information" description="How patients can reach you">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField label="Primary phone" htmlFor="phone" required error={errors.phone}>
                     {(control) => (
@@ -517,16 +524,12 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Address */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Address</CardTitle>
-                <CardDescription>Clinic location details</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <FormSection title="Address" description="Clinic location details">
+              <div className="space-y-4">
                 <FormField label="Street address" htmlFor="address" required error={errors.address}>
                   {(control) => (
                     <Textarea
@@ -577,16 +580,15 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Registration & Tax */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Registration and tax information</CardTitle>
-                <CardDescription>Legal and tax registration details</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <FormSection
+              title="Registration and tax information"
+              description="Legal and tax registration details"
+            >
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField label="Registration number" htmlFor="registrationNo">
                     {(control) => (
@@ -621,54 +623,82 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Working Hours */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Working hours</CardTitle>
-                <CardDescription>Clinic operating schedule</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            {/*
+              Full width rather than the usual label-left, fields-right split.
+
+              Seven days against opening time, closing time, two toggles and a
+              copy button is six columns; in the 2.4fr content column they were
+              squeezed to about forty pixels each, which is narrower than a
+              time input can be typed into.
+            */}
+            <FormSection
+              title="Working hours"
+              description="Clinic operating schedule. Every day is open round the clock until you say otherwise."
+              className="lg:grid-cols-1 lg:gap-6"
+            >
+              <div className="space-y-3">
                 {/* Header row */}
-                <div className="hidden md:grid md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center text-xs font-medium text-muted-foreground px-1">
+                <div className="hidden md:grid md:grid-cols-[132px_1fr_1fr_64px_64px_40px] gap-3 items-center text-xs font-medium text-muted-foreground px-1">
                   <span>Day</span>
                   <span>Opens at</span>
                   <span>Closes at</span>
                   <span className="text-center">Open</span>
+                  <span className="text-center">24 h</span>
                   <span />
                 </div>
                 <Separator />
                 {DAYS.map((day) => {
                   const d = schedule[day]
+                  const allDay = d.open === '00:00' && d.close === '24:00'
                   return (
                     <div
                       key={day}
-                      className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_80px_40px] gap-3 items-center"
+                      className="grid grid-cols-1 md:grid-cols-[132px_1fr_1fr_64px_64px_40px] gap-3 items-center"
                     >
                       <span className="text-sm font-medium">{DAY_LABELS[day]}</span>
-                      <Input
-                        type="time"
-                        aria-label={`${DAY_LABELS[day]} opens at`}
-                        value={d.closed ? '' : d.open}
-                        disabled={d.closed}
-                        onChange={(e) => updateDay(day, 'open', e.target.value)}
-                        className={d.closed ? 'opacity-40' : ''}
-                      />
-                      <Input
-                        type="time"
-                        aria-label={`${DAY_LABELS[day]} closes at`}
-                        value={d.closed ? '' : d.close}
-                        disabled={d.closed}
-                        onChange={(e) => updateDay(day, 'close', e.target.value)}
-                        className={d.closed ? 'opacity-40' : ''}
-                      />
+                      {allDay && !d.closed ? (
+                        // One field across both columns rather than two time
+                        // inputs that cannot hold these values.
+                        <p className="flex min-h-10 items-center text-balance rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground md:col-span-2">
+                          Midnight to midnight
+                        </p>
+                      ) : (
+                        <>
+                          <Input
+                            type="time"
+                            aria-label={`${DAY_LABELS[day]} opens at`}
+                            value={d.closed ? '' : d.open}
+                            disabled={d.closed}
+                            onChange={(e) => updateDay(day, 'open', e.target.value)}
+                            className={d.closed ? 'opacity-40' : ''}
+                          />
+                          <Input
+                            type="time"
+                            aria-label={`${DAY_LABELS[day]} closes at`}
+                            value={d.closed ? '' : d.close}
+                            disabled={d.closed}
+                            onChange={(e) => updateDay(day, 'close', e.target.value)}
+                            className={d.closed ? 'opacity-40' : ''}
+                          />
+                        </>
+                      )}
                       <div className="flex justify-center">
                         <Switch
                           aria-label={`Open on ${DAY_LABELS[day]}`}
                           checked={!d.closed}
                           onCheckedChange={(checked) => updateDay(day, 'closed', !checked)}
+                        />
+                      </div>
+                      <div className="flex justify-center">
+                        <Switch
+                          aria-label={`${DAY_LABELS[day]} open 24 hours`}
+                          checked={allDay && !d.closed}
+                          disabled={d.closed}
+                          onCheckedChange={(checked) => setAllDay(day, checked)}
                         />
                       </div>
                       <IconTooltip label="Copy to all days">
@@ -686,16 +716,15 @@ export default function ClinicSettingsPage() {
                     </div>
                   )
                 })}
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
             {/* Bank Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Bank and payment details</CardTitle>
-                <CardDescription>For invoicing and payment collection</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <FormSection
+              title="Bank and payment details"
+              description="For invoicing and payment collection"
+            >
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField label="Bank name" htmlFor="bankName">
                     {(control) => (
@@ -703,7 +732,7 @@ export default function ClinicSettingsPage() {
                         {...control}
                         value={formData.bankName}
                         onChange={(e) => handleChange('bankName', e.target.value)}
-                        placeholder="State Bank of India"
+                        placeholder="e.g. Meezan Bank"
                       />
                     )}
                   </FormField>
@@ -741,14 +770,14 @@ export default function ClinicSettingsPage() {
                     )}
                   </FormField>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </FormSection>
 
-            <div className="flex justify-end">
-              <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+            <FormActions>
+              <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
                 Save changes
               </SubmitButton>
-            </div>
+            </FormActions>
           </form>
 
           {/* Saves itself, and sits outside the form above: its fields are not

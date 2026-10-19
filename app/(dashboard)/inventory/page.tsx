@@ -91,6 +91,40 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: statusLabel('inventory', false) },
 ]
 
+/** The inventory's other screens, as tiles under the header. */
+const SECTIONS = [
+  {
+    href: '/inventory/alerts',
+    icon: AlertTriangle,
+    title: 'Alerts',
+    subtitle: 'Low stock and expiry',
+  },
+  {
+    href: '/inventory/purchase-orders',
+    icon: ShoppingCart,
+    title: 'Purchase orders',
+    subtitle: 'Orders and deliveries',
+  },
+  {
+    href: '/inventory/suppliers',
+    icon: Users,
+    title: 'Suppliers',
+    subtitle: 'Who the clinic buys from',
+  },
+  {
+    href: '/inventory/transactions',
+    icon: TrendingUp,
+    title: 'Transactions',
+    subtitle: 'Every movement of stock',
+  },
+  {
+    href: '/inventory/reports',
+    icon: FileText,
+    title: 'Reports',
+    subtitle: 'Value, usage, expiry',
+  },
+]
+
 export default function InventoryPage() {
   // This screen's own crumb, so a record opened from it can offer the way back.
   const trail = useTrail('Inventory')
@@ -182,36 +216,6 @@ export default function InventoryPage() {
         description="Manage inventory items and stock levels"
         actions={
           <>
-            <Button variant="outline" asChild>
-              <Link href="/inventory/alerts">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                Alerts
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/inventory/purchase-orders">
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                Purchase orders
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/inventory/suppliers">
-                <Users className="h-4 w-4 mr-2" />
-                Suppliers
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/inventory/transactions">
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Transactions
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/inventory/reports">
-                <FileText className="h-4 w-4 mr-2" />
-                Reports
-              </Link>
-            </Button>
             <ExportMenu
               filename="inventory"
               getData={() =>
@@ -236,7 +240,7 @@ export default function InventoryPage() {
             {canWrite && (
               <Button asChild>
                 <Link href="/inventory/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New item
                 </Link>
               </Button>
@@ -244,6 +248,34 @@ export default function InventoryPage() {
           </>
         }
       />
+
+      {/*
+        The rest of the stock room, one tile each. They were five outline
+        buttons in the header, as loud as "New item" and wrapping onto two
+        lines; as tiles they read as the sections they are.
+      */}
+      <nav
+        aria-label="Inventory sections"
+        className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5"
+      >
+        {SECTIONS.map((section) => (
+          <Link
+            key={section.href}
+            href={section.href}
+            className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <section.icon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{section.title}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {section.subtitle}
+              </span>
+            </span>
+          </Link>
+        ))}
+      </nav>
 
       <ListToolbar
         search={
@@ -282,7 +314,7 @@ export default function InventoryPage() {
               onClick={() => list.setFilter('lowStock', !list.filters.lowStock)}
               aria-pressed={list.filters.lowStock}
             >
-              <AlertTriangle className="h-4 w-4 mr-2" />
+              <AlertTriangle className="h-4 w-4" />
               Low stock only
             </Button>
           </>
@@ -422,7 +454,7 @@ export default function InventoryPage() {
                             <DropdownMenuItem
                               onClick={() => router.push(trail.to(`/inventory/${item.id}/edit`))}
                             >
-                              <Pencil className="h-4 w-4 mr-2" />
+                              <Pencil className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -433,7 +465,7 @@ export default function InventoryPage() {
                             router.push(trail.to(`/inventory/transactions?item=${item.id}`))
                           }
                         >
-                          <TrendingUp className="h-4 w-4 mr-2" />
+                          <TrendingUp className="mr-2 h-4 w-4" />
                           Stock history
                         </DropdownMenuItem>
                       </DropdownMenuContent>

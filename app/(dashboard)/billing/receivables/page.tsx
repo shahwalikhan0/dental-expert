@@ -24,7 +24,8 @@ import { BLANK, displayDate } from '@/lib/dates'
 import { cn, formatPhone } from '@/lib/utils'
 import { AGEING_BUCKETS, type Ageing } from '@/lib/ageing'
 import type { ReceivableRow } from '@/lib/ledger'
-import { Phone, Printer, Wallet } from 'lucide-react'
+import { AlertCircle, Phone, Printer, Users, Wallet } from 'lucide-react'
+import { StatTile } from '@/components/billing/stat-tile'
 
 /**
  * Who owes the clinic money, and for how long.
@@ -98,10 +99,36 @@ export default function ReceivablesPage() {
         }
       />
 
+      {/* The headline: how much, owed by how many, and how much of it is old.
+          The route counts these over the patients the search matched. */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile
+          label="Outstanding"
+          icon={Wallet}
+          tone={totals && totals.total > 0 ? 'danger' : 'default'}
+          loading={!data && !failed}
+          value={formatCurrency(totals?.total ?? 0)}
+        />
+        <StatTile
+          label="Patients owing"
+          icon={Users}
+          loading={!data && !failed}
+          value={data?.patientsOwing ?? 0}
+        />
+        <StatTile
+          label="Over 90 days"
+          icon={AlertCircle}
+          tone={totals && totals.over90 > 0 ? 'danger' : 'default'}
+          loading={!data && !failed}
+          value={formatCurrency(totals?.over90 ?? 0)}
+          hint="Past due for more than ninety days"
+        />
+      </div>
+
       {totals && totals.total > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">How old the debt is</CardTitle>
+            <CardTitle>How old the debt is</CardTitle>
             <CardDescription>
               Days past each invoice&apos;s due date. Anything past ninety needs a telephone call
               rather than another statement.
@@ -238,7 +265,7 @@ export default function ReceivablesPage() {
                           }`
                         )}
                       >
-                        <Printer className="mr-2 h-4 w-4" />
+                        <Printer className="h-4 w-4" />
                         Statement
                       </Link>
                     </Button>

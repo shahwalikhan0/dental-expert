@@ -3,21 +3,21 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
   {
     variants: {
       variant: {
         default: 'border-transparent bg-primary text-primary-foreground hover:bg-primary/80',
-        secondary:
-          'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        // An edge as well as a fill, so a neutral badge is visible on a white card.
+        secondary: 'border-border bg-muted text-foreground/80 hover:bg-muted/80',
         destructive:
           'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
-        outline: 'text-foreground',
+        outline: 'border-input bg-card text-foreground',
         success:
-          'border-transparent bg-green-100 text-green-800 hover:bg-green-100/80 dark:bg-green-950/40 dark:text-green-300',
+          'border-green-600/20 bg-green-50 text-green-800 hover:bg-green-50/80 dark:border-green-400/20 dark:bg-green-950/40 dark:text-green-300',
         warning:
-          'border-transparent bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80 dark:bg-yellow-950/40 dark:text-yellow-300',
-        info: 'border-transparent bg-blue-100 text-blue-800 hover:bg-blue-100/80 dark:bg-blue-950/40 dark:text-blue-300',
+          'border-amber-600/25 bg-amber-50 text-amber-800 hover:bg-amber-50/80 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-300',
+        info: 'border-blue-600/20 bg-blue-50 text-blue-800 hover:bg-blue-50/80 dark:border-blue-400/20 dark:bg-blue-950/40 dark:text-blue-300',
         /*
          * The two below exist for the status tones in lib/status.ts.
          * `danger` is the soft red every status map was already hand-writing:
@@ -26,9 +26,9 @@ const badgeVariants = cva(
          * the row it belongs to. `purple` is money handed back — refunds.
          */
         danger:
-          'border-transparent bg-red-100 text-red-800 hover:bg-red-100/80 dark:bg-red-950/40 dark:text-red-300',
+          'border-red-600/20 bg-red-50 text-red-800 hover:bg-red-50/80 dark:border-red-400/20 dark:bg-red-950/40 dark:text-red-300',
         purple:
-          'border-transparent bg-purple-100 text-purple-800 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:text-purple-300',
+          'border-purple-600/20 bg-purple-50 text-purple-800 hover:bg-purple-50/80 dark:border-purple-400/20 dark:bg-purple-950/40 dark:text-purple-300',
       },
     },
     defaultVariants: {

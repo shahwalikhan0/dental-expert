@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { ActiveFilters, type ActiveFiltersProps } from '@/components/ui/active-filters'
 import { cn } from '@/lib/utils'
 
@@ -20,8 +19,10 @@ export interface ListToolbarProps {
  * The bar above every list: search, filters, dates, and what is applied.
  *
  * Sixteen lists put their controls in a Card, six in a bare row and three
- * inventory screens in a hand-styled `div` with raw inputs. This is the Card
- * version, for all of them:
+ * inventory screens in a hand-styled `div` with raw inputs. This is one bare
+ * row for all of them: a pill search and pill filters straight on the page,
+ * the way a search bar sits above results anywhere else, with the list's own
+ * card below. Boxed in a card of its own it read as a second list.
  *
  *   <ListToolbar
  *     search={<SearchInput … />}
@@ -42,20 +43,18 @@ export function ListToolbar({
   children,
 }: ListToolbarProps) {
   return (
-    <Card className={className}>
-      <CardContent className="pt-6">
-        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
-          {search && <div className="flex min-w-[16rem] flex-1">{search}</div>}
-          {(filters || date) && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              {filters}
-              {date}
-            </div>
-          )}
-          {children}
-        </div>
-        {active && <ActiveFilters {...active} className={cn('mt-4', active.className)} />}
-      </CardContent>
-    </Card>
+    <div className={className}>
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+        {search && <div className="flex min-w-[16rem] flex-1">{search}</div>}
+        {(filters || date) && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            {filters}
+            {date}
+          </div>
+        )}
+        {children}
+      </div>
+      {active && <ActiveFilters {...active} className={cn('mt-3', active.className)} />}
+    </div>
   )
 }

@@ -332,7 +332,7 @@ export default function MedicationsPage() {
         actions={
           canEditCatalog && (
             <Button onClick={openAdd}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4" />
               New medication
             </Button>
           )
@@ -675,7 +675,7 @@ export default function MedicationsPage() {
                         onChange={(e) =>
                           setFormData((f) => ({ ...f, contraindications: e.target.value }))
                         }
-                        placeholder="Known allergies, drug interactions…"
+                        placeholder="Drug interactions, conditions it should not be given with…"
                         rows={2}
                       />
                     )}

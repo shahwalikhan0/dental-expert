@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -177,6 +177,31 @@ export default function AttendanceReportPage() {
         onChange={(start, end) => list.setFilters({ from: start, to: end })}
       />
 
+      {/* The range's totals first, under the range that sets them, then who to
+          include and the row per person. */}
+      {data && (
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <Figure label="Working days" value={data.workingDays} hint="Open days up to today" />
+          <Figure label="Present" value={pageTotals.present} tone="PRESENT" />
+          <Figure label="Late" value={pageTotals.late} tone="LATE" />
+          <Figure
+            label="Absent"
+            value={pageTotals.totalAbsent}
+            tone="ABSENT"
+            hint={
+              pageTotals.lateAbsences > 0
+                ? `${pageTotals.absent} marked + ${pageTotals.lateAbsences} from lates`
+                : undefined
+            }
+          />
+          <Figure
+            label="Not marked"
+            value={pageTotals.unmarked}
+            hint={pageTotals.unmarked > 0 ? 'Working days nobody saved' : undefined}
+          />
+        </dl>
+      )}
+
       <ListToolbar
         search={
           <SearchInput
@@ -201,7 +226,7 @@ export default function AttendanceReportPage() {
                       ? ROLE_LABELS[roles[0]]
                       : `${roles.length} roles`}
                 </span>
-                <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+                <ChevronDown className="h-4 w-4 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[220px]">
@@ -242,31 +267,16 @@ export default function AttendanceReportPage() {
         }}
       />
 
-      {data && (
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-          <Figure label="Working days" value={data.workingDays} hint="Open days up to today" />
-          <Figure label="Present" value={pageTotals.present} tone="PRESENT" />
-          <Figure label="Late" value={pageTotals.late} tone="LATE" />
-          <Figure
-            label="Absent"
-            value={pageTotals.totalAbsent}
-            tone="ABSENT"
-            hint={
-              pageTotals.lateAbsences > 0
-                ? `${pageTotals.absent} marked + ${pageTotals.lateAbsences} from lates`
-                : undefined
-            }
-          />
-          <Figure
-            label="Not marked"
-            value={pageTotals.unmarked}
-            hint={pageTotals.unmarked > 0 ? 'Working days nobody saved' : undefined}
-          />
-        </dl>
-      )}
-
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardHeader>
+          <CardTitle>By person</CardTitle>
+          <CardDescription>
+            Every {LATES_PER_ABSENCE} lates in the range count as one absence, in Total absent and
+            in Attendance. A working day nobody saved counts as not marked, never as present. The
+            totals above are for the people on this page; the download covers everyone who matches.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto border-t p-0">
           <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
@@ -301,15 +311,31 @@ export default function AttendanceReportPage() {
                 return (
                   <TableRow key={row.id}>
                     <TableCell>
-                      <Link href={trail.to(href)} className="font-medium hover:underline">
-                        {row.name}
-                      </Link>
-                      {!row.isActive && (
-                        <span className="ml-2 text-xs text-muted-foreground">left</span>
-                      )}
-                      {row.employeeId && (
-                        <div className="text-xs text-muted-foreground">{row.employeeId}</div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div
+                          aria-hidden="true"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary"
+                        >
+                          {row.name
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((part) => part.charAt(0))
+                            .join('')
+                            .toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <Link href={trail.to(href)} className="font-semibold hover:underline">
+                            {row.name}
+                          </Link>
+                          {!row.isActive && (
+                            <span className="ml-2 text-xs text-muted-foreground">left</span>
+                          )}
+                          {row.employeeId && (
+                            <div className="text-xs text-muted-foreground">{row.employeeId}</div>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       {ROLE_LABELS[row.role]}
@@ -378,12 +404,6 @@ export default function AttendanceReportPage() {
           )}
         </CardContent>
       </Card>
-
-      <p className="text-xs text-muted-foreground">
-        Every {LATES_PER_ABSENCE} lates in the range count as one absence, in Total absent and in
-        Attendance. A working day nobody saved counts as not marked, never as present. The totals
-        above are for the people on this page; the download covers everyone who matches.
-      </p>
     </div>
   )
 }
@@ -406,12 +426,17 @@ function Figure({
   tone?: keyof typeof FIGURE_TONE
 }) {
   return (
-    <div className="rounded-lg border p-3">
-      <dt className="text-xs uppercase tracking-[0.08em] text-muted-foreground">{label}</dt>
-      <dd className={cn('mt-1 text-xl font-semibold tabular-nums', tone && FIGURE_TONE[tone])}>
+    <div className="rounded-2xl border bg-card p-5 shadow-sm">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          'mt-1 text-2xl font-bold tracking-tight tabular-nums',
+          tone && FIGURE_TONE[tone]
+        )}
+      >
         {value}
       </dd>
-      {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
+      {hint && <dd className="mt-1 text-xs text-muted-foreground">{hint}</dd>}
     </div>
   )
 }

@@ -63,6 +63,15 @@ interface Visitor {
  */
 const STATE = 'open'
 
+/** Two letters for the avatar, from a name typed into one box at the desk. */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  const first = words[0].charAt(0)
+  const last = words.length > 1 ? words[words.length - 1].charAt(0) : ''
+  return `${first}${last}`.toUpperCase()
+}
+
 export default function WalkInsPage() {
   const trail = useTrail('Walk-ins')
   const { toast } = useToast()
@@ -174,7 +183,7 @@ export default function WalkInsPage() {
           canBook && (
             <Button asChild>
               <Link href={trail.to('/appointments/new?walkIn=1')}>
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 New walk-in
               </Link>
             </Button>
@@ -244,21 +253,37 @@ export default function WalkInsPage() {
                   href={trail.to(`/walk-ins/${visitor.id}`)}
                   label={`Open ${visitor.name}`}
                 >
-                  <TableCell className="font-medium">{visitor.name}</TableCell>
-                  <TableCell>{formatPhone(visitor.phone) || '—'}</TableCell>
-                  <TableCell>{visitor._count.appointments}</TableCell>
-                  <TableCell>{displayDate(visitor.createdAt)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                      >
+                        {initialsOf(visitor.name)}
+                      </div>
+                      <span className="font-semibold">{visitor.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {visitor.phone ? (
+                      formatPhone(visitor.phone)
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="tabular-nums">{visitor._count.appointments}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {displayDate(visitor.createdAt)}
+                  </TableCell>
                   <TableCell>
                     {visitor.convertedPatient ? (
-                      <Badge variant="outline">
+                      <Badge variant="success">
                         Registered · {visitor.convertedPatient.patientId}
                       </Badge>
                     ) : visitor.discardedAt ? (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        Discarded
-                      </Badge>
+                      <Badge variant="secondary">Discarded</Badge>
                     ) : (
-                      <Badge>To decide</Badge>
+                      <Badge variant="warning">To decide</Badge>
                     )}
                   </TableCell>
                   <GridActionsCell>
@@ -266,7 +291,7 @@ export default function WalkInsPage() {
                       {canRegister && (
                         <Button size="sm" variant="outline" asChild>
                           <Link href={trail.to(`/walk-ins/${visitor.id}`)} data-no-row-click>
-                            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                            <UserPlus className="h-3.5 w-3.5" />
                             Register
                           </Link>
                         </Button>

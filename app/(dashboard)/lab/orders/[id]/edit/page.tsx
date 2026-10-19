@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -27,7 +27,7 @@ import { MoneyInput } from '@/components/ui/money-input'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { FlaskConical, Save } from 'lucide-react'
-import { normaliseWorkType, WORK_TYPES } from '@/lib/lab-orders'
+import { isLabOrderEditable, normaliseWorkType, WORK_TYPES } from '@/lib/lab-orders'
 import { LabTreatmentPicker } from '@/components/lab/treatment-picker'
 import {
   focusFirstError,
@@ -75,7 +75,7 @@ export default function EditLabOrderPage() {
 
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing'>('ok')
+  const [loadState, setLoadState] = useState<'ok' | 'failed' | 'missing' | 'closed'>('ok')
   const [saving, setSaving] = useState(false)
   // Warn before a half-filled form is thrown away by a stray click.
   const formRef = useFormGuard(saving)
@@ -131,6 +131,10 @@ export default function EditLabOrderPage() {
       setVendors(vendorData.data ?? vendorData.labVendors ?? [])
 
       setOrderNumber(order.orderNumber ?? null)
+      if (!isLabOrderEditable(order.status)) {
+        setLoadState('closed')
+        return
+      }
       setPatient(
         order.patient
           ? { id: order.patient.id, name: `${order.patient.firstName} ${order.patient.lastName}` }
@@ -236,6 +240,18 @@ export default function EditLabOrderPage() {
 
   if (loadState === 'failed') return <LoadFailed what="this lab order" onRetry={load} />
 
+  if (loadState === 'closed') {
+    return (
+      <EmptyState
+        icon={FlaskConical}
+        title={`${orderNumber ?? 'This case'} was cancelled`}
+        description="A cancelled case cannot be changed. If the work is needed after all, raise a new lab order."
+        actionLabel="Back to the case"
+        actionHref={`/lab/orders/${orderId}`}
+      />
+    )
+  }
+
   // A stored value the chart cannot show (free text from before the chart).
   const unreadableTeeth =
     !teethTouched &&
@@ -243,7 +259,7 @@ export default function EditLabOrderPage() {
     formatTeeth(parseTeeth(storedTeeth)) !== storedTeeth.replace(/\s+/g, '')
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <PageHeader
         title={`Edit ${orderNumber ?? 'lab order'}`}
         back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
@@ -260,14 +276,11 @@ export default function EditLabOrderPage() {
       />
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">The case</CardTitle>
-            <CardDescription>
-              The patient cannot be changed here — cancel and raise a new case instead.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormSection
+          title="The case"
+          description="The patient cannot be changed here — cancel and raise a new case instead."
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FormField label="Lab vendor" required error={errors.labVendorId}>
               {(control) => (
                 <Select value={form.labVendorId} onValueChange={(v) => set('labVendorId', v)}>
@@ -302,7 +315,7 @@ export default function EditLabOrderPage() {
             </FormField>
             <FormField
               label="Teeth"
-              className="sm:col-span-2"
+              className="md:col-span-2"
               hint={
                 unreadableTeeth
                   ? `Recorded as “${storedTeeth}”. Choosing teeth here replaces it.`
@@ -344,14 +357,14 @@ export default function EditLabOrderPage() {
                 </Select>
               )}
             </FormField>
-            <div className="sm:col-span-2">
+            <div className="md:col-span-2">
               <LabTreatmentPicker
                 patientId={form.patientId}
                 value={form.treatmentId}
                 onChange={(treatmentId) => set('treatmentId', treatmentId)}
               />
             </div>
-            <FormField label="Description" className="sm:col-span-2">
+            <FormField label="Description" className="md:col-span-2">
               {(control) => (
                 <Input
                   {...control}
@@ -360,14 +373,14 @@ export default function EditLabOrderPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Dates and cost</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormSection
+          title="Dates and cost"
+          description="When it went out, when it is due back, and what it costs"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FormField label="Order date" required error={errors.orderDate}>
               {(control) => (
                 <Input
@@ -408,14 +421,14 @@ export default function EditLabOrderPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Instructions and notes</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection
+          title="Instructions and notes"
+          description="What the laboratory reads, and what stays in the clinic"
+        >
+          <div className="space-y-4">
             <FormField label="Instructions to the laboratory">
               {(control) => (
                 <Textarea
@@ -436,17 +449,17 @@ export default function EditLabOrderPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <div className="flex justify-end gap-3">
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={`/lab/orders/${orderId}`}>Cancel</Link>
           </Button>
           <SubmitButton busy={saving} icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

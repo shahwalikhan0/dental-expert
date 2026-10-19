@@ -337,26 +337,36 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
+    /**
+     * An optional field as the update should write it: absent is "leave it
+     * alone", and blank or null clears it. Blank used to be written as an
+     * empty string (or, for the date of birth, ignored), so a field emptied on
+     * the edit form could not be cleared.
+     */
+    const optional = (value: unknown) =>
+      value === undefined ? undefined : value === null || value === '' ? null : value
+
     const patient = await prisma.patient.update({
       where: { id },
       data: {
         firstName,
         lastName,
-        email,
+        email: optional(email),
         phone,
-        alternatePhone,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-        gender,
-        bloodGroup,
-        address,
-        city,
-        state,
-        postalCode,
+        alternatePhone: optional(alternatePhone),
+        dateOfBirth:
+          dateOfBirth === undefined ? undefined : dateOfBirth ? new Date(dateOfBirth) : null,
+        gender: optional(gender),
+        bloodGroup: optional(bloodGroup),
+        address: optional(address),
+        city: optional(city),
+        state: optional(state),
+        postalCode: optional(postalCode),
         ...(cnic !== undefined && { cnic: parsedCnic }),
-        occupation,
-        emergencyContactName,
-        emergencyContactPhone,
-        emergencyContactRelation,
+        occupation: optional(occupation),
+        emergencyContactName: optional(emergencyContactName),
+        emergencyContactPhone: optional(emergencyContactPhone),
+        emergencyContactRelation: optional(emergencyContactRelation),
         ...(reactivating && { isActive: true }),
         /*
          * Allergies, conditions and current medications.

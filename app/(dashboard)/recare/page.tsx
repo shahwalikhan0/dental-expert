@@ -44,6 +44,7 @@ import {
   Loader2,
   Send,
   Settings2,
+  UserCheck,
   X,
 } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
@@ -407,7 +408,7 @@ export default function RecarePage() {
         actions={
           <Button variant="outline" asChild>
             <Link href={trail.to('/settings/recare')}>
-              <Settings2 className="h-4 w-4 mr-2" />
+              <Settings2 className="h-4 w-4" />
               Recare types
             </Link>
           </Button>
@@ -415,22 +416,22 @@ export default function RecarePage() {
       />
 
       {performance && performance.due > 0 && (
-        <Card>
-          <CardContent className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-            <Figure label="Due this month" value={String(performance.due)} />
-            <Figure
-              label="Contacted"
-              value={`${performance.contacted}`}
-              hint={`${performance.coverage}% of those due`}
-            />
-            <Figure
-              label="Booked after contact"
-              value={`${performance.booked}`}
-              hint={`${performance.bookingRate}% of those contacted`}
-            />
-            <Figure label="Attended" value={String(performance.attended)} />
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Figure icon={CalendarClock} label="Due this month" value={String(performance.due)} />
+          <Figure
+            icon={Send}
+            label="Contacted"
+            value={`${performance.contacted}`}
+            hint={`${performance.coverage}% of those due`}
+          />
+          <Figure
+            icon={CalendarPlus}
+            label="Booked after contact"
+            value={`${performance.booked}`}
+            hint={`${performance.bookingRate}% of those contacted`}
+          />
+          <Figure icon={UserCheck} label="Attended" value={String(performance.attended)} />
+        </div>
       )}
 
       <SegmentedControl<DueBand>
@@ -494,8 +495,10 @@ export default function RecarePage() {
       />
 
       {effective.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
-          <span className="text-sm font-medium">{effective.length} selected</span>
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-sm">
+          <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
+            {effective.length} selected
+          </span>
           <Select value={channel} onValueChange={(value) => setChannel(value as Channel)}>
             <SelectTrigger className="w-[180px]" aria-label="How to contact them">
               <SelectValue />
@@ -520,10 +523,10 @@ export default function RecarePage() {
           </SubmitButton>
           {/* Clears the ticks, not the search: that has its own X in the box. */}
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-            <X className="mr-1.5 h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" />
             Clear selection
           </Button>
-          <span className="text-xs text-muted-foreground">
+          <span className="basis-full text-xs text-muted-foreground lg:basis-auto">
             Queued for the clinic’s next send window. Anyone contacted in the last{' '}
             {RECALL_COOLDOWN_DAYS} days is skipped.
           </span>
@@ -602,16 +605,26 @@ export default function RecarePage() {
                       </IconTooltip>
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium">
-                        {recare.patient.firstName} {recare.patient.lastName}
+                      <div className="flex items-center gap-3">
+                        <div
+                          aria-hidden="true"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                        >
+                          {`${recare.patient.firstName.charAt(0)}${recare.patient.lastName.charAt(0)}`.toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold">
+                            {recare.patient.firstName} {recare.patient.lastName}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {recare.patient.patientId}
+                            {recare.patient.phone ? ` · ${formatPhone(recare.patient.phone)}` : ''}
+                          </div>
+                          {refusal && (
+                            <div className="text-xs text-muted-foreground italic">{refusal}</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {recare.patient.patientId}
-                        {recare.patient.phone ? ` · ${formatPhone(recare.patient.phone)}` : ''}
-                      </div>
-                      {refusal && (
-                        <div className="text-xs text-muted-foreground italic">{refusal}</div>
-                      )}
                     </TableCell>
                     <TableCell>
                       <div>{recare.recareType.name}</div>
@@ -660,7 +673,7 @@ export default function RecarePage() {
                             )}
                             data-no-row-click
                           >
-                            <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />
+                            <CalendarPlus className="h-3.5 w-3.5" />
                             Book
                           </Link>
                         </Button>
@@ -728,12 +741,28 @@ export default function RecarePage() {
   )
 }
 
-function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** One of the summary tiles above the list, styled like every other index page's. */
+function Figure({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+  hint?: string
+}) {
   return (
-    <div>
-      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <div className="flex items-start gap-4 rounded-2xl border bg-card p-5 shadow-sm">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
     </div>
   )
 }

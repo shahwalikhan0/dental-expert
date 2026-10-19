@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -211,7 +211,7 @@ export default function AppointmentSettingsPage() {
 
   if (failed) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <LoadFailed what="the appointment settings" onRetry={fetchSettings} />
       </div>
@@ -219,56 +219,51 @@ export default function AppointmentSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {header}
 
       <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
         {/* Slot Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Time slot configuration</CardTitle>
-            <CardDescription>
-              How often the appointment book offers a time, and how long to leave clear afterwards
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Offer a slot every (minutes)"
-                htmlFor="slotDuration"
-                hint="The spacing of the times offered, not the length of an appointment — the desk still chooses that per booking. At 15, the book offers 09:00, 09:15, 09:30."
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="number"
-                    min={5}
-                    max={120}
-                    value={settings.slotDuration}
-                    onChange={(e) => setSettings({ ...settings, slotDuration: e.target.value })}
-                  />
-                )}
-              </FormField>
+        <FormSection
+          title="Time slot configuration"
+          description="How often the appointment book offers a time, and how long to leave clear afterwards"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField
+              label="Offer a slot every (minutes)"
+              htmlFor="slotDuration"
+              hint="The spacing of the times offered, not the length of an appointment — the desk still chooses that per booking. At 15, the book offers 09:00, 09:15, 09:30."
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={5}
+                  max={120}
+                  value={settings.slotDuration}
+                  onChange={(e) => setSettings({ ...settings, slotDuration: e.target.value })}
+                />
+              )}
+            </FormField>
 
-              <FormField
-                label="Leave clear afterwards (minutes)"
-                htmlFor="bufferTime"
-                hint="Turning the chair round and writing the note. No time is offered inside this gap after an appointment."
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="number"
-                    min={0}
-                    max={60}
-                    value={settings.bufferTime}
-                    onChange={(e) => setSettings({ ...settings, bufferTime: e.target.value })}
-                  />
-                )}
-              </FormField>
-            </div>
-          </CardContent>
-        </Card>
+            <FormField
+              label="Leave clear afterwards (minutes)"
+              htmlFor="bufferTime"
+              hint="Turning the chair round and writing the note. No time is offered inside this gap after an appointment."
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={settings.bufferTime}
+                  onChange={(e) => setSettings({ ...settings, bufferTime: e.target.value })}
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
 
         {/*
           Opening hours are not here.
@@ -281,104 +276,97 @@ export default function AppointmentSettingsPage() {
           wired into a second source of truth. The lunch break stays, because
           nothing else offers one.
         */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Lunch break</CardTitle>
-            <CardDescription>
+        <FormSection
+          title="Lunch break"
+          description={
+            <>
               No appointment is offered during this. Opening hours are set per weekday at{' '}
               <Link href="/settings/clinic" className="underline hover:text-foreground">
                 Settings → Clinic
               </Link>
               .
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Lunch break start" htmlFor="lunchBreakStart">
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="time"
-                    value={settings.lunchBreakStart}
-                    onChange={(e) => setSettings({ ...settings, lunchBreakStart: e.target.value })}
-                  />
-                )}
-              </FormField>
+            </>
+          }
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="Lunch break start" htmlFor="lunchBreakStart">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="time"
+                  value={settings.lunchBreakStart}
+                  onChange={(e) => setSettings({ ...settings, lunchBreakStart: e.target.value })}
+                />
+              )}
+            </FormField>
 
-              <FormField label="Lunch break end" htmlFor="lunchBreakEnd">
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="time"
-                    value={settings.lunchBreakEnd}
-                    onChange={(e) => setSettings({ ...settings, lunchBreakEnd: e.target.value })}
-                  />
-                )}
-              </FormField>
-            </div>
-          </CardContent>
-        </Card>
+            <FormField label="Lunch break end" htmlFor="lunchBreakEnd">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="time"
+                  value={settings.lunchBreakEnd}
+                  onChange={(e) => setSettings({ ...settings, lunchBreakEnd: e.target.value })}
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
 
         {/* Booking Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Booking settings</CardTitle>
-            <CardDescription>Configure booking restrictions and reminders</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Maximum advance booking (days)"
-                htmlFor="maxAdvanceBookingDays"
-                hint="How far in advance appointments can be booked. Leave empty for no limit."
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="number"
-                    value={settings.maxAdvanceBookingDays}
-                    onChange={(e) =>
-                      setSettings({ ...settings, maxAdvanceBookingDays: e.target.value })
-                    }
-                  />
-                )}
-              </FormField>
+        <FormSection
+          title="Booking settings"
+          description="Configure booking restrictions and reminders"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField
+              label="Maximum advance booking (days)"
+              htmlFor="maxAdvanceBookingDays"
+              hint="How far in advance appointments can be booked. Leave empty for no limit."
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  value={settings.maxAdvanceBookingDays}
+                  onChange={(e) =>
+                    setSettings({ ...settings, maxAdvanceBookingDays: e.target.value })
+                  }
+                />
+              )}
+            </FormField>
 
-              <FormField
-                label="Reminder time (hours before)"
-                htmlFor="reminderHoursBefore"
-                hint="When to send appointment reminders"
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="number"
-                    value={settings.reminderHoursBefore}
-                    onChange={(e) =>
-                      setSettings({ ...settings, reminderHoursBefore: e.target.value })
-                    }
-                  />
-                )}
-              </FormField>
-            </div>
-          </CardContent>
-        </Card>
+            <FormField
+              label="Reminder time (hours before)"
+              htmlFor="reminderHoursBefore"
+              hint="When to send appointment reminders"
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  value={settings.reminderHoursBefore}
+                  onChange={(e) =>
+                    setSettings({ ...settings, reminderHoursBefore: e.target.value })
+                  }
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
 
         {/* Double-booking policy — FR-004 "beyond configured rules" */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Double booking</CardTitle>
-            <CardDescription>
-              What happens when a booking overlaps one the dentist already has
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <FormSection
+          title="Double booking"
+          description="What happens when a booking overlaps one the dentist already has"
+        >
+          <div className="space-y-2">
             <Label htmlFor="doubleBookingPolicy">When a clash is detected</Label>
             <Select
               value={settings.doubleBookingPolicy}
               onValueChange={(value) => setSettings({ ...settings, doubleBookingPolicy: value })}
             >
-              <SelectTrigger id="doubleBookingPolicy" className="mt-1">
+              <SelectTrigger id="doubleBookingPolicy" className="md:max-w-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -386,18 +374,18 @@ export default function AppointmentSettingsPage() {
                 <SelectItem value="WARN">Allow it, but warn the user</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-sm text-muted-foreground">
               Patients booking through the website or portal are always prevented, whichever option
               is selected here.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <div className="flex justify-end">
-          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+        <FormActions hint="Holidays below are saved as you add them.">
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
 
       {/*
@@ -405,15 +393,11 @@ export default function AppointmentSettingsPage() {
         sit outside the form: their fields are not part of "Save changes" and
         typing one is not unsaved work on the settings above.
       */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Holiday calendar</CardTitle>
-          <CardDescription>Manage clinic holidays and closures</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="border rounded-lg p-4 bg-muted/50">
-            <h4 className="font-semibold mb-3">Add a holiday</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+      <FormSection title="Holiday calendar" description="Manage clinic holidays and closures">
+        <div className="space-y-6">
+          <div className="rounded-xl bg-muted/60 p-4">
+            <h3 className="mb-3 text-sm font-semibold">Add a holiday</h3>
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
               <FormField label="Name" htmlFor="holiday-name" required error={holidayErrors.name}>
                 {(control) => (
                   <Input
@@ -459,20 +443,22 @@ export default function AppointmentSettingsPage() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="font-semibold">Upcoming holidays</h4>
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">Upcoming holidays</h3>
             {holidays.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No holidays configured</p>
+              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                No holidays configured
+              </p>
             ) : (
               <div className="space-y-2">
                 {holidays.map((holiday) => (
                   <div
                     key={holiday.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-center justify-between gap-4 rounded-xl border px-4 py-3"
                   >
-                    <div>
-                      <p className="font-medium">{holiday.name}</p>
-                      <p className="text-sm text-muted-foreground">{displayDate(holiday.date)}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{holiday.name}</p>
+                      <p className="text-xs text-muted-foreground">{displayDate(holiday.date)}</p>
                     </div>
                     <IconTooltip label="Delete holiday">
                       <Button
@@ -482,7 +468,7 @@ export default function AppointmentSettingsPage() {
                         aria-label={`Delete holiday “${holiday.name}”`}
                         onClick={() => handleDeleteHoliday(holiday)}
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </IconTooltip>
                   </div>
@@ -490,8 +476,8 @@ export default function AppointmentSettingsPage() {
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
       {ConfirmDialogComponent}
     </div>
   )

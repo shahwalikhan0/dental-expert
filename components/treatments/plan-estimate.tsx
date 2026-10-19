@@ -180,7 +180,7 @@ export function PlanEstimate({ id, from }: { id: string; from: keyof typeof RETU
         <PrintButton printing={printing} label="Print estimate" />
       </div>
 
-      <div className="rounded-lg border bg-background p-8">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
           <div>
             <h1 className="text-xl font-semibold">{clinic?.name ?? 'Treatment estimate'}</h1>

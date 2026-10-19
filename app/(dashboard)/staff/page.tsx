@@ -33,6 +33,7 @@ import {
   MailPlus,
   BarChart3,
   Trash2,
+  Users,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -122,7 +123,16 @@ export default function StaffPage() {
    */
   const list = useListParams({ defaults: { role: 'all', status: 'active' } })
   // What the route is asked, as a string, so the fetch runs once per question.
-  const query = list.apiParams().toString()
+  // `apiParams` leaves out a filter at its default, but the route reads no
+  // status as "everyone" — so the list said "Status: Active" and showed the
+  // inactive staff too. The default is sent, and "all" is not, as on the
+  // waitlist.
+  const query = (() => {
+    const params = list.apiParams()
+    if (list.filters.status === 'all') params.delete('status')
+    else params.set('status', list.filters.status)
+    return params.toString()
+  })()
 
   // The person being deactivated, and — when the server has refused the plain
   // request and wants it confirmed — the patients still booked with them.
@@ -247,26 +257,7 @@ export default function StaffPage() {
     <div className="space-y-6">
       <PageHeader
         title="Staff"
-        description={
-          <>
-            Manage staff members, roles and permissions
-            {usage && !usage.unlimited && (
-              <span
-                className={`mt-1 block text-sm ${usage.atLimit ? 'text-amber-700 dark:text-amber-400' : ''}`}
-              >
-                {usage.current} of {usage.max} staff accounts used on the {usage.planName} plan
-                {usage.atLimit && (
-                  <>
-                    {' — '}
-                    <Link href="/pricing" className="font-medium underline">
-                      upgrade to add more
-                    </Link>
-                  </>
-                )}
-              </span>
-            )}
-          </>
-        }
+        description="Manage staff members, roles and permissions"
         actions={
           <>
             <ExportMenu
@@ -292,14 +283,14 @@ export default function StaffPage() {
                 two buttons behind, so both were 404s on the busiest staff screen. */}
             <Button variant="outline" asChild>
               <Link href={trail.to('/staff/invites')}>
-                <MailPlus className="h-4 w-4 mr-2" />
+                <MailPlus className="h-4 w-4" />
                 Invitations
               </Link>
             </Button>
             {canWrite && (
               <Button asChild>
                 <Link href={trail.to('/staff/new')}>
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New staff member
                 </Link>
               </Button>
@@ -307,6 +298,59 @@ export default function StaffPage() {
           </>
         }
       />
+
+      {/*
+        How many of the plan's accounts are in use, as a meter under the title
+        rather than a line folded into the description, so a clinic near its
+        limit sees it before it fills in the form for the next person.
+      */}
+      {usage && !usage.unlimited && (
+        <div
+          className={`flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center ${
+            usage.atLimit ? 'border-amber-300 dark:border-amber-800/60' : ''
+          }`}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <span
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                usage.atLimit
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                  : 'bg-primary/10 text-primary'
+              }`}
+            >
+              <Users className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Staff accounts · {usage.planName} plan
+              </p>
+              <p className="text-2xl font-bold tracking-tight">
+                {usage.current}
+                <span className="text-base font-medium text-muted-foreground">
+                  {' '}
+                  of {usage.max} used
+                </span>
+              </p>
+              <div className="mt-2 h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full ${usage.atLimit ? 'bg-amber-500' : 'bg-primary'}`}
+                  style={{
+                    width: `${Math.min(100, usage.max > 0 ? (usage.current / usage.max) * 100 : 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          {usage.atLimit && (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Every account is in use —{' '}
+              <Link href="/pricing" className="font-medium underline">
+                upgrade to add more
+              </Link>
+            </p>
+          )}
+        </div>
+      )}
 
       <ListToolbar
         search={
@@ -364,7 +408,6 @@ export default function StaffPage() {
           <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Employee ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Role</TableHead>
@@ -375,7 +418,7 @@ export default function StaffPage() {
               </TableRow>
             </TableHeader>
             <GridBody
-              columns={8}
+              columns={7}
               loading={loading}
               failed={failed}
               onRetry={fetchStaff}
@@ -400,27 +443,32 @@ export default function StaffPage() {
                   label={`Open ${member.firstName} ${member.lastName}`}
                 >
                   <TableCell>
-                    <div className="font-medium">{member.employeeId}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                        <UserCog className="h-4 w-4 text-primary" />
+                    {/* The person first, with their initials, as on their record;
+                        the employee ID under the name rather than a column of its own. */}
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                      >
+                        {`${member.firstName.charAt(0)}${member.lastName.charAt(0)}`.toUpperCase()}
                       </div>
-                      <div className="font-medium">
-                        {member.firstName} {member.lastName}
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold">
+                          {member.firstName} {member.lastName}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{member.employeeId}</div>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1 text-sm">
-                        <Phone className="h-3 w-3 text-muted-foreground" />
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                         {formatPhone(member.phone)}
                       </div>
                       {member.email && (
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Mail className="h-3 w-3" />
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5" />
                           {member.email}
                         </div>
                       )}
@@ -438,7 +486,9 @@ export default function StaffPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm">{displayDate(member.joiningDate)}</div>
+                    <div className="whitespace-nowrap text-sm">
+                      {displayDate(member.joiningDate)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <StatusBadge kind="staff" status={member.isActive} />

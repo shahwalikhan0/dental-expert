@@ -9,7 +9,7 @@ import { LoadFailed } from '@/components/ui/load-failed'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download, FileText, Shield, HardDrive, Loader2 } from 'lucide-react'
+import { AlertTriangle, Download, FileText, Shield, HardDrive, Loader2 } from 'lucide-react'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { BLANK, displayDateTime, isoDay } from '@/lib/dates'
 
@@ -124,11 +124,11 @@ export default function SystemSettingsPage() {
       <Tabs defaultValue="backup" className="w-full">
         <TabsList>
           <TabsTrigger value="backup">
-            <HardDrive className="w-4 h-4 mr-2" />
+            <HardDrive className="h-4 w-4" />
             Backup and export
           </TabsTrigger>
           <TabsTrigger value="audit">
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="h-4 w-4" />
             Audit logs
           </TabsTrigger>
         </TabsList>
@@ -143,55 +143,26 @@ export default function SystemSettingsPage() {
             </CardHeader>
             <CardContent>
               {backupStats ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg dark:bg-blue-950/30">
-                    <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                      {backupStats.patients}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Patients</p>
-                  </div>
-                  <div className="text-center p-4 bg-green-50 rounded-lg dark:bg-green-950/30">
-                    <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                      {backupStats.appointments}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Appointments</p>
-                  </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-lg dark:bg-purple-950/30">
-                    <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-                      {backupStats.treatments}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Treatments</p>
-                  </div>
-                  <div className="text-center p-4 bg-yellow-50 rounded-lg dark:bg-yellow-950/30">
-                    <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
-                      {backupStats.invoices}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Invoices</p>
-                  </div>
-                  <div className="text-center p-4 bg-red-50 rounded-lg dark:bg-red-950/30">
-                    <p className="text-3xl font-bold text-red-600 dark:text-red-400">
-                      {backupStats.payments}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Payments</p>
-                  </div>
-                  <div className="text-center p-4 bg-indigo-50 rounded-lg dark:bg-indigo-950/30">
-                    <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
-                      {backupStats.inventoryItems}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Inventory items</p>
-                  </div>
-                  <div className="text-center p-4 bg-pink-50 rounded-lg dark:bg-pink-950/30">
-                    <p className="text-3xl font-bold text-pink-600 dark:text-pink-400">
-                      {backupStats.staff}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Staff members</p>
-                  </div>
-                  <div className="text-center p-4 bg-teal-50 rounded-lg dark:bg-teal-950/30">
-                    <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
-                      {backupStats.labOrders}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Lab orders</p>
-                  </div>
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                  {(
+                    [
+                      ['Patients', backupStats.patients],
+                      ['Appointments', backupStats.appointments],
+                      ['Treatments', backupStats.treatments],
+                      ['Invoices', backupStats.invoices],
+                      ['Payments', backupStats.payments],
+                      ['Inventory items', backupStats.inventoryItems],
+                      ['Staff members', backupStats.staff],
+                      ['Lab orders', backupStats.labOrders],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div key={label} className="rounded-xl bg-muted p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {label}
+                      </p>
+                      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+                    </div>
+                  ))}
                 </div>
               ) : statsFailed ? (
                 <LoadFailed what="the database statistics" onRetry={fetchBackupStats} />
@@ -199,82 +170,70 @@ export default function SystemSettingsPage() {
                 <div
                   role="status"
                   aria-label="Loading"
-                  className="grid grid-cols-2 md:grid-cols-4 gap-4"
+                  className="grid grid-cols-2 gap-4 md:grid-cols-4"
                 >
                   {Array.from({ length: 8 }).map((_, i) => (
-                    <Skeleton key={i} className="h-[92px]" />
+                    <Skeleton key={i} className="h-[84px] rounded-xl" />
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Export Options */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Data export</CardTitle>
-              <CardDescription>Download data backups in JSON format</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {EXPORTS.map(({ type, label }) => (
-                  <Button
-                    key={type}
-                    onClick={() => handleExportBackup(type, label)}
-                    disabled={exporting !== null}
-                    aria-busy={exporting === type || undefined}
-                    variant="outline"
-                    className="justify-start"
-                  >
-                    {exporting === type ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <Download className="w-4 h-4 mr-2" aria-hidden="true" />
-                    )}
-                    {exporting === type ? 'Downloading…' : label}
-                  </Button>
-                ))}
-              </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Export Options */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Data export</CardTitle>
+                <CardDescription>Download data backups in JSON format</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {EXPORTS.map(({ type, label }) => (
+                    <Button
+                      key={type}
+                      onClick={() => handleExportBackup(type, label)}
+                      disabled={exporting !== null}
+                      aria-busy={exporting === type || undefined}
+                      variant="outline"
+                      className="justify-start"
+                    >
+                      {exporting === type ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      {exporting === type ? 'Downloading…' : label}
+                    </Button>
+                  ))}
+                </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4 dark:bg-yellow-950/30 dark:border-yellow-800/60">
-                <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                  <strong>Important:</strong> Backups should be stored securely and regularly.
-                  Consider setting up automated backups using cron jobs or scheduled tasks.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    <strong>Important:</strong> Backups should be stored securely and regularly.
+                    Consider setting up automated backups using cron jobs or scheduled tasks.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Backup Instructions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Backup best practices</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Take full backups daily, preferably at night when system usage is low</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Store backups in multiple locations (local + cloud storage)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Test backup restoration periodically to ensure data integrity</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Keep backups for at least 90 days for compliance</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Encrypt backup files before storing them externally</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
+            {/* Backup Instructions */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Backup best practices</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground marker:text-primary">
+                  <li>Take full backups daily, preferably at night when system usage is low</li>
+                  <li>Store backups in multiple locations (local + cloud storage)</li>
+                  <li>Test backup restoration periodically to ensure data integrity</li>
+                  <li>Keep backups for at least 90 days for compliance</li>
+                  <li>Encrypt backup files before storing them externally</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Audit Logs Tab */}
@@ -288,34 +247,36 @@ export default function SystemSettingsPage() {
               {logsLoading ? (
                 <div role="status" aria-label="Loading" className="space-y-2">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-16" />
+                    <Skeleton key={i} className="h-16 rounded-xl" />
                   ))}
                 </div>
               ) : logsFailed ? (
                 <LoadFailed what="the audit logs" onRetry={fetchAuditLogs} />
               ) : auditLogs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No audit logs available</p>
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  No audit logs available
+                </p>
               ) : (
                 <div className="space-y-2">
                   {auditLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted"
+                      className="flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-muted/50"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-muted-foreground" />
-                          <span className="font-medium">{log.action}</span>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                        <Shield className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-sm font-semibold">{log.action}</span>
                           <span className="text-sm text-muted-foreground">on {log.entityType}</span>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="mt-0.5 text-xs text-muted-foreground">
                           By: {log.user?.name || 'System'} ({log.user?.email || BLANK})
+                          {log.ipAddress && <> · IP: {log.ipAddress}</>}
                         </p>
-                        {log.ipAddress && (
-                          <p className="text-xs text-muted-foreground mt-1">IP: {log.ipAddress}</p>
-                        )}
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {displayDateTime(log.createdAt)}
                       </span>
                     </div>

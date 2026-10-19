@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
-import { Lock, Clock, UserX, AlertTriangle, Users, Save } from 'lucide-react'
+import { AlertTriangle, Save } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { SubmitButton } from '@/components/ui/submit-button'
@@ -114,7 +113,7 @@ export default function SecuritySettingsPage() {
 
   if (failed) {
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <LoadFailed what="the security settings" onRetry={load} />
       </div>
@@ -122,29 +121,25 @@ export default function SecuritySettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {header}
 
       <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5" />
-              Passwords
-            </CardTitle>
-            <CardDescription>
+        <FormSection
+          title="Passwords"
+          description={
+            <>
               The same rule everywhere a password is set — signing up, accepting an invitation,
               creating a staff account, a reset, the patient portal and changing your own.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <p className="text-sm">
+            </>
+          }
+        >
+          <div className="space-y-6">
+            <p className="rounded-xl bg-muted/60 p-4 text-sm">
               A password is {MINIMUM_PASSWORD_LENGTH} to {MAXIMUM_PASSWORD_LENGTH} characters. There
               are no capital-letter, number or symbol requirements — length is what makes a password
               hard to guess.
             </p>
-
-            <Separator />
 
             <div className="space-y-2">
               <Label htmlFor="passwordExpiryDays">Expire passwords after (days)</Label>
@@ -163,18 +158,11 @@ export default function SecuritySettingsPage() {
                 advice in 2017.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Sessions
-            </CardTitle>
-            <CardDescription>How long a sign-in lasts</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Sessions" description="How long a sign-in lasts">
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="sessionTimeoutMinutes">Sign-in lasts (minutes)</Label>
               <Input
@@ -191,18 +179,14 @@ export default function SecuritySettingsPage() {
                 day. A change applies to sessions started after it is saved.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserX className="h-5 w-5" />
-              Wrong passwords
-            </CardTitle>
-            <CardDescription>Locking an account after repeated failures</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <FormSection
+          title="Wrong passwords"
+          description="Locking an account after repeated failures"
+        >
+          <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="maxLoginAttempts">Attempts allowed</Label>
@@ -234,50 +218,36 @@ export default function SecuritySettingsPage() {
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Who sees which patients
-            </CardTitle>
-            <CardDescription>
-              Narrowing the register to the people a clinician treats
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="restrictToOwnPatients">
-                  Clinicians see only their own patients
-                </Label>
-                <p className="text-muted-foreground text-sm">
-                  A dentist or assistant sees the patients they have an appointment with, have
-                  treated, or have charted — and nobody else. The front desk, management, accounts
-                  and administrators keep the whole register, because booking, billing and oversight
-                  cannot be done on a partial one. Off by default.
-                </p>
-              </div>
-              <Switch
-                id="restrictToOwnPatients"
-                checked={settings.restrictToOwnPatients}
-                onCheckedChange={(v) => set('restrictToOwnPatients', v)}
-              />
+        <FormSection
+          title="Who sees which patients"
+          description="Narrowing the register to the people a clinician treats"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <Label htmlFor="restrictToOwnPatients">Clinicians see only their own patients</Label>
+              <p className="text-muted-foreground text-sm">
+                A dentist or assistant sees the patients they have an appointment with, have
+                treated, or have charted — and nobody else. The front desk, management, accounts and
+                administrators keep the whole register, because booking, billing and oversight
+                cannot be done on a partial one. Off by default.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <Switch
+              id="restrictToOwnPatients"
+              checked={settings.restrictToOwnPatients}
+              onCheckedChange={(v) => set('restrictToOwnPatients', v)}
+            />
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Where staff may sign in from
-            </CardTitle>
-            <CardDescription>Optional. One address or CIDR range per line.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <FormSection
+          title="Where staff may sign in from"
+          description="Optional. One address or CIDR range per line."
+        >
+          <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="allowedIPs">Allowed addresses</Label>
               <Textarea
@@ -312,30 +282,30 @@ export default function SecuritySettingsPage() {
               issued runs to its end. The address is the one your hosting reports, so behind a proxy
               that does not forward it, these lists cannot see anything to match.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
-              <AlertTriangle className="h-5 w-5" />
-              Before you save
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-amber-800 dark:text-amber-300">
-            <p>
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+            <AlertTriangle className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold">Before you save</p>
+            <p className="text-amber-800 dark:text-amber-300">
               • An allowed-address list that does not include you will lock you out at your next
               sign-in.
             </p>
-            <p>• Sessions already signed in keep the timeout they were issued with.</p>
-          </CardContent>
-        </Card>
+            <p className="text-amber-800 dark:text-amber-300">
+              • Sessions already signed in keep the timeout they were issued with.
+            </p>
+          </div>
+        </div>
 
-        <div className="flex justify-end">
+        <FormActions>
           <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

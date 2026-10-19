@@ -12,7 +12,12 @@
 import { describe, it, expect } from 'vitest'
 import { availableSlots, hoursOn, minutesOf, timeOf, DEFAULT_DAY_HOURS } from '@/lib/working-hours'
 
-/** Exactly what the settings screen writes. */
+/**
+ * The settings screen's shape, for a clinic that has deliberately closed a day.
+ *
+ * No day is closed by default — the clinic works seven days — so this is the
+ * Closed toggle turned on for Sunday, which is the case these tests exercise.
+ */
 const STORED = JSON.stringify({
   monday: { open: '09:00', close: '20:00' },
   tuesday: { open: '09:00', close: '20:00' },

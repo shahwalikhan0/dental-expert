@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/ui/form-field'
 import {
@@ -162,7 +162,7 @@ export default function PrintingSettingsPage() {
 
   if (failed) {
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <LoadFailed what="the print settings" onRetry={load} />
       </div>
@@ -174,48 +174,48 @@ export default function PrintingSettingsPage() {
   const pct = (mm: number, of: number) => `${(mm / of) * 100}%`
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {header}
 
       <PrintDocument printing={printing}>
         <TestPagePrint layout={preview} />
       </PrintDocument>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
-        <form ref={formRef} onSubmit={handleSave} noValidate>
-          <Card>
-            <CardHeader>
-              <CardTitle>Page layout</CardTitle>
-              <CardDescription>
-                Your letterhead is printed on the paper already, so documents never print a clinic
-                header of their own. They leave the space below blank at the top and bottom of every
-                sheet, including the second and later sheets of a long document.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <FormField label="Paper size" htmlFor="paperSize">
-                {(control) => (
-                  <Select
-                    value={draft.paperSize}
-                    onValueChange={(value) =>
-                      isPaperSize(value) && setDraft((d) => ({ ...d, paperSize: value }))
-                    }
-                  >
-                    <SelectTrigger {...control} className="sm:w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAPER_SIZES.map((size) => (
-                        <SelectItem key={size.value} value={size.value}>
-                          {size.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </FormField>
+      <form ref={formRef} onSubmit={handleSave} noValidate className="space-y-6">
+        <FormSection
+          title="Paper"
+          description="Your letterhead is printed on the paper already, so documents never print a clinic header of their own."
+        >
+          <FormField label="Paper size" htmlFor="paperSize">
+            {(control) => (
+              <Select
+                value={draft.paperSize}
+                onValueChange={(value) =>
+                  isPaperSize(value) && setDraft((d) => ({ ...d, paperSize: value }))
+                }
+              >
+                <SelectTrigger {...control} className="sm:w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAPER_SIZES.map((size) => (
+                    <SelectItem key={size.value} value={size.value}>
+                      {size.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </FormField>
+        </FormSection>
 
-              <div className="grid gap-5 sm:grid-cols-3">
+        <FormSection
+          title="Page layout"
+          description="Documents leave the space below blank at the top and bottom of every sheet, including the second and later sheets of a long document."
+        >
+          <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3">
                 {(Object.keys(LABELS) as MmField[]).map((field) => (
                   <FormField
                     key={field}
@@ -246,71 +246,67 @@ export default function PrintingSettingsPage() {
                 ))}
               </div>
 
-              <p className="text-sm text-muted-foreground">
+              <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
                 Measure your letterhead from the top edge of the sheet to just below the printed
                 header, and add a few millimetres. Then print the test page on a sheet of your
                 letterhead to check it. In the print dialog, keep the margins at their default and
                 the scale at 100%. In Firefox or Safari, also untick &ldquo;Headers and
                 footers&rdquo;; Chrome and Edge leave them off for you.
               </p>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <PrintButton printing={printing} label="Print a test page" />
-                <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
-                  Save changes
-                </SubmitButton>
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-
-        <Card className="lg:w-72">
-          <CardHeader>
-            <CardTitle>Preview</CardTitle>
-            <CardDescription>
-              {draft.paperSize}, {paper.width} × {paper.height} mm
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* A sheet to scale: the shaded bands are what stays blank. */}
-            <div
-              className="relative mx-auto w-48 overflow-hidden rounded-sm border bg-white shadow-sm"
-              style={{ aspectRatio: `${paper.width} / ${paper.height}` }}
-              aria-hidden
-            >
-              <div
-                className="absolute inset-x-0 top-0 flex items-center justify-center bg-sky-100 text-[10px] text-sky-800"
-                style={{ height: pct(preview.headerMm, paper.height) }}
-              >
-                Letterhead
-              </div>
-              <div
-                className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-sky-100 text-[10px] text-sky-800"
-                style={{ height: pct(preview.footerMm, paper.height) }}
-              >
-                Footer
-              </div>
-              <div
-                className="absolute space-y-1.5 pt-1.5"
-                style={{
-                  top: pct(preview.headerMm, paper.height),
-                  bottom: pct(preview.footerMm, paper.height),
-                  left: pct(preview.sideMm, paper.width),
-                  right: pct(preview.sideMm, paper.width),
-                }}
-              >
-                <div className="h-1.5 w-1/2 rounded bg-slate-400" />
-                {Array.from({ length: 14 }, (_, index) => (
-                  <div key={index} className="h-1 rounded bg-slate-200" />
-                ))}
-              </div>
             </div>
-            <p className="mt-3 text-center text-xs text-muted-foreground">
-              Shaded: left blank on every sheet
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+
+            <div className="rounded-xl border p-4 md:w-60">
+              <p className="text-sm font-semibold">Preview</p>
+              <p className="mb-4 text-xs text-muted-foreground">
+                {draft.paperSize}, {paper.width} × {paper.height} mm
+              </p>
+              {/* A sheet to scale: the shaded bands are what stays blank. */}
+              <div
+                className="relative mx-auto w-48 overflow-hidden rounded-sm border bg-white shadow-sm"
+                style={{ aspectRatio: `${paper.width} / ${paper.height}` }}
+                aria-hidden
+              >
+                <div
+                  className="absolute inset-x-0 top-0 flex items-center justify-center bg-sky-100 text-[10px] text-sky-800"
+                  style={{ height: pct(preview.headerMm, paper.height) }}
+                >
+                  Letterhead
+                </div>
+                <div
+                  className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-sky-100 text-[10px] text-sky-800"
+                  style={{ height: pct(preview.footerMm, paper.height) }}
+                >
+                  Footer
+                </div>
+                <div
+                  className="absolute space-y-1.5 pt-1.5"
+                  style={{
+                    top: pct(preview.headerMm, paper.height),
+                    bottom: pct(preview.footerMm, paper.height),
+                    left: pct(preview.sideMm, paper.width),
+                    right: pct(preview.sideMm, paper.width),
+                  }}
+                >
+                  <div className="h-1.5 w-1/2 rounded bg-slate-400" />
+                  {Array.from({ length: 14 }, (_, index) => (
+                    <div key={index} className="h-1 rounded bg-slate-200" />
+                  ))}
+                </div>
+              </div>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Shaded: left blank on every sheet
+              </p>
+            </div>
+          </div>
+        </FormSection>
+
+        <FormActions>
+          <PrintButton printing={printing} label="Print a test page" />
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
+            Save changes
+          </SubmitButton>
+        </FormActions>
+      </form>
     </div>
   )
 }

@@ -25,7 +25,6 @@ import {
 import { useTrail } from '@/components/ui/trail'
 import {
   Plus,
-  User,
   Phone,
   MoreHorizontal,
   Pencil,
@@ -187,7 +186,7 @@ export default function InvoicesPage() {
           canWrite && (
             <Button asChild>
               <Link href="/billing/invoices/new">
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 New invoice
               </Link>
             </Button>
@@ -218,7 +217,7 @@ export default function InvoicesPage() {
               onClick={() => list.setFilter('overdue', !list.filters.overdue)}
               aria-pressed={list.filters.overdue}
             >
-              <AlertCircle className="h-4 w-4 mr-2" />
+              <AlertCircle className="h-4 w-4" />
               Overdue only
             </Button>
           </>
@@ -313,9 +312,9 @@ export default function InvoicesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-4 w-4 text-primary" />
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          {`${invoice.patient.firstName.charAt(0)}${invoice.patient.lastName.charAt(0)}`.toUpperCase()}
                         </div>
                         <div>
                           <div className="font-medium">

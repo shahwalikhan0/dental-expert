@@ -4,11 +4,30 @@ export function hourLabel(hour: number): string {
   return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-/** `9 AM`, `1:30 PM`: a `HH:MM` wall-clock time with the minutes only when they matter. */
+/**
+ * `9 AM`, `1:30 PM`: a `HH:MM` wall-clock time with the minutes only when they
+ * matter.
+ *
+ * `24:00` — a closing time meaning midnight at the end of the day — reads as
+ * `12 AM`. Without the wrap it came out `12 PM`, so a clinic open round the
+ * clock was shown closing at noon.
+ */
 export function shortTime(time: string): string {
-  const [h, m] = time.split(':').map(Number)
+  const [hour, m] = time.split(':').map(Number)
+  const h = hour % 24
   const minutes = m ? `:${String(m).padStart(2, '0')}` : ''
   return `${h % 12 || 12}${minutes} ${h >= 12 ? 'PM' : 'AM'}`
+}
+
+/**
+ * A day's opening hours in words: `9 AM–8 PM`, or `Open 24 hours`.
+ *
+ * Midnight to midnight has no readable range — `12 AM–12 AM` says nothing, and
+ * says it twice — so it is named instead.
+ */
+export function hoursLabel(open: string, close: string): string {
+  if (open === '00:00' && close === '24:00') return 'Open 24 hours'
+  return `${shortTime(open)}–${shortTime(close)}`
 }
 
 /** `9 AM–10 AM`, for an hour's accessible name. */

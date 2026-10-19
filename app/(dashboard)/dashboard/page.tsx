@@ -19,8 +19,8 @@ import {
 import Link from 'next/link'
 import { useToast } from '@/hooks/use-toast'
 import {
-  LineChart,
-  Line,
+  Area,
+  AreaChart,
   BarChart,
   Bar,
   PieChart,
@@ -33,8 +33,20 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { CHART_COLORS } from '@/lib/chart-theme'
-import { displayDate, displayDateShort } from '@/lib/dates'
+import {
+  BAR_RADIUS,
+  BAR_RADIUS_HORIZONTAL,
+  axisProps,
+  barCursor,
+  gridProps,
+  lineCursor,
+  lineProps,
+  moneyTick,
+  sequentialColor,
+  SLICE_GAP,
+} from '@/lib/chart-theme'
+import { ChartLegend, ChartTooltip } from '@/components/charts/chart-tooltip'
+import { displayDate, displayDateShort, monthLabel } from '@/lib/dates'
 import { formatCurrency, formatNumber } from '@/lib/i18n/format'
 import { statusLabel } from '@/lib/status'
 import { toastError } from '@/lib/toast-utils'
@@ -282,6 +294,38 @@ export default function DashboardPage() {
   const upcoming = stats.recentActivity.upcomingAppointments ?? []
 
   /**
+   * Appointment status, largest share first.
+   *
+   * Sorted here rather than in the chart so the sequential ramp lands the
+   * darkest step on the biggest slice — the ramp carries magnitude, and it can
+   * only do that if the data arrives in magnitude order.
+   */
+  const statusSlices = [...(stats.charts.appointmentsByStatus ?? [])]
+    .map((item: any) => ({
+      name: statusLabel('appointment', item.status),
+      value: Number(item.count),
+    }))
+    .sort((a, b) => b.value - a.value)
+    // The shade belongs on the datum, not only on its <Cell>. Recharts builds a
+    // pie's legend from the data, so a colour declared only on the cell leaves
+    // every legend swatch wearing the Pie's own default fill — seven slices,
+    // seven identical dots.
+    .map((slice, index, all) => ({ ...slice, fill: sequentialColor(index, all.length) }))
+  const statusTotal = statusSlices.reduce((sum, slice) => sum + slice.value, 0) || 1
+
+  /**
+   * The month's commonest procedures, biggest first.
+   *
+   * `revenue` rides along for the tooltip. It is deliberately not a second
+   * series: see the note on the chart.
+   */
+  const topProcedures = (stats.charts.topProcedures ?? []).map((proc: any) => ({
+    name: proc.name,
+    count: Number(proc.count),
+    revenue: proc.revenue === undefined ? undefined : Number(proc.revenue),
+  }))
+
+  /**
    * A figure with somewhere to go.
    *
    * Every number on this page used to be a dead end: "Pending Payments
@@ -459,33 +503,44 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="pl-2">
               {stats.charts.last7DaysRevenue && stats.charts.last7DaysRevenue.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart
                     data={stats.charts.last7DaysRevenue.map((item: any) => ({
                       date: displayDateShort(item.date),
                       revenue: Number(item.revenue),
                     }))}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(value) =>
-                        typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
-                      }
-                      labelStyle={{ color: 'inherit' }}
+                    {/* A wash under the line rather than a bare stroke. One
+                        series, so no legend — the card title names it. */}
+                    <defs>
+                      <linearGradient id="collections-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.24} />
+                        <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid {...gridProps} />
+                    <XAxis dataKey="date" {...axisProps} />
+                    <YAxis
+                      {...axisProps}
+                      width={64}
+                      tickFormatter={(value) => moneyTick(Number(value))}
                     />
-                    <Legend />
-                    <Line
+                    <Tooltip
+                      cursor={lineCursor}
+                      content={
+                        <ChartTooltip format={(value) => formatCurrency(value, WHOLE_RUPEES)} />
+                      }
+                    />
+                    <Area
                       type="monotone"
                       dataKey="revenue"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      activeDot={{ r: 8 }}
                       name="Collected"
+                      stroke="hsl(var(--chart-1))"
+                      fill="url(#collections-fill)"
+                      {...lineProps}
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               ) : (
                 <p className="py-8 text-center text-muted-foreground">Nothing collected yet</p>
@@ -509,32 +564,44 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {stats.charts.appointmentsByStatus && stats.charts.appointmentsByStatus.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
+                  {/*
+                    A doughnut shaded by size, not six hues by position.
+
+                    Appointment status has eight possible values, and in a pie
+                    every slice can touch every other. No ordering of six
+                    categorical hues clears the colour-vision separation floor
+                    across all those pairs — measured worst case ΔE 3.2 for a
+                    protanope, which is indistinguishable. One hue ordered
+                    light-to-dark by share has no such problem, and it answers
+                    the question the chart is actually asked: which status is
+                    most of the month?
+                  */}
                   <Pie
-                    data={stats.charts.appointmentsByStatus.map((item: any) => ({
-                      name: statusLabel('appointment', item.status),
-                      value: item.count,
-                    }))}
+                    data={statusSlices}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`
-                    }
-                    outerRadius={80}
-                    fill="#8884d8"
+                    innerRadius={56}
+                    outerRadius={92}
+                    paddingAngle={1}
                     dataKey="value"
+                    nameKey="name"
                   >
-                    {stats.charts.appointmentsByStatus.map((_: unknown, index: number) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      />
+                    {statusSlices.map((slice) => (
+                      <Cell key={slice.name} fill={slice.fill} {...SLICE_GAP} />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip
+                    content={
+                      <ChartTooltip
+                        format={(value) =>
+                          `${formatNumber(value)} (${Math.round((value / statusTotal) * 100)}%)`
+                        }
+                      />
+                    }
+                  />
+                  <Legend content={<ChartLegend />} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -554,28 +621,37 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {stats.charts.last6MonthsRevenue && stats.charts.last6MonthsRevenue.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={280}>
                   <BarChart
                     data={stats.charts.last6MonthsRevenue.map((item: any) => ({
-                      month: item.month,
+                      // `2026-10` as `Oct 26`. The API returns the sort key;
+                      // the axis should show something a person reads.
+                      month: monthLabel(String(item.month)),
                       revenue: Number(item.revenue),
                     }))}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
+                    <CartesianGrid {...gridProps} />
+                    <XAxis dataKey="month" {...axisProps} />
+                    <YAxis
+                      {...axisProps}
+                      width={64}
+                      tickFormatter={(value) => moneyTick(Number(value))}
+                    />
                     <Tooltip
-                      formatter={(value) =>
-                        typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
+                      cursor={barCursor}
+                      content={
+                        <ChartTooltip format={(value) => formatCurrency(value, WHOLE_RUPEES)} />
                       }
                     />
-                    <Legend />
+                    {/* One series: the title says "Monthly collections", so a
+                        legend repeating "Collected" is a box of nothing. */}
                     <Bar
                       dataKey="revenue"
-                      fill="hsl(var(--primary))"
+                      fill="hsl(var(--chart-1))"
                       name="Collected"
-                      radius={[6, 6, 0, 0]}
+                      radius={BAR_RADIUS}
+                      maxBarSize={48}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -594,48 +670,54 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {stats.charts.topProcedures && stats.charts.topProcedures.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={Math.max(180, topProcedures.length * 44)}>
+              {/*
+                One axis, and it counts procedures.
+
+                This was two: "Count" on a left scale and "Invoiced" on a right
+                one, drawn as neighbouring bars. Two bars of the same height
+                meant a number of treatments and a sum of money, and nothing on
+                screen said so — the reader compares the heights because that is
+                what bars are for, and the comparison was meaningless. The money
+                is still here, in the tooltip and on the row, where it is read
+                as a figure rather than as a length.
+
+                Horizontal because procedure names are long. The old vertical
+                version truncated them at 20 characters.
+              */}
               <BarChart
-                data={stats.charts.topProcedures.map((proc: any) => ({
-                  name: proc.name.length > 20 ? proc.name.substring(0, 20) + '…' : proc.name,
-                  count: Number(proc.count),
-                  revenue: proc.revenue === undefined ? undefined : Number(proc.revenue),
-                }))}
-                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                data={topProcedures}
+                layout="vertical"
+                margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--chart-1))" />
-                {showsMoney && (
-                  <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--chart-2))" />
-                )}
+                <CartesianGrid {...gridProps} horizontal={false} vertical />
+                <XAxis type="number" allowDecimals={false} {...axisProps} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={150}
+                  {...axisProps}
+                  tick={{ ...axisProps.tick, fontSize: 12 }}
+                />
                 <Tooltip
-                  formatter={(value, _name, item) => {
-                    if (typeof value !== 'number') return ''
-                    // Match on dataKey, not name: the <Bar> sets a display
-                    // name ("Invoiced"), and that is what recharts passes as
-                    // `name`, so comparing it to 'revenue' never matched.
-                    if (item?.dataKey === 'revenue') return formatCurrency(value, WHOLE_RUPEES)
-                    return value
-                  }}
+                  cursor={barCursor}
+                  content={
+                    <ChartTooltip
+                      format={(value, name) =>
+                        name === 'Invoiced'
+                          ? formatCurrency(value, WHOLE_RUPEES)
+                          : formatNumber(value)
+                      }
+                    />
+                  }
                 />
-                <Legend />
                 <Bar
-                  yAxisId="left"
                   dataKey="count"
+                  name="Treatments"
                   fill="hsl(var(--chart-1))"
-                  name="Count"
-                  radius={[6, 6, 0, 0]}
+                  radius={BAR_RADIUS_HORIZONTAL}
+                  maxBarSize={22}
                 />
-                {showsMoney && (
-                  <Bar
-                    yAxisId="right"
-                    dataKey="revenue"
-                    fill="hsl(var(--chart-2))"
-                    name="Invoiced"
-                    radius={[6, 6, 0, 0]}
-                  />
-                )}
               </BarChart>
             </ResponsiveContainer>
           ) : (

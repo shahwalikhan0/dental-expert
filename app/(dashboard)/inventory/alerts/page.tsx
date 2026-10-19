@@ -17,7 +17,7 @@ import { useCan } from '@/hooks/use-can'
 import { BLANK, displayDate } from '@/lib/dates'
 import { TONE_TEXT_CLASS, statusOptions, statusTone } from '@/lib/status'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { BellRing, Check } from 'lucide-react'
+import { BellRing, CalendarX, Check, Hourglass, PackageX, TrendingDown } from 'lucide-react'
 
 interface Alert {
   id: string
@@ -129,33 +129,49 @@ export default function StockAlertsPage() {
       {summary && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
-            { label: 'Expired', value: summary.expired, tone: statusTone('stockAlert', 'EXPIRED') },
+            {
+              label: 'Expired',
+              value: summary.expired,
+              tone: statusTone('stockAlert', 'EXPIRED'),
+              icon: CalendarX,
+            },
             {
               label: 'Out of stock',
               value: summary.outOfStock,
               tone: statusTone('stockAlert', 'OUT_OF_STOCK'),
+              icon: PackageX,
             },
             {
               label: 'Expiring soon',
               value: summary.expiringSoon,
               tone: statusTone('stockAlert', 'EXPIRING_SOON'),
+              icon: Hourglass,
             },
             {
               label: 'Low stock',
               value: summary.lowStock,
               tone: statusTone('stockAlert', 'LOW_STOCK'),
+              icon: TrendingDown,
             },
           ].map((stat) => (
-            <Card key={stat.label}>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
+            <div
+              key={stat.label}
+              className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-sm"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {stat.label}
+                </p>
                 <p
-                  className={`text-3xl font-bold mt-1 ${stat.value > 0 ? TONE_TEXT_CLASS[stat.tone] : ''}`}
+                  className={`mt-1 text-2xl font-bold tracking-tight ${stat.value > 0 ? TONE_TEXT_CLASS[stat.tone] : ''}`}
                 >
                   {stat.value}
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <stat.icon className="h-5 w-5" />
+              </span>
+            </div>
           ))}
         </div>
       )}
@@ -183,7 +199,7 @@ export default function StockAlertsPage() {
               onClick={() => list.setFilter('acknowledged', !acknowledged)}
               aria-pressed={acknowledged}
             >
-              <Check className="h-4 w-4 mr-2" />
+              <Check className="h-4 w-4" />
               Acknowledged
             </Button>
           </>
@@ -294,7 +310,7 @@ export default function StockAlertsPage() {
                     ) : (
                       canAcknowledge && (
                         <Button variant="ghost" size="sm" onClick={() => acknowledge(alert)}>
-                          <Check className="h-4 w-4 mr-1" />
+                          <Check className="h-4 w-4" />
                           Acknowledge
                         </Button>
                       )

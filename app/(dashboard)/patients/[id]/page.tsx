@@ -24,7 +24,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { ageInYears } from '@/lib/age'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -69,6 +71,10 @@ import {
   NotebookPen,
   UserCheck,
   UserX,
+  IdCard,
+  Cake,
+  Droplet,
+  Briefcase,
 } from 'lucide-react'
 import { DentalChart } from '@/components/dental-chart'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
@@ -265,12 +271,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
    * lists behind it. Keying the card on the row drew an empty card, which reads
    * as a panel that failed to load rather than as a record with nothing in it.
    */
+  const age = patient ? ageInYears(patient.dateOfBirth) : null
   const history = patient?.medicalHistory
   const hasMedicalHistory = Boolean(
     history &&
-    ((history.allergies?.length ?? 0) > 0 ||
-      (history.conditions?.length ?? 0) > 0 ||
-      (history.currentMedications?.length ?? 0) > 0)
+    // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+    // (history.allergies?.length ?? 0) > 0 ||
+    ((history.conditions?.length ?? 0) > 0 || (history.currentMedications?.length ?? 0) > 0)
   )
 
   const setActiveTab = (tab: string) => {
@@ -416,53 +423,52 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`${patient.firstName} ${patient.lastName}`}
-        description={`Patient ID: ${patient.patientId}`}
-        back={back}
+      {/*
+        The record as a profile: who, and the facts every visit starts with,
+        then what to do. The breadcrumb above says where this was opened from,
+        so there is no back link here as well. Merging and deactivating are
+        rare and are not undone with one click, so they sit behind "More"
+        rather than beside Book appointment.
+      */}
+      <ProfileHeader
+        name={`${patient.firstName} ${patient.lastName}`}
+        initials={`${patient.firstName.charAt(0)}${patient.lastName.charAt(0)}`.toUpperCase()}
         badges={
-          <>
-            {!patient.isActive && !patient.mergedInto && (
-              <StatusBadge kind="patient" status={false} />
-            )}
-            <Badge variant="outline">{genderLabel(patient.gender)}</Badge>
-            {patient.bloodGroup && (
-              <Badge variant="secondary">{bloodGroupLabel(patient.bloodGroup)}</Badge>
-            )}
-          </>
+          !patient.isActive && !patient.mergedInto ? (
+            <StatusBadge kind="patient" status={false} />
+          ) : null
         }
+        facts={[
+          { icon: IdCard, label: patient.patientId },
+          ...(age !== null ? [{ icon: Cake, label: `${age} yrs` }] : []),
+          { icon: User, label: genderLabel(patient.gender) },
+          ...(patient.phone ? [{ icon: Phone, label: formatPhone(patient.phone) }] : []),
+          ...(patient.bloodGroup
+            ? [{ icon: Droplet, label: bloodGroupLabel(patient.bloodGroup) }]
+            : []),
+        ]}
+        menu={[
+          ...(canRetire && patient.isActive
+            ? [
+                { label: 'Merge duplicate', icon: Merge, onSelect: () => setMergeOpen(true) },
+                { label: 'Deactivate', icon: UserX, onSelect: deactivate, destructive: true },
+              ]
+            : []),
+        ]}
         actions={
           <>
             {canEditPatient && (
               <Button variant="outline" asChild>
                 <Link href={trail.to(`/patients/${patient.id}/edit`)}>
-                  <Pencil className="h-4 w-4 mr-2" />
+                  <Pencil className="h-4 w-4" />
                   Edit
                 </Link>
-              </Button>
-            )}
-            {/*
-              Two records for one person is the commonest mess a front desk makes.
-              The registration form has always warned about a likely duplicate
-              before it is created; this is what to do about the ones already in
-              the register, of which there was previously nothing at all.
-            */}
-            {canRetire && patient.isActive && (
-              <Button variant="outline" onClick={() => setMergeOpen(true)}>
-                <Merge className="h-4 w-4 mr-2" />
-                Merge duplicate
-              </Button>
-            )}
-            {canRetire && patient.isActive && (
-              <Button variant="outline" onClick={deactivate}>
-                <UserX className="h-4 w-4 mr-2" />
-                Deactivate
               </Button>
             )}
             {canBook && patient.isActive && (
               <Button asChild>
                 <Link href={trail.to(`/appointments/new?patientId=${patient.id}`)}>
-                  <Calendar className="h-4 w-4 mr-2" />
+                  <Calendar className="h-4 w-4" />
                   Book appointment
                 </Link>
               </Button>
@@ -583,170 +589,146 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </TabsList>
 
         {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Its status is read with `patients:write`, the permission that
-              manages it, so anyone without it was only ever refused (403). */}
-          {canManagePortal && <PortalAccessCard patientId={patient.id} canManage />}
-          <FamilyCard
-            patientId={patient.id}
-            patientName={`${patient.firstName} ${patient.lastName}`}
-            canEdit={holderCan(session?.user, 'patients:write')}
-          />
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Contact Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Contact information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Phone</p>
-                    <p>{formatPhone(patient.phone)}</p>
-                    {patient.alternatePhone && (
-                      <p className="text-sm text-muted-foreground">
-                        {formatPhone(patient.alternatePhone)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {patient.email && (
-                  <div className="flex items-center gap-3">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Email</p>
-                      <p>{patient.email}</p>
-                    </div>
-                  </div>
-                )}
-                {patient.address && (
-                  <div className="flex items-center gap-3">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Address</p>
-                      <p>{patient.address}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {[patient.city, patient.state, patient.postalCode]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        <TabsContent value="overview">
+          {/*
+            The details on the left, where the eye starts; what the clinic needs
+            to know before treating, and who pays, on the right. Portal access
+            was the first card on the record and is the thing least often
+            looked at, so it is last.
+          */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="space-y-6 lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Personal information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <InfoGrid>
+                    <InfoItem label="Phone" icon={Phone}>
+                      {formatPhone(patient.phone)}
+                      {patient.alternatePhone && (
+                        <span className="block font-normal text-muted-foreground">
+                          {formatPhone(patient.alternatePhone)}
+                        </span>
+                      )}
+                    </InfoItem>
+                    <InfoItem label="Email" icon={Mail}>
+                      {patient.email}
+                    </InfoItem>
+                    <InfoItem label="Date of birth" icon={Cake}>
+                      {patient.dateOfBirth ? displayDate(patient.dateOfBirth) : null}
+                    </InfoItem>
+                    <InfoItem label="Gender" icon={User}>
+                      {genderLabel(patient.gender)}
+                    </InfoItem>
+                    <InfoItem label="Blood group" icon={Droplet}>
+                      {patient.bloodGroup ? bloodGroupLabel(patient.bloodGroup) : null}
+                    </InfoItem>
+                    <InfoItem label="Occupation" icon={Briefcase}>
+                      {patient.occupation}
+                    </InfoItem>
+                    <InfoItem label="Address" icon={MapPin} className="sm:col-span-2">
+                      {patient.address && (
+                        <>
+                          {patient.address}
+                          <span className="block font-normal text-muted-foreground">
+                            {[patient.city, patient.state, patient.postalCode]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </span>
+                        </>
+                      )}
+                    </InfoItem>
+                  </InfoGrid>
+                </CardContent>
+              </Card>
 
-            {/* Personal Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Personal details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Date of birth</p>
-                    <p>{displayDate(patient.dateOfBirth)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Gender</p>
-                    <p>{genderLabel(patient.gender)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Blood group</p>
-                    <p>{bloodGroupLabel(patient.bloodGroup)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Occupation</p>
-                    <p>{patient.occupation || 'N/A'}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Emergency contact</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {patient.emergencyContactName ? (
+                    <InfoGrid className="sm:grid-cols-3">
+                      <InfoItem label="Name">{patient.emergencyContactName}</InfoItem>
+                      <InfoItem label="Phone">
+                        {formatPhone(patient.emergencyContactPhone)}
+                      </InfoItem>
+                      <InfoItem label="Relation">{patient.emergencyContactRelation}</InfoItem>
+                    </InfoGrid>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No emergency contact on file.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* Emergency Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Emergency contact</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {patient.emergencyContactName ? (
-                  <div className="space-y-2">
+            <div className="space-y-6">
+              {/* Medical History Summary */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Heart className="h-4 w-4" />
+                    Medical history
+                  </CardTitle>
+                  {canEditPatient && (
+                    <Button size="sm" variant="ghost" asChild>
+                      <Link href={trail.to(`/patients/${patient.id}/edit`)}>
+                        {hasMedicalHistory ? 'Edit' : 'Record'}
+                      </Link>
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {hasMedicalHistory ? (
+                    <div className="space-y-3">
+                      {/* Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+                  {(history?.allergies?.length ?? 0) > 0 && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Name</p>
-                      <p>{patient.emergencyContactName}</p>
+                      <p className="text-sm text-muted-foreground">Allergies</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {history?.allergies?.map((allergy) => (
+                          <Badge key={allergy} variant="destructive">
+                            {allergy}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Phone</p>
-                      <p>{formatPhone(patient.emergencyContactPhone)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Relation</p>
-                      <p>{patient.emergencyContactRelation}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No emergency contact on file</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Medical History Summary */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="h-4 w-4" />
-                  Medical history
-                </CardTitle>
-                {canEditPatient && (
-                  <Button size="sm" variant="ghost" asChild>
-                    <Link href={trail.to(`/patients/${patient.id}/edit`)}>
-                      {hasMedicalHistory ? 'Edit' : 'Record'}
-                    </Link>
-                  </Button>
-                )}
-              </CardHeader>
-              <CardContent>
-                {hasMedicalHistory ? (
-                  <div className="space-y-3">
-                    {(history?.allergies?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">Allergies</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {history?.allergies?.map((allergy) => (
-                            <Badge key={allergy} variant="destructive">
-                              {allergy}
-                            </Badge>
-                          ))}
+                  )}
+                  */}
+                      {(history?.conditions?.length ?? 0) > 0 && (
+                        <div>
+                          <p className="text-sm text-muted-foreground">Medical conditions</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {history?.conditions?.map((condition) => (
+                              <Badge key={condition} variant="secondary">
+                                {condition}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {(history?.conditions?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">Medical conditions</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {history?.conditions?.map((condition) => (
-                            <Badge key={condition} variant="secondary">
-                              {condition}
-                            </Badge>
-                          ))}
+                      )}
+                      {(history?.currentMedications?.length ?? 0) > 0 && (
+                        <div>
+                          <p className="text-sm text-muted-foreground">Current medications</p>
+                          <p className="text-sm">{history?.currentMedications?.join(', ')}</p>
                         </div>
-                      </div>
-                    )}
-                    {(history?.currentMedications?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">Current medications</p>
-                        <p className="text-sm">{history?.currentMedications?.join(', ')}</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">
-                    Nothing recorded — an allergy noted here is checked against every prescription.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">Nothing recorded.</p>
+                  )}
+                </CardContent>
+              </Card>
+              <FamilyCard
+                patientId={patient.id}
+                patientName={`${patient.firstName} ${patient.lastName}`}
+                canEdit={holderCan(session?.user, 'patients:write')}
+              />
+              {/* Its status is read with `patients:write`, the permission that
+                  manages it, so anyone without it was only ever refused (403). */}
+              {canManagePortal && <PortalAccessCard patientId={patient.id} canManage />}
+            </div>
           </div>
         </TabsContent>
 

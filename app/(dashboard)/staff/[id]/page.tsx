@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -24,6 +25,13 @@ import {
   Clock,
   FileText,
   UserX,
+  IdCard,
+  Stethoscope,
+  CalendarDays,
+  Mail,
+  Cake,
+  GraduationCap,
+  BadgeCheck,
 } from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { roleColor, roleLabel } from '@/lib/rbac'
@@ -158,11 +166,15 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   const hasHrFields = 'cnic' in staff
   const WITHHELD = 'Visible to administrators and managers'
 
+  const fullName = `${staff.firstName} ${staff.lastName}`
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`${staff.firstName} ${staff.lastName}`}
-        back={back}
+      {/* The person as a profile, as on a patient's record: who, their role
+          and the facts asked for most, then what to do. */}
+      <ProfileHeader
+        name={fullName}
+        initials={`${staff.firstName.charAt(0)}${staff.lastName.charAt(0)}`.toUpperCase()}
         badges={
           <>
             <StatusBadge kind="staff" status={staff.isActive} />
@@ -172,13 +184,18 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             </Badge>
           </>
         }
-        description={staff.employeeId}
+        facts={[
+          { icon: IdCard, label: staff.employeeId },
+          ...(staff.specialization ? [{ icon: Stethoscope, label: staff.specialization }] : []),
+          ...(staff.phone ? [{ icon: Phone, label: formatPhone(staff.phone) }] : []),
+          { icon: CalendarDays, label: `Joined ${displayDate(staff.joiningDate)}` },
+        ]}
         actions={
           <>
             {canSeePerformance && isDentist && (
               <Button variant="outline" asChild>
                 <Link href={trail.to(`/staff/${staff.id}/performance`)}>
-                  <BarChart3 className="h-4 w-4 mr-2" />
+                  <BarChart3 className="h-4 w-4" />
                   Performance
                 </Link>
               </Button>
@@ -186,7 +203,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             {canEdit && (
               <Button asChild>
                 <Link href={trail.to(`/staff/${staff.id}/edit`)}>
-                  <Pencil className="h-4 w-4 mr-2" />
+                  <Pencil className="h-4 w-4" />
                   Edit profile
                 </Link>
               </Button>
@@ -195,188 +212,141 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
         }
       />
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs defaultValue="profile">
         <TabsList>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="schedule">Work schedule</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="profile">
+            <User className="h-4 w-4" />
+            Profile
+          </TabsTrigger>
+          <TabsTrigger value="schedule">
+            <Clock className="h-4 w-4" />
+            Work schedule
+          </TabsTrigger>
+          <TabsTrigger value="documents">
+            <FileText className="h-4 w-4" />
+            Documents
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="profile" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Contact Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Contact information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Primary phone</p>
-                    <p className="font-medium">{formatPhone(staff.phone) || BLANK}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Alternate phone</p>
-                    <p className="font-medium">{formatPhone(staff.alternatePhone) || BLANK}</p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{staff.email}</p>
-                </div>
-                <Separator />
-                <div>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    Address
-                  </p>
-                  <p className={hasHrFields ? 'font-medium' : 'text-sm text-muted-foreground'}>
-                    {!hasHrFields ? (
-                      WITHHELD
-                    ) : staff.address ? (
-                      <>
-                        {staff.address}
-                        {staff.city && `, ${staff.city}`}
-                        {staff.state && `, ${staff.state}`}
-                        {staff.postalCode && ` - ${staff.postalCode}`}
-                      </>
-                    ) : (
-                      BLANK
-                    )}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+        <TabsContent value="profile">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="space-y-6 lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Contact information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <InfoGrid>
+                    <InfoItem label="Primary phone" icon={Phone}>
+                      {formatPhone(staff.phone)}
+                    </InfoItem>
+                    <InfoItem label="Alternate phone" icon={Phone}>
+                      {formatPhone(staff.alternatePhone)}
+                    </InfoItem>
+                    <InfoItem label="Email" icon={Mail} className="sm:col-span-2">
+                      {staff.email}
+                    </InfoItem>
+                    <InfoItem label="Address" icon={MapPin} className="sm:col-span-2">
+                      {!hasHrFields ? (
+                        <span className="font-normal text-muted-foreground">{WITHHELD}</span>
+                      ) : staff.address ? (
+                        <>
+                          {staff.address}
+                          {staff.city && `, ${staff.city}`}
+                          {staff.state && `, ${staff.state}`}
+                          {staff.postalCode && ` - ${staff.postalCode}`}
+                        </>
+                      ) : null}
+                    </InfoItem>
+                  </InfoGrid>
+                </CardContent>
+              </Card>
 
-            {/* Personal Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Personal details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Date of birth</p>
-                    <p className="font-medium">
-                      {hasHrFields ? displayDate(staff.dateOfBirth) : BLANK}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Gender</p>
-                    <p className="font-medium">
-                      {staff.gender ? genderLabel(staff.gender) : BLANK}
-                    </p>
-                  </div>
-                </div>
-                {!hasHrFields && (
-                  <>
-                    <Separator />
-                    <p className="text-sm text-muted-foreground">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Personal details</CardTitle>
+                  {!hasHrFields && (
+                    <CardDescription>
                       CNIC, NTN, date of birth and emergency contact are {WITHHELD.toLowerCase()}.
-                    </p>
-                  </>
-                )}
-                {hasHrFields && (
-                  <>
-                    <Separator />
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">CNIC</p>
-                        <p className="font-medium">{formatCNIC(staff.cnic) || BLANK}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">National tax number (NTN)</p>
-                        <p className="font-medium">{staff.nationalTaxNo || BLANK}</p>
-                      </div>
-                    </div>
-                    <Separator />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Emergency contact</p>
-                      <p className="font-medium">
-                        {staff.emergencyContact
-                          ? `${staff.emergencyContact} (${formatPhone(staff.emergencyPhone) || 'No phone'})`
-                          : BLANK}
-                      </p>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+                    </CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <InfoGrid>
+                    <InfoItem label="Date of birth" icon={Cake}>
+                      {hasHrFields && staff.dateOfBirth ? displayDate(staff.dateOfBirth) : null}
+                    </InfoItem>
+                    <InfoItem label="Gender" icon={User}>
+                      {staff.gender ? genderLabel(staff.gender) : null}
+                    </InfoItem>
+                    {hasHrFields && (
+                      <>
+                        <InfoItem label="CNIC" icon={IdCard}>
+                          {formatCNIC(staff.cnic)}
+                        </InfoItem>
+                        <InfoItem label="National tax number (NTN)">{staff.nationalTaxNo}</InfoItem>
+                        <InfoItem label="Emergency contact" className="sm:col-span-2">
+                          {staff.emergencyContact
+                            ? `${staff.emergencyContact} (${formatPhone(staff.emergencyPhone) || 'No phone'})`
+                            : null}
+                        </InfoItem>
+                      </>
+                    )}
+                  </InfoGrid>
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* Professional Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4" />
-                  Professional details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Qualification</p>
-                    <p className="font-medium">{staff.qualification || BLANK}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Specialization</p>
-                    <p className="font-medium">{staff.specialization || BLANK}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">License number</p>
-                    <p className="font-medium">{staff.licenseNumber || BLANK}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Joining date</p>
-                    <p className="font-medium">{displayDate(staff.joiningDate)}</p>
-                  </div>
-                </div>
-                {isDentist && (
-                  <>
-                    <Separator />
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-3 bg-blue-50 rounded-lg dark:bg-blue-950/30">
-                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                          {staff._count.appointments}
-                        </p>
-                        <p className="text-sm text-blue-600 dark:text-blue-400">Appointments</p>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Professional details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <InfoGrid className="sm:grid-cols-1">
+                    <InfoItem label="Qualification" icon={GraduationCap}>
+                      {staff.qualification}
+                    </InfoItem>
+                    <InfoItem label="Specialization" icon={Briefcase}>
+                      {staff.specialization}
+                    </InfoItem>
+                    <InfoItem label="License number" icon={BadgeCheck}>
+                      {staff.licenseNumber}
+                    </InfoItem>
+                    <InfoItem label="Joining date" icon={CalendarDays}>
+                      {displayDate(staff.joiningDate)}
+                    </InfoItem>
+                  </InfoGrid>
+                </CardContent>
+              </Card>
+
+              {isDentist && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clinical activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-3 gap-3">
+                    {[
+                      ['Appointments', staff._count.appointments],
+                      ['Treatments', staff._count.treatments],
+                      ['Prescriptions', staff._count.prescriptions],
+                    ].map(([label, count]) => (
+                      <div key={label} className="rounded-xl bg-muted px-3 py-3 text-center">
+                        <p className="text-2xl font-bold tabular-nums">{count}</p>
+                        <p className="text-xs font-medium text-muted-foreground">{label}</p>
                       </div>
-                      <div className="text-center p-3 bg-green-50 rounded-lg dark:bg-green-950/30">
-                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">
-                          {staff._count.treatments}
-                        </p>
-                        <p className="text-sm text-green-600 dark:text-green-400">Treatments</p>
-                      </div>
-                      <div className="text-center p-3 bg-purple-50 rounded-lg dark:bg-purple-950/30">
-                        <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                          {staff._count.prescriptions}
-                        </p>
-                        <p className="text-sm text-purple-600 dark:text-purple-400">
-                          Prescriptions
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="schedule" className="space-y-6">
+        <TabsContent value="schedule">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Work schedule
-              </CardTitle>
+              <CardTitle>Work schedule</CardTitle>
               <CardDescription>
                 Weekly work schedule for {staff.firstName}.{' '}
                 {/* The week as it is booked, beside the week as it is planned */}
@@ -406,10 +376,10 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                     return (
                       <div
                         key={day}
-                        className={`flex items-center justify-between p-3 rounded-lg ${
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
                           shift && shift.isActive
-                            ? 'bg-green-50 dark:bg-green-950/30'
-                            : 'bg-muted/50'
+                            ? 'border-green-600/20 bg-green-50 dark:border-green-400/20 dark:bg-green-950/30'
+                            : 'border-border bg-muted/50'
                         }`}
                       >
                         <span className="font-medium">{day}</span>
@@ -431,13 +401,10 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
           </Card>
         </TabsContent>
 
-        <TabsContent value="documents" className="space-y-6">
+        <TabsContent value="documents">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Documents
-              </CardTitle>
+              <CardTitle>Documents</CardTitle>
               <CardDescription>Staff documents and certifications</CardDescription>
             </CardHeader>
             <CardContent>

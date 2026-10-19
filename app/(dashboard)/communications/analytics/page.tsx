@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ComponentType, type ReactNode } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,20 +28,21 @@ import { IconTooltip } from '@/components/ui/icon-action'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/i18n/format'
 import { readJson, toastError } from '@/lib/toast-utils'
-import {
-  BarChart3,
-  Mail,
-  MessageSquare,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Eye,
-  RefreshCw,
-  Send,
-  XCircle,
-  CheckCircle2,
-  Clock,
-} from 'lucide-react'
+import { BarChart3, DollarSign, Eye, RefreshCw, Send, XCircle, CheckCircle2 } from 'lucide-react'
+
+/**
+ * Failures as a share of the messages that were tried — those that went and
+ * those that failed. It was taken against every message, the ones still queued
+ * included, so a batch waiting to go made the failure rate look smaller than
+ * it was, and the email tile measured it against a different count from the
+ * "delivered" figure beside it.
+ */
+function failureRate(failed: number, succeeded: number): string {
+  const tried = failed + succeeded
+  return tried > 0
+    ? `${((failed / tried) * 100).toFixed(1)}% of those sent failed`
+    : 'None sent yet'
+}
 
 interface AnalyticsData {
   period: string
@@ -85,9 +86,10 @@ export default function CampaignAnalyticsPage() {
       setData(await readJson<AnalyticsData>(res))
     } catch (err) {
       // With figures already on screen, a failed refresh is a toast; with
-      // nothing yet, the page says so with a retry (LoadFailed below).
+      // nothing yet, the page says so with a retry (LoadFailed below). It
+      // used to do both, so a first load that failed said so twice.
       setFailed(true)
-      toast(toastError('load the analytics', err))
+      if (data) toast(toastError('load the analytics', err))
     } finally {
       setLoading(false)
     }
@@ -141,129 +143,76 @@ export default function CampaignAnalyticsPage() {
       ) : data ? (
         <>
           {/* SMS Stats Cards */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              SMS overview
-            </h3>
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total sent</CardTitle>
-                  <Send className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{data.sms.total.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.sms.pending + data.sms.queued > 0
-                      ? `${data.sms.pending + data.sms.queued} pending`
-                      : 'All processed'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Delivery rate</CardTitle>
-                  <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{data.sms.deliveryRate}%</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.sms.delivered + data.sms.sent} delivered
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Failed</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                    {data.sms.failed}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.sms.total > 0
-                      ? `${((data.sms.failed / data.sms.total) * 100).toFixed(1)}% failure rate`
-                      : 'No messages'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total cost</CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(data.sms.totalCost)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.sms.total > 0
-                      ? `${formatCurrency(data.sms.totalCost / data.sms.total, { maximumFractionDigits: 4 })}/msg`
-                      : 'No cost data'}
-                  </p>
-                </CardContent>
-              </Card>
+          <section className="space-y-3">
+            <h2 className="text-base font-semibold tracking-tight">SMS overview</h2>
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatTile
+                label="Total sent"
+                icon={Send}
+                value={data.sms.total.toLocaleString()}
+                note={
+                  data.sms.pending + data.sms.queued > 0
+                    ? `${data.sms.pending + data.sms.queued} pending`
+                    : 'All processed'
+                }
+              />
+              <StatTile
+                label="Delivery rate"
+                icon={CheckCircle2}
+                value={`${data.sms.deliveryRate}%`}
+                note={`${data.sms.delivered + data.sms.sent} delivered`}
+              />
+              <StatTile
+                label="Failed"
+                icon={XCircle}
+                value={data.sms.failed}
+                danger
+                note={failureRate(data.sms.failed, data.sms.delivered + data.sms.sent)}
+              />
+              <StatTile
+                label="Total cost"
+                icon={DollarSign}
+                value={formatCurrency(data.sms.totalCost)}
+                note={
+                  data.sms.total > 0
+                    ? `${formatCurrency(data.sms.totalCost / data.sms.total, { maximumFractionDigits: 4 })}/msg`
+                    : 'No cost data'
+                }
+              />
             </div>
-          </div>
+          </section>
 
           {/* Email Stats Cards */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              Email overview
-            </h3>
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total sent</CardTitle>
-                  <Send className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{data.email.total.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.email.sent} successfully delivered
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Open rate</CardTitle>
-                  <Eye className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{data.email.openRate}%</div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.email.opened} opened of {data.email.sent}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Failed</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                    {data.email.failed}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {data.email.total > 0
-                      ? `${((data.email.failed / data.email.total) * 100).toFixed(1)}% failure rate`
-                      : 'No messages'}
-                  </p>
-                </CardContent>
-              </Card>
+          <section className="space-y-3">
+            <h2 className="text-base font-semibold tracking-tight">Email overview</h2>
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatTile
+                label="Total sent"
+                icon={Send}
+                value={data.email.total.toLocaleString()}
+                note={`${data.email.sent} successfully delivered`}
+              />
+              <StatTile
+                label="Open rate"
+                icon={Eye}
+                value={`${data.email.openRate}%`}
+                note={`${data.email.opened} opened of ${data.email.sent}`}
+              />
+              <StatTile
+                label="Failed"
+                icon={XCircle}
+                value={data.email.failed}
+                danger
+                note={failureRate(data.email.failed, data.email.sent)}
+              />
             </div>
-          </div>
+          </section>
 
           {/* Daily Trend Chart (CSS-based bar chart) */}
           {data.dailyTrend.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Daily message volume
-                </CardTitle>
+                <CardTitle>Daily message volume</CardTitle>
                 <CardDescription>SMS and email messages sent per day</CardDescription>
               </CardHeader>
               <CardContent>
@@ -324,25 +273,29 @@ export default function CampaignAnalyticsPage() {
             {data.topTemplates.sms.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    Top SMS templates
-                  </CardTitle>
+                  <CardTitle>Top SMS templates</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {data.topTemplates.sms.map((t, i) => (
-                      <div key={t.templateId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-5">{i + 1}.</span>
-                          <div>
-                            <p className="text-sm font-medium">{t.name}</p>
-                            <Badge variant="outline" className="text-xs">
+                      <div
+                        key={t.templateId}
+                        className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{t.name}</p>
+                            <Badge variant="outline" className="mt-0.5 text-xs">
                               {t.category}
                             </Badge>
                           </div>
                         </div>
-                        <span className="text-sm font-semibold">{t.count} sent</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {t.count} sent
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -353,25 +306,29 @@ export default function CampaignAnalyticsPage() {
             {data.topTemplates.email.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Top email templates
-                  </CardTitle>
+                  <CardTitle>Top email templates</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {data.topTemplates.email.map((t, i) => (
-                      <div key={t.templateId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-5">{i + 1}.</span>
-                          <div>
-                            <p className="text-sm font-medium">{t.name}</p>
-                            <Badge variant="outline" className="text-xs">
+                      <div
+                        key={t.templateId}
+                        className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{t.name}</p>
+                            <Badge variant="outline" className="mt-0.5 text-xs">
                               {t.category}
                             </Badge>
                           </div>
                         </div>
-                        <span className="text-sm font-semibold">{t.count} sent</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {t.count} sent
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -390,6 +347,49 @@ export default function CampaignAnalyticsPage() {
           )}
         </>
       ) : null}
+    </div>
+  )
+}
+
+/** One figure, in the tile every list and dashboard page uses. */
+function StatTile({
+  label,
+  value,
+  note,
+  icon: Icon,
+  danger,
+}: {
+  label: string
+  value: ReactNode
+  note: string
+  icon: ComponentType<{ className?: string }>
+  /** Failures: the figure in red. */
+  danger?: boolean
+}) {
+  return (
+    <div className="rounded-2xl border bg-card p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p
+            className={`mt-1 text-2xl font-bold tracking-tight ${
+              danger ? 'text-red-600 dark:text-red-400' : ''
+            }`}
+          >
+            {value}
+          </p>
+        </div>
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            danger ? 'bg-red-500/10 text-red-600 dark:text-red-400' : 'bg-primary/10 text-primary'
+          }`}
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{note}</p>
     </div>
   )
 }

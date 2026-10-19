@@ -14,7 +14,7 @@ import { SubmitButton } from '@/components/ui/submit-button'
 import { PageHeader } from '@/components/ui/page-header'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, UserPlus } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
@@ -199,361 +198,323 @@ export default function NewStaffPage() {
         back={<BackLink trail={trail} fallback="/staff" fallbackLabel="Staff" />}
       />
 
-      <form ref={guard} onSubmit={handleSubmit} noValidate>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Account Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Account information</CardTitle>
-              <CardDescription>Login credentials and role assignment</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="First name" htmlFor="firstName" required error={errors.firstName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={formData.firstName}
-                      onChange={(e) => handleChange('firstName', e.target.value)}
-                      placeholder="Enter first name"
-                    />
-                  )}
-                </FormField>
-                <FormField label="Last name" htmlFor="lastName" required error={errors.lastName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={formData.lastName}
-                      onChange={(e) => handleChange('lastName', e.target.value)}
-                      placeholder="Enter last name"
-                    />
-                  )}
-                </FormField>
-              </div>
-
-              <FormField label="Email" htmlFor="email" required error={errors.email}>
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    placeholder="staff@yourclinic.com"
-                  />
-                )}
-              </FormField>
-
-              <FormField label="Password" htmlFor="password" required error={errors.password}>
-                {(control) => (
-                  <div className="relative">
-                    <Input
-                      {...control}
-                      type={showPassword ? 'text' : 'password'}
-                      value={formData.password}
-                      onChange={(e) => handleChange('password', e.target.value)}
-                      placeholder="8 to 32 characters"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                )}
-              </FormField>
-
-              <FormField label="Role" htmlFor="role" required error={errors.role}>
-                {(control) => (
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value) => handleChange('role', value)}
-                  >
-                    <SelectTrigger {...control}>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {/* Administrator is offered only to an administrator: the
-                          server refuses anybody else — see staffChangeRefusal. */}
-                      {ALL_ROLES.filter(
-                        (r) => r !== 'ADMIN' || canManageAdmins || formData.role === 'ADMIN'
-                      ).map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </FormField>
-
-              {/* Optional second role — for the owner who also treats patients.
-                  Capabilities become the union of the two. See lib/rbac.ts. */}
-              <FormField
-                label="Also works as (optional)"
-                htmlFor="clinicalRole"
-                hint="For someone who holds two jobs — an owner who also treats patients. They get the permissions of both roles."
-              >
-                {(control) => (
-                  <Select
-                    value={formData.clinicalRole || 'NONE'}
-                    onValueChange={(value) =>
-                      handleChange('clinicalRole', value === 'NONE' ? '' : value)
-                    }
-                  >
-                    <SelectTrigger {...control}>
-                      <SelectValue placeholder="No second role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">No second role</SelectItem>
-                      {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </FormField>
-            </CardContent>
-          </Card>
-
-          {/* Contact Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact information</CardTitle>
-              <CardDescription>Phone and address details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Phone" htmlFor="phone" required error={errors.phone}>
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      value={formData.phone}
-                      onChange={(value) => handleChange('phone', value)}
-                    />
-                  )}
-                </FormField>
-                <FormField
-                  label="Alternate phone"
-                  htmlFor="alternatePhone"
-                  error={errors.alternatePhone}
-                >
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      autoComplete="off"
-                      value={formData.alternatePhone}
-                      onChange={(value) => handleChange('alternatePhone', value)}
-                    />
-                  )}
-                </FormField>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Textarea
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => handleChange('address', e.target.value)}
-                  placeholder="Enter full address"
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => handleChange('city', e.target.value)}
-                    placeholder="Lahore"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    value={formData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
-                    placeholder="Punjab"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal code</Label>
-                  <Input
-                    id="postalCode"
-                    value={formData.postalCode}
-                    onChange={(e) => handleChange('postalCode', e.target.value)}
-                    placeholder="54000"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Personal Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Personal details</CardTitle>
-              <CardDescription>Personal and identification information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select
-                    value={formData.gender}
-                    onValueChange={(value) => handleChange('gender', value)}
-                  >
-                    <SelectTrigger id="gender">
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MALE">Male</SelectItem>
-                      <SelectItem value="FEMALE">Female</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="cnic">CNIC</Label>
-                  <Input
-                    id="cnic"
-                    value={formData.cnic}
-                    onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
-                    placeholder={CNIC_PLACEHOLDER}
-                    inputMode="numeric"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nationalTaxNo">National tax number (NTN)</Label>
-                  <Input
-                    id="nationalTaxNo"
-                    value={formData.nationalTaxNo}
-                    onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
-                    placeholder="1234567"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Professional Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Professional details</CardTitle>
-              <CardDescription>Qualifications and employment information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="qualification">Qualification</Label>
-                  <Input
-                    id="qualification"
-                    value={formData.qualification}
-                    onChange={(e) => handleChange('qualification', e.target.value)}
-                    placeholder="BDS, MDS"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialization">Specialization</Label>
-                  <Input
-                    id="specialization"
-                    value={formData.specialization}
-                    onChange={(e) => handleChange('specialization', e.target.value)}
-                    placeholder="Orthodontics, Endodontics"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="licenseNumber">License number</Label>
-                  <Input
-                    id="licenseNumber"
-                    value={formData.licenseNumber}
-                    onChange={(e) => handleChange('licenseNumber', e.target.value)}
-                    placeholder="TN/12345"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="joiningDate">Joining date</Label>
-                  <Input
-                    id="joiningDate"
-                    type="date"
-                    max={isoDay(new Date())}
-                    value={formData.joiningDate}
-                    onChange={(e) => handleChange('joiningDate', e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Emergency Contact */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Emergency contact</CardTitle>
-              <CardDescription>Contact person in case of emergency</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="emergencyContact">Contact name</Label>
+      <form ref={guard} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Account Information */}
+        <FormSection
+          title="Account information"
+          description="Login credentials and role assignment"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="First name" htmlFor="firstName" required error={errors.firstName}>
+              {(control) => (
                 <Input
-                  id="emergencyContact"
-                  value={formData.emergencyContact}
-                  onChange={(e) => handleChange('emergencyContact', e.target.value)}
-                  placeholder="Full name"
+                  {...control}
+                  value={formData.firstName}
+                  onChange={(e) => handleChange('firstName', e.target.value)}
+                  placeholder="Enter first name"
                 />
-              </div>
-              <FormField
-                label="Contact phone"
-                htmlFor="emergencyPhone"
-                error={errors.emergencyPhone}
-              >
-                {(control) => (
-                  <PhoneInput
-                    {...control}
-                    autoComplete="off"
-                    value={formData.emergencyPhone}
-                    onChange={(value) => handleChange('emergencyPhone', value)}
-                  />
-                )}
-              </FormField>
-            </CardContent>
-          </Card>
-        </div>
+              )}
+            </FormField>
+            <FormField label="Last name" htmlFor="lastName" required error={errors.lastName}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={formData.lastName}
+                  onChange={(e) => handleChange('lastName', e.target.value)}
+                  placeholder="Enter last name"
+                />
+              )}
+            </FormField>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-4 mt-6">
+            <FormField label="Email" htmlFor="email" required error={errors.email}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  placeholder="staff@yourclinic.com"
+                />
+              )}
+            </FormField>
+
+            <FormField label="Password" htmlFor="password" required error={errors.password}>
+              {(control) => (
+                <div className="relative">
+                  <Input
+                    {...control}
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => handleChange('password', e.target.value)}
+                    placeholder="8 to 32 characters"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
+            </FormField>
+
+            <FormField label="Role" htmlFor="role" required error={errors.role}>
+              {(control) => (
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) => handleChange('role', value)}
+                >
+                  <SelectTrigger {...control}>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Administrator is offered only to an administrator: the
+                        server refuses anybody else — see staffChangeRefusal. */}
+                    {ALL_ROLES.filter(
+                      (r) => r !== 'ADMIN' || canManageAdmins || formData.role === 'ADMIN'
+                    ).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FormField>
+
+            {/* Optional second role — for the owner who also treats patients.
+                Capabilities become the union of the two. See lib/rbac.ts. */}
+            <FormField
+              label="Also works as (optional)"
+              htmlFor="clinicalRole"
+              hint="For someone who holds two jobs — an owner who also treats patients. They get the permissions of both roles."
+            >
+              {(control) => (
+                <Select
+                  value={formData.clinicalRole || 'NONE'}
+                  onValueChange={(value) =>
+                    handleChange('clinicalRole', value === 'NONE' ? '' : value)
+                  }
+                >
+                  <SelectTrigger {...control}>
+                    <SelectValue placeholder="No second role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">No second role</SelectItem>
+                    {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FormField>
+          </div>
+        </FormSection>
+
+        {/* Contact Information */}
+        <FormSection title="Contact information" description="Phone and address details">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <FormField label="Phone" htmlFor="phone" required error={errors.phone}>
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  value={formData.phone}
+                  onChange={(value) => handleChange('phone', value)}
+                />
+              )}
+            </FormField>
+            <FormField
+              label="Alternate phone"
+              htmlFor="alternatePhone"
+              error={errors.alternatePhone}
+            >
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  autoComplete="off"
+                  value={formData.alternatePhone}
+                  onChange={(value) => handleChange('alternatePhone', value)}
+                />
+              )}
+            </FormField>
+
+            <div className="space-y-2 md:col-span-2 xl:col-span-3">
+              <Label htmlFor="address">Address</Label>
+              <Textarea
+                id="address"
+                value={formData.address}
+                onChange={(e) => handleChange('address', e.target.value)}
+                placeholder="Enter full address"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                value={formData.city}
+                onChange={(e) => handleChange('city', e.target.value)}
+                placeholder="Lahore"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="state">State</Label>
+              <Input
+                id="state"
+                value={formData.state}
+                onChange={(e) => handleChange('state', e.target.value)}
+                placeholder="Punjab"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="postalCode">Postal code</Label>
+              <Input
+                id="postalCode"
+                value={formData.postalCode}
+                onChange={(e) => handleChange('postalCode', e.target.value)}
+                placeholder="54000"
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Personal Details */}
+        <FormSection title="Personal details" description="Personal and identification information">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="dateOfBirth">Date of birth</Label>
+              <Input
+                id="dateOfBirth"
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gender">Gender</Label>
+              <Select
+                value={formData.gender}
+                onValueChange={(value) => handleChange('gender', value)}
+              >
+                <SelectTrigger id="gender">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MALE">Male</SelectItem>
+                  <SelectItem value="FEMALE">Female</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cnic">CNIC</Label>
+              <Input
+                id="cnic"
+                value={formData.cnic}
+                onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
+                placeholder={CNIC_PLACEHOLDER}
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nationalTaxNo">National tax number (NTN)</Label>
+              <Input
+                id="nationalTaxNo"
+                value={formData.nationalTaxNo}
+                onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
+                placeholder="1234567"
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Professional Details */}
+        <FormSection
+          title="Professional details"
+          description="Qualifications and employment information"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="qualification">Qualification</Label>
+              <Input
+                id="qualification"
+                value={formData.qualification}
+                onChange={(e) => handleChange('qualification', e.target.value)}
+                placeholder="BDS, MDS"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="specialization">Specialization</Label>
+              <Input
+                id="specialization"
+                value={formData.specialization}
+                onChange={(e) => handleChange('specialization', e.target.value)}
+                placeholder="Orthodontics, Endodontics"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="licenseNumber">License number</Label>
+              <Input
+                id="licenseNumber"
+                value={formData.licenseNumber}
+                onChange={(e) => handleChange('licenseNumber', e.target.value)}
+                placeholder="TN/12345"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="joiningDate">Joining date</Label>
+              <Input
+                id="joiningDate"
+                type="date"
+                max={isoDay(new Date())}
+                value={formData.joiningDate}
+                onChange={(e) => handleChange('joiningDate', e.target.value)}
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Emergency Contact */}
+        <FormSection title="Emergency contact" description="Contact person in case of emergency">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="emergencyContact">Contact name</Label>
+              <Input
+                id="emergencyContact"
+                value={formData.emergencyContact}
+                onChange={(e) => handleChange('emergencyContact', e.target.value)}
+                placeholder="Full name"
+              />
+            </div>
+            <FormField label="Contact phone" htmlFor="emergencyPhone" error={errors.emergencyPhone}>
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  autoComplete="off"
+                  value={formData.emergencyPhone}
+                  onChange={(value) => handleChange('emergencyPhone', value)}
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
+
+        {/* Submit, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button variant="outline" type="button" asChild>
             <Link href={trail.back('/staff')}>Cancel</Link>
           </Button>
           <SubmitButton busy={loading} busyLabel="Creating…" icon={UserPlus}>
             Create staff member
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

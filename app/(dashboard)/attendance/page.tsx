@@ -110,6 +110,16 @@ type Edits = Record<string, AttendanceMark | null>
 
 const cellKey = (userId: string, date: string) => `${userId}|${date}`
 
+/** Up to two initials for the avatar beside a name. */
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase()
+
 const VIEW_OPTIONS = [
   { value: 'week', label: 'Week' },
   { value: 'day', label: 'Day' },
@@ -317,14 +327,20 @@ export default function AttendancePage() {
         actions={
           <Button variant="outline" asChild>
             <Link href={trail.to('/attendance/report')}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              <FileSpreadsheet className="h-4 w-4" />
               Report
             </Link>
           </Button>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/*
+        Which stretch of the register is on screen, as one bar: the view on the
+        left, the period and the arrows that move it in the middle, and the
+        jumps (today, a date) on the right — apart from the search and filters
+        below, which choose who is on it rather than when.
+      */}
+      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-3 shadow-sm md:flex-row md:items-center md:justify-between">
         <SegmentedControl
           aria-label="View"
           size="md"
@@ -343,9 +359,9 @@ export default function AttendancePage() {
           }
         />
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-center gap-1">
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             aria-label={view === 'week' ? 'Previous week' : 'Previous day'}
             disabled={!data}
@@ -353,7 +369,7 @@ export default function AttendancePage() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[11rem] px-2 text-center text-sm font-medium">
+          <span className="min-w-[11rem] px-2 text-center text-sm font-semibold">
             {data
               ? view === 'week'
                 ? rangeLabel(data.from, data.to)
@@ -361,7 +377,7 @@ export default function AttendancePage() {
               : '…'}
           </span>
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             aria-label={view === 'week' ? 'Next week' : 'Next day'}
             disabled={!canGoForward}
@@ -371,29 +387,33 @@ export default function AttendancePage() {
           </Button>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!data || (view === 'week' ? data.from === weekStartOf(today) : from === today)}
-          onClick={() => move(today)}
-        >
-          Today
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={
+              !data || (view === 'week' ? data.from === weekStartOf(today) : from === today)
+            }
+            onClick={() => move(today)}
+          >
+            Today
+          </Button>
 
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays className="h-4 w-4" />
-          <span className="sr-only">Go to a date</span>
-          <Input
-            type="date"
-            className="h-9 w-[10.5rem]"
-            max={today || undefined}
-            value={from}
-            onChange={(event) => {
-              const target = event.target.value
-              if (target && (!today || target <= today)) move(target)
-            }}
-          />
-        </label>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CalendarDays className="h-4 w-4" />
+            <span className="sr-only">Go to a date</span>
+            <Input
+              type="date"
+              className="h-9 w-[10.5rem]"
+              max={today || undefined}
+              value={from}
+              onChange={(event) => {
+                const target = event.target.value
+                if (target && (!today || target <= today)) move(target)
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       <ListToolbar
@@ -433,9 +453,11 @@ export default function AttendancePage() {
         }}
       />
 
-      <Legend />
-
       <Card>
+        {/* The key to the letters, at the head of the register it explains. */}
+        <div className="border-b px-4 py-3">
+          <Legend />
+        </div>
         <CardContent className="overflow-x-auto p-0">
           <Table className={view === 'week' ? 'min-w-[900px]' : 'min-w-[560px]'}>
             <TableHeader>
@@ -474,23 +496,33 @@ export default function AttendancePage() {
               {rows.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className="sticky left-0 z-10 bg-card">
-                    <Link
-                      href={trail.to(
-                        // The week on screen, stopping at today — opening
-                        // somebody from last week's register should show
-                        // last week, not this one.
-                        data
-                          ? `/attendance/${row.id}?start=${data.from}&end=${data.to > today ? today : data.to}`
-                          : `/attendance/${row.id}`
-                      )}
-                      className="font-medium hover:underline"
-                    >
-                      {row.name}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">
-                      {ROLE_LABELS[row.role]}
-                      {row.clinicalRole ? ` + ${ROLE_LABELS[row.clinicalRole]}` : ''}
-                      {row.employeeId ? ` · ${row.employeeId}` : ''}
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary sm:flex"
+                      >
+                        {initialsOf(row.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <Link
+                          href={trail.to(
+                            // The week on screen, stopping at today — opening
+                            // somebody from last week's register should show
+                            // last week, not this one.
+                            data
+                              ? `/attendance/${row.id}?start=${data.from}&end=${data.to > today ? today : data.to}`
+                              : `/attendance/${row.id}`
+                          )}
+                          className="font-semibold hover:underline"
+                        >
+                          {row.name}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">
+                          {ROLE_LABELS[row.role]}
+                          {row.clinicalRole ? ` + ${ROLE_LABELS[row.clinicalRole]}` : ''}
+                          {row.employeeId ? ` · ${row.employeeId}` : ''}
+                        </div>
+                      </div>
                     </div>
                   </TableCell>
                   {row.cells.map((cell) => (
@@ -541,7 +573,7 @@ export default function AttendancePage() {
       </Card>
 
       {canWrite && pending.marks.length > 0 && (
-        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/95 p-3 shadow-lg backdrop-blur">
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card/95 px-4 py-3 shadow-lg backdrop-blur">
           <p className="text-sm">
             {[
               pending.changed > 0 && `${pending.changed} change${pending.changed === 1 ? '' : 's'}`,
@@ -555,7 +587,7 @@ export default function AttendancePage() {
           <div className="flex gap-2">
             {dirty && (
               <Button variant="ghost" size="sm" disabled={saving} onClick={() => setEdits({})}>
-                <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+                <Undo2 className="h-3.5 w-3.5" />
                 Discard changes
               </Button>
             )}

@@ -5,6 +5,7 @@ import {
   checkLabOrderValues,
   milestoneUpdate,
   nextStatuses,
+  isLabOrderEditable,
   normaliseWorkType,
   statusLabel,
 } from '@/lib/lab-orders'
@@ -199,6 +200,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const currentStatus = existing.status
+
+    if (!isLabOrderEditable(currentStatus)) {
+      return NextResponse.json(
+        { error: 'This case was cancelled. A cancelled case cannot be changed.' },
+        { status: 409 }
+      )
+    }
 
     const {
       labVendorId,

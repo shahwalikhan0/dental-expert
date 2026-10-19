@@ -3,7 +3,7 @@
  *
  * `Hospital.workingHours` is a JSON string holding one entry per weekday:
  *
- *     {"monday":{"open":"09:00","close":"20:00"}, …, "sunday":{"open":null,"close":null}}
+ *     {"monday":{"open":"09:00","close":"20:00"}, …, "sunday":{"open":"09:00","close":"20:00"}}
  *
  * That is the shape the settings screen writes, the shape onboarding writes,
  * and the shape the seed writes. It was not the shape anything read. Both slot
@@ -37,22 +37,47 @@ const WEEKDAYS = [
   'saturday',
 ] as const
 
+/** Midnight to midnight — the whole day, open. */
+export const ALL_DAY: DayHours = { open: '00:00', close: '24:00' }
+
 /**
- * What a clinic with nothing configured is treated as.
+ * What a clinic with nothing configured is treated as: open round the clock.
  *
- * Kept as it was, lunch break included, so the one case that did work — a
- * clinic whose `workingHours` is still NULL — behaves exactly as before.
+ * It used to be 09:00–21:00 with a lunch break, which is a guess about what
+ * kind of practice is using this. A clinic that works nights, a hospital's
+ * dental wing, a practice that opens at seven — each had to discover that the
+ * app had already decided its hours, and that a booking it was happy to take
+ * was being refused by a default nobody chose. Open is the only honest
+ * default: it constrains nobody, and every clinic narrows it in
+ * Settings → Clinic.
  */
-export const DEFAULT_DAY_HOURS: DayHours = {
-  open: '09:00',
-  close: '21:00',
-  lunch: { start: '13:00', end: '14:00' },
+export const DEFAULT_DAY_HOURS: DayHours = ALL_DAY
+
+/** True when these hours run midnight to midnight. */
+export function isAllDay(hours: DayHours | null | undefined): boolean {
+  return hours?.open === ALL_DAY.open && hours?.close === ALL_DAY.close
 }
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 
+/**
+ * `24:00` — midnight at the *end* of the day.
+ *
+ * Valid as a closing time and nowhere else. A clock time is 00:00–23:59, so a
+ * day that runs to midnight cannot say so: `23:59` loses a minute, and `00:00`
+ * is the morning. `minutesOf('24:00')` is 1440, which is what every length and
+ * slot calculation here already wants.
+ */
+const END_OF_DAY = '24:00'
+
 function time(value: unknown): string | null {
   return typeof value === 'string' && TIME.test(value.trim()) ? value.trim() : null
+}
+
+/** A closing time: any clock time, or `24:00` for midnight at the day's end. */
+function closingTime(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim() === END_OF_DAY) return END_OF_DAY
+  return time(value)
 }
 
 /**
@@ -63,8 +88,11 @@ function time(value: unknown): string | null {
  * timezone.
  *
  * A stored day with no open or close time means closed, which is how the
- * settings screen records Sunday. Malformed times are treated as absent rather
- * than trusted into `parseInt`: this column is free text.
+ * settings screen records a day whose Closed toggle is on. No day is closed by
+ * default — the clinic has no weekly day off, Sunday included — so in practice
+ * this returns null only for a clinic that has deliberately shut a weekday.
+ * Malformed times are treated as absent rather than trusted into `parseInt`:
+ * this column is free text.
  */
 export function hoursOn(raw: string | null | undefined, day: string): DayHours | null {
   if (!raw) return DEFAULT_DAY_HOURS
@@ -87,7 +115,8 @@ export function hoursOn(raw: string | null | undefined, day: string): DayHours |
   if (!stored || typeof stored !== 'object') return null
 
   const open = time(stored.open)
-  const close = time(stored.close)
+  const close = closingTime(stored.close)
+  // Zero-padded `HH:MM` compares correctly as text, `24:00` included.
   if (!open || !close || close <= open) return null
 
   const lunch = stored.lunch as Record<string, unknown> | undefined
@@ -176,7 +205,7 @@ export function availableSlots(query: SlotQuery): { time: string; available: boo
   const buffer = Math.max(0, Math.round(query.buffer ?? 0))
 
   const open = minutesOf(time(shift?.startTime) ?? hours.open)
-  const close = minutesOf(time(shift?.endTime) ?? hours.close)
+  const close = minutesOf(closingTime(shift?.endTime) ?? hours.close)
   const blocked = (query.blocked ?? []).map((b) => ({
     start: minutesOf(b.start),
     end: minutesOf(b.end),

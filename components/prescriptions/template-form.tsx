@@ -24,6 +24,7 @@ import { templateRefusal } from '@/lib/prescription-templates'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { FormField } from '@/components/ui/form-field'
 import { SubmitButton } from '@/components/ui/submit-button'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   MedicationPicker,
   medicationLabel,
@@ -246,12 +247,11 @@ export function TemplateForm({
 
   return (
     <div ref={formRef} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>About this template</CardTitle>
-          <CardDescription>Templates are shared with everyone at this clinic.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <FormSection
+        title="About this template"
+        description="Templates are shared with everyone at this clinic."
+      >
+        <div className="space-y-4">
           <div className="form-grid">
             <FormField label="Name" required htmlFor="template-name" error={errors.name}>
               {(control) => (
@@ -312,9 +312,11 @@ export function TemplateForm({
               />
             )}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
+      {/* Medicines: full width, because each line is a form of its own and
+          would be cramped beside a section heading. */}
       <Card>
         <CardHeader>
           <CardTitle>Medicines</CardTitle>
@@ -327,9 +329,12 @@ export function TemplateForm({
           {draft.items.map((item, index) => {
             const itemError = errors.items[index] ?? {}
             return (
-              <div key={item.key} className="space-y-3 rounded-xl border border-border/60 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm font-medium">
+              <div key={item.key} className="space-y-4 rounded-xl border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2.5 text-sm font-semibold">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      {index + 1}
+                    </span>
                     Medicine {index + 1}
                   </span>
                   <IconTooltip label={`Remove medicine ${index + 1}`}>
@@ -441,13 +446,14 @@ export function TemplateForm({
           })}
 
           <Button type="button" variant="outline" onClick={addItem} className="w-full">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             Add another medicine
           </Button>
         </CardContent>
       </Card>
 
-      <div className="page-actions justify-end">
+      {/* Submit, pinned to the bottom while the form scrolls */}
+      <FormActions>
         <Button asChild variant="outline">
           <Link href={backHref}>Cancel</Link>
         </Button>
@@ -459,7 +465,7 @@ export function TemplateForm({
         >
           {submitLabel}
         </SubmitButton>
-      </div>
+      </FormActions>
     </div>
   )
 }

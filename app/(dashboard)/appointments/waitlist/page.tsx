@@ -40,7 +40,7 @@ import { FormField } from '@/components/ui/form-field'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker'
-import { Clock, Plus, Trash2, Users, Bell, CheckCircle2, CalendarPlus } from 'lucide-react'
+import { Clock, Plus, Trash2, Bell, CheckCircle2, CalendarPlus } from 'lucide-react'
 import { displayDate } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { statusLabel, statusOptions } from '@/lib/status'
@@ -259,7 +259,7 @@ export default function WaitlistPage() {
         actions={
           canWrite ? (
             <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4" />
               Add to waitlist
             </Button>
           ) : undefined
@@ -383,46 +383,27 @@ export default function WaitlistPage() {
       </Dialog>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.active}</p>
-                <p className="text-sm text-muted-foreground">Waiting</p>
-              </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[
+          { label: 'Waiting', value: summary.active, icon: Clock },
+          { label: 'Notified', value: summary.notified, icon: Bell },
+          { label: 'Booked', value: summary.booked, icon: CheckCircle2 },
+        ].map((tile) => (
+          <div
+            key={tile.label}
+            className="flex items-start justify-between gap-3 rounded-2xl border bg-card p-5 shadow-sm"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {tile.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{tile.value}</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-50 dark:bg-yellow-950/30">
-                <Bell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.notified}</p>
-                <p className="text-sm text-muted-foreground">Notified</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 dark:bg-green-950/30">
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.booked}</p>
-                <p className="text-sm text-muted-foreground">Booked</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <tile.icon className="h-5 w-5" />
+            </span>
+          </div>
+        ))}
       </div>
 
       <ListToolbar
@@ -466,10 +447,7 @@ export default function WaitlistPage() {
       {/* Waitlist Table */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            <Users className="h-5 w-5 inline mr-2" />
-            Waitlist entries
-          </CardTitle>
+          <CardTitle>Waitlist entries</CardTitle>
           <CardDescription>
             When an appointment is cancelled, the first patients whose preferences match are sent a
             text offering the slot and marked Notified. Book them from here.
@@ -512,7 +490,7 @@ export default function WaitlistPage() {
                 <TableRow key={entry.id}>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{entry.patient?.name || 'Unknown'}</p>
+                      <p className="font-semibold">{entry.patient?.name || 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
                         {[entry.patient?.patientId, formatPhone(entry.patient?.phone)]
                           .filter(Boolean)
@@ -534,7 +512,21 @@ export default function WaitlistPage() {
                       : 'Any'}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge kind="waitlist" status={entry.status} />
+                    {/* When the slot was offered or taken, said under the status
+                        it explains rather than among the row's buttons. */}
+                    <div className="space-y-1">
+                      <StatusBadge kind="waitlist" status={entry.status} />
+                      {entry.notifiedAt && (
+                        <span className="block text-xs text-muted-foreground">
+                          Notified {displayDate(entry.notifiedAt)}
+                        </span>
+                      )}
+                      {entry.bookedAt && (
+                        <span className="block text-xs text-green-600 dark:text-green-400">
+                          Booked {displayDate(entry.bookedAt)}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>{displayDate(entry.createdAt)}</TableCell>
                   <GridActionsCell>
@@ -549,7 +541,7 @@ export default function WaitlistPage() {
                             })}`
                           )}
                         >
-                          <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />
+                          <CalendarPlus className="h-3.5 w-3.5" />
                           Book
                         </Link>
                       </Button>
@@ -565,16 +557,6 @@ export default function WaitlistPage() {
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </IconTooltip>
-                    )}
-                    {entry.notifiedAt && (
-                      <span className="text-xs text-muted-foreground block">
-                        Notified {displayDate(entry.notifiedAt)}
-                      </span>
-                    )}
-                    {entry.bookedAt && (
-                      <span className="text-xs text-green-600 block dark:text-green-400">
-                        Booked {displayDate(entry.bookedAt)}
-                      </span>
                     )}
                   </GridActionsCell>
                 </TableRow>

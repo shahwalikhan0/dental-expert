@@ -9,7 +9,7 @@ import {
   appointmentBlockClass,
   appointmentStatusLabel,
 } from '@/components/appointments/status-tone'
-import { hourLabel, shortTime } from './labels'
+import { hourLabel, hoursLabel } from './labels'
 
 /**
  * Everybody who sees patients, against the day's slots.
@@ -55,6 +55,12 @@ function runsOf(slots: ScheduleSlot[]): Run[] {
 
 const KIND_LABEL = { dentist: 'Dentist', assistant: 'Assistant' } as const
 
+/** The narrowest a slot cell may be drawn before it stops being clickable. */
+const SLOT_MIN_PX = 14
+
+/** Roughly what `12 AM` needs at this font size. */
+const HOUR_LABEL_PX = 34
+
 export function ClinicianTimeline({
   schedule,
   links,
@@ -82,10 +88,24 @@ export function ClinicianTimeline({
     ? Math.ceil(Math.max(...working.map((c) => minutesOf(c.close!))) / 60) * 60
     : 17 * 60
   const columns = Math.max(1, Math.round((end - start) / step))
+  const columnOf = (time: string) => Math.round((minutesOf(time) - start) / step) + 1
+  const grid = { gridTemplateColumns: `repeat(${columns}, minmax(${SLOT_MIN_PX}px, 1fr))` }
+
+  /*
+   * How often to write the hour.
+   *
+   * A clinic open round the clock gives this strip 48 half-hour columns, and
+   * at their narrowest an hour is 28px — too little for "12 AM", so the labels
+   * collided into a grey smear. Writing every second or third hour instead
+   * keeps the clock readable at any opening hours, and the stride is worked
+   * out from the width an hour actually gets rather than from a guess about
+   * how long the day is.
+   */
+  const hourWidth = (60 / step) * SLOT_MIN_PX
+  const stride = Math.max(1, Math.ceil(HOUR_LABEL_PX / hourWidth))
   const hours: number[] = []
   for (let minute = start; minute < end; minute += 60) hours.push(minute)
-  const columnOf = (time: string) => Math.round((minutesOf(time) - start) / step) + 1
-  const grid = { gridTemplateColumns: `repeat(${columns}, minmax(14px, 1fr))` }
+  const labelled = hours.filter((_, index) => index % stride === 0)
 
   return (
     <div className="space-y-3">
@@ -93,13 +113,15 @@ export function ClinicianTimeline({
         <div className="min-w-[640px]">
           {/* The clock */}
           <div className="flex">
-            <div className="w-44 shrink-0" />
+            <div className="sticky left-0 z-20 w-44 shrink-0 bg-card" />
             <div className="grid flex-1" style={grid}>
-              {hours.map((minute) => (
+              {labelled.map((minute) => (
                 <div
                   key={minute}
                   className="border-l pl-1 text-[10px] text-muted-foreground"
-                  style={{ gridColumn: `${(minute - start) / step + 1} / span ${60 / step}` }}
+                  style={{
+                    gridColumn: `${(minute - start) / step + 1} / span ${(60 / step) * stride}`,
+                  }}
                 >
                   {hourLabel(minute / 60)}
                 </div>
@@ -112,7 +134,10 @@ export function ClinicianTimeline({
               const staffHref = links.staff(clinician)
               return (
                 <li key={clinician.id} className="flex items-center py-2">
-                  <div className="w-44 shrink-0 pr-3">
+                  {/* Stays put while the day scrolls: on a 24-hour clock the
+                      strip is wider than any screen, and a row of cells with
+                      no name against it says nothing. */}
+                  <div className="sticky left-0 z-20 w-44 shrink-0 bg-card pr-3">
                     {staffHref ? (
                       <Link
                         href={staffHref}
@@ -125,8 +150,7 @@ export function ClinicianTimeline({
                     )}
                     <span className="block truncate text-xs text-muted-foreground">
                       {KIND_LABEL[clinician.kind]}
-                      {clinician.open &&
-                        ` · ${shortTime(clinician.open)}–${shortTime(clinician.close!)}`}
+                      {clinician.open && ` · ${hoursLabel(clinician.open, clinician.close!)}`}
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {clinician.closed

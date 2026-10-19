@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
@@ -192,7 +192,7 @@ export default function BillingSettingsPage() {
 
   if (failed) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <LoadFailed what="the billing settings" onRetry={fetchSettings} />
       </div>
@@ -200,21 +200,17 @@ export default function BillingSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {header}
 
       <form ref={formRef} className="space-y-6" onSubmit={handleSaveSettings} noValidate>
         {/* Tax Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tax configuration</CardTitle>
-            <CardDescription>Sales tax applied to invoices</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
+        <FormSection title="Tax configuration" description="Sales tax applied to invoices">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
                 <Label htmlFor="taxEnabled">Charge sales tax on invoices</Label>
-                <p className="text-muted-foreground mt-1 text-sm">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Dental services are exempt for most clinics. Leave this off unless the clinic is
                   registered for provincial sales tax on services.
                 </p>
@@ -262,7 +258,7 @@ export default function BillingSettingsPage() {
               </div>
             )}
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-950/30">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800/60 dark:bg-blue-950/30">
               <p className="text-sm text-blue-800 dark:text-blue-300">
                 {tax.taxEnabled && Number(tax.taxRate) > 0 ? (
                   <>
@@ -277,18 +273,15 @@ export default function BillingSettingsPage() {
                 )}
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Discount control — FR-013 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Discount approval</CardTitle>
-            <CardDescription>
-              When a discount needs a reason and a manager&rsquo;s approval
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection
+          title="Discount approval"
+          description={<>When a discount needs a reason and a manager&rsquo;s approval</>}
+        >
+          <div className="space-y-4">
             <FormField
               label="Approval threshold"
               htmlFor="discountApprovalThreshold"
@@ -306,7 +299,7 @@ export default function BillingSettingsPage() {
               )}
             </FormField>
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-950/30">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800/60 dark:bg-blue-950/30">
               <p className="text-sm text-blue-800 dark:text-blue-300">
                 {threshold !== null && threshold > 0 ? (
                   <>
@@ -321,16 +314,12 @@ export default function BillingSettingsPage() {
                 )}
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Invoice Format */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoice format</CardTitle>
-            <CardDescription>Customize invoice and receipt numbering</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Invoice format" description="Customize invoice and receipt numbering">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FormField label="Invoice prefix" htmlFor="invoicePrefix">
                 {(control) => (
@@ -368,22 +357,18 @@ export default function BillingSettingsPage() {
               </FormField>
             </div>
 
-            <div className="bg-muted/50 border rounded-lg p-3">
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
               <p className="text-sm text-muted-foreground">
                 <strong>Preview:</strong> {settings.invoicePrefix}
                 {settings.invoiceStartingNumber}
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Payment Terms */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment terms</CardTitle>
-            <CardDescription>Default payment policies</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Payment terms" description="Default payment policies">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FormField
                 label="Payment due (days)"
@@ -436,16 +421,12 @@ export default function BillingSettingsPage() {
                 )}
               </FormField>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Currency */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Currency settings</CardTitle>
-            <CardDescription>Configure currency display</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Currency settings" description="Configure currency display">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="Currency code" htmlFor="currencyCode">
                 {(control) => (
@@ -469,16 +450,12 @@ export default function BillingSettingsPage() {
                 )}
               </FormField>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Invoice Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoice footer</CardTitle>
-            <CardDescription>Default notes and terms for invoices</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Invoice footer" description="Default notes and terms for invoices">
+          <div className="space-y-4">
             <FormField
               label="Invoice notes"
               htmlFor="invoiceNotes"
@@ -510,14 +487,14 @@ export default function BillingSettingsPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <div className="flex justify-end">
-          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save} size="lg">
+        <FormActions>
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

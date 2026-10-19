@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -24,7 +24,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PatientPicker } from '@/components/patients/patient-picker'
-import { Calendar, Clock, User, Check, Loader2 } from 'lucide-react'
+import { Calendar, Check, Loader2 } from 'lucide-react'
 import { formatTime } from '@/lib/appointment-utils'
 import { isoDay } from '@/lib/dates'
 import { toastError } from '@/lib/toast-utils'
@@ -361,101 +361,91 @@ export default function NewAppointmentPage() {
         back={<BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />}
       />
 
-      <form ref={formRef} onSubmit={handleSubmit} noValidate>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Patient Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Patient
-              </CardTitle>
-              <CardDescription>
-                A registered patient, or a walk-in the clinic has not registered yet
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Two ways in, because a clinic sees both kinds of person and
-                  should not have to open a patient record to see the second. */}
-              <SegmentedControl
-                aria-label="Who the appointment is for"
-                size="md"
-                value={isWalkIn ? 'walk-in' : 'registered'}
-                onChange={(mode) => {
-                  const walkIn = mode === 'walk-in'
-                  setIsWalkIn(walkIn)
-                  if (walkIn) setSelectedPatient(null)
-                  setErrors((prev) => ({ ...prev, patient: undefined, visitorName: undefined }))
-                }}
-                options={PATIENT_MODES}
-              />
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Patient Selection */}
+        <FormSection
+          title="Patient"
+          description="A registered patient, or a walk-in the clinic has not registered yet"
+        >
+          <div className="space-y-4">
+            {/* Two ways in, because a clinic sees both kinds of person and
+                should not have to open a patient record to see the second. */}
+            <SegmentedControl
+              aria-label="Who the appointment is for"
+              size="md"
+              value={isWalkIn ? 'walk-in' : 'registered'}
+              onChange={(mode) => {
+                const walkIn = mode === 'walk-in'
+                setIsWalkIn(walkIn)
+                if (walkIn) setSelectedPatient(null)
+                setErrors((prev) => ({ ...prev, patient: undefined, visitorName: undefined }))
+              }}
+              options={PATIENT_MODES}
+            />
 
-              {isWalkIn ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    label="Name"
-                    required
-                    htmlFor="appointment-visitorName"
-                    error={errors.visitorName}
-                  >
-                    {(control) => (
-                      <Input
-                        {...control}
-                        value={visitorName}
-                        onChange={(e) => {
-                          setVisitorName(e.target.value)
-                          clearError('visitorName')
-                        }}
-                        placeholder="What they gave at the desk"
-                      />
-                    )}
-                  </FormField>
-                  <FormField label="Phone" htmlFor="appointment-visitorPhone" hint="Optional">
-                    {(control) => (
-                      <PhoneInput {...control} value={visitorPhone} onChange={setVisitorPhone} />
-                    )}
-                  </FormField>
-                  <p className="sm:col-span-2 text-xs text-muted-foreground">
-                    No patient record is created. Register them later from Walk-ins if they come
-                    back, and this visit will follow them.
-                  </p>
-                </div>
-              ) : (
+            {isWalkIn ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormField
-                  label="Patient"
+                  label="Name"
                   required
-                  htmlFor="appointment-patient"
-                  error={errors.patient}
+                  htmlFor="appointment-visitorName"
+                  error={errors.visitorName}
                 >
                   {(control) => (
-                    <PatientPicker<Patient>
-                      id={control.id}
-                      aria-describedby={control['aria-describedby']}
-                      aria-invalid={control['aria-invalid']}
-                      value={selectedPatient}
-                      onChange={(patient) => {
-                        setSelectedPatient(patient)
-                        if (patient) clearError('patient')
+                    <Input
+                      {...control}
+                      value={visitorName}
+                      onChange={(e) => {
+                        setVisitorName(e.target.value)
+                        clearError('visitorName')
                       }}
-                      initialPatientId={preselectedPatientId}
-                      allowAdd
+                      placeholder="What they gave at the desk"
                     />
                   )}
                 </FormField>
-              )}
-            </CardContent>
-          </Card>
+                <FormField label="Phone" htmlFor="appointment-visitorPhone" hint="Optional">
+                  {(control) => (
+                    <PhoneInput {...control} value={visitorPhone} onChange={setVisitorPhone} />
+                  )}
+                </FormField>
+                <p className="text-xs text-muted-foreground md:col-span-2">
+                  No patient record is created. Register them later from Walk-ins if they come back,
+                  and this visit will follow them.
+                </p>
+              </div>
+            ) : (
+              <FormField
+                label="Patient"
+                required
+                htmlFor="appointment-patient"
+                error={errors.patient}
+              >
+                {(control) => (
+                  <PatientPicker<Patient>
+                    id={control.id}
+                    aria-describedby={control['aria-describedby']}
+                    aria-invalid={control['aria-invalid']}
+                    value={selectedPatient}
+                    onChange={(patient) => {
+                      setSelectedPatient(patient)
+                      if (patient) clearError('patient')
+                    }}
+                    initialPatientId={preselectedPatientId}
+                    allowAdd
+                  />
+                )}
+              </FormField>
+            )}
+          </div>
+        </FormSection>
 
-          {/* Doctor & Schedule */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Schedule
-              </CardTitle>
-              <CardDescription>Select doctor, date, and time for the appointment</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        {/* Doctor & Schedule */}
+        <FormSection
+          title="Schedule"
+          description="Select doctor, date, and time for the appointment"
+        >
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField label="Doctor" required htmlFor="appointment-doctor" error={errors.doctor}>
                 {(control) => (
                   <Select
@@ -517,67 +507,77 @@ export default function NewAppointmentPage() {
                 )}
               </FormField>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => {
-                        setSelectedDate(e.target.value)
-                        setSelectedTime('')
-                        clearError('date')
-                      }}
-                      min={getMinDate()}
-                    />
-                  )}
-                </FormField>
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-duration">Duration</Label>
-                  <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger id="appointment-duration">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 minutes</SelectItem>
-                      <SelectItem value="30">30 minutes</SelectItem>
-                      <SelectItem value="45">45 minutes</SelectItem>
-                      <SelectItem value="60">1 hour</SelectItem>
-                      <SelectItem value="90">1.5 hours</SelectItem>
-                      <SelectItem value="120">2 hours</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value)
+                      setSelectedTime('')
+                      clearError('date')
+                    }}
+                    min={getMinDate()}
+                  />
+                )}
+              </FormField>
+              <div className="space-y-2">
+                <Label htmlFor="appointment-duration">Duration</Label>
+                <Select value={duration} onValueChange={setDuration}>
+                  <SelectTrigger id="appointment-duration">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="45">45 minutes</SelectItem>
+                    <SelectItem value="60">1 hour</SelectItem>
+                    <SelectItem value="90">1.5 hours</SelectItem>
+                    <SelectItem value="120">2 hours</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
 
-              {/* Time Slots */}
-              <div
-                className="space-y-2"
-                id="appointment-time"
-                role="group"
-                aria-labelledby="appointment-time-label"
-              >
-                <p id="appointment-time-label" className="label-required text-sm font-medium">
-                  Time slot
+            {/* Time Slots */}
+            <div
+              className="space-y-2"
+              id="appointment-time"
+              role="group"
+              aria-labelledby="appointment-time-label"
+            >
+              <p id="appointment-time-label" className="label-required text-sm font-medium">
+                Time slot
+              </p>
+              {loadingSlots ? (
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading available slots…
+                </div>
+              ) : !selectedDoctor || !selectedDate ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  Select doctor and date to see available slots
                 </p>
-                {loadingSlots ? (
-                  <div className="flex items-center gap-2 p-4 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading available slots…
-                  </div>
-                ) : !selectedDoctor || !selectedDate ? (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    Select doctor and date to see available slots
-                  </p>
-                ) : slotsError ? (
-                  <p className="p-4 text-sm text-muted-foreground">{slotsError}</p>
-                ) : timeSlots.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    No available slots for this date
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-4 gap-2">
+              ) : slotsError ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  {slotsError}
+                </p>
+              ) : timeSlots.length === 0 ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  No available slots for this date
+                </p>
+              ) : (
+                /*
+                  Boxed, because the list is as long as the day is.
+
+                  A clinic open round the clock offers 48 half-hour slots, which
+                  as a plain grid pushed the appointment type, the priority and
+                  the Book button off the bottom of the form. Scrolling the
+                  slots keeps the rest of the form where it was.
+                */
+                <div className="max-h-72 overflow-y-auto rounded-xl border p-2">
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
                     {timeSlots.map((slot) => (
                       <Button
                         key={slot.time}
@@ -597,91 +597,86 @@ export default function NewAppointmentPage() {
                           clearError('time')
                         }}
                       >
-                        {selectedTime === slot.time && <Check className="mr-1 h-3 w-3" />}
+                        {selectedTime === slot.time && <Check className="h-3 w-3" />}
                         {formatTime(slot.time)}
                       </Button>
                     ))}
                   </div>
-                )}
-                {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Appointment Details */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Appointment details
-              </CardTitle>
-              <CardDescription>Additional information about the appointment</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-type">Appointment type</Label>
-                  <Select value={appointmentType} onValueChange={setAppointmentType}>
-                    <SelectTrigger id="appointment-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CONSULTATION">Consultation</SelectItem>
-                      <SelectItem value="PROCEDURE">Procedure</SelectItem>
-                      <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
-                      <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                      <SelectItem value="CHECK_UP">Check-up</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
+              )}
+              {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
+            </div>
+          </div>
+        </FormSection>
 
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-priority">Priority</Label>
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger id="appointment-priority">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="LOW">Low</SelectItem>
-                      <SelectItem value="NORMAL">Normal</SelectItem>
-                      <SelectItem value="HIGH">High</SelectItem>
-                      <SelectItem value="URGENT">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+        {/* Appointment Details */}
+        <FormSection
+          title="Appointment details"
+          description="Additional information about the appointment"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="appointment-type">Appointment type</Label>
+              <Select value={appointmentType} onValueChange={setAppointmentType}>
+                <SelectTrigger id="appointment-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CONSULTATION">Consultation</SelectItem>
+                  <SelectItem value="PROCEDURE">Procedure</SelectItem>
+                  <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
+                  <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                  <SelectItem value="CHECK_UP">Check-up</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label htmlFor="appointment-complaint">Chief complaint</Label>
-                  <Input
-                    id="appointment-complaint"
-                    placeholder="Patient's main concern or reason for visit"
-                    value={chiefComplaint}
-                    onChange={(e) => setChiefComplaint(e.target.value)}
-                  />
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="appointment-priority">Priority</Label>
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger id="appointment-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="NORMAL">Normal</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="URGENT">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label htmlFor="appointment-notes">Notes</Label>
-                  <Input
-                    id="appointment-notes"
-                    placeholder="Additional notes about the appointment"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="appointment-complaint">Chief complaint</Label>
+              <Input
+                id="appointment-complaint"
+                placeholder="Patient's main concern or reason for visit"
+                value={chiefComplaint}
+                onChange={(e) => setChiefComplaint(e.target.value)}
+              />
+            </div>
 
-        <div className="mt-6 flex justify-end gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="appointment-notes">Notes</Label>
+              <Input
+                id="appointment-notes"
+                placeholder="Additional notes about the appointment"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Submit, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href="/appointments">Cancel</Link>
           </Button>
           <SubmitButton busy={submitting} busyLabel="Booking…" icon={Calendar}>
             Book appointment
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

@@ -173,7 +173,7 @@ function PickerBody({ onOpenChange, recallName, catalogue, linked, saving, onSav
           Cancel
         </Button>
         <Button onClick={() => onSave(Array.from(selected))} disabled={saving}>
-          {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           Save {selected.size > 0 ? `(${selected.size})` : ''}
         </Button>
       </DialogFooter>

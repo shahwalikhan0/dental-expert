@@ -47,6 +47,16 @@ const ORDER_SELECT = {
   },
 } as const
 
+/**
+ * A draft's delivery date and notes as an edit writes them: absent leaves
+ * them alone, and null or blank clears them. Both used to be ignored when
+ * blank, so a date or a note, once set on a draft, could not be taken off.
+ */
+const draftDate = (value: unknown) =>
+  value === undefined ? undefined : value ? new Date(String(value)) : null
+const draftNotes = (value: unknown) =>
+  value === undefined ? undefined : typeof value === 'string' && value.trim() ? value : null
+
 /** GET — one order with its lines and what is still outstanding on each. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, hospitalId } = await requirePermission('inventory:read')
@@ -297,8 +307,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           where: { id },
           data: {
             supplierId: body.supplierId || undefined,
-            expectedDate: body.expectedDate ? new Date(body.expectedDate) : undefined,
-            notes: body.notes ?? undefined,
+            expectedDate: draftDate(body.expectedDate),
+            notes: draftNotes(body.notes),
             subtotal: totals.subtotal,
             taxAmount: totals.taxAmount,
             totalAmount: totals.totalAmount,
@@ -318,8 +328,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         where: { id },
         data: {
           supplierId: body.supplierId || undefined,
-          expectedDate: body.expectedDate ? new Date(body.expectedDate) : undefined,
-          notes: body.notes ?? undefined,
+          expectedDate: draftDate(body.expectedDate),
+          notes: draftNotes(body.notes),
         },
       })
     }

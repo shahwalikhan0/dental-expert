@@ -7,8 +7,12 @@ import { cn } from '@/lib/utils'
 const Tabs = TabsPrimitive.Root
 
 /**
- * A tab strip that scrolls sideways rather than squeezing, and reads as a
- * segmented control rather than as a row of buttons.
+ * A tab strip that scrolls sideways rather than squeezing: a row of labels on
+ * a hairline, with a bar under the selected one.
+ *
+ * It was a segmented control, a grey track with a lighter pill sliding along
+ * it. Two shades of near-white, so which tab was open took a second look; an
+ * underline in the brand colour under a dark label does not.
  *
  * A patient's record has eight tabs. They were laid out as an eight-column
  * grid across the full width, which on a phone gives eight columns of about
@@ -75,10 +79,12 @@ const TabsList = React.forwardRef<
       thumb.style.transitionDuration = placed ? '' : '0ms'
       thumb.style.opacity = '1'
       thumb.style.width = `${active.offsetWidth}px`
-      thumb.style.height = `${active.offsetHeight}px`
       // `offsetLeft` is measured against the list, which is the thumb's
-      // offset parent, so this stays correct while the strip is scrolled.
-      thumb.style.transform = `translate3d(${active.offsetLeft}px, ${active.offsetTop}px, 0)`
+      // offset parent, so this stays correct while the strip is scrolled. The
+      // bar sits on the bottom edge of the tab, over the strip's own rule.
+      thumb.style.transform = `translate3d(${active.offsetLeft}px, ${
+        active.offsetTop + active.offsetHeight - thumb.offsetHeight
+      }px, 0)`
       placed = true
     }
 
@@ -133,8 +139,7 @@ const TabsList = React.forwardRef<
     <TabsPrimitive.List
       ref={ref}
       className={cn(
-        'relative isolate inline-flex h-10 max-w-full items-center overflow-x-auto rounded-xl p-1 text-muted-foreground',
-        'segmented',
+        'relative isolate flex w-full max-w-full items-end gap-1 overflow-x-auto border-b border-border text-muted-foreground',
         // A horizontal scrollbar inside a 40px pill is thicker than the thing
         // it is scrolling. The overflow still scrolls by wheel, drag, and by
         // focusing a tab with the arrow keys, which browsers bring into view.
@@ -146,7 +151,7 @@ const TabsList = React.forwardRef<
       <span
         ref={thumbRef}
         aria-hidden="true"
-        className="segmented-thumb pointer-events-none absolute left-0 top-0 -z-10 rounded-[10px] opacity-0"
+        className="tabs-underline pointer-events-none absolute left-0 top-0 h-[2px] rounded-full bg-primary opacity-0"
       />
       {children}
     </TabsPrimitive.List>
@@ -161,11 +166,10 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'relative inline-flex shrink-0 grow basis-auto items-center justify-center whitespace-nowrap rounded-[10px] px-3 py-1.5 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
-      // No background of its own: the thumb behind it is the selected state.
-      // Only the label changes, and it changes faster than the thumb slides so
-      // the text is already legible by the time the thumb arrives under it.
-      'data-[state=active]:text-foreground data-[state=inactive]:hover:text-foreground/80',
+      'relative inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-t-md px-3 pb-3 pt-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+      // The bar under it is the selected state; the label turns dark and bold
+      // with it, so the open tab reads at a glance even in greyscale.
+      'data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=inactive]:hover:text-foreground',
       className
     )}
     {...props}
@@ -180,7 +184,7 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      'mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+      'mt-6 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       className
     )}
     {...props}

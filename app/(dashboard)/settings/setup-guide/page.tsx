@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/page-header'
@@ -30,6 +29,7 @@ import {
   Video,
   ArrowRight,
   ClipboardList,
+  LifeBuoy,
 } from 'lucide-react'
 
 interface SetupStep {
@@ -104,14 +104,15 @@ const setupSections: SetupSection[] = [
         description: "Configure your clinic's opening and closing hours for each day of the week.",
         steps: [
           'Go to Settings → Clinic information, scroll to "Working hours"',
-          'For each day, set the Opening Time and Closing Time',
-          'Toggle "Closed" for days when the clinic is not open (e.g., Sundays)',
+          'Every day starts open round the clock — set the Opening Time and Closing Time for any day the clinic does not',
+          'Leave "24 h" on for a day the clinic never closes',
+          'Every day of the week is open by default — toggle "Closed" only for a day the clinic genuinely does not work',
           'Use the "Copy to All" button to apply one day\'s hours to all days',
           'Click "Save changes"',
         ],
         tips: [
           'Working hours are used for appointment scheduling — patients can only book during these hours',
-          'You can set different hours for different days (e.g., half-day on Saturdays)',
+          'Nothing here is assumed: a practice open nine to five, one that works nights and one that never closes all say so in the same place',
         ],
         link: { label: 'Go to clinic settings', href: '/settings/clinic' },
       },
@@ -601,18 +602,18 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div className="overflow-hidden rounded-xl border">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/50 transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60"
       >
         <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-semibold shrink-0">
           {index + 1}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm">{guide.title}</p>
+          <p className="text-sm font-semibold">{guide.title}</p>
           <p className="text-xs text-muted-foreground truncate">{guide.description}</p>
         </div>
         {open ? (
@@ -623,7 +624,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
       </button>
 
       {open && (
-        <div className="px-4 pb-4 border-t bg-accent/20">
+        <div className="border-t bg-muted/40 px-4 pb-4">
           <div className="mt-3 space-y-4">
             {/* Steps */}
             <div>
@@ -644,7 +645,7 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
 
             {/* Tips */}
             {guide.tips && guide.tips.length > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-3">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-1.5">
                   Tips
                 </p>
@@ -665,17 +666,17 @@ function GuideSection({ guide, index }: { guide: SetupStep; index: number }) {
                 <Button size="sm" variant="default" asChild>
                   <Link href={guide.link.href}>
                     {guide.link.label}
-                    <ArrowRight className="w-3 h-3 ml-1" />
+                    <ArrowRight className="h-3 w-3" />
                   </Link>
                 </Button>
               )}
               {guide.externalLinks?.map((extLink, i) => (
-                <a key={i} href={extLink.url} target="_blank" rel="noopener noreferrer">
-                  <Button size="sm" variant="outline">
+                <Button key={i} size="sm" variant="outline" asChild>
+                  <a href={extLink.url} target="_blank" rel="noopener noreferrer">
                     {extLink.label}
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </Button>
-                </a>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
               ))}
             </div>
           </div>
@@ -713,78 +714,84 @@ export default function SetupGuidePage() {
   const optionalCount = setupSections.filter((s) => s.priority === 'optional').length
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
         title="Setup guide"
         description="Step-by-step instructions to set up your clinic. Follow the essential steps first, then add optional integrations."
       />
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card
-          className={`cursor-pointer transition-colors ${filter === 'essential' ? 'ring-2 ring-red-500' : ''}`}
-          onClick={() => setFilter(filter === 'essential' ? 'all' : 'essential')}
-        >
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
+      {/* Overview: each count is also a filter, so it is a button */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {(
+          [
+            {
+              key: 'essential',
+              label: 'Essential steps',
+              count: essentialCount,
+              icon: CheckCircle2,
+              tone: 'bg-red-600/10 text-red-600 dark:text-red-400',
+            },
+            {
+              key: 'recommended',
+              label: 'Recommended',
+              count: recommendedCount,
+              icon: Circle,
+              tone: 'bg-blue-600/10 text-blue-600 dark:text-blue-400',
+            },
+            {
+              key: 'optional',
+              label: 'Optional',
+              count: optionalCount,
+              icon: Circle,
+              tone: 'bg-muted text-muted-foreground',
+            },
+          ] as const
+        ).map((tile) => {
+          const TileIcon = tile.icon
+          const selected = filter === tile.key
+          return (
+            <button
+              key={tile.key}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => setFilter(selected ? 'all' : tile.key)}
+              className={`flex items-center justify-between gap-4 rounded-2xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'border-primary/40 ring-2 ring-primary' : ''}`}
+            >
               <div>
-                <p className="text-2xl font-bold">{essentialCount}</p>
-                <p className="text-xs text-muted-foreground">Essential steps</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {tile.label}
+                </p>
+                <p className="mt-1 text-2xl font-bold tracking-tight">{tile.count}</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`cursor-pointer transition-colors ${filter === 'recommended' ? 'ring-2 ring-blue-500' : ''}`}
-          onClick={() => setFilter(filter === 'recommended' ? 'all' : 'recommended')}
-        >
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-                <Circle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{recommendedCount}</p>
-                <p className="text-xs text-muted-foreground">Recommended</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`cursor-pointer transition-colors ${filter === 'optional' ? 'ring-2 ring-neutral-500' : ''}`}
-          onClick={() => setFilter(filter === 'optional' ? 'all' : 'optional')}
-        >
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-                <Circle className="w-5 h-5 text-neutral-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{optionalCount}</p>
-                <p className="text-xs text-muted-foreground">Optional</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tile.tone}`}
+              >
+                <TileIcon className="h-5 w-5" />
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={expandAll}>
-          Expand all
-        </Button>
-        <Button variant="outline" size="sm" onClick={collapseAll}>
-          Collapse all
-        </Button>
-        {filter !== 'all' && (
-          <Button variant="ghost" size="sm" onClick={() => setFilter('all')}>
-            Clear filter
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {filter === 'all' ? 'All steps' : `${PRIORITY_BADGE[filter].label} steps`}
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {filter !== 'all' && (
+            <Button variant="ghost" size="sm" onClick={() => setFilter('all')}>
+              Clear filter
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={expandAll}>
+            Expand all
           </Button>
-        )}
+          <Button variant="outline" size="sm" onClick={collapseAll}>
+            Collapse all
+          </Button>
+        </div>
       </div>
 
       {/* Setup Sections */}
@@ -794,70 +801,64 @@ export default function SetupGuidePage() {
           const isExpanded = expandedSections.has(section.id)
 
           return (
-            <Card key={section.id}>
+            <section
+              key={section.id}
+              className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+            >
               <button
                 type="button"
                 aria-expanded={isExpanded}
                 onClick={() => toggleSection(section.id)}
-                className="w-full text-left"
+                className="flex w-full items-center gap-4 p-5 text-left transition-colors hover:bg-muted/40"
               >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${section.color}`}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                        <CardTitle className="text-base">{section.title}</CardTitle>
-                        <PriorityBadge priority={section.priority} />
-                        <span className="text-xs text-muted-foreground">
-                          ~{section.estimatedTime}
-                        </span>
-                      </div>
-                      <CardDescription className="text-sm">{section.description}</CardDescription>
-                    </div>
-                    <div className="shrink-0 mt-1">
-                      {isExpanded ? (
-                        <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
+                <span
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${section.color}`}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="mb-0.5 flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold tracking-tight">{section.title}</span>
+                    <PriorityBadge priority={section.priority} />
+                    <span className="text-xs text-muted-foreground">~{section.estimatedTime}</span>
+                  </span>
+                  <span className="block text-sm text-muted-foreground">{section.description}</span>
+                </span>
+                {isExpanded ? (
+                  <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                )}
               </button>
 
               {isExpanded && (
-                <CardContent className="pt-0">
-                  <div className="space-y-3 mt-2">
-                    {section.guides.map((guide, i) => (
-                      <GuideSection key={i} guide={guide} index={i} />
-                    ))}
-                  </div>
-                </CardContent>
+                <div className="space-y-3 px-5 pb-5">
+                  {section.guides.map((guide, i) => (
+                    <GuideSection key={i} guide={guide} index={i} />
+                  ))}
+                </div>
               )}
-            </Card>
+            </section>
           )
         })}
       </div>
 
       {/* Help Footer */}
-      <Card className="bg-primary/5 border-primary/20">
-        <CardContent className="pt-6">
-          <div className="text-center">
-            <h3 className="font-semibold mb-1">Need more help?</h3>
-            <p className="text-sm text-muted-foreground">
-              {/* This offered a button to `/chat`, which is not a page. The
-                  assistant it means is the one in the bottom-right corner of
-                  every screen. */}
-              If you&apos;re stuck on any step, the assistant in the bottom-right corner of the
-              screen can help, or contact your system administrator.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/10">
+          <LifeBuoy className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-semibold">Need more help?</p>
+          <p className="mt-0.5 text-blue-800 dark:text-blue-300">
+            {/* This offered a button to `/chat`, which is not a page. The
+                assistant it means is the one in the bottom-right corner of
+                every screen. */}
+            If you&apos;re stuck on any step, the assistant in the bottom-right corner of the screen
+            can help, or contact your system administrator.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

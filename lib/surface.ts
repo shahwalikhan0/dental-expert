@@ -18,26 +18,31 @@
  * and neither needs a `dark:` variant.
  */
 
-/** An in-page surface: a card, a panel, a section of a form. */
-export const GLASS_SURFACE =
-  'border border-border/60 bg-card/70 backdrop-blur-xl backdrop-saturate-150'
+/**
+ * An in-page surface: a card, a panel, a section of a form.
+ *
+ * Solid, with a full-strength edge and a small shadow. It was translucent
+ * (`bg-card/70` and a blur) over a near-white page, which left a card the
+ * same colour as the ground under it: nothing on a screen was visibly
+ * separate from anything else. The page is now grey and the card is opaque.
+ * The names stay, so the eighty-odd call sites need no change.
+ */
+export const GLASS_SURFACE = 'border border-border bg-card shadow-sm'
 
 /**
  * A surface that floats over content it knows nothing about: a menu, a dialog,
  * a toast. Less transparent than an in-page one, because whatever is behind it
  * is not its own background and must not compete with its text.
  */
-export const GLASS_OVERLAY =
-  'border border-border/60 bg-popover/90 backdrop-blur-2xl backdrop-saturate-150'
+export const GLASS_OVERLAY = 'border border-border bg-popover shadow-lg'
 
 /**
- * A field. Drawn as a well in the surface rather than as a white box on it: an
- * opaque field on a translucent card reads as a hole punched through it.
- *
- * `bg-foreground/[0.04]` is the same instruction in both themes — a little of
- * the text colour over the surface — which is why there is no `dark:` here.
+ * A field: a white box with a clear edge, the one shape everybody reads as
+ * "type here". It was a faint well in a translucent card, which on the grey
+ * page looked like a smudge rather than a control. In the dark theme it sits a
+ * shade below the card instead of level with it.
  */
-export const GLASS_FIELD = 'border border-input/70 bg-foreground/[0.04] backdrop-blur-sm'
+export const GLASS_FIELD = 'border border-input bg-card shadow-sm dark:bg-background/60'
 
 /**
  * The scrim behind a modal.

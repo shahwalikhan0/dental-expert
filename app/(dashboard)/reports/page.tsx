@@ -46,10 +46,24 @@ import {
   ResponsiveContainer,
   ComposedChart,
 } from 'recharts'
+import {
+  BAR_RADIUS,
+  axisProps,
+  barCursor,
+  gridProps,
+  lineProps,
+  moneyTick,
+  seriesColor,
+  sequentialColor,
+  SLICE_GAP,
+} from '@/lib/chart-theme'
+import { ChartLegend, ChartTooltip } from '@/components/charts/chart-tooltip'
+import { humanise } from '@/lib/labels'
+import { BarList } from '@/components/charts/bar-list'
 
 import { useToast } from '@/hooks/use-toast'
 import { useCan } from '@/hooks/use-can'
-import { formatCurrency } from '@/lib/i18n/format'
+import { formatCurrency, formatNumber } from '@/lib/i18n/format'
 import { toastError } from '@/lib/toast-utils'
 
 /**
@@ -59,17 +73,13 @@ import { toastError } from '@/lib/toast-utils'
  */
 const WHOLE_RUPEES = { maximumFractionDigits: 0 }
 
-// Chart colors
-const CHART_COLORS = [
-  '#0088FE',
-  '#00C49F',
-  '#FFBB28',
-  '#FF8042',
-  '#8884D8',
-  '#82CA9D',
-  '#FFC658',
-  '#FF6B6B',
-]
+/*
+  The eight hardcoded hex values that used to live here were the Recharts
+  documentation palette — `#8884D8`, `#0088FE`, `#00C49F` and friends. They are
+  what made these charts look like a tutorial, and because this screen declared
+  its own set it never matched the dashboard, which read the theme. The palette
+  now comes from lib/chart-theme.ts for both.
+*/
 
 // Date range presets
 const dateRangePresets = [
@@ -303,6 +313,46 @@ export default function ReportsPage() {
     return `${value.toFixed(1)}%`
   }
 
+  const share = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0)
+
+  /**
+   * Gender, largest first, as the shared ranked list wants it.
+   *
+   * "Other" covers every value that is not male or female *and* the patients
+   * whose gender nobody recorded — `Patient.gender` is nullable, and a clinic
+   * that never asks is the normal case rather than an error.
+   */
+  const genderRows = (() => {
+    const total = patientAnalytics?.totalPatients ?? 0
+    const counts = [
+      { key: 'male', label: 'Male', value: patientAnalytics?.demographics.male ?? 0 },
+      { key: 'female', label: 'Female', value: patientAnalytics?.demographics.female ?? 0 },
+      {
+        key: 'other',
+        label: 'Other or not recorded',
+        value: patientAnalytics?.demographics.other ?? 0,
+      },
+    ]
+    return counts
+      .sort((a, b) => b.value - a.value)
+      .map((row) => ({
+        ...row,
+        display: formatNumber(row.value),
+        detail: formatPercentage(share(row.value, total)),
+      }))
+  })()
+
+  /** Procedure categories, biggest share first — see the note on the chart. */
+  const categorySlices = [...(clinicalAnalytics?.proceduresByCategory ?? [])]
+    // `PROSTHODONTIC` is a database value, not a label for a legend.
+    .map((cat) => ({ name: humanise(cat.category), value: cat.count }))
+    .sort((a, b) => b.value - a.value)
+    // The shade has to sit on the datum: Recharts builds a pie's legend from
+    // the data, so a fill declared only on the <Cell> leaves every legend
+    // swatch in the Pie's default colour.
+    .map((slice, index, all) => ({ ...slice, fill: sequentialColor(index, all.length) }))
+  const categoryTotal = categorySlices.reduce((sum, slice) => sum + slice.value, 0)
+
   if (!loadedOnce) return <PageSkeleton variant="dashboard" />
 
   return (
@@ -510,64 +560,23 @@ export default function ReportsPage() {
                     <CardTitle>Gender distribution</CardTitle>
                     <CardDescription>Patient demographics breakdown</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent>
+                    {/*
+                      Was three hand-rolled bars in a fixed 128px track, one
+                      `bg-blue-600` and one `bg-pink-600` — colours neither
+                      theme defines, saying something about the patients that
+                      the clinic did not. One component now, the same one the
+                      acquisition and payment breakdowns use, in the theme's own
+                      ink.
+                    */}
                     {loading ? (
-                      <>
+                      <div className="space-y-2">
                         <Skeleton className="h-8 w-full" />
                         <Skeleton className="h-8 w-full" />
                         <Skeleton className="h-8 w-full" />
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Male</span>
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-32 bg-blue-100 rounded-full overflow-hidden dark:bg-blue-950/40">
-                              <div
-                                className="h-full bg-blue-600"
-                                style={{
-                                  width: `${((patientAnalytics?.demographics.male || 0) / (patientAnalytics?.totalPatients || 1)) * 100}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm font-bold w-12 text-right">
-                              {patientAnalytics?.demographics.male || 0}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Female</span>
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-32 bg-pink-100 rounded-full overflow-hidden dark:bg-pink-950/40">
-                              <div
-                                className="h-full bg-pink-600"
-                                style={{
-                                  width: `${((patientAnalytics?.demographics.female || 0) / (patientAnalytics?.totalPatients || 1)) * 100}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm font-bold w-12 text-right">
-                              {patientAnalytics?.demographics.female || 0}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Other</span>
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-32 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-muted-foreground"
-                                style={{
-                                  width: `${((patientAnalytics?.demographics.other || 0) / (patientAnalytics?.totalPatients || 1)) * 100}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm font-bold w-12 text-right">
-                              {patientAnalytics?.demographics.other || 0}
-                            </span>
-                          </div>
-                        </div>
-                      </>
+                      <BarList rows={genderRows} emptyMessage="No patients in this period" />
                     )}
                   </CardContent>
                 </Card>
@@ -578,34 +587,24 @@ export default function ReportsPage() {
                     <CardTitle>Acquisition sources</CardTitle>
                     <CardDescription>How patients found your practice</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
+                  <CardContent>
                     {loading ? (
-                      <>
-                        <Skeleton className="h-12 w-full" />
-                        <Skeleton className="h-12 w-full" />
-                        <Skeleton className="h-12 w-full" />
-                      </>
-                    ) : patientAnalytics?.acquisitionSources.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">
-                        No acquisition data available
-                      </p>
+                      <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                      </div>
                     ) : (
-                      patientAnalytics?.acquisitionSources.map((source) => (
-                        <div key={source.source} className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{source.source || 'Unknown'}</span>
-                            <span className="text-muted-foreground">
-                              {source.count} ({formatPercentage(source.percentage)})
-                            </span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary"
-                              style={{ width: `${source.percentage}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))
+                      <BarList
+                        rows={(patientAnalytics?.acquisitionSources ?? []).map((source) => ({
+                          key: source.source || 'unknown',
+                          label: source.source || 'Unknown',
+                          value: source.count,
+                          display: formatNumber(source.count),
+                          detail: formatPercentage(source.percentage),
+                        }))}
+                        emptyMessage="Nobody has been asked how they found the practice"
+                      />
                     )}
                   </CardContent>
                 </Card>
@@ -621,21 +620,33 @@ export default function ReportsPage() {
                   {loading ? (
                     <Skeleton className="h-64 w-full" />
                   ) : patientAnalytics?.ageGroups && patientAnalytics.ageGroups.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={patientAnalytics.ageGroups}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="label" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="count" fill="#8884D8" name="Patients" radius={[4, 4, 0, 0]}>
-                          {patientAnalytics.ageGroups.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={CHART_COLORS[index % CHART_COLORS.length]}
-                            />
-                          ))}
-                        </Bar>
+                    <ResponsiveContainer width="100%" height={280}>
+                      {/*
+                        One colour, not one per bar.
+
+                        Every bar used to be a different hue, which says the age
+                        bands are different *kinds* of thing. They are one
+                        quantity cut into ordered buckets, so colour has no work
+                        to do here and the x axis already labels them.
+                      */}
+                      <BarChart
+                        data={patientAnalytics.ageGroups}
+                        margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid {...gridProps} />
+                        <XAxis dataKey="label" {...axisProps} />
+                        <YAxis allowDecimals={false} width={40} {...axisProps} />
+                        <Tooltip
+                          cursor={barCursor}
+                          content={<ChartTooltip format={(value) => formatNumber(value)} />}
+                        />
+                        <Bar
+                          dataKey="count"
+                          fill="hsl(var(--chart-1))"
+                          name="Patients"
+                          radius={BAR_RADIUS}
+                          maxBarSize={56}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -774,31 +785,40 @@ export default function ReportsPage() {
                       <Skeleton className="h-64 w-full" />
                     ) : clinicalAnalytics?.proceduresByCategory &&
                       clinicalAnalytics.proceduresByCategory.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={300}>
+                      <ResponsiveContainer width="100%" height={280}>
+                        {/*
+                          Shaded by share rather than painted by position, and
+                          sorted so the darkest step is the biggest category.
+                          The label lines that used to radiate out of it are
+                          gone — the legend below names every slice, and the
+                          leader lines collided as soon as two categories were
+                          close in size.
+                        */}
                         <PieChart>
                           <Pie
-                            data={clinicalAnalytics.proceduresByCategory.map((cat) => ({
-                              name: cat.category,
-                              value: cat.count,
-                            }))}
+                            data={categorySlices}
                             cx="50%"
                             cy="50%"
-                            labelLine={true}
-                            label={({ name, percent }) =>
-                              `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`
-                            }
-                            outerRadius={100}
+                            innerRadius={56}
+                            outerRadius={92}
+                            paddingAngle={1}
                             dataKey="value"
+                            nameKey="name"
                           >
-                            {clinicalAnalytics.proceduresByCategory.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={CHART_COLORS[index % CHART_COLORS.length]}
-                              />
+                            {categorySlices.map((slice) => (
+                              <Cell key={slice.name} fill={slice.fill} {...SLICE_GAP} />
                             ))}
                           </Pie>
-                          <Tooltip />
-                          <Legend />
+                          <Tooltip
+                            content={
+                              <ChartTooltip
+                                format={(value) =>
+                                  `${formatNumber(value)} (${formatPercentage(share(value, categoryTotal))})`
+                                }
+                              />
+                            }
+                          />
+                          <Legend content={<ChartLegend />} />
                         </PieChart>
                       </ResponsiveContainer>
                     ) : (
@@ -938,74 +958,35 @@ export default function ReportsPage() {
                   <CardDescription>Collected by payment method, net of refunds</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {/*
+                    The pie that used to sit to the left of this list is gone.
+
+                    It carried no information the list did not: the same
+                    methods, the same amounts, the same percentages, read off a
+                    legend instead of a label. Two encodings of one small table
+                    is not twice as clear — it is one thing to read and one
+                    thing to check it against. The list wins because the figures
+                    are the point: a clinic reconciling the day wants the
+                    amount, not the angle.
+                  */}
                   {loading ? (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Skeleton className="h-64 w-full" />
-                      <Skeleton className="h-64 w-full" />
-                    </div>
-                  ) : financialAnalytics?.paymentMethodBreakdown &&
-                    financialAnalytics.paymentMethodBreakdown.length > 0 ? (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <ResponsiveContainer width="100%" height={250}>
-                        <PieChart>
-                          <Pie
-                            data={financialAnalytics.paymentMethodBreakdown.map((m) => ({
-                              name: m.method,
-                              value: m.amount,
-                            }))}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) =>
-                              `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`
-                            }
-                            outerRadius={80}
-                            dataKey="value"
-                          >
-                            {financialAnalytics.paymentMethodBreakdown.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={CHART_COLORS[index % CHART_COLORS.length]}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(value) =>
-                              typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
-                            }
-                          />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="space-y-4">
-                        {financialAnalytics.paymentMethodBreakdown.map((method, index) => (
-                          <div
-                            key={method.method}
-                            className="flex items-center justify-between p-3 border rounded-lg"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="w-4 h-4 rounded-full"
-                                style={{
-                                  backgroundColor: CHART_COLORS[index % CHART_COLORS.length],
-                                }}
-                              />
-                              <span className="font-medium">{method.method}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold">{formatCurrency(method.amount)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {formatPercentage(method.percentage)}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-8 w-full" />
+                      <Skeleton className="h-8 w-full" />
+                      <Skeleton className="h-8 w-full" />
                     </div>
                   ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      No payment data available
-                    </p>
+                    <BarList
+                      rows={(financialAnalytics?.paymentMethodBreakdown ?? []).map((method) => ({
+                        key: method.method,
+                        // `BANK_TRANSFER`, as written in the database, is not a label.
+                        label: humanise(method.method),
+                        value: method.amount,
+                        display: formatCurrency(method.amount, WHOLE_RUPEES),
+                        detail: formatPercentage(method.percentage),
+                      }))}
+                      emptyMessage="Nothing collected in this period"
+                    />
                   )}
                 </CardContent>
               </Card>
@@ -1024,26 +1005,61 @@ export default function ReportsPage() {
                     <Skeleton className="h-64 w-full" />
                   ) : financialAnalytics?.revenueByMonth &&
                     financialAnalytics.revenueByMonth.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={350}>
-                      <ComposedChart data={financialAnalytics.revenueByMonth}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
+                    <ResponsiveContainer width="100%" height={320}>
+                      {/*
+                        Four series on one axis, which is legitimate here: all
+                        four are money in the same currency, so a bar twice as
+                        tall really is twice as much. The profit line stays a
+                        line because it is a different kind of fact — a
+                        difference rather than a total — and reading it as a
+                        fourth bar beside its own inputs invites adding it to
+                        them.
+                      */}
+                      <ComposedChart
+                        data={financialAnalytics.revenueByMonth}
+                        margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid {...gridProps} />
+                        <XAxis dataKey="month" {...axisProps} />
+                        <YAxis
+                          {...axisProps}
+                          width={64}
+                          tickFormatter={(value) => moneyTick(Number(value))}
+                        />
                         <Tooltip
-                          formatter={(value) =>
-                            typeof value === 'number' ? formatCurrency(value, WHOLE_RUPEES) : ''
+                          cursor={barCursor}
+                          content={
+                            <ChartTooltip format={(value) => formatCurrency(value, WHOLE_RUPEES)} />
                           }
                         />
-                        <Legend />
-                        <Bar dataKey="billed" fill="#0088FE" name="Billed" />
-                        <Bar dataKey="collected" fill="#00C49F" name="Collected" />
-                        <Bar dataKey="expenses" fill="#FF6B6B" name="Expenses" />
+                        <Legend content={<ChartLegend />} />
+                        <Bar
+                          dataKey="billed"
+                          fill={seriesColor(0)}
+                          name="Billed"
+                          radius={BAR_RADIUS}
+                          maxBarSize={28}
+                        />
+                        <Bar
+                          dataKey="collected"
+                          fill={seriesColor(2)}
+                          name="Collected"
+                          radius={BAR_RADIUS}
+                          maxBarSize={28}
+                        />
+                        <Bar
+                          dataKey="expenses"
+                          fill={seriesColor(1)}
+                          name="Expenses"
+                          radius={BAR_RADIUS}
+                          maxBarSize={28}
+                        />
                         <Line
                           type="monotone"
                           dataKey="profit"
-                          stroke="#8884D8"
-                          strokeWidth={3}
+                          stroke={seriesColor(4)}
                           name="Profit"
+                          {...lineProps}
                         />
                       </ComposedChart>
                     </ResponsiveContainer>

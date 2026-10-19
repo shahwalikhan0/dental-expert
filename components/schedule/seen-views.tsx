@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { SeenCounts, SeenClinician } from '@/lib/schedule'
 import { dayMonth, hourLabel, hourRange, weekdayShort } from './labels'
 
@@ -53,19 +52,30 @@ export function HeatTable({
   )
 
   return (
+    /*
+      Scrolls sideways with the clinician column pinned.
+
+      A clinic open round the clock gives this table 24 hour columns. Letting
+      them share the card's width squeezed each to a few pixels; letting the
+      table grow instead means the numbers stay readable, and the name has to
+      stay put or a row of counts belongs to nobody.
+    */
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] border-separate border-spacing-0.5 text-xs">
+      <table className="w-full min-w-max border-separate border-spacing-0.5 text-xs">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>
-            <th scope="col" className="w-40 px-2 py-1 text-left font-medium text-muted-foreground">
+            <th
+              scope="col"
+              className="sticky left-0 z-10 w-40 min-w-40 bg-card px-2 py-1 text-left font-medium text-muted-foreground"
+            >
               {corner}
             </th>
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
-                className="px-1 py-1 text-center font-medium text-muted-foreground"
+                className="min-w-10 px-1 py-1 text-center font-medium text-muted-foreground"
               >
                 {column.href ? (
                   <Link href={column.href} className="hover:underline" aria-label={column.title}>
@@ -91,7 +101,10 @@ export function HeatTable({
             const total = row.values.reduce((sum, value) => sum + value, 0)
             return (
               <tr key={row.key}>
-                <th scope="row" className="px-2 py-1 text-left font-normal">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-card px-2 py-1 text-left font-normal"
+                >
                   {row.href ? (
                     <Link href={row.href} className="font-medium hover:underline">
                       {row.label}
@@ -128,7 +141,10 @@ export function HeatTable({
         {totals && rows.length > 1 && (
           <tfoot>
             <tr>
-              <th scope="row" className="px-2 py-1 text-left font-medium text-muted-foreground">
+              <th
+                scope="row"
+                className="sticky left-0 z-10 bg-card px-2 py-1 text-left font-medium text-muted-foreground"
+              >
                 All
               </th>
               {columnTotals.map((value, index) => (
@@ -166,12 +182,16 @@ function clinicianRows(
   }))
 }
 
-/** One day: the clinic by the hour, then each clinician by the hour. */
+/**
+ * One day: each clinician by the hour.
+ *
+ * There was a bar chart above this table showing the clinic's hourly total —
+ * which is the table's own totals row, drawn twice. The table is the better of
+ * the two for the question a front desk asks: it gives the number rather than a
+ * height to estimate, and it says *who* was seeing patients at eleven, which
+ * the bar chart could not.
+ */
 export function SeenDay({ seen, links }: { seen: SeenCounts; links: SeenLinks }) {
-  const byHour = seen.hours.map((hour, index) => ({
-    hour: hourLabel(hour),
-    seen: seen.grid[0]?.[index] ?? 0,
-  }))
   const hourColumns = seen.hours.map((hour) => ({
     key: String(hour),
     label: hourLabel(hour),
@@ -179,34 +199,13 @@ export function SeenDay({ seen, links }: { seen: SeenCounts; links: SeenLinks })
   }))
 
   return (
-    <div className="space-y-6">
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={byHour} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="hour" tick={{ fontSize: 11 }} interval={0} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip
-            cursor={{ fill: 'hsl(var(--muted))' }}
-            labelStyle={{ color: 'inherit' }}
-            formatter={(value) => [value, 'Patients seen']}
-          />
-          <Bar
-            dataKey="seen"
-            name="Patients seen"
-            fill="hsl(var(--primary))"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-
-      <HeatTable
-        caption="Patients seen by each clinician, by hour"
-        corner="Clinician"
-        columns={hourColumns}
-        rows={clinicianRows(seen, (c) => c.byHour, links)}
-        totals
-      />
-    </div>
+    <HeatTable
+      caption="Patients seen by each clinician, by hour"
+      corner="Clinician"
+      columns={hourColumns}
+      rows={clinicianRows(seen, (c) => c.byHour, links)}
+      totals
+    />
   )
 }
 

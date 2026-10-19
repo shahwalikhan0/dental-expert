@@ -371,7 +371,7 @@ export default function DataImportPage() {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
         title="Data import"
         description="Import data from your previous system using CSV, Excel or PDF files"
@@ -448,7 +448,7 @@ export default function DataImportPage() {
                         aria-checked={selected}
                         onClick={() => setEntityType(opt.key)}
                         className={cn(
-                          'rounded-lg border p-3 text-left transition-all hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          'rounded-xl border p-3 text-left transition-all hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                           selected
                             ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
                             : 'hover:bg-muted'
@@ -456,7 +456,7 @@ export default function DataImportPage() {
                       >
                         <div
                           className={cn(
-                            'w-8 h-8 rounded-lg flex items-center justify-center mb-2',
+                            'w-8 h-8 rounded-xl flex items-center justify-center mb-2',
                             opt.color
                           )}
                         >
@@ -478,7 +478,7 @@ export default function DataImportPage() {
                   </Label>
                   <div
                     className={cn(
-                      'border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer',
+                      'border-2 border-dashed rounded-2xl p-8 text-center transition-colors cursor-pointer',
                       dragOver
                         ? 'border-primary bg-primary/5'
                         : selectedFile
@@ -552,7 +552,7 @@ export default function DataImportPage() {
 
                   {/* PDF warning */}
                   {selectedFile?.name.toLowerCase().endsWith('.pdf') && (
-                    <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-start gap-2 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
                       <AlertTriangle
                         className={`h-4 w-4 mt-0.5 shrink-0 ${TONE_TEXT_CLASS.progress}`}
                       />
@@ -566,7 +566,7 @@ export default function DataImportPage() {
               )}
 
               {/* Upload button */}
-              <div className="flex justify-end">
+              <div className="flex justify-end border-t pt-6">
                 <SubmitButton
                   type="button"
                   onClick={handleUpload}
@@ -597,7 +597,7 @@ export default function DataImportPage() {
               {unmappedRequired.length > 0 && (
                 <div
                   role="alert"
-                  className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800/60 dark:bg-red-950/30"
                 >
                   <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${TONE_TEXT_CLASS.danger}`} />
                   <div>
@@ -611,7 +611,7 @@ export default function DataImportPage() {
                 </div>
               )}
 
-              <div className="border rounded-lg overflow-hidden">
+              <div className="rounded-xl border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -683,9 +683,9 @@ export default function DataImportPage() {
                 </Table>
               </div>
 
-              <div className="flex justify-between">
+              <div className="flex justify-between border-t pt-6">
                 <Button variant="outline" onClick={() => setStep(1)}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Back
+                  <ChevronLeft className="h-4 w-4" /> Back
                 </Button>
                 <Button
                   onClick={() => {
@@ -694,7 +694,7 @@ export default function DataImportPage() {
                   }}
                   disabled={loading || unmappedRequired.length > 0}
                 >
-                  Preview data <ChevronRight className="h-4 w-4 ml-2" />
+                  Preview data <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -713,7 +713,7 @@ export default function DataImportPage() {
                 </p>
               </div>
 
-              <div className="border rounded-lg overflow-x-auto">
+              <div className="rounded-xl border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -751,9 +751,9 @@ export default function DataImportPage() {
                 </Table>
               </div>
 
-              <div className="flex justify-between">
+              <div className="flex justify-between border-t pt-6">
                 <Button variant="outline" onClick={() => setStep(2)}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Back to mapping
+                  <ChevronLeft className="h-4 w-4" /> Back to mapping
                 </Button>
                 <Button
                   onClick={() => {
@@ -761,7 +761,7 @@ export default function DataImportPage() {
                     runValidation()
                   }}
                 >
-                  Validate all <ChevronRight className="h-4 w-4 ml-2" />
+                  Validate all <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -808,12 +808,14 @@ export default function DataImportPage() {
                         tone: TONE_TEXT_CLASS.progress,
                       },
                     ].map((stat) => (
-                      <Card key={stat.label}>
-                        <CardContent className="p-3">
-                          <p className={`text-2xl font-bold ${stat.tone}`}>{stat.value}</p>
-                          <p className="text-xs text-muted-foreground">{stat.label}</p>
-                        </CardContent>
-                      </Card>
+                      <div key={stat.label} className="rounded-xl bg-muted p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {stat.label}
+                        </p>
+                        <p className={`mt-1 text-2xl font-bold tracking-tight ${stat.tone}`}>
+                          {stat.value}
+                        </p>
+                      </div>
                     ))}
                   </div>
 
@@ -821,7 +823,7 @@ export default function DataImportPage() {
                   {validation.foreignKeyResolution &&
                     (validation.foreignKeyResolution.resolved > 0 ||
                       validation.foreignKeyResolution.unresolved.length > 0) && (
-                      <div className="border rounded-lg p-4">
+                      <div className="rounded-xl border p-4">
                         <h3 className="text-sm font-medium mb-2">Reference resolution</h3>
                         <p className="text-xs text-muted-foreground">
                           {validation.foreignKeyResolution.resolved} references resolved
@@ -843,7 +845,7 @@ export default function DataImportPage() {
 
                   {/* Error list */}
                   {validation.errors.length > 0 && (
-                    <div className="border rounded-lg p-4">
+                    <div className="rounded-xl border p-4">
                       <h3 className="text-sm font-medium mb-2">
                         Issues ({validation.errors.length}
                         {validation.errors.length >= 200 ? '+' : ''})
@@ -884,15 +886,15 @@ export default function DataImportPage() {
                 </>
               ) : null}
 
-              <div className="flex justify-between">
+              <div className="flex justify-between border-t pt-6">
                 <Button variant="outline" onClick={() => setStep(3)}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Edit data
+                  <ChevronLeft className="h-4 w-4" /> Edit data
                 </Button>
                 <Button
                   onClick={() => setStep(5)}
                   disabled={loading || !validation || (validation.errorCount > 0 && !skipErrorRows)}
                 >
-                  Proceed to import <ChevronRight className="h-4 w-4 ml-2" />
+                  Proceed to import <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -912,7 +914,7 @@ export default function DataImportPage() {
                     </p>
                   </div>
 
-                  <div className="border rounded-lg p-6 max-w-lg mx-auto space-y-4">
+                  <div className="rounded-xl border p-6 max-w-lg mx-auto space-y-4">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground">Data type</p>
@@ -935,7 +937,7 @@ export default function DataImportPage() {
                     </div>
 
                     <div className="border-t pt-4">
-                      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
                         <AlertTriangle
                           className={`h-4 w-4 mt-0.5 shrink-0 ${TONE_TEXT_CLASS.progress}`}
                         />
@@ -967,7 +969,7 @@ export default function DataImportPage() {
 
                   <div className="flex justify-start">
                     <Button variant="outline" onClick={() => setStep(4)} disabled={loading}>
-                      <ChevronLeft className="h-4 w-4 mr-1" /> Back
+                      <ChevronLeft className="h-4 w-4" /> Back
                     </Button>
                   </div>
                 </>
@@ -1016,17 +1018,19 @@ export default function DataImportPage() {
                         tone: TONE_TEXT_CLASS.danger,
                       },
                     ].map((stat) => (
-                      <Card key={stat.label}>
-                        <CardContent className="p-3">
-                          <p className={`text-lg font-bold ${stat.tone}`}>{stat.value}</p>
-                          <p className="text-xs text-muted-foreground">{stat.label}</p>
-                        </CardContent>
-                      </Card>
+                      <div key={stat.label} className="rounded-xl bg-muted p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {stat.label}
+                        </p>
+                        <p className={`mt-1 text-2xl font-bold tracking-tight ${stat.tone}`}>
+                          {stat.value}
+                        </p>
+                      </div>
                     ))}
                   </div>
 
                   {importResult.errors.length > 0 && (
-                    <div className="border rounded-lg p-4 text-left">
+                    <div className="rounded-xl border p-4 text-left">
                       <h3 className="text-sm font-medium mb-2">Error log</h3>
                       <div className="max-h-40 overflow-auto space-y-1">
                         {importResult.errors.map((e, i) => (
@@ -1041,7 +1045,7 @@ export default function DataImportPage() {
                   <div className="flex justify-center gap-3">
                     <Button variant="outline" asChild>
                       <Link href={`/${entityType === 'inventory' ? 'inventory' : entityType}`}>
-                        View {schema?.label.toLowerCase()} <ChevronRight className="h-4 w-4 ml-1" />
+                        View {schema?.label.toLowerCase()} <ChevronRight className="h-4 w-4" />
                       </Link>
                     </Button>
                     <Button onClick={resetWizard}>Import another file</Button>

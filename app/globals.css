@@ -4,7 +4,12 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /*
+     * A light grey page under white cards. Page and card were both white, so
+     * a card's edge was the only thing marking it, and every screen read as one
+     * flat sheet with things scattered on it.
+     */
+    --background: 220 20% 97%;
     /*
      * The ink, softened.
      *
@@ -22,39 +27,75 @@
     --card-foreground: 222 24% 24%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 24% 24%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222 22% 28%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215 14% 45%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222 22% 28%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    /* The brand cyan, deep enough to carry white text: 4.8:1, where the
+       lighter 48% it was gave 2.9:1 and failed on every primary button. The
+       focus ring keeps the brighter shade below. */
+    --primary: 199 89% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 94%;
+    --secondary-foreground: 222 22% 24%;
+    --muted: 220 16% 95%;
+    /* 5.3:1 on the grey page, so secondary text survives the darker ground. */
+    --muted-foreground: 215 16% 42%;
+    --accent: 220 16% 94%;
+    --accent-foreground: 222 22% 24%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    /* Edges a step darker, so a card, a field and a rule are each visible. */
+    --border: 220 14% 88%;
+    --input: 220 13% 83%;
     --ring: 199 89% 48%;
     /* Softer corners throughout. Every `rounded-lg/md/sm` in the
        application is derived from this one number. */
     --radius: 0.75rem;
-    /* Chart colors */
-    --chart-1: 199 89% 48%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 262 52% 55%;
-    --chart-4: 35 92% 55%;
-    --chart-5: 346 77% 50%;
-    --chart-6: 210 60% 50%;
+    /*
+      Chart colors — a selected categorical set, not six hues that looked nice.
+      See lib/chart-theme.ts for the rules that govern them.
+
+      The previous six failed on two counts: the orange sat outside the
+      lightness band, and slots 1 and 6 were both blues (hue 199 and 210) that
+      a protanope cannot tell apart. These were validated against this app's
+      own surfaces — white here, near-black in `.dark` — for lightness band,
+      chroma floor, colour-vision separation and contrast.
+
+      Slot 1 is the brand cyan stepped darker (hue 199, the same hue as
+      `--primary`), so a single-series chart still reads as this product's.
+    */
+    --chart-1: 199 89% 38%;
+    --chart-2: 18 82% 56%;
+    --chart-3: 162 73% 39%;
+    --chart-4: 41 100% 46%;
+    --chart-5: 340 68% 70%;
+    --chart-6: 120 100% 26%;
+
+    /*
+      A sequential ramp, light to dark, for one quantity split into parts —
+      a pie ordered by size, a shaded table. One hue, never a rainbow: the
+      reader is comparing magnitudes, and lightness is what carries magnitude.
+    */
+    --chart-seq-hue: 199;
+    --chart-seq-sat: 70%;
+    /* Lightest and darkest ends. Steps between them are interpolated per
+       chart, so a seven-slice doughnut gets seven distinct shades rather than
+       running out of a fixed list and repeating one. */
+    --chart-seq-from: 74%;
+    --chart-seq-to: 30%;
+
+    /* Grid and axis ink. Recessive by design — the data is the subject. */
+    --chart-grid: 214 31% 91%;
+    --chart-axis: 215 14% 45%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 224 47% 4.5%;
     /* The same decision in the other direction: #F8FAFC is 19:1 on this
        background and glares. #DBE2EB is 15.3:1. */
     --foreground: 213 27% 89%;
-    --card: 222.2 84% 4.9%;
+    /* A card a step lighter than the page, as the light theme's is a step
+       brighter; they were the same colour, so a card had no edge but a line. */
+    --card: 222 40% 8.5%;
     --card-foreground: 213 27% 89%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222 40% 10%;
     --popover-foreground: 213 27% 89%;
     --primary: 199 89% 48%;
     --primary-foreground: 222.2 47.4% 11.2%;
@@ -66,16 +107,28 @@
     --accent-foreground: 213 27% 89%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 217 28% 17%;
+    --input: 217 26% 22%;
     --ring: 199 89% 48%;
-    /* Chart colors dark */
-    --chart-1: 199 89% 55%;
-    --chart-2: 160 60% 50%;
-    --chart-3: 262 52% 60%;
-    --chart-4: 35 92% 60%;
-    --chart-5: 346 77% 55%;
-    --chart-6: 210 60% 55%;
+    /*
+      The same six hues, re-stepped for the dark surface — not an automatic
+      lightening of the light set. Validated against the dark card colour.
+    */
+    --chart-1: 199 80% 47%;
+    --chart-2: 18 70% 50%;
+    --chart-3: 162 73% 36%;
+    --chart-4: 40 100% 39%;
+    --chart-5: 340 60% 58%;
+    --chart-6: 120 100% 26%;
+
+    /* The sequential ramp runs the other way on a dark surface: dark to light. */
+    --chart-seq-hue: 199;
+    --chart-seq-sat: 65%;
+    --chart-seq-from: 32%;
+    --chart-seq-to: 76%;
+
+    --chart-grid: 217 33% 20%;
+    --chart-axis: 215 18% 62%;
   }
 }
 
@@ -110,28 +163,20 @@
 /* Printing is lib/print.ts: documents print from their own frame, without
    these styles. */
 
-/* Recharts dark mode */
-.recharts-default-tooltip {
-  background-color: hsl(var(--popover)) !important;
-  border-color: hsl(var(--border)) !important;
-  color: hsl(var(--popover-foreground)) !important;
-}
+/*
+  There were six Recharts overrides here, four of them `!important`, patching
+  the library's defaults into dark mode from outside.
 
-.recharts-tooltip-label {
-  color: hsl(var(--popover-foreground)) !important;
-}
+  They are gone because nothing renders those defaults any more: every chart
+  passes its own tooltip and legend (components/charts/chart-tooltip.tsx) and
+  its own grid and axis props (lib/chart-theme.ts).
 
-.recharts-cartesian-grid line {
-  stroke: hsl(var(--border));
-}
-
-.recharts-text {
-  fill: hsl(var(--muted-foreground));
-}
-
-.recharts-legend-item-text {
-  color: hsl(var(--foreground)) !important;
-}
+  Two of them had also become actively harmful. A CSS rule beats an SVG
+  presentation attribute, so `.recharts-cartesian-grid line { stroke: ... }`
+  and `.recharts-text { fill: ... }` silently overrode the grid and tick
+  colours each chart sets — the theme would have been written and then thrown
+  away on the way to the screen.
+*/
 
 /* Card hover consistency */
 @layer components {
@@ -184,7 +229,7 @@
    * screen you had navigated to rather than on anything about the screen.
    */
   .page-title {
-    @apply text-2xl font-bold tracking-tight;
+    @apply text-[26px] font-bold leading-tight tracking-tight;
   }
 }
 
@@ -652,6 +697,21 @@
    which tab is current — so it is the first thing to go. */
 @media (prefers-reduced-motion: reduce) {
   .segmented-thumb {
+    transition: opacity 150ms ease-out;
+  }
+}
+
+/* The bar under the open tab (components/ui/tabs.tsx). It slides between tabs
+   with the easing the segmented thumb uses. */
+.tabs-underline {
+  transition:
+    transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs-underline {
     transition: opacity 150ms ease-out;
   }
 }

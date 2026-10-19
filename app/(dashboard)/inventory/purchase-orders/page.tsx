@@ -92,7 +92,7 @@ export default function PurchaseOrdersPage() {
           canWrite && (
             <Button asChild>
               <Link href="/inventory/purchase-orders/new">
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 New purchase order
               </Link>
             </Button>

@@ -112,7 +112,10 @@ export function DateRangeFilter({
           onChange(rangeOf(next, today, presets))
         }}
       >
-        <SelectTrigger aria-label={`${label} date range`} className="w-full sm:w-[160px]">
+        <SelectTrigger
+          aria-label={`${label} date range`}
+          className="h-11 w-full rounded-full px-4 sm:w-[160px]"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -134,7 +137,7 @@ export function DateRangeFilter({
           <Input
             id={fromId}
             type="date"
-            className="h-10 w-[10.5rem]"
+            className="h-11 w-[10.5rem] rounded-full px-4"
             value={value.from}
             max={value.to || undefined}
             disabled={disabled}
@@ -149,7 +152,7 @@ export function DateRangeFilter({
           <Input
             id={toId}
             type="date"
-            className="h-10 w-[10.5rem]"
+            className="h-11 w-[10.5rem] rounded-full px-4"
             value={value.to}
             min={value.from || undefined}
             disabled={disabled}

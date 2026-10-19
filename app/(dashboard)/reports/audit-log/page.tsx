@@ -11,7 +11,7 @@ import { ListToolbar } from '@/components/ui/list-toolbar'
 import { SearchInput } from '@/components/ui/search-input'
 import { FilterSelect, filterValueLabel } from '@/components/ui/filter-select'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { Activity, Shield, UserCog, FileText, CreditCard, Calendar } from 'lucide-react'
+import { Activity, UserCog, FileText, CreditCard, Calendar } from 'lucide-react'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AUDIT_GROUPS, auditEntityLabel, auditLabel, auditTone } from '@/lib/audit-labels'
 import { BLANK, displayDateTime, isoDay } from '@/lib/dates'
@@ -182,11 +182,7 @@ export default function AuditLogPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={
-          <span className="flex items-center gap-2">
-            <Shield className="h-6 w-6" aria-hidden="true" /> Audit log
-          </span>
-        }
+        title="Audit log"
         description={`${total.toLocaleString()} total events`}
         actions={<ExportMenu filename={`audit-log-${isoDay(new Date())}`} getData={exportRows} />}
       />
@@ -242,8 +238,8 @@ export default function AuditLogPage() {
 
       {/* Log entries — read-only, so the rows open nothing and carry no actions. */}
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table className="min-w-[860px]">
+        <CardContent className="overflow-x-auto p-0">
+          <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
                 <TableHead>When</TableHead>
@@ -280,10 +276,26 @@ export default function AuditLogPage() {
                       {displayDateTime(log.createdAt)}
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium">{log.user?.name || 'System'}</div>
-                      {log.user?.role && (
-                        <div className="text-xs text-muted-foreground">{log.user.role}</div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div
+                          aria-hidden="true"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary"
+                        >
+                          {(log.user?.name || 'System')
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((part) => part.charAt(0))
+                            .join('')
+                            .toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold">{log.user?.name || 'System'}</div>
+                          {log.user?.role && (
+                            <div className="text-xs text-muted-foreground">{log.user.role}</div>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={auditTone(log.action)}>
@@ -291,15 +303,21 @@ export default function AuditLogPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="text-sm">{auditEntityLabel(log.entityType)}</span>
-                      </div>
-                      {log.patient && (
-                        <div className="text-xs text-muted-foreground">
-                          {log.patient.name} · {log.patient.patientNo}
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">
+                            {auditEntityLabel(log.entityType)}
+                          </div>
+                          {log.patient && (
+                            <div className="text-xs text-muted-foreground">
+                              {log.patient.name} · {log.patient.patientNo}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </TableCell>
                     <TableCell
                       className="max-w-[28rem] text-sm text-muted-foreground"

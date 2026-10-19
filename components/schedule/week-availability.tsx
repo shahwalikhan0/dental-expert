@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import type { ClinicSchedule, ClinicianDay } from '@/lib/schedule'
 import { formatTime } from '@/lib/appointment-utils'
-import { dayMonth, shortTime, weekdayShort } from './labels'
+import { dayMonth, hoursLabel, weekdayShort } from './labels'
 
 /**
  * A week of availability: each clinician against each day, with their hours
@@ -105,7 +105,7 @@ function DayCell({ day, href }: { day: ClinicianDay | undefined; href: string })
       aria-label={`${day.name}: ${formatTime(day.open)} to ${formatTime(day.close!)}, ${day.counts.free} free, ${day.counts.visits} booked`}
     >
       <span className="block whitespace-nowrap text-muted-foreground">
-        {shortTime(day.open)}–{shortTime(day.close!)}
+        {hoursLabel(day.open, day.close!)}
       </span>
       <span className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-emerald-500/20" aria-hidden>
         <span className="bg-primary" style={{ width: `${(booked / total) * 100}%` }} />

@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -17,19 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FormField } from '@/components/ui/form-field'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { MoneyInput, isInvalidMoney, parseMoney } from '@/components/ui/money-input'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
@@ -41,7 +33,7 @@ import { formatCurrency } from '@/lib/i18n/format'
 import { BLANK } from '@/lib/dates'
 import { describeTeethByQuadrant, formatTeeth, parseTeeth } from '@/lib/teeth'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { ArrowDown, ArrowUp, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 
 /**
  * Edit a treatment plan.
@@ -350,7 +342,7 @@ export default function EditTreatmentPlanPage() {
   const teethItem = teethFor !== null ? items[teethFor] : null
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <PageHeader
         title={`Edit ${planNumber ?? 'treatment plan'}`}
         description={
@@ -372,24 +364,30 @@ export default function EditTreatmentPlanPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">The plan</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <FormField label="Title" htmlFor="title" required error={errors.title}>
-            {(control) => (
-              <Input
-                {...control}
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value)
-                  if (errors.title) setErrors((current) => ({ ...current, title: undefined }))
-                }}
-              />
-            )}
-          </FormField>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        <FormSection
+          title="The plan"
+          description="The title the patient sees on the estimate, and when the work is expected to run"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField
+              label="Title"
+              htmlFor="title"
+              required
+              error={errors.title}
+              className="md:col-span-2"
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value)
+                    if (errors.title) setErrors((current) => ({ ...current, title: undefined }))
+                  }}
+                />
+              )}
+            </FormField>
             <FormField label="Start date" htmlFor="startDate">
               <Input
                 id="startDate"
@@ -406,95 +404,84 @@ export default function EditTreatmentPlanPage() {
                 onChange={(e) => setExpectedEndDate(e.target.value)}
               />
             </FormField>
+            <FormField label="Notes" htmlFor="notes" className="md:col-span-2">
+              <Textarea
+                id="notes"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </FormField>
           </div>
-          <FormField label="Notes" htmlFor="notes">
-            <Textarea
-              id="notes"
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </FormField>
-        </CardContent>
-      </Card>
+        </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Steps</CardTitle>
-          <CardDescription>
-            In the order they will be carried out. The total below is what the patient is quoted.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">#</TableHead>
-                <TableHead>Procedure</TableHead>
-                <TableHead>Teeth</TableHead>
-                <TableHead className="w-40 text-right">Cost</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item, index) => {
-                const teeth = describeTeethByQuadrant(parseTeeth(item.toothNumbers))
-                const costError = errors.cost?.[index]
-                return (
-                  <TableRow key={item.id ?? `${item.procedureId}-${index}`}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>
-                      <p className="font-medium">{item.procedureName}</p>
-                      <p className="text-xs text-muted-foreground">{item.procedureCode}</p>
-                      {LOCKED.has(item.status) && (
-                        <StatusBadge
-                          kind="treatmentPlanItem"
-                          status={item.status}
-                          className="mt-1"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">{teeth || BLANK}</span>
-                        <IconTooltip label={`Choose teeth for ${item.procedureName}`}>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setTeethFor(index)}
-                            aria-label={`Choose teeth for ${item.procedureName}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </IconTooltip>
+        <FormSection
+          title="Steps"
+          description="In the order they will be carried out. The total below is what the patient is quoted."
+        >
+          <div className="space-y-4">
+            {items.length > 0 ? (
+              <ol className="space-y-2">
+                {items.map((item, index) => {
+                  const teeth = describeTeethByQuadrant(parseTeeth(item.toothNumbers))
+                  const costError = errors.cost?.[index]
+                  return (
+                    <li
+                      key={item.id ?? `${item.procedureId}-${index}`}
+                      className="flex flex-wrap items-start gap-3 rounded-xl border border-border px-4 py-3"
+                    >
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1 basis-48">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{item.procedureName}</p>
+                          {LOCKED.has(item.status) && (
+                            <StatusBadge kind="treatmentPlanItem" status={item.status} />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{item.procedureCode}</p>
+                        <div className="mt-1 flex items-center gap-1">
+                          <span className="text-sm text-muted-foreground">
+                            Teeth: {teeth || BLANK}
+                          </span>
+                          <IconTooltip label={`Choose teeth for ${item.procedureName}`}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setTeethFor(index)}
+                              aria-label={`Choose teeth for ${item.procedureName}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </IconTooltip>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <MoneyInput
-                        id={`cost-${index}`}
-                        aria-label={`Cost of ${item.procedureName}`}
-                        aria-invalid={costError ? true : undefined}
-                        aria-describedby={costError ? `cost-${index}-error` : undefined}
-                        value={item.estimatedCost}
-                        onChange={(raw) => setCost(index, raw)}
-                        className="h-8"
-                      />
-                      {costError && (
-                        <p id={`cost-${index}-error`} className="mt-1 text-xs text-destructive">
-                          {costError}
-                        </p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
+                      <div className="w-36 shrink-0">
+                        <MoneyInput
+                          id={`cost-${index}`}
+                          aria-label={`Cost of ${item.procedureName}`}
+                          aria-invalid={costError ? true : undefined}
+                          aria-describedby={costError ? `cost-${index}-error` : undefined}
+                          value={item.estimatedCost}
+                          onChange={(raw) => setCost(index, raw)}
+                          className="h-9"
+                        />
+                        {costError && (
+                          <p id={`cost-${index}-error`} className="mt-1 text-xs text-destructive">
+                            {costError}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 gap-1">
                         <IconTooltip label="Move this item up">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
                             onClick={() => move(index, -1)}
                             aria-label="Move this item up"
                           >
@@ -506,7 +493,7 @@ export default function EditTreatmentPlanPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
                             onClick={() => move(index, 1)}
                             aria-label="Move this item down"
                           >
@@ -518,7 +505,7 @@ export default function EditTreatmentPlanPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive"
+                            className="h-9 w-9 text-destructive"
                             onClick={() => remove(index)}
                             aria-label="Remove this item"
                           >
@@ -526,133 +513,139 @@ export default function EditTreatmentPlanPage() {
                           </Button>
                         </IconTooltip>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-              {items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No steps yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-
-          <div className="flex justify-end text-sm font-medium">
-            Total estimate: {formatCurrency(total)}
-          </div>
-
-          {/* Plans raised before the create route settled each line's price
-              carry a total that its own lines do not add up to: the header took
-              the procedure's list price where none was given, while the line
-              was written as zero. Saying so here is the only way the figure
-              gets corrected — quietly saving would replace the quoted total
-              with zero, and quietly keeping it would leave the estimate
-              disagreeing with itself for good. */}
-          {Math.abs(storedTotal - total) > 0.005 && (
-            <p className="text-sm text-amber-700 dark:text-amber-400 text-right">
-              This plan is stored with a total of {formatCurrency(storedTotal)}, which its steps do
-              not add up to. Put the price against each step; saving will set the total to{' '}
-              {formatCurrency(total)}.
-            </p>
-          )}
-
-          {/* The step being added */}
-          <div className="space-y-4 border-t pt-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
-              <FormField label="Add a procedure" htmlFor="procedure" error={errors.procedure}>
-                {(control) => (
-                  <ProcedurePicker<Procedure>
-                    id={control.id}
-                    aria-describedby={control['aria-describedby']}
-                    aria-invalid={control['aria-invalid']}
-                    value={pickProcedure?.id ?? null}
-                    selectedLabel={pickProcedure?.name}
-                    onSelect={(procedure) => {
-                      setPickProcedure(procedure)
-                      setErrors((current) => ({ ...current, procedure: undefined }))
-                    }}
-                    onClear={() => setPickProcedure(null)}
-                  />
-                )}
-              </FormField>
-              <FormField
-                label="Cost"
-                htmlFor="pickCost"
-                error={errors.pickCost}
-                hint={
-                  pickProcedure
-                    ? `Blank for the list price, ${formatCurrency(pickProcedure.basePrice)}.`
-                    : 'Blank for the list price.'
-                }
-              >
-                {(control) => (
-                  <MoneyInput
-                    {...control}
-                    value={pickCost}
-                    onChange={(raw) => {
-                      setPickCost(raw)
-                      setErrors((current) => ({ ...current, pickCost: undefined }))
-                    }}
-                    placeholder="List price"
-                  />
-                )}
-              </FormField>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium" id="pickTeethLabel">
-                Teeth
-              </p>
-              <div role="group" aria-labelledby="pickTeethLabel">
-                <ToothPicker
-                  selected={pickTeeth}
-                  onChange={setPickTeeth}
-                  patientId={patient?.id}
-                  dateOfBirth={patient?.dateOfBirth}
-                />
+                    </li>
+                  )
+                })}
+              </ol>
+            ) : (
+              <div className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                No steps yet.
               </div>
+            )}
+
+            <div className="flex items-baseline justify-between rounded-xl bg-muted/60 px-4 py-3">
+              <span className="text-sm font-medium">Total estimate</span>
+              <span className="text-lg font-bold tabular-nums">{formatCurrency(total)}</span>
             </div>
-            <Button type="button" variant="outline" onClick={addItem} disabled={!pickProcedure}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add procedure
-            </Button>
+
+            {/* Plans raised before the create route settled each line's price
+                carry a total that its own lines do not add up to: the header took
+                the procedure's list price where none was given, while the line
+                was written as zero. Saying so here is the only way the figure
+                gets corrected — quietly saving would replace the quoted total
+                with zero, and quietly keeping it would leave the estimate
+                disagreeing with itself for good. */}
+            {Math.abs(storedTotal - total) > 0.005 && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+                  <AlertTriangle className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  This plan is stored with a total of {formatCurrency(storedTotal)}, which its steps
+                  do not add up to. Put the price against each step; saving will set the total to{' '}
+                  {formatCurrency(total)}.
+                </span>
+              </div>
+            )}
+
+            {/* The step being added */}
+            <div className="space-y-4 rounded-xl border border-border bg-muted/40 p-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
+                <FormField label="Add a procedure" htmlFor="procedure" error={errors.procedure}>
+                  {(control) => (
+                    <ProcedurePicker<Procedure>
+                      id={control.id}
+                      aria-describedby={control['aria-describedby']}
+                      aria-invalid={control['aria-invalid']}
+                      value={pickProcedure?.id ?? null}
+                      selectedLabel={pickProcedure?.name}
+                      onSelect={(procedure) => {
+                        setPickProcedure(procedure)
+                        setErrors((current) => ({ ...current, procedure: undefined }))
+                      }}
+                      onClear={() => setPickProcedure(null)}
+                    />
+                  )}
+                </FormField>
+                <FormField
+                  label="Cost"
+                  htmlFor="pickCost"
+                  error={errors.pickCost}
+                  hint={
+                    pickProcedure
+                      ? `Blank for the list price, ${formatCurrency(pickProcedure.basePrice)}.`
+                      : 'Blank for the list price.'
+                  }
+                >
+                  {(control) => (
+                    <MoneyInput
+                      {...control}
+                      value={pickCost}
+                      onChange={(raw) => {
+                        setPickCost(raw)
+                        setErrors((current) => ({ ...current, pickCost: undefined }))
+                      }}
+                      placeholder="List price"
+                    />
+                  )}
+                </FormField>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium" id="pickTeethLabel">
+                  Teeth
+                </p>
+                <div role="group" aria-labelledby="pickTeethLabel">
+                  <ToothPicker
+                    selected={pickTeeth}
+                    onChange={setPickTeeth}
+                    patientId={patient?.id}
+                    dateOfBirth={patient?.dateOfBirth}
+                  />
+                </div>
+              </div>
+              <Button type="button" variant="outline" onClick={addItem} disabled={!pickProcedure}>
+                <Plus className="h-4 w-4" />
+                Add procedure
+              </Button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </FormSection>
 
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" asChild>
-          <Link href={`/treatments/plans/${planId}`}>Cancel</Link>
-        </Button>
-        <SubmitButton busy={saving}>Save changes</SubmitButton>
-      </div>
+        <FormActions>
+          <Button type="button" variant="outline" asChild>
+            <Link href={`/treatments/plans/${planId}`}>Cancel</Link>
+          </Button>
+          <SubmitButton busy={saving}>Save changes</SubmitButton>
+        </FormActions>
 
-      {/* The teeth of a step already on the plan */}
-      <Dialog open={teethItem !== null} onOpenChange={(open) => !open && setTeethFor(null)}>
-        <DialogContent size="xl">
-          <DialogHeader>
-            <DialogTitle>Teeth for {teethItem?.procedureName}</DialogTitle>
-            <DialogDescription>
-              Click a tooth to add or remove it. Leave it empty for a procedure on the whole mouth.
-            </DialogDescription>
-          </DialogHeader>
-          {teethItem && teethFor !== null && (
-            <ToothPicker
-              selected={parseTeeth(teethItem.toothNumbers)}
-              onChange={(teeth) => updateItem(teethFor, { toothNumbers: formatTeeth(teeth) ?? '' })}
-              patientId={patient?.id}
-              dateOfBirth={patient?.dateOfBirth}
-            />
-          )}
-          <DialogFooter>
-            <Button type="button" onClick={() => setTeethFor(null)}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </form>
+        {/* The teeth of a step already on the plan */}
+        <Dialog open={teethItem !== null} onOpenChange={(open) => !open && setTeethFor(null)}>
+          <DialogContent size="xl">
+            <DialogHeader>
+              <DialogTitle>Teeth for {teethItem?.procedureName}</DialogTitle>
+              <DialogDescription>
+                Click a tooth to add or remove it. Leave it empty for a procedure on the whole
+                mouth.
+              </DialogDescription>
+            </DialogHeader>
+            {teethItem && teethFor !== null && (
+              <ToothPicker
+                selected={parseTeeth(teethItem.toothNumbers)}
+                onChange={(teeth) =>
+                  updateItem(teethFor, { toothNumbers: formatTeeth(teeth) ?? '' })
+                }
+                patientId={patient?.id}
+                dateOfBirth={patient?.dateOfBirth}
+              />
+            )}
+            <DialogFooter>
+              <Button type="button" onClick={() => setTeethFor(null)}>
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </form>
+    </div>
   )
 }

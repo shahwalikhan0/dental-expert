@@ -11,13 +11,12 @@ import { SETTLED_PAYMENT_STATUSES } from '@/lib/cashier'
 import { billedAt, billedInvoiceWhere, money } from '@/lib/invoice-figures'
 import { billedTotals, invoicedLines, outstandingTotals } from '@/lib/invoiced'
 import { holderCan } from '@/lib/rbac'
+// `2026-10` as `Oct 26` — the shared one, so the financial trend and the
+// dashboard's collections axis cannot disagree about `Sep` and `Sept`.
+import { monthLabel } from '@/lib/dates'
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/** `2026-10` as `Oct 26`, the label the trend chart has always shown. */
-function monthLabel(key: string): string {
-  return `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(2, 4)}`
-}
+/** The age buckets, in the order an age axis has to show them. */
+const AGE_GROUPS = ['0-17', '18-29', '30-44', '45-59', '60+', 'Unknown'] as const
 
 // Patient Analytics
 async function getPatientAnalytics(dateFrom: Date, dateTo: Date, hospitalId: string) {
@@ -101,9 +100,17 @@ async function getPatientAnalytics(dateFrom: Date, dateTo: Date, hospitalId: str
     {} as Record<string, number>
   )
 
-  const ageGroups = Object.entries(ageGroupCounts).map(([label, count]) => ({
+  /**
+   * In age order, not in the order the patients happened to arrive.
+   *
+   * These came straight off `Object.entries`, so the axis read 0-17, 30-44,
+   * 18-29 — whichever bucket the first matching patient fell into came first.
+   * An age distribution is a shape you read left to right; out of order it is
+   * not one. Empty buckets are dropped so the axis does not carry gaps.
+   */
+  const ageGroups = AGE_GROUPS.filter((label) => ageGroupCounts[label]).map((label) => ({
     label,
-    count,
+    count: ageGroupCounts[label],
   }))
 
   // Calculate acquisition sources

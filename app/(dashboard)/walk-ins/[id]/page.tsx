@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,18 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { FormField } from '@/components/ui/form-field'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -41,7 +34,7 @@ import { formatToken } from '@/lib/tokens'
 import { splitName } from '@/lib/visitors'
 import { formatPhone } from '@/lib/utils'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { AlertTriangle, Trash2, UserPlus } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, Phone, Trash2, UserCheck, UserPlus } from 'lucide-react'
 import { displayDate, displayDateTime } from '@/lib/dates'
 
 type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'phone', string>>
@@ -248,216 +241,278 @@ export default function WalkInPage() {
   }
 
   const decided = Boolean(visitor.convertedAt || visitor.discardedAt)
+  const words = visitor.name.trim().split(/\s+/).filter(Boolean)
+  const initials =
+    `${words[0]?.charAt(0) ?? '?'}${words.length > 1 ? words[words.length - 1].charAt(0) : ''}`.toUpperCase()
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {ConfirmDialogComponent}
-      <PageHeader
-        title={visitor.name}
-        back={<BackLink trail={trail} fallback="/walk-ins" fallbackLabel="Walk-ins" />}
+
+      {/*
+        The walk-in as a profile: who, how to reach them, when they were first
+        seen. Discarding is the rarer, final half of the decision, so it sits
+        behind "More"; registering is the form below, where the name is checked
+        before it becomes a permanent record.
+      */}
+      <ProfileHeader
+        eyebrow="Walk-in"
+        name={visitor.name}
+        initials={initials}
         badges={
           visitor.convertedPatient ? (
-            <Badge variant="outline">Registered</Badge>
+            <Badge variant="success">Registered</Badge>
           ) : visitor.discardedAt ? (
-            <Badge variant="outline" className="text-muted-foreground">
-              Discarded
-            </Badge>
+            <Badge variant="secondary">Discarded</Badge>
           ) : (
-            <Badge>To decide</Badge>
+            <Badge variant="warning">To decide</Badge>
           )
         }
-        description={`${formatPhone(visitor.phone) || 'No phone number'} · first seen ${displayDate(visitor.createdAt)}`}
-        actions={
-          !decided &&
-          canDiscard && (
-            <Button variant="outline" className="text-destructive" onClick={discard}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Discard
-            </Button>
-          )
+        facts={[
+          { icon: Phone, label: formatPhone(visitor.phone) || 'No phone number' },
+          { icon: Clock, label: `First seen ${displayDate(visitor.createdAt)}` },
+          {
+            icon: Calendar,
+            label: `${visitor.appointments.length} visit${visitor.appointments.length === 1 ? '' : 's'}`,
+          },
+        ]}
+        menu={
+          !decided && canDiscard
+            ? [{ label: 'Discard walk-in', icon: Trash2, onSelect: discard, destructive: true }]
+            : []
         }
       />
 
       {visitor.convertedPatient && (
-        <Card>
-          <CardContent className="py-5 text-sm">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/10">
+            <UserCheck className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1 self-center">
             Registered as{' '}
             <Link
               href={trail.to(`/patients/${visitor.convertedPatient.id}`)}
-              className="font-medium hover:underline"
+              className="font-semibold underline underline-offset-2"
             >
               {visitor.convertedPatient.firstName} {visitor.convertedPatient.lastName} (
               {visitor.convertedPatient.patientId})
             </Link>
             {visitor.convertedBy ? ` by ${visitor.convertedBy.name}` : ''}.
-          </CardContent>
-        </Card>
+          </span>
+        </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Visits</CardTitle>
-          <CardDescription>
-            These follow the patient record if this walk-in is registered.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Appointment</TableHead>
-                <TableHead>When</TableHead>
-                <TableHead>Dentist</TableHead>
-                <TableHead>Token</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visitor.appointments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                    No visits recorded.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                visitor.appointments.map((appointment) => (
-                  <TableRow key={appointment.id}>
-                    <TableCell>
-                      <Link
-                        href={trail.to(`/appointments/${appointment.id}`)}
-                        className="hover:underline"
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {!decided && canRegister && (
+            <form ref={formRef} onSubmit={convert} noValidate>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Register as a patient</CardTitle>
+                  <CardDescription>
+                    The name was split from what the desk typed. Correct it before saving — this
+                    becomes a permanent record.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <FormField
+                      label="First name"
+                      required
+                      htmlFor="firstName"
+                      error={errors.firstName}
+                    >
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={form.firstName}
+                          onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                        />
+                      )}
+                    </FormField>
+                    <FormField
+                      label="Last name"
+                      required
+                      htmlFor="lastName"
+                      error={errors.lastName}
+                    >
+                      {(control) => (
+                        <Input
+                          {...control}
+                          value={form.lastName}
+                          onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                        />
+                      )}
+                    </FormField>
+                    <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
+                      {(control) => (
+                        <PhoneInput
+                          {...control}
+                          value={form.phone}
+                          onChange={(phone) => setForm((current) => ({ ...current, phone }))}
+                        />
+                      )}
+                    </FormField>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dateOfBirth">Date of birth</Label>
+                      <Input
+                        id="dateOfBirth"
+                        type="date"
+                        value={form.dateOfBirth}
+                        onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select
+                        value={form.gender}
+                        onValueChange={(value) => setForm({ ...form, gender: value })}
                       >
-                        {appointment.appointmentNo}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{displayDateTime(appointment.startsAt)}</TableCell>
-                    <TableCell>
-                      {appointment.doctor
-                        ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {formatToken(appointment.tokenNumber)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge kind="appointment" status={appointment.status} />
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                        <SelectTrigger id="gender">
+                          <SelectValue placeholder="Not recorded" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GENDERS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        value={form.city}
+                        onChange={(e) => setForm({ ...form, city: e.target.value })}
+                      />
+                    </div>
+                  </div>
 
-      {!decided && canRegister && (
-        <form ref={formRef} onSubmit={convert} noValidate>
+                  {/* The same soft check registration runs: a shared phone or a
+                      returning patient is shown, not refused. */}
+                  <DuplicateDetector
+                    firstName={form.firstName}
+                    lastName={form.lastName}
+                    phone={form.phone}
+                    email={form.email}
+                    dateOfBirth={form.dateOfBirth}
+                    onSelect={(existingId) => router.push(trail.to(`/patients/${existingId}`))}
+                  />
+
+                  <div className="flex justify-end border-t border-border pt-4">
+                    <SubmitButton busy={saving} busyLabel="Registering…" icon={UserPlus}>
+                      Register and keep the visits
+                    </SubmitButton>
+                  </div>
+                </CardContent>
+              </Card>
+            </form>
+          )}
+
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <UserPlus className="h-4 w-4" />
-                Register as a patient
-              </CardTitle>
+              <CardTitle>Visits</CardTitle>
               <CardDescription>
-                The name was split from what the desk typed. Correct it before saving — this becomes
-                a permanent record.
+                These follow the patient record if this walk-in is registered.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="First name" required htmlFor="firstName" error={errors.firstName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={form.firstName}
-                      onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+            <CardContent>
+              {visitor.appointments.length === 0 ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  No visits recorded.
+                </p>
+              ) : (
+                <LinkList>
+                  {visitor.appointments.map((appointment) => (
+                    <LinkRow
+                      key={appointment.id}
+                      href={trail.to(`/appointments/${appointment.id}`)}
+                      icon={Calendar}
+                      title={
+                        appointment.tokenNumber
+                          ? `${appointment.appointmentNo} · Token ${formatToken(appointment.tokenNumber)}`
+                          : appointment.appointmentNo
+                      }
+                      subtitle={[
+                        displayDateTime(appointment.startsAt),
+                        appointment.doctor
+                          ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      trailing={<StatusBadge kind="appointment" status={appointment.status} />}
                     />
-                  )}
-                </FormField>
-                <FormField label="Last name" required htmlFor="lastName" error={errors.lastName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={form.lastName}
-                      onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                    />
-                  )}
-                </FormField>
-                <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      value={form.phone}
-                      onChange={(phone) => setForm((current) => ({ ...current, phone }))}
-                    />
-                  )}
-                </FormField>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={form.dateOfBirth}
-                    onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select
-                    value={form.gender}
-                    onValueChange={(value) => setForm({ ...form, gender: value })}
-                  >
-                    <SelectTrigger id="gender">
-                      <SelectValue placeholder="Not recorded" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GENDERS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={form.city}
-                    onChange={(e) => setForm({ ...form, city: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* The same soft check registration runs: a shared phone or a
-                  returning patient is shown, not refused. */}
-              <DuplicateDetector
-                firstName={form.firstName}
-                lastName={form.lastName}
-                phone={form.phone}
-                email={form.email}
-                dateOfBirth={form.dateOfBirth}
-                onSelect={(existingId) => router.push(trail.to(`/patients/${existingId}`))}
-              />
-
-              <div className="flex justify-end">
-                <SubmitButton busy={saving} busyLabel="Registering…" icon={UserPlus}>
-                  Register and keep the visits
-                </SubmitButton>
-              </div>
+                  ))}
+                </LinkList>
+              )}
             </CardContent>
           </Card>
-        </form>
-      )}
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Phone" icon={Phone}>
+                  {formatPhone(visitor.phone) || null}
+                </InfoItem>
+                <InfoItem label="First seen" icon={Clock}>
+                  {displayDateTime(visitor.createdAt)}
+                </InfoItem>
+                {visitor.notes && (
+                  <InfoItem label="Notes">
+                    <span className="whitespace-pre-wrap font-normal">{visitor.notes}</span>
+                  </InfoItem>
+                )}
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          {/* What became of them, and who decided — a clinic that saw somebody
+              should be able to say afterwards. */}
+          {decided && (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Outcome</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InfoGrid className="sm:grid-cols-1">
+                  {visitor.convertedAt ? (
+                    <>
+                      <InfoItem label="Registered">{displayDateTime(visitor.convertedAt)}</InfoItem>
+                      <InfoItem label="Registered by">{visitor.convertedBy?.name}</InfoItem>
+                    </>
+                  ) : (
+                    visitor.discardedAt && (
+                      <>
+                        <InfoItem label="Discarded">
+                          {displayDateTime(visitor.discardedAt)}
+                        </InfoItem>
+                        <InfoItem label="Discarded by">{visitor.discardedBy?.name}</InfoItem>
+                      </>
+                    )
+                  )}
+                </InfoGrid>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

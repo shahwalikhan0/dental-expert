@@ -45,9 +45,14 @@ interface Patient {
   lastName: string
   phone: string
   email: string
-  gender: string
-  age: number
-  bloodGroup: string
+  gender: string | null
+  /**
+   * Computed by the route from the date of birth, and null when there is none
+   * on file — a walk-in registered with a name and a phone, say. The cell used
+   * to print `{age} years` regardless, which read as a bare "years".
+   */
+  age: number | null
+  bloodGroup: string | null
   city: string
   isActive: boolean
 }
@@ -146,7 +151,10 @@ export default function PatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
 
-  const getGenderBadge = (gender: string) => {
+  const getGenderBadge = (gender: string | null) => {
+    // No gender on file is a dash, like every other empty cell, rather than
+    // an empty grey pill.
+    if (!gender) return <span className="text-sm text-muted-foreground">—</span>
     const colors = {
       MALE: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
       FEMALE: 'bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
@@ -177,8 +185,8 @@ export default function PatientsPage() {
                   'Last Name': p.lastName,
                   Phone: p.phone,
                   Email: p.email || '',
-                  Gender: p.gender,
-                  Age: p.age,
+                  Gender: p.gender || '',
+                  Age: p.age ?? '',
                   'Blood Group': p.bloodGroup || '',
                   City: p.city || '',
                 }))
@@ -187,7 +195,7 @@ export default function PatientsPage() {
             {canWrite && (
               <Button asChild>
                 <Link href="/patients/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New patient
                 </Link>
               </Button>
@@ -321,14 +329,19 @@ export default function PatientsPage() {
                   label={`Open ${patient.firstName} ${patient.lastName}`}
                 >
                   <TableCell>
-                    <div className="font-medium">{patient.patientId}</div>
+                    <div className="font-medium tabular-nums text-muted-foreground">
+                      {patient.patientId}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                        <User className="h-4 w-4 text-primary" />
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                      >
+                        {`${patient.firstName.charAt(0)}${patient.lastName.charAt(0)}`.toUpperCase()}
                       </div>
-                      <div className="font-medium">
+                      <div className="font-semibold">
                         {patient.firstName} {patient.lastName}
                       </div>
                       {!patient.isActive && <StatusBadge kind="patient" status={false} />}
@@ -350,10 +363,20 @@ export default function PatientsPage() {
                   </TableCell>
                   <TableCell>{getGenderBadge(patient.gender)}</TableCell>
                   <TableCell>
-                    <div className="text-sm">{patient.age} years</div>
+                    {patient.age === null ? (
+                      <div className="text-sm text-muted-foreground">—</div>
+                    ) : (
+                      <div className="text-sm tabular-nums">
+                        {patient.age} {patient.age === 1 ? 'year' : 'years'}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{bloodGroupLabel(patient.bloodGroup)}</Badge>
+                    {patient.bloodGroup ? (
+                      <Badge variant="outline">{bloodGroupLabel(patient.bloodGroup)}</Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="text-sm text-muted-foreground">{patient.city || '—'}</div>

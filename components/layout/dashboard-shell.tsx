@@ -8,7 +8,6 @@ import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { KeyboardShortcutHelp } from '@/components/layout/keyboard-shortcut-help'
 import { SessionWatch } from '@/components/layout/session-watch'
-import { cn } from '@/lib/utils'
 import { roleThemeStyle } from '@/lib/rbac'
 
 interface DashboardShellProps {
@@ -41,23 +40,18 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
       <TooltipProvider delayDuration={200}>
         <SidebarProvider>
           {/*
-          The page itself is the tint the sidebar has to blur. A flat
-          `bg-background` behind a translucent panel produces a panel that looks
-          translucent and shows nothing, which is the worst of both.
-          The role's colour is set here, once, for the sidebar and the header to
-          tint themselves with (`.role-surface`). It is the account's own role
+          A plain grey page, with the cards and the sidebar on it in white.
+          The role's colour is set here, once, for the header and the sidebar's
+          own header to tint themselves with (`.role-surface`). It is the account's own role
           that colours the screen, not a second clinical one: an administrator
           who also treats patients is still signed in as the administrator.
         */}
           <div
-            className={cn(
-              'role-tint flex h-screen overflow-hidden',
-              'bg-gradient-to-br from-primary/[0.06] via-background to-primary/[0.04]'
-            )}
+            className="role-tint flex h-screen overflow-hidden bg-background"
             style={roleThemeStyle(user.role)}
           >
-            {/* Sidebar - hidden on mobile. The padding is what makes it float. */}
-            <aside className="hidden md:flex md:p-3 md:pr-0">
+            {/* Sidebar - hidden on mobile. Flush to the edge of the screen. */}
+            <aside className="hidden md:flex">
               <Sidebar
                 role={user.role}
                 clinicalRole={user.clinicalRole}

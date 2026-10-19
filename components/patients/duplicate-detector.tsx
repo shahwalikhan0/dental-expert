@@ -1,5 +1,6 @@
 'use client'
 
+import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState, useEffect, useCallback } from 'react'
 
@@ -84,7 +85,7 @@ export function DuplicateDetector({
 
   if (failed) {
     return (
-      <div className="rounded-lg border border-muted bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <div className="rounded-xl border border-dashed px-4 py-3 text-xs text-muted-foreground">
         The duplicate check could not run. Search for this patient before saving.
       </div>
     )
@@ -93,29 +94,34 @@ export function DuplicateDetector({
   if (duplicates.length === 0) return null
 
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/70 dark:bg-amber-950/30">
-      <p className="text-xs font-semibold text-amber-800 mb-2 dark:text-amber-300">
-        ⚠ Possible duplicate patient{duplicates.length > 1 ? 's' : ''} detected
-      </p>
-      <div className="space-y-2">
-        {duplicates.map((d) => (
-          <div
-            key={d.id}
-            className="flex items-center justify-between bg-background rounded border px-3 py-2"
-          >
-            <div>
-              <p className="text-sm font-medium">{d.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {Math.round(d.confidence * 100)}% match · matched on {d.matchFields.join(', ')}
-              </p>
+    <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+        <AlertTriangle className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-3">
+        <p className="pt-2 font-semibold">
+          Possible duplicate patient{duplicates.length > 1 ? 's' : ''} detected
+        </p>
+        <div className="space-y-2">
+          {duplicates.map((d) => (
+            <div
+              key={d.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-foreground"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{d.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {Math.round(d.confidence * 100)}% match · matched on {d.matchFields.join(', ')}
+                </p>
+              </div>
+              {/* type="button": this sits inside the registration form, and a
+                  plain <button> there submitted it as well as opening the record. */}
+              <Button type="button" variant="outline" size="sm" onClick={() => onSelect(d.id)}>
+                Use existing
+              </Button>
             </div>
-            {/* type="button": this sits inside the registration form, and a
-                plain <button> there submitted it as well as opening the record. */}
-            <Button type="button" variant="outline" size="sm" onClick={() => onSelect(d.id)}>
-              Use existing
-            </Button>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )

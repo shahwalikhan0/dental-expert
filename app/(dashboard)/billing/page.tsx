@@ -15,6 +15,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/ui/page-header'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
+import { StatTile } from '@/components/billing/stat-tile'
 import {
   Plus,
   Receipt,
@@ -26,6 +29,7 @@ import {
   CheckCircle,
   XCircle,
   BarChart3,
+  BadgePercent,
 } from 'lucide-react'
 import { formatCurrency, dateRangePresets } from '@/lib/billing-utils'
 import { AGEING_BUCKETS, type AgeingBucketKey } from '@/lib/ageing'
@@ -154,37 +158,31 @@ export default function BillingPage() {
             canWrite && (
               <Button asChild>
                 <Link href="/billing/invoices/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New invoice
                 </Link>
               </Button>
             )
           }
         />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Link href="/billing/invoices" className="block">
-            <Card className="h-full transition-colors hover:bg-foreground/[0.03]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Invoices
-                </CardTitle>
-                <CardDescription>Raise, issue and look up invoices</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-          <Link href="/billing/payments" className="block">
-            <Card className="h-full transition-colors hover:bg-foreground/[0.03]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Payments
-                </CardTitle>
-                <CardDescription>Payments taken and their receipts</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        </div>
+        <Card className="max-w-2xl">
+          <CardContent className="pt-6">
+            <LinkList>
+              <LinkRow
+                href="/billing/invoices"
+                icon={FileText}
+                title="Invoices"
+                subtitle="Raise, issue and look up invoices"
+              />
+              <LinkRow
+                href="/billing/payments"
+                icon={CreditCard}
+                title="Payments"
+                subtitle="Payments taken and their receipts"
+              />
+            </LinkList>
+          </CardContent>
+        </Card>
         <p className="text-sm text-muted-foreground">
           The clinic&apos;s billing figures are part of the financial reports, which your role does
           not include.
@@ -260,7 +258,7 @@ export default function BillingPage() {
             {canWrite && (
               <Button asChild>
                 <Link href="/billing/invoices/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New invoice
                 </Link>
               </Button>
@@ -273,176 +271,175 @@ export default function BillingPage() {
         <LoadFailed what="the billing figures" onRetry={fetchSummary} />
       ) : (
         <>
-          {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {/* Total Billed */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total billed</CardTitle>
-                <Receipt className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(data?.summary.totalBilled || 0)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {data?.summary.invoiceCount || 0} invoices
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Total Collected */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total collected</CardTitle>
-                <Banknote className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(data?.summary.totalCollected || 0)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {data?.summary.paymentCount || 0} payments received
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Outstanding */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {formatCurrency(data?.summary.totalOutstanding || 0)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {data?.summary.outstandingInvoices || 0} invoices still owed
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+          {/* The period's headline figures, one tile each. */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile
+              label="Total billed"
+              icon={Receipt}
+              loading={loading}
+              value={formatCurrency(data?.summary.totalBilled || 0)}
+              hint={`${data?.summary.invoiceCount || 0} invoices`}
+            />
+            <StatTile
+              label="Total collected"
+              icon={Banknote}
+              tone="success"
+              loading={loading}
+              value={formatCurrency(data?.summary.totalCollected || 0)}
+              hint={`${data?.summary.paymentCount || 0} payments received`}
+            />
+            <StatTile
+              label="Outstanding"
+              icon={AlertCircle}
+              tone="danger"
+              loading={loading}
+              value={formatCurrency(data?.summary.totalOutstanding || 0)}
+              hint={`${data?.summary.outstandingInvoices || 0} invoices still owed`}
+            />
+            <StatTile
+              label="Discounts given"
+              icon={BadgePercent}
+              loading={loading}
+              value={formatCurrency(data?.summary.totalDiscounts || 0)}
+              hint="Taken off the bills in the period"
+            />
           </div>
 
-          {/* Quick Actions & Breakdowns */}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick actions</CardTitle>
-                <CardDescription>Common billing tasks</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/billing/invoices" className="block">
-                    <FileText className="h-4 w-4 mr-2" />
-                    View all invoices
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/billing/payments" className="block">
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    View all payments
-                  </Link>
-                </Button>
-                {/* Payment plans, insurance claims, insurance providers and
-                pre-authorisations were four more links here. None of those
-                pages exists — `39fdd2e` removed the tables as out of scope
-                (spec §3) and left the buttons, so four of the seven quick
-                actions on the billing screen were 404s. */}
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/billing/reports" className="block">
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Financial reports
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="space-y-6 lg:col-span-2">
+              {/* Collection Rate */}
+              {!loading && data && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Collection rate</CardTitle>
+                    {/* Cash collected in the period ÷ invoices issued in the period. Both
+                    sides now leave drafts and cancelled bills out; it can pass 100%
+                    in a month that collects older debts. */}
+                    <CardDescription>
+                      Collected in the period as a share of what was billed
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Collection progress</span>
+                        <span className="text-sm font-semibold">
+                          {data.summary.totalBilled > 0
+                            ? Math.round(
+                                (data.summary.totalCollected / data.summary.totalBilled) * 100
+                              )
+                            : 0}
+                          %
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-green-500 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${
+                              data.summary.totalBilled > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      (data.summary.totalCollected / data.summary.totalBilled) * 100
+                                    )
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <InfoGrid className="grid-cols-3 sm:grid-cols-3">
+                      <InfoItem label="Billed">{formatCurrency(data.summary.totalBilled)}</InfoItem>
+                      <InfoItem label="Collected">
+                        <span className="text-green-600 dark:text-green-400">
+                          {formatCurrency(data.summary.totalCollected)}
+                        </span>
+                      </InfoItem>
+                      <InfoItem label="Discounts">
+                        <span className="text-orange-600 dark:text-orange-400">
+                          {formatCurrency(data.summary.totalDiscounts)}
+                        </span>
+                      </InfoItem>
+                    </InfoGrid>
+                  </CardContent>
+                </Card>
+              )}
 
-            {/* Payment Methods */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment methods</CardTitle>
-                <CardDescription>Collection by payment type</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <Skeleton key={i} className="h-4 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {data?.breakdowns.byPaymentMethod.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Payment Methods */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Payment methods</CardTitle>
+                    <CardDescription>Collection by payment type</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <div className="space-y-3">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full rounded-xl" />
+                        ))}
+                      </div>
+                    ) : data?.breakdowns.byPaymentMethod.length === 0 ? (
+                      <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
                         No payments recorded
                       </p>
                     ) : (
-                      data?.breakdowns.byPaymentMethod.map((method) => (
-                        <div key={method.method} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <CreditCard className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">
-                              {paymentMethodLabels[method.method] || method.method}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium">{formatCurrency(method.amount)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {method.count} payments
+                      <ul className="space-y-2">
+                        {data?.breakdowns.byPaymentMethod.map((method) => (
+                          <li
+                            key={method.method}
+                            className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                                <CreditCard className="h-4 w-4" />
+                              </span>
+                              <span className="truncate text-sm font-medium">
+                                {paymentMethodLabels[method.method] || method.method}
+                              </span>
                             </div>
-                          </div>
-                        </div>
-                      ))
+                            <div className="text-right">
+                              <div className="font-semibold tabular-nums">
+                                {formatCurrency(method.amount)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {method.count} payments
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            {/* Invoice Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Invoice status</CardTitle>
-                <CardDescription>Invoices by current status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <Skeleton key={i} className="h-4 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {data?.breakdowns.byInvoiceStatus.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
+                {/* Invoice Status */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Invoice status</CardTitle>
+                    <CardDescription>Invoices by current status</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <div className="space-y-3">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full rounded-xl" />
+                        ))}
+                      </div>
+                    ) : data?.breakdowns.byInvoiceStatus.length === 0 ? (
+                      <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
                         No invoices created
                       </p>
                     ) : (
-                      data?.breakdowns.byInvoiceStatus.map((status) => {
-                        return (
-                          <div key={status.status} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                      <ul className="space-y-2">
+                        {data?.breakdowns.byInvoiceStatus.map((status) => (
+                          <li
+                            key={status.status}
+                            className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
                               {status.status === 'PAID' && (
                                 <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" />
                               )}
@@ -461,145 +458,114 @@ export default function BillingPage() {
                               <StatusBadge kind="invoice" status={status.status} />
                             </div>
                             <div className="text-right">
-                              <div className="font-medium">{formatCurrency(status.amount)}</div>
+                              <div className="font-semibold tabular-nums">
+                                {formatCurrency(status.amount)}
+                              </div>
                               <div className="text-xs text-muted-foreground">
                                 {status.count} invoices
                               </div>
                             </div>
-                          </div>
-                        )
-                      })
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
 
-          {/* Collection Rate */}
-          {!loading && data && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Collection rate</CardTitle>
-                {/* Cash collected in the period ÷ invoices issued in the period. Both
-                sides now leave drafts and cancelled bills out; it can pass 100%
-                in a month that collects older debts. */}
-                <CardDescription>
-                  Collected in the period as a share of what was billed
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Collection progress</span>
-                      <span className="text-sm font-medium">
-                        {data.summary.totalBilled > 0
-                          ? Math.round(
-                              (data.summary.totalCollected / data.summary.totalBilled) * 100
-                            )
-                          : 0}
-                        %
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full bg-green-500 rounded-full transition-all duration-500"
-                        style={{
-                          width: `${
-                            data.summary.totalBilled > 0
-                              ? Math.min(
-                                  100,
-                                  Math.round(
-                                    (data.summary.totalCollected / data.summary.totalBilled) * 100
-                                  )
-                                )
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">Billed</div>
-                      <div className="font-medium">{formatCurrency(data.summary.totalBilled)}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Collected</div>
-                      <div className="font-medium text-green-600 dark:text-green-400">
-                        {formatCurrency(data.summary.totalCollected)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Discounts</div>
-                      <div className="font-medium text-orange-600 dark:text-orange-400">
-                        {formatCurrency(data.summary.totalDiscounts)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            <div className="space-y-6">
+              {/* Where to go from here, one row each. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Quick actions</CardTitle>
+                  <CardDescription>Common billing tasks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LinkList>
+                    <LinkRow
+                      href="/billing/invoices"
+                      icon={FileText}
+                      title="View all invoices"
+                      subtitle="Raise, issue and look up invoices"
+                    />
+                    <LinkRow
+                      href="/billing/payments"
+                      icon={CreditCard}
+                      title="View all payments"
+                      subtitle="Payments taken and their receipts"
+                    />
+                    {/* Payment plans, insurance claims, insurance providers and
+                    pre-authorisations were four more links here. None of those
+                    pages exists — `39fdd2e` removed the tables as out of scope
+                    (spec §3) and left the buttons, so four of the seven quick
+                    actions on the billing screen were 404s. */}
+                    <LinkRow
+                      href="/billing/reports"
+                      icon={BarChart3}
+                      title="Financial reports"
+                      subtitle="Outstanding, by procedure, by doctor, daily"
+                    />
+                  </LinkList>
+                </CardContent>
+              </Card>
 
-          {/* Revenue Cycle Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Claims Aging */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Claims aging</CardTitle>
-                <CardDescription>Outstanding balances by days past due</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {!agingData ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-8 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {AGEING_BUCKETS.map((bucket, index) => ({
-                      label: bucket.label,
-                      hint: bucket.hint,
-                      data: agingData.aging[bucket.key],
-                      color: AGEING_COLOURS[index],
-                    })).map((bucket) => {
-                      const total = agingData.totals.totalOutstanding || 1
-                      const pct = Math.round((bucket.data.amount / total) * 100)
-                      return (
-                        <div key={bucket.label} className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span title={bucket.hint}>{bucket.label}</span>
-                            <div className="text-right">
-                              <span className="font-medium">
-                                {formatCurrency(bucket.data.amount)}
-                              </span>
-                              <span className="text-muted-foreground ml-2">
-                                ({bucket.data.count})
-                              </span>
+              {/* Claims Aging */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Claims aging</CardTitle>
+                  <CardDescription>Outstanding balances by days past due</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!agingData ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={i} className="h-8 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {AGEING_BUCKETS.map((bucket, index) => ({
+                        label: bucket.label,
+                        hint: bucket.hint,
+                        data: agingData.aging[bucket.key],
+                        color: AGEING_COLOURS[index],
+                      })).map((bucket) => {
+                        const total = agingData.totals.totalOutstanding || 1
+                        const pct = Math.round((bucket.data.amount / total) * 100)
+                        return (
+                          <div key={bucket.label} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span title={bucket.hint}>{bucket.label}</span>
+                              <div className="text-right">
+                                <span className="font-medium">
+                                  {formatCurrency(bucket.data.amount)}
+                                </span>
+                                <span className="text-muted-foreground ml-2">
+                                  ({bucket.data.count})
+                                </span>
+                              </div>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${bucket.color}`}
+                                style={{ width: `${pct}%` }}
+                              />
                             </div>
                           </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${bucket.color}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                    <div className="pt-2 border-t flex justify-between text-sm font-medium">
-                      <span>Total outstanding</span>
-                      <span className="text-red-600 dark:text-red-400">
-                        {formatCurrency(agingData.totals.totalOutstanding)}
-                      </span>
+                        )
+                      })}
+                      <div className="pt-2 border-t flex justify-between text-sm font-medium">
+                        <span>Total outstanding</span>
+                        <span className="text-red-600 dark:text-red-400">
+                          {formatCurrency(agingData.totals.totalOutstanding)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </>
       )}

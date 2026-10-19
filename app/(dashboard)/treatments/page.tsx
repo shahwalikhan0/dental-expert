@@ -225,14 +225,14 @@ export default function TreatmentsPage() {
             />
             <Button variant="outline" asChild>
               <Link href="/treatments/plans">
-                <FileText className="h-4 w-4 mr-2" />
+                <FileText className="h-4 w-4" />
                 Treatment plans
               </Link>
             </Button>
             {canWrite && (
               <Button asChild>
                 <Link href="/treatments/new">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   New treatment
                 </Link>
               </Button>

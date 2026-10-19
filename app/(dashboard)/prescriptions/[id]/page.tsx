@@ -3,17 +3,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useRouter, useParams } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { ClipboardList, Trash2 } from 'lucide-react'
+import {
+  Calendar,
+  ChevronRight,
+  ClipboardList,
+  Phone,
+  Pill,
+  Stethoscope,
+  Trash2,
+} from 'lucide-react'
 import Link from 'next/link'
 import { groupTeeth, parseTeeth } from '@/lib/teeth'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { prescriberName } from '@/lib/prescribing'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -29,6 +36,7 @@ import { usePrint } from '@/hooks/use-print'
 import { PrintDocument } from '@/components/print/print-document'
 import { PrintButton } from '@/components/print/print-button'
 import { PrescriptionPrint } from '@/components/print/templates/prescription-print'
+import type { PrintMedicalHistory } from '@/components/print/clinical-history'
 
 interface PrescriptionDetail {
   id: string
@@ -58,10 +66,8 @@ interface PrescriptionDetail {
     gender: string | null
     address: string | null
     city: string | null
-    /** Allergies live on the medical history, not on the patient. This page
-        used to declare `allergies: string | null` here and read it below, so
-        the line it printed was never once reached. */
-    medicalHistory: { allergies: string[] } | null
+    /** What the printed sheet's Clinical History column lists. */
+    medicalHistory: PrintMedicalHistory | null
   }
   /** As `GET /api/prescriptions/[id]` returns it: the staff record's own
       columns. This read `name` and `registrationNo`, neither of which exists,
@@ -155,7 +161,7 @@ export default function PrescriptionDetailPage() {
 
   if (problem === 'failed' && !prescription) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         {back}
         <LoadFailed what="this prescription" onRetry={load} />
       </div>
@@ -164,7 +170,7 @@ export default function PrescriptionDetailPage() {
 
   if (!prescription) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         {back}
         <EmptyState
           icon={ClipboardList}
@@ -179,228 +185,239 @@ export default function PrescriptionDetailPage() {
 
   const patientAge = ageInYears(prescription.patient.dateOfBirth)
   const today = localDay(new Date(), DEFAULT_TIMEZONE)
+  const patientName = `${prescription.patient.firstName} ${prescription.patient.lastName}`
+  const doctorName = prescriberName(prescription.doctor)
+  const medicineCount = prescription.medications.length
 
   return (
-    <>
+    <div className="space-y-6">
       {/* What goes on paper: a template, not this page. */}
       <PrintDocument printing={printing}>
         <PrescriptionPrint prescription={prescription} />
       </PrintDocument>
 
-      <div className="mx-auto max-w-4xl mb-6">
-        <PageHeader
-          back={back}
-          title={prescription.prescriptionNo}
-          badges={
-            <StatusBadge
-              kind="prescription"
-              status={prescriptionStatus(prescription.validUntil, today)}
-            />
-          }
-          actions={
-            <>
-              {canDelete && (
-                <Button variant="outline" onClick={handleDelete} className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" /> Delete prescription
-                </Button>
-              )}
-              <PrintButton printing={printing} variant="default" />
-            </>
-          }
-        />
-      </div>
+      {/*
+        The prescription as a record card: whose it is, who wrote it and when,
+        then Print as the one thing people come here to do. Deleting is rare
+        and cannot be undone, so it sits behind "More".
+      */}
+      <ProfileHeader
+        eyebrow={prescription.prescriptionNo}
+        name={`Prescription for ${patientName}`}
+        avatarIcon={Pill}
+        badges={
+          <StatusBadge
+            kind="prescription"
+            status={prescriptionStatus(prescription.validUntil, today)}
+          />
+        }
+        facts={[
+          { icon: Calendar, label: displayDate(prescription.createdAt) },
+          ...(doctorName ? [{ icon: Stethoscope, label: doctorName }] : []),
+          {
+            icon: Pill,
+            label: `${medicineCount} ${medicineCount === 1 ? 'medicine' : 'medicines'}`,
+          },
+        ]}
+        menu={
+          canDelete
+            ? [
+                {
+                  label: 'Delete prescription',
+                  icon: Trash2,
+                  onSelect: handleDelete,
+                  destructive: true,
+                },
+              ]
+            : []
+        }
+        actions={<PrintButton printing={printing} variant="default" />}
+      />
 
-      <div className="mx-auto max-w-4xl">
-        <Card>
-          <CardContent className="p-8">
-            <div className="flex items-start justify-end mb-1">
-              <div className="text-right">
-                <Badge variant="outline" className="text-base font-mono">
-                  {prescription.prescriptionNo}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {displayDate(prescription.createdAt)}
-                </p>
-              </div>
-            </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Medicines</CardTitle>
+              <CardDescription>What to take, how much, how often and for how long</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-3">
+                {prescription.medications.map((med, i) => {
+                  const howToTake = [med.route !== 'Oral' && med.route, med.timing]
+                    .filter(Boolean)
+                    .join(' · ')
+                  return (
+                    <li key={med.id} className="flex gap-4 rounded-xl border px-4 py-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold">{med.medicationName}</p>
+                        <p className="mt-0.5 text-sm">
+                          {[med.dosage, med.frequency, med.duration].filter(Boolean).join(' — ')}
+                        </p>
+                        {howToTake && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{howToTake}</p>
+                        )}
+                        {med.instructions && (
+                          <p className="mt-1 text-xs italic text-muted-foreground">
+                            {med.instructions}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </CardContent>
+          </Card>
 
-            <Separator className="my-4" />
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid>
+                <InfoItem label="Diagnosis">{prescription.diagnosis}</InfoItem>
+                {/*
+                  Teeth by quadrant rather than as a run of numbers. "13, 15, 25,
+                  34, 44" is five numbers and no shape: a reader has to divide each
+                  by ten to work out which side of which jaw it is on, which is the
+                  arithmetic FDI notation exists to spare them. Named, the quadrant
+                  is read rather than derived.
+                */}
+                <InfoItem label={teeth.length === 1 ? 'Tooth' : 'Teeth'}>
+                  {toothGroups.length > 0 ? (
+                    <span className="flex flex-col gap-0.5">
+                      {toothGroups.map((group) => (
+                        <span key={group.key}>
+                          <span className="font-normal text-muted-foreground">{group.label} </span>
+                          {group.description}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                </InfoItem>
+                <InfoItem label="Issued">{displayDate(prescription.createdAt)}</InfoItem>
+                <InfoItem label="Valid until">
+                  {prescription.validUntil ? displayDate(prescription.validUntil) : null}
+                </InfoItem>
+                {/*
+                  Where this came from. On screen only: the printed sheet
+                  (PrescriptionPrint) is for the patient and the pharmacy. The
+                  template name is the clinic's own filing, and the treatment
+                  number means nothing outside this building.
+                */}
+                {prescription.template && (
+                  <InfoItem label="Template">{prescription.template.name}</InfoItem>
+                )}
+                {prescription.notes && (
+                  <InfoItem label="Notes" className="sm:col-span-2">
+                    <span className="whitespace-pre-wrap font-normal">{prescription.notes}</span>
+                  </InfoItem>
+                )}
+              </InfoGrid>
+            </CardContent>
+          </Card>
+        </div>
 
-            {/* Patient Info */}
-            <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4">
-              <div>
-                <span className="text-muted-foreground">Patient: </span>
-                {/* A prescription names a patient whose record the prescriber
-                    will usually want next — their allergies are printed right
-                    here, and the rest of the history is one click away. */}
-                <Link
-                  href={trail.to(`/patients/${prescription.patient.id}`)}
-                  className="font-medium hover:underline"
-                >
-                  {prescription.patient.firstName} {prescription.patient.lastName}
-                </Link>
-              </div>
-              <div>
-                <span className="text-muted-foreground">ID: </span>
-                <span className="font-mono">{prescription.patient.patientId}</span>
-              </div>
-              {patientAge !== null && (
-                <div>
-                  <span className="text-muted-foreground">Age/Gender: </span>
-                  <span>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Patient</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* A prescription names a patient whose record the prescriber
+                  will usually want next — their history is one click away. */}
+              <Link
+                href={trail.to(`/patients/${prescription.patient.id}`)}
+                className="group -mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  {`${prescription.patient.firstName.charAt(0)}${prescription.patient.lastName.charAt(0)}`.toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{patientName}</span>
+                  <span className="block font-mono text-xs text-muted-foreground">
+                    {prescription.patient.patientId}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <InfoGrid className="sm:grid-cols-1">
+                {patientAge !== null && (
+                  <InfoItem label="Age / gender">
                     {patientAge} yrs
                     {prescription.patient.gender ? ` / ${prescription.patient.gender}` : ''}
-                  </span>
-                </div>
-              )}
-              <div>
-                <span className="text-muted-foreground">Phone: </span>
-                <span>{formatPhone(prescription.patient.phone) || BLANK}</span>
-              </div>
+                  </InfoItem>
+                )}
+                <InfoItem label="Phone" icon={Phone}>
+                  {formatPhone(prescription.patient.phone) || BLANK}
+                </InfoItem>
+              </InfoGrid>
+              {/* Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
               {prescription.patient.medicalHistory?.allergies?.length ? (
                 <div className="col-span-2 text-destructive font-medium">
                   Allergies: {prescription.patient.medicalHistory.allergies.join(', ')}
                 </div>
               ) : (
-                /* Said plainly rather than left blank. A prescription with no
-                   allergy line reads the same whether nobody asked the patient
-                   or the patient has none, and a pharmacist cannot tell which. */
+                // Said plainly rather than left blank. A prescription with no
+                // allergy line reads the same whether nobody asked the patient
+                // or the patient has none, and a pharmacist cannot tell which.
                 <div className="col-span-2 text-muted-foreground">Allergies: none recorded</div>
               )}
-            </div>
+              */}
+            </CardContent>
+          </Card>
 
-            {prescription.diagnosis && (
-              <div className="mb-2 text-sm">
-                <span className="text-muted-foreground">Diagnosis: </span>
-                <span className="font-medium">{prescription.diagnosis}</span>
-              </div>
-            )}
-
-            {/*
-              Teeth by quadrant rather than as a run of numbers. "13, 15, 25,
-              34, 44" is five numbers and no shape: a reader has to divide each
-              by ten to work out which side of which jaw it is on, which is the
-              arithmetic FDI notation exists to spare them. Named, the quadrant
-              is read rather than derived.
-            */}
-            {toothGroups.length > 0 && (
-              <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-                <span className="text-muted-foreground">
-                  {teeth.length === 1 ? 'Tooth: ' : 'Teeth: '}
-                </span>
-                {toothGroups.map((group) => (
-                  <span key={group.key}>
-                    <span className="text-muted-foreground">{group.label} </span>
-                    <span className="font-medium">{group.description}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/*
-              Where this came from. On screen only: the printed sheet
-              (PrescriptionPrint) is for the patient and the pharmacy. The
-              template name is the clinic's own filing, and the treatment
-              number means nothing outside this building.
-            */}
-            {(prescription.treatment || prescription.template) && (
-              <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                {prescription.treatment && (
-                  <span className="text-muted-foreground">
-                    Written during{' '}
-                    <Link
-                      href={trail.to(`/treatments/${prescription.treatment.id}`)}
-                      className="text-primary hover:underline"
-                    >
-                      {prescription.treatment.procedure?.name ?? prescription.treatment.treatmentNo}
-                    </Link>
-                  </span>
-                )}
-                {prescription.template && (
-                  <span className="text-muted-foreground">
-                    From the {prescription.template.name} template
-                  </span>
-                )}
-              </div>
-            )}
-
-            <Separator className="my-4" />
-
-            {/* Rx Symbol */}
-            <div className="text-3xl font-serif font-bold mb-4">&#8478;</div>
-
-            {/* Medications Table */}
-            <table className="w-full text-sm mb-6">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="pb-2 font-medium w-8">#</th>
-                  <th className="pb-2 font-medium">Medication</th>
-                  <th className="pb-2 font-medium">Dosage</th>
-                  <th className="pb-2 font-medium">Frequency</th>
-                  <th className="pb-2 font-medium">Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prescription.medications.map((med, i) => (
-                  <tr key={med.id} className="border-b last:border-0">
-                    <td className="py-3 text-muted-foreground">{i + 1}</td>
-                    <td className="py-3">
-                      <div className="font-medium">{med.medicationName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {[med.route !== 'Oral' && med.route, med.timing]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                      {med.instructions && (
-                        <div className="text-xs italic text-muted-foreground mt-0.5">
-                          {med.instructions}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3">{med.dosage}</td>
-                    <td className="py-3">{med.frequency}</td>
-                    <td className="py-3">{med.duration}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {prescription.notes && (
-              <div className="mb-6 p-3 bg-muted/50 rounded text-sm">
-                <span className="font-medium">Notes: </span>
-                {prescription.notes}
-              </div>
-            )}
-
-            {prescription.validUntil && (
-              <p className="text-xs text-muted-foreground mb-6">
-                Valid until: {displayDate(prescription.validUntil)}
-              </p>
-            )}
-
-            {/* Doctor signature */}
-            <div className="flex justify-end mt-8">
-              <div className="text-right">
-                <div className="border-b border-foreground w-48 mb-1" />
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Prescriber</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
                 {/* "Dr." only when the name does not already carry it —
                     see `prescriberName` (finding 66). */}
-                <p className="font-medium">{prescriberName(prescription.doctor)}</p>
+                <InfoItem label="Name">{doctorName}</InfoItem>
                 {prescription.doctor?.specialization && (
-                  <p className="text-xs text-muted-foreground">
-                    {prescription.doctor.specialization}
-                  </p>
+                  <InfoItem label="Specialisation">{prescription.doctor.specialization}</InfoItem>
                 )}
                 {prescription.doctor?.licenseNumber && (
-                  <p className="text-xs text-muted-foreground">
-                    Reg. No: {prescription.doctor.licenseNumber}
-                  </p>
+                  <InfoItem label="Reg. No">{prescription.doctor.licenseNumber}</InfoItem>
                 )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Related</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LinkList>
+                {prescription.treatment && (
+                  <LinkRow
+                    href={trail.to(`/treatments/${prescription.treatment.id}`)}
+                    icon={Stethoscope}
+                    title={
+                      prescription.treatment.procedure?.name ?? prescription.treatment.treatmentNo
+                    }
+                    subtitle={`Written during ${prescription.treatment.treatmentNo}`}
+                  />
+                )}
+                <LinkRow
+                  href={trail.to(`/prescriptions?patientId=${prescription.patient.id}`)}
+                  icon={ClipboardList}
+                  title="Prescriptions"
+                  subtitle={`All of ${prescription.patient.firstName}'s prescriptions`}
+                />
+              </LinkList>
+            </CardContent>
+          </Card>
+        </div>
       </div>
       {ConfirmDialogComponent}
-    </>
+    </div>
   )
 }

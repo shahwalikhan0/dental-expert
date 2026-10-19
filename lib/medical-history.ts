@@ -145,9 +145,10 @@ export function medicalAlerts(history: {
 }): MedicalAlert[] {
   const alerts: MedicalAlert[] = []
 
-  for (const allergy of history.allergies ?? []) {
-    alerts.push({ label: `Allergy: ${allergy}`, tone: 'danger' })
-  }
+  // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+  // for (const allergy of history.allergies ?? []) {
+  //   alerts.push({ label: `Allergy: ${allergy}`, tone: 'danger' })
+  // }
 
   if (history.isPregnant) alerts.push({ label: 'Pregnant', tone: 'danger' })
 

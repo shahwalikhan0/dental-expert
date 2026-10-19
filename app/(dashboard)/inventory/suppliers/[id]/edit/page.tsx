@@ -108,7 +108,7 @@ export default function EditSupplierPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={`Edit ${initial.name || 'supplier'}`} back={back} />
       <SupplierForm
         initial={initial}

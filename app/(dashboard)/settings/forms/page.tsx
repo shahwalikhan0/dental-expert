@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -140,7 +140,7 @@ export default function FormsSettingsPage() {
         actions={
           <Button asChild>
             <Link href="/settings/forms/new">
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4" />
               New template
             </Link>
           </Button>
@@ -148,10 +148,7 @@ export default function FormsSettingsPage() {
       />
 
       <Card>
-        <CardHeader>
-          <CardTitle>All templates</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
+        <CardContent className="overflow-x-auto p-0">
           <Table className="min-w-[800px]">
             <TableHeader>
               <TableRow>

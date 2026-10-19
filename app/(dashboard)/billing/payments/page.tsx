@@ -6,18 +6,14 @@ import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/ui/page-header'
+import { ListToolbar } from '@/components/ui/list-toolbar'
+import { SearchInput } from '@/components/ui/search-input'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { DateRangeFilter, dateRangeLabel } from '@/components/ui/date-range-filter'
 import {
   ClickableRow,
   GridActionsCell,
@@ -27,14 +23,12 @@ import {
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useCan } from '@/hooks/use-can'
+import { StatTile } from '@/components/billing/stat-tile'
 import {
-  Search,
-  User,
   CreditCard,
   Banknote,
   Smartphone,
   Building2,
-  FileText,
   MoreHorizontal,
   Eye,
   ReceiptText,
@@ -55,11 +49,26 @@ import {
   formatDate,
 } from '@/lib/billing-utils'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { ActiveFilters } from '@/components/ui/active-filters'
 import { humanise } from '@/lib/labels'
 
 /** Statuses that mean money was actually taken — see lib/cashier.ts. */
 const SETTLED = new Set(['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'])
+
+/** The statuses and methods the filters offer — the same ones as before. */
+const STATUS_OPTIONS = [
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'FAILED', label: 'Failed' },
+  { value: 'REFUNDED', label: 'Refunded' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+]
+const METHOD_OPTIONS = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'CARD', label: 'Card' },
+  { value: 'WALLET', label: 'Mobile Wallet' },
+  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+  { value: 'CHEQUE', label: 'Cheque' },
+]
 
 interface Payment {
   id: string
@@ -124,6 +133,11 @@ export default function PaymentsPage() {
   const [methodFilter, setMethodFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('all')
   const [dateTo, setDateTo] = useState('all')
+  // The same two dates as the range control reads them: blank for an open end.
+  const range = {
+    from: dateFrom === 'all' ? '' : dateFrom,
+    to: dateTo === 'all' ? '' : dateTo,
+  }
 
   /**
    * Which request is the current one.
@@ -146,8 +160,10 @@ export default function PaymentsPage() {
       if (debouncedSearch) params.append('search', debouncedSearch)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (methodFilter && methodFilter !== 'all') params.append('paymentMethod', methodFilter)
-      if (dateFrom) params.append('dateFrom', dateFrom)
-      if (dateTo) params.append('dateTo', dateTo)
+      // 'all' is the open end; it was sent as `dateFrom=all`, which the
+      // route happened to ignore.
+      if (dateFrom && dateFrom !== 'all') params.append('dateFrom', dateFrom)
+      if (dateTo && dateTo !== 'all') params.append('dateTo', dateTo)
 
       const response = await fetch(`/api/payments?${params}`)
       if (!response.ok) throw new Error('Failed to fetch payments')
@@ -224,174 +240,126 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="page-title">Payments</h1>
-          <p className="text-muted-foreground">View and manage all payment transactions</p>
-        </div>
-        <ExportMenu
-          filename="payments"
-          getData={() =>
-            payments.map((p) => ({
-              'Payment No': p.paymentNo,
-              Patient: `${p.invoice.patient.firstName} ${p.invoice.patient.lastName}`,
-              'Patient ID': p.invoice.patient.patientId,
-              'Invoice No': p.invoice.invoiceNo,
-              'Payment Date': formatDate(p.paymentDate),
-              Method: p.paymentMethod,
-              Amount: Number(p.amount),
-              Status: p.status,
-              'Transaction ID': p.transactionId || '',
-              'Refund Amount': p.refundAmount ? Number(p.refundAmount) : '',
-              Notes: p.notes || '',
-            }))
-          }
+      <PageHeader
+        title="Payments"
+        description="View and manage all payment transactions"
+        actions={
+          <ExportMenu
+            filename="payments"
+            getData={() =>
+              payments.map((p) => ({
+                'Payment No': p.paymentNo,
+                Patient: `${p.invoice.patient.firstName} ${p.invoice.patient.lastName}`,
+                'Patient ID': p.invoice.patient.patientId,
+                'Invoice No': p.invoice.invoiceNo,
+                'Payment Date': formatDate(p.paymentDate),
+                Method: p.paymentMethod,
+                Amount: Number(p.amount),
+                Status: p.status,
+                'Transaction ID': p.transactionId || '',
+                'Refund Amount': p.refundAmount ? Number(p.refundAmount) : '',
+                Notes: p.notes || '',
+              }))
+            }
+          />
+        }
+      />
+
+      {/* Summary */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatTile
+          label="Total received"
+          icon={IndianRupee}
+          tone="success"
+          loading={loading}
+          value={formatCurrency(summary.totalReceived)}
+        />
+        <StatTile
+          label="Total refunded"
+          icon={RotateCcw}
+          tone="danger"
+          loading={loading}
+          value={formatCurrency(summary.totalRefunded)}
+        />
+        <StatTile
+          label="Net collection"
+          icon={Banknote}
+          loading={loading}
+          value={formatCurrency(summary.totalReceived - summary.totalRefunded)}
         />
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Received</CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(summary.totalReceived)}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Refunded</CardTitle>
-            <RotateCcw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                {formatCurrency(summary.totalRefunded)}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Collection</CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className="text-2xl font-bold">
-                {formatCurrency(summary.totalReceived - summary.totalRefunded)}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by payment number, invoice, or patient..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="FAILED">Failed</SelectItem>
-                  <SelectItem value="REFUNDED">Refunded</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={methodFilter} onValueChange={setMethodFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Methods</SelectItem>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="CARD">Card</SelectItem>
-                  <SelectItem value="WALLET">Mobile Wallet</SelectItem>
-                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                  <SelectItem value="CHEQUE">Cheque</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-[140px]"
-              />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-[140px]"
-              />
-            </div>
-          </div>
-
-          <ActiveFilters
-            className="mt-4"
-            noun="payments"
-            onClearAll={() => {
-              setSearch('')
-              setStatusFilter('all')
-              setMethodFilter('all')
-              setDateFrom('all')
-              setDateTo('all')
-            }}
-            filters={[
-              { label: 'Search', value: search, onClear: () => setSearch('') },
-              {
-                label: 'Status',
-                value: statusFilter === 'all' ? null : humanise(statusFilter),
-                onClear: () => setStatusFilter('all'),
-              },
-              {
-                label: 'Method',
-                value: methodFilter === 'all' ? null : humanise(methodFilter),
-                onClear: () => setMethodFilter('all'),
-              },
-              {
-                label: 'From',
-                value: dateFrom === 'all' ? null : dateFrom,
-                onClear: () => setDateFrom('all'),
-              },
-              {
-                label: 'To',
-                value: dateTo === 'all' ? null : dateTo,
-                onClear: () => setDateTo('all'),
-              },
-            ]}
+      {/* Filters. The dates keep 'all' for an open end; the range control
+          speaks in blanks. */}
+      <ListToolbar
+        search={
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            aria-label="Search payments"
+            placeholder="Search by payment number, invoice or patient…"
           />
-        </CardContent>
-      </Card>
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Status"
+              plural="statuses"
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              options={STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Method"
+              plural="methods"
+              value={methodFilter}
+              onValueChange={setMethodFilter}
+              options={METHOD_OPTIONS}
+            />
+          </>
+        }
+        date={
+          <DateRangeFilter
+            label="Paid"
+            value={range}
+            onChange={(next) => {
+              setDateFrom(next.from || 'all')
+              setDateTo(next.to || 'all')
+            }}
+          />
+        }
+        active={{
+          noun: 'payments',
+          onClearAll: () => {
+            setSearch('')
+            setStatusFilter('all')
+            setMethodFilter('all')
+            setDateFrom('all')
+            setDateTo('all')
+          },
+          filters: [
+            { label: 'Search', value: search, onClear: () => setSearch('') },
+            {
+              label: 'Status',
+              value: statusFilter === 'all' ? null : humanise(statusFilter),
+              onClear: () => setStatusFilter('all'),
+            },
+            {
+              label: 'Method',
+              value: methodFilter === 'all' ? null : humanise(methodFilter),
+              onClear: () => setMethodFilter('all'),
+            },
+            {
+              label: 'Paid',
+              value: dateRangeLabel(range),
+              onClear: () => {
+                setDateFrom('all')
+                setDateTo('all')
+              },
+            },
+          ],
+        }}
+      />
 
       {/* Payments Table */}
       <Card>
@@ -432,9 +400,9 @@ export default function PaymentsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                        <User className="h-4 w-4 text-primary" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {`${payment.invoice.patient.firstName.charAt(0)}${payment.invoice.patient.lastName.charAt(0)}`.toUpperCase()}
                       </div>
                       <div>
                         <div className="font-medium">
@@ -448,7 +416,7 @@ export default function PaymentsPage() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/billing/invoices/${payment.invoice.id}`}
+                      href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
                       className="text-primary hover:underline"
                     >
                       {payment.invoice.invoiceNo}

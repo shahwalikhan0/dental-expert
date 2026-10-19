@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormSection } from '@/components/ui/form-section'
 import {
-  COMMON_ALLERGIES,
+  // COMMON_ALLERGIES, // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
   COMMON_CONDITIONS,
   normalizeList,
   type MedicalHistoryInput,
@@ -164,15 +164,12 @@ export function MedicalHistoryFields({
     onChange({ ...values, [field]: next })
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Medical history</CardTitle>
-        <CardDescription>
-          What a clinician needs to know before treating this patient. An allergy recorded here is
-          checked against every prescription written for them.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <FormSection
+      title="Medical history"
+      description="What a clinician needs to know before treating this patient."
+    >
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Allergies are hidden for now (19 Oct 2026); uncomment to bring them back. Put md:grid-cols-3 back with it.
         <ListField
           id="allergies"
           label="Allergies"
@@ -183,6 +180,7 @@ export function MedicalHistoryFields({
           onChange={setList('allergies')}
           tone="destructive"
         />
+        */}
         <ListField
           id="conditions"
           label="Medical conditions"
@@ -200,7 +198,7 @@ export function MedicalHistoryFields({
           values={values.currentMedications}
           onChange={setList('currentMedications')}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </FormSection>
   )
 }

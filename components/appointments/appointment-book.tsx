@@ -115,17 +115,26 @@ export function AppointmentBook({
   }
 
   return (
-    <div className="overflow-x-auto">
+    /*
+      Scrolls in both directions, with the clock and the dentists pinned.
+
+      A clinic open round the clock draws 1440 minutes at this scale — about
+      2700px — so the page scrolled the whole book off the top and took the
+      dentists' names with it. Boxing the grid keeps the day inside the screen
+      and leaves the headers where they can be read against the row you are
+      looking at.
+    */
+    <div className="max-h-[70vh] overflow-auto">
       <div
         className="grid min-w-[640px]"
         style={{ gridTemplateColumns: `4.5rem repeat(${columns.length}, minmax(9rem, 1fr))` }}
       >
         {/* Header */}
-        <div className="sticky left-0 z-20 bg-background border-b border-r" />
+        <div className="sticky left-0 top-0 z-40 bg-background border-b border-r" />
         {columns.map((doctor) => (
           <div
             key={doctor.id}
-            className="border-b border-r px-3 py-2 text-sm font-medium truncate bg-background"
+            className="sticky top-0 z-30 border-b border-r px-3 py-2 text-sm font-medium truncate bg-background"
           >
             {doctor.id === 'unassigned'
               ? 'Unassigned'

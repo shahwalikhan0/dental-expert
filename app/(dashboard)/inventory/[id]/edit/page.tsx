@@ -112,7 +112,7 @@ export default function EditInventoryItemPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={`Edit ${initial.name || 'item'}`} back={back} />
 
       <ItemForm

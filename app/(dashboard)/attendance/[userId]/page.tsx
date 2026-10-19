@@ -23,7 +23,7 @@ import {
   usePagedRows,
 } from '@/components/ui/data-grid'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -51,7 +51,7 @@ import {
 } from '@/lib/attendance'
 import { DownloadMenu, RangeControls } from '@/components/attendance/range-controls'
 import { cn } from '@/lib/utils'
-import { CalendarDays, Pencil, Save, UserX } from 'lucide-react'
+import { Briefcase, CalendarDays, IdCard, Pencil, Save, UserX } from 'lucide-react'
 
 /**
  * One person's attendance.
@@ -122,10 +122,11 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
     setFailed(false)
     try {
       const res = await fetch(`/api/attendance/${userId}?${query}`)
-      if (res.status === 404) {
-        setMissing(true)
-        return
-      }
+      if (requestId !== latestRequest.current) return
+      // Set both ways: a 404 used to stick, so the record stayed "not found"
+      // after a later load for the same person succeeded.
+      setMissing(res.status === 404)
+      if (res.status === 404) return
       const body = await readJson<RecordResponse>(res)
       if (requestId !== latestRequest.current) return
       setData(body)
@@ -185,18 +186,29 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={person.name}
+      {/* The person as a profile, as on their staff record: who, their role and
+          when they joined, with the download where a record keeps its buttons. */}
+      <ProfileHeader
+        eyebrow="Attendance"
+        name={person.name}
+        initials={person.name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part.charAt(0))
+          .join('')
+          .toUpperCase()}
         badges={!person.isActive && <StatusBadge kind="staff" status={false} label="Left" />}
-        description={
-          <>
-            {ROLE_LABELS[person.role]}
-            {person.clinicalRole ? ` + ${ROLE_LABELS[person.clinicalRole]}` : ''}
-            {person.employeeId ? ` · ${person.employeeId}` : ''}
-            {` · joined ${displayDate(person.joinedOn)}`}
-          </>
-        }
-        back={backLink}
+        facts={[
+          {
+            icon: Briefcase,
+            label: `${ROLE_LABELS[person.role]}${
+              person.clinicalRole ? ` + ${ROLE_LABELS[person.clinicalRole]}` : ''
+            }`,
+          },
+          ...(person.employeeId ? [{ icon: IdCard, label: person.employeeId }] : []),
+          { icon: CalendarDays, label: `Joined ${displayDate(person.joinedOn)}` },
+        ]}
         actions={
           data.canExport && (
             <DownloadMenu href={`/api/attendance/${userId}/export?${query}`} disabled={!data} />
@@ -215,7 +227,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
       />
 
       {summary && (
-        <dl className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
           <Figure label="Present" value={summary.present} tone={STATUS_TONE.PRESENT} />
           <Figure label="Late" value={summary.late} tone={STATUS_TONE.LATE} />
           <Figure
@@ -237,10 +249,7 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
       {data && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4" />
-              {rangeLabel(data.from, data.to)}
-            </CardTitle>
+            <CardTitle>{rangeLabel(data.from, data.to)}</CardTitle>
             <CardDescription>
               {data.canWrite
                 ? 'Choose a day to correct it.'
@@ -254,7 +263,11 @@ export default function AttendanceRecordPage({ params }: { params: Promise<{ use
       )}
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardHeader>
+          <CardTitle>Day by day</CardTitle>
+          <CardDescription>Newest first, with who marked each day and when.</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto border-t p-0">
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
@@ -359,9 +372,9 @@ function Figure({
   hint?: string
 }) {
   return (
-    <div className={cn('rounded-lg border p-3', tone)}>
-      <dt className="text-xs uppercase tracking-[0.08em] opacity-80">{label}</dt>
-      <dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd>
+    <div className={cn('rounded-2xl border p-5 shadow-sm', tone ?? 'bg-card')}>
+      <dt className="text-xs font-medium uppercase tracking-wide opacity-80">{label}</dt>
+      <dd className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{value}</dd>
       {hint && <dd className="text-xs opacity-80">{hint}</dd>}
     </div>
   )

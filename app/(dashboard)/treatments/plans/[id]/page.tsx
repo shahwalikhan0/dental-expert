@@ -2,10 +2,10 @@
 
 import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
@@ -16,28 +16,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   User,
   Phone,
   Mail,
   FileText,
   CheckCircle,
+  Check,
   Pencil,
   Printer,
   Play,
   ClipboardCheck,
+  ClipboardList,
+  ListOrdered,
+  Receipt,
+  Calendar,
+  Clock,
+  ChevronRight,
   Trash2,
 } from 'lucide-react'
 import { procedureCategoryConfig, calculatePlanProgress } from '@/lib/treatment-utils'
-import { BackLink, useTrail } from '@/components/ui/trail'
-import { PageHeader } from '@/components/ui/page-header'
+import { useTrail } from '@/components/ui/trail'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -129,6 +129,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
   const [actionLoading, setActionLoading] = useState(false)
   const [consentDialogOpen, setConsentDialogOpen] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   // Every move of the plan (propose, consent, start, complete, cancel), editing
   // it, and starting a step's treatment are `clinical:write`; the manager reads
@@ -264,18 +265,32 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
 
   const progress = calculatePlanProgress(plan.items)
 
+  const completedCount = plan.items.filter((i) => i.status === 'COMPLETED').length
+  // What the work done so far is worth at the quoted prices, beside what is left.
+  const completedValue = plan.items
+    .filter((i) => i.status === 'COMPLETED')
+    .reduce((sum, item) => sum + Number(item.estimatedCost), 0)
+  const remainingValue = plan.items
+    .filter((i) => i.status !== 'COMPLETED' && i.status !== 'CANCELLED')
+    .reduce((sum, item) => sum + Number(item.estimatedCost), 0)
+  const patientName = `${plan.patient.firstName} ${plan.patient.lastName}`
+  const open = !['COMPLETED', 'CANCELLED'].includes(plan.status)
+
   return (
     <div className="space-y-6">
       <PrintDocument printing={printing}>
         <PlanEstimatePrint plan={plan} showItemStatus />
       </PrintDocument>
 
-      <PageHeader
-        title={plan.planNumber}
-        description={plan.title}
-        back={
-          <BackLink trail={trail} fallback="/treatments/plans" fallbackLabel="Treatment plans" />
-        }
+      {/*
+        The plan as a record card: its number over its title, whose it is, what
+        it costs, then the one move it is waiting for as the primary button.
+        Editing and cancelling are rarer and sit behind "More".
+      */}
+      <ProfileHeader
+        eyebrow={plan.planNumber}
+        name={plan.title}
+        avatarIcon={ClipboardList}
         badges={
           <>
             <StatusBadge kind="treatmentPlan" status={plan.status} />
@@ -285,7 +300,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                 status="ACTIVE"
                 label={
                   <>
-                    <CheckCircle className="h-3 w-3 mr-1" />
+                    <CheckCircle className="h-3 w-3" />
                     Consent given
                   </>
                 }
@@ -293,23 +308,57 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
             )}
           </>
         }
+        facts={[
+          { icon: User, label: patientName },
+          {
+            icon: ListOrdered,
+            label: `${plan.items.length} procedure${plan.items.length === 1 ? '' : 's'}`,
+          },
+          { icon: Receipt, label: formatCurrency(plan.estimatedCost) },
+          { icon: Calendar, label: displayDate(plan.createdAt) },
+        ]}
+        menu={
+          canWrite && open
+            ? [
+                {
+                  label: 'Edit plan',
+                  icon: Pencil,
+                  onSelect: () => router.push(trail.to(`/treatments/plans/${id}/edit`)),
+                },
+                {
+                  label: 'Cancel plan…',
+                  icon: Trash2,
+                  onSelect: handleCancelPlan,
+                  destructive: true,
+                  disabled: actionLoading,
+                },
+              ]
+            : []
+        }
         actions={
           <>
+            <PrintButton printing={printing} label="Print plan" />
+            <Button variant="outline" asChild>
+              <Link href={trail.to(`/treatments/plans/${plan.id}/estimate`)}>
+                <Printer className="h-4 w-4" />
+                Patient estimate
+              </Link>
+            </Button>
             {canWrite && plan.status === 'DRAFT' && (
               <Button onClick={() => handleStatusChange('PROPOSED')} disabled={actionLoading}>
-                <FileText className="h-4 w-4 mr-2" />
+                <FileText className="h-4 w-4" />
                 Propose to patient
               </Button>
             )}
             {canWrite && plan.status === 'PROPOSED' && !plan.consentGiven && (
               <Button onClick={() => setConsentDialogOpen(true)}>
-                <ClipboardCheck className="h-4 w-4 mr-2" />
+                <ClipboardCheck className="h-4 w-4" />
                 Record consent…
               </Button>
             )}
             {canWrite && plan.status === 'ACCEPTED' && (
               <Button onClick={() => handleStatusChange('IN_PROGRESS')} disabled={actionLoading}>
-                <Play className="h-4 w-4 mr-2" />
+                <Play className="h-4 w-4" />
                 Start treatment
               </Button>
             )}
@@ -321,73 +370,68 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
             */}
             {canWrite && plan.status === 'IN_PROGRESS' && planIsFinished(plan.items) && (
               <Button onClick={() => handleStatusChange('COMPLETED')} disabled={actionLoading}>
-                <CheckCircle className="h-4 w-4 mr-2" />
+                <CheckCircle className="h-4 w-4" />
                 Mark plan complete
               </Button>
             )}
-            {canWrite && !['COMPLETED', 'CANCELLED'].includes(plan.status) && (
-              <>
-                <Button variant="outline" asChild>
-                  <Link href={trail.to(`/treatments/plans/${id}/edit`)}>
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit
-                  </Link>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="text-destructive"
-                  onClick={handleCancelPlan}
-                  disabled={actionLoading}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Cancel plan…
-                </Button>
-              </>
-            )}
-            <PrintButton printing={printing} label="Print plan" />
           </>
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Progress */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Progress and what the plan costs, done and still to do */}
           <Card>
             <CardHeader>
-              <CardTitle>Treatment progress</CardTitle>
+              <CardTitle>Progress</CardTitle>
+              <CardDescription>
+                {completedCount} of {plan.items.length} procedures completed
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {plan.items.filter((i) => i.status === 'COMPLETED').length} of{' '}
-                    {plan.items.length} procedures completed
-                  </span>
-                  <span className="text-sm font-medium">{progress}%</span>
+            <CardContent className="space-y-5">
+              <div className="flex items-center gap-3">
+                <Progress value={progress} className="h-2.5 flex-1" />
+                <span className="text-sm font-semibold tabular-nums">{progress}%</span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Total estimate
+                  </p>
+                  <p className="mt-1 text-xl font-bold tracking-tight tabular-nums">
+                    {formatCurrency(plan.estimatedCost)}
+                  </p>
                 </div>
-                <Progress value={progress} className="h-3" />
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Completed
+                  </p>
+                  <p className="mt-1 text-xl font-bold tracking-tight tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {formatCurrency(completedValue)}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Remaining
+                  </p>
+                  <p className="mt-1 text-xl font-bold tracking-tight tabular-nums">
+                    {formatCurrency(remainingValue)}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Procedures, in the phases the plan is agreed in */}
           <Card>
-            <CardHeader className="flex-row flex-wrap items-start justify-between gap-4 space-y-0">
-              <div>
-                <CardTitle>Treatment procedures</CardTitle>
-                <CardDescription>
-                  {phases.length > 1
-                    ? `${phases.length} phases — each one is a separate decision for the patient`
-                    : 'Procedures in this plan'}
-                </CardDescription>
-              </div>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={trail.to(`/treatments/plans/${plan.id}/estimate`)}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Patient estimate
-                </Link>
-              </Button>
+            <CardHeader>
+              <CardTitle>Treatment steps</CardTitle>
+              <CardDescription>
+                {phases.length > 1
+                  ? `${phases.length} phases — each one is a separate decision for the patient`
+                  : 'Procedures in this plan, in the order they are done'}
+              </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-8">
@@ -399,8 +443,8 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                     interface explaining its own data model.
                   */}
                   {phases.length > 1 && (
-                    <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
-                      <h3 className="font-medium">
+                    <header className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
+                      <h3 className="font-semibold">
                         <span className="text-muted-foreground">Phase {phase.number} · </span>
                         {phase.name}
                       </h3>
@@ -412,89 +456,105 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                     </header>
                   )}
 
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Procedure</TableHead>
-                        <TableHead>Teeth</TableHead>
-                        <TableHead className="text-right">Cost</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {phase.items.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.priority}</TableCell>
-                          <TableCell>
-                            <div className="font-medium">{item.procedure.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {item.procedure.code}
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className={`mt-1 ${procedureCategoryConfig[item.procedure.category]?.bgColor} ${procedureCategoryConfig[item.procedure.category]?.color} border-0`}
-                            >
-                              {procedureCategoryConfig[item.procedure.category]?.label ??
-                                item.procedure.category}
-                            </Badge>
-                            {item.notes && (
-                              <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(item.estimatedCost)}
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge kind="treatmentPlanItem" status={item.status} />
-                          </TableCell>
-                          <TableCell>
-                            {item.treatment ? (
-                              <Link
-                                href={trail.to(`/treatments/${item.treatment.id}`)}
-                                className="text-sm text-primary hover:underline"
-                              >
-                                {item.treatment.treatmentNo}
-                              </Link>
-                            ) : (
-                              canWrite &&
-                              ['PENDING', 'SCHEDULED'].includes(item.status) &&
-                              ['ACCEPTED', 'IN_PROGRESS'].includes(plan.status) && (
-                                <Button size="sm" variant="outline" asChild>
-                                  <Link href={startHref(item)}>Start</Link>
-                                </Button>
-                              )
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-
-                      {phases.length > 1 && (
-                        <TableRow>
-                          <TableCell
-                            colSpan={3}
-                            className="text-right text-sm text-muted-foreground"
+                  {/* A stepper: each step's number on a line that runs down the plan. */}
+                  <ol className="relative space-y-3">
+                    {phase.items.map((item, index) => {
+                      const category = procedureCategoryConfig[item.procedure.category]
+                      const done = item.status === 'COMPLETED'
+                      const dropped = item.status === 'CANCELLED'
+                      const last = index === phase.items.length - 1
+                      return (
+                        <li key={item.id} className="relative flex gap-4">
+                          {!last && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute left-4 top-9 -bottom-3 w-px bg-border"
+                            />
+                          )}
+                          <span
+                            className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                              done
+                                ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                                : item.status === 'IN_PROGRESS'
+                                  ? 'bg-primary text-primary-foreground'
+                                  : dropped
+                                    ? 'bg-muted text-muted-foreground'
+                                    : 'border-2 border-border bg-card text-foreground'
+                            }`}
                           >
-                            Phase {phase.number} subtotal
-                          </TableCell>
-                          <TableCell className="text-right font-medium tabular-nums">
-                            {formatCurrency(phase.subtotal)}
-                          </TableCell>
-                          <TableCell colSpan={2} className="text-sm text-muted-foreground">
-                            {formatCurrency(phase.runningTotal)} agreed by the end of this phase
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                            {done ? <Check className="h-4 w-4" /> : item.priority}
+                          </span>
+                          <div
+                            className={`min-w-0 flex-1 rounded-xl border border-border px-4 py-3 ${dropped ? 'opacity-60' : ''}`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold">{item.procedure.name}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={`${category?.bgColor} ${category?.color} border-0`}
+                                  >
+                                    {category?.label ?? item.procedure.category}
+                                  </Badge>
+                                </div>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {item.procedure.code} · Teeth:{' '}
+                                  {describeTeethByQuadrant(parseTeeth(item.toothNumbers)) || BLANK}
+                                </p>
+                              </div>
+                              <span className="text-sm font-semibold tabular-nums">
+                                {formatCurrency(item.estimatedCost)}
+                              </span>
+                            </div>
+                            {item.notes && (
+                              <p className="mt-2 text-sm text-muted-foreground">{item.notes}</p>
+                            )}
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                              <StatusBadge kind="treatmentPlanItem" status={item.status} />
+                              {item.treatment ? (
+                                <Link
+                                  href={trail.to(`/treatments/${item.treatment.id}`)}
+                                  className="text-sm font-medium text-primary hover:underline"
+                                >
+                                  {item.treatment.treatmentNo}
+                                </Link>
+                              ) : (
+                                canWrite &&
+                                ['PENDING', 'SCHEDULED'].includes(item.status) &&
+                                ['ACCEPTED', 'IN_PROGRESS'].includes(plan.status) && (
+                                  <Button size="sm" variant="outline" asChild>
+                                    <Link href={startHref(item)}>
+                                      <Play className="h-3.5 w-3.5" />
+                                      Start
+                                    </Link>
+                                  </Button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ol>
+
+                  {phases.length > 1 && (
+                    <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-muted/60 px-4 py-2.5 text-sm">
+                      <span className="text-muted-foreground">
+                        Phase {phase.number} subtotal{' '}
+                        <span className="font-semibold text-foreground tabular-nums">
+                          {formatCurrency(phase.subtotal)}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        {formatCurrency(phase.runningTotal)} agreed by the end of this phase
+                      </span>
+                    </div>
+                  )}
                 </section>
               ))}
 
-              <div className="flex items-baseline justify-between border-t pt-4">
+              <div className="flex items-baseline justify-between border-t border-border pt-4">
                 <span className="font-medium">Total estimated cost</span>
                 <span className="text-lg font-bold tabular-nums">
                   {formatCurrency(plan.estimatedCost)}
@@ -510,7 +570,7 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
                 <CardTitle>Notes</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">{plan.notes}</p>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.notes}</p>
               </CardContent>
             </Card>
           )}
@@ -520,98 +580,68 @@ export default function TreatmentPlanDetailPage({ params }: { params: Promise<{ 
         <div className="space-y-6">
           {/* Patient Info */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Patient
-              </CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle>Patient</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">
-                    {plan.patient.firstName} {plan.patient.lastName}
-                  </div>
-                  <div className="text-sm text-muted-foreground">{plan.patient.patientId}</div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  {formatPhone(plan.patient.phone) || BLANK}
-                </div>
+            <CardContent className="space-y-5">
+              <Link
+                href={trail.to(`/patients/${plan.patient.id}`)}
+                className="group -mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  {`${plan.patient.firstName.charAt(0)}${plan.patient.lastName.charAt(0)}`.toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{patientName}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {plan.patient.patientId}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Phone" icon={Phone}>
+                  {formatPhone(plan.patient.phone)}
+                </InfoItem>
                 {plan.patient.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
+                  <InfoItem label="Email" icon={Mail}>
                     {plan.patient.email}
-                  </div>
+                  </InfoItem>
                 )}
-              </div>
-
-              <Button variant="outline" className="w-full" asChild>
-                <Link href={trail.to(`/patients/${plan.patient.id}`)}>View patient profile</Link>
-              </Button>
+              </InfoGrid>
             </CardContent>
           </Card>
 
           {/* Plan Summary */}
           <Card>
-            <CardHeader>
-              <CardTitle>Plan summary</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle>Plan details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Total cost</div>
-                  <div className="font-bold text-lg tabular-nums">
-                    {formatCurrency(plan.estimatedCost)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Procedures</div>
-                  <div className="font-bold text-lg">{plan.items.length}</div>
-                </div>
-              </div>
-
-              {plan.estimatedDuration ? (
-                <div>
-                  <div className="text-sm text-muted-foreground">Estimated duration</div>
-                  <div className="font-medium">{Math.round(plan.estimatedDuration / 60)} hours</div>
-                </div>
-              ) : null}
-
-              <Separator />
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
-                  <span>{displayDate(plan.createdAt)}</span>
-                </div>
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Consent">
+                  {plan.consentGiven
+                    ? plan.consentDate
+                      ? `Given ${displayDate(plan.consentDate)}`
+                      : 'Given'
+                    : 'Not yet recorded'}
+                </InfoItem>
+                {plan.estimatedDuration ? (
+                  <InfoItem label="Estimated duration" icon={Clock}>
+                    {Math.round(plan.estimatedDuration / 60)} hours
+                  </InfoItem>
+                ) : null}
+                <InfoItem label="Created">{displayDate(plan.createdAt)}</InfoItem>
                 {plan.startDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Start date</span>
-                    <span>{displayDate(plan.startDate)}</span>
-                  </div>
+                  <InfoItem label="Start date">{displayDate(plan.startDate)}</InfoItem>
                 )}
                 {plan.expectedEndDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Expected end</span>
-                    <span>{displayDate(plan.expectedEndDate)}</span>
-                  </div>
+                  <InfoItem label="Expected end">{displayDate(plan.expectedEndDate)}</InfoItem>
                 )}
                 {plan.completedDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Completed</span>
-                    <span>{displayDate(plan.completedDate)}</span>
-                  </div>
+                  <InfoItem label="Completed">{displayDate(plan.completedDate)}</InfoItem>
                 )}
-              </div>
+              </InfoGrid>
             </CardContent>
           </Card>
         </div>

@@ -6,12 +6,9 @@ import { formatTeeth, parseTeeth } from '@/lib/teeth'
 import { holderCan } from '@/lib/rbac'
 import { knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
-import {
-  describeAllergyClashes,
-  prescriptionAllergyClashes,
-  prescriptionLinesRefusal,
-  type PrescriptionLineInput,
-} from '@/lib/prescribing'
+// Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+// import { describeAllergyClashes, prescriptionAllergyClashes } from '@/lib/prescribing'
+import { prescriptionLinesRefusal, type PrescriptionLineInput } from '@/lib/prescribing'
 
 // GET — list prescriptions
 export async function GET(request: NextRequest) {
@@ -110,14 +107,11 @@ export async function POST(request: NextRequest) {
   }
 
   /*
-   * Only a dentist prescribes (bug report 12 Oct, finding 36).
-   *
-   * `clinical:write` alone let the administrator and the dental assistants
-   * prescribe, and the prescriber recorded is whoever is signed in — so the
-   * administrator, who is not a dentist, was the prescriber on a real
-   * prescription. Prescribing is the same kind of act as signing a note, and
-   * `clinical:sign` is already held by dentists only, including an owner who
-   * holds DOCTOR as a second, clinical role.
+   * Prescribing is the same kind of act as signing a note, so it takes
+   * `clinical:sign`, not `clinical:write` (bug report 12 Oct, finding 36):
+   * a dental assistant writes clinical records but does not prescribe. Held by
+   * dentists, and since 19 October by the clinic manager and the administrator,
+   * who are supersets of every role they supervise.
    */
   if (!holderCan({ role: user.role, clinicalRole: user.clinicalRole }, 'clinical:sign')) {
     await recordAudit({
@@ -129,7 +123,10 @@ export async function POST(request: NextRequest) {
       newValues: { permission: 'clinical:sign', role: user.role, attempted: 'prescription' },
       ...requestContext(request.headers),
     })
-    return NextResponse.json({ error: 'Only a dentist can write a prescription.' }, { status: 403 })
+    return NextResponse.json(
+      { error: 'Only a dentist, the clinic manager or an administrator can write a prescription.' },
+      { status: 403 }
+    )
   }
 
   try {
@@ -173,10 +170,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // The patient, with the allergies the check below reads.
+    // The patient. Allergies are hidden for now (19 Oct 2026); uncomment to bring them back. With them this
+    // also selected `medicalHistory: { select: { allergies: true } }` for the check below.
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, hospitalId },
-      select: { id: true, medicalHistory: { select: { allergies: true } } },
+      select: { id: true },
     })
     if (!patient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
@@ -265,37 +263,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /*
-     * The allergy check, on the server (finding 35).
-     *
-     * It existed only on the New Prescription screen, so the API, a template
-     * or any other screen prescribed amoxicillin to a patient recorded as
-     * allergic to penicillin with a 201 and no word. Same matching as the
-     * screen (lib/prescribing.ts). Like the screen it does not refuse outright
-     * — a prescriber may have a reason — but it will not go through unless
-     * the request says, in so many words, that the prescriber has seen the
-     * clash and means it.
-     */
-    const clashes = prescriptionAllergyClashes(
-      patient.medicalHistory?.allergies,
-      lines.map((m) => ({
-        name: String(m.medicationName),
-        genericName: m.medicationId
-          ? (catalogueById.get(m.medicationId as string)?.genericName ?? null)
-          : null,
-      }))
-    )
-    const acknowledged = body.allergyAcknowledged === true
-    if (clashes.length > 0 && !acknowledged) {
-      return NextResponse.json(
-        {
-          error: `This prescription clashes with a recorded allergy: ${describeAllergyClashes(clashes)}. Confirm to prescribe anyway.`,
-          code: 'ALLERGY_CLASH',
-          allergyClashes: clashes,
-        },
-        { status: 409 }
-      )
-    }
+    // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+    // /*
+    //  * The allergy check, on the server (finding 35).
+    //  *
+    //  * It existed only on the New Prescription screen, so the API, a template
+    //  * or any other screen prescribed amoxicillin to a patient recorded as
+    //  * allergic to penicillin with a 201 and no word. Same matching as the
+    //  * screen (lib/prescribing.ts). Like the screen it does not refuse outright
+    //  * — a prescriber may have a reason — but it will not go through unless
+    //  * the request says, in so many words, that the prescriber has seen the
+    //  * clash and means it.
+    //  */
+    // const clashes = prescriptionAllergyClashes(
+    //   patient.medicalHistory?.allergies,
+    //   lines.map((m) => ({
+    //     name: String(m.medicationName),
+    //     genericName: m.medicationId
+    //       ? (catalogueById.get(m.medicationId as string)?.genericName ?? null)
+    //       : null,
+    //   }))
+    // )
+    // const acknowledged = body.allergyAcknowledged === true
+    // if (clashes.length > 0 && !acknowledged) {
+    //   return NextResponse.json(
+    //     {
+    //       error: `This prescription clashes with a recorded allergy: ${describeAllergyClashes(clashes)}. Confirm to prescribe anyway.`,
+    //       code: 'ALLERGY_CLASH',
+    //       allergyClashes: clashes,
+    //     },
+    //     { status: 409 }
+    //   )
+    // }
 
     /*
      * The teeth, normalised through one parser.
@@ -384,7 +383,8 @@ export async function POST(request: NextRequest) {
 
     // A prescription is a clinical act with legal weight (finding 24). An
     // allergy clash the prescriber chose to override is the part of it most
-    // likely to be asked about later, so it is recorded with the entry.
+    // likely to be asked about later, so it is recorded with the entry (while
+    // the allergy check above is switched off, there is none to record).
     await recordAudit({
       hospitalId,
       userId: user.id,
@@ -398,16 +398,17 @@ export async function POST(request: NextRequest) {
         medications: lines.map((m) => String(m.medicationName).trim()),
         templateId: templateId || null,
         treatmentId: treatmentId || null,
-        ...(clashes.length > 0
-          ? {
-              allergyAcknowledged: true,
-              allergyClashes: clashes.map((c) => ({
-                drug: c.drug,
-                allergy: c.allergy,
-                note: c.note ?? null,
-              })),
-            }
-          : {}),
+        // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+        // ...(clashes.length > 0
+        //   ? {
+        //       allergyAcknowledged: true,
+        //       allergyClashes: clashes.map((c) => ({
+        //         drug: c.drug,
+        //         allergy: c.allergy,
+        //         note: c.note ?? null,
+        //       })),
+        //     }
+        //   : {}),
       },
       ...requestContext(request.headers),
     })

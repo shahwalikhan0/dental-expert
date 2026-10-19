@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { FormSection, FormActions } from '@/components/ui/form-section'
+import { StatTile } from '@/components/billing/stat-tile'
 import {
   Select,
   SelectContent,
@@ -21,7 +24,7 @@ import { NoTillNotice } from '@/components/billing/no-till-notice'
 import { NO_OPEN_TILL, refundNeedsOpenTill } from '@/lib/till'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/billing-utils'
-import { Loader2, Undo2 } from 'lucide-react'
+import { CheckCircle, Loader2, Undo2 } from 'lucide-react'
 
 /**
  * FR-014 — record a refund against a payment.
@@ -198,63 +201,55 @@ export default function RefundPaymentPage() {
   const patient = payment.invoice.patient
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <BackLink trail={trail} fallback="/billing/payments" fallbackLabel="Payments" />
+    <div className="space-y-6">
+      <PageHeader
+        back={<BackLink trail={trail} fallback="/billing/payments" fallbackLabel="Payments" />}
+        title={`Refund ${payment.paymentNo}`}
+        description={
+          <>
+            {patient ? (
+              <>
+                <Link href={trail.to(`/patients/${patient.id}`)} className="hover:underline">
+                  {patient.firstName} {patient.lastName}
+                </Link>
+                {' · '}
+              </>
+            ) : null}
+            <Link
+              href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
+              className="hover:underline"
+            >
+              {payment.invoice.invoiceNo}
+            </Link>
+          </>
+        }
+      />
 
-      <div>
-        <h1 className="page-title">Refund {payment.paymentNo}</h1>
-        <p className="text-muted-foreground">
-          {patient ? (
-            <>
-              <Link href={trail.to(`/patients/${patient.id}`)} className="hover:underline">
-                {patient.firstName} {patient.lastName}
-              </Link>
-              {' · '}
-            </>
-          ) : null}
-          <Link
-            href={trail.to(`/billing/invoices/${payment.invoice.id}`)}
-            className="hover:underline"
-          >
-            {payment.invoice.invoiceNo}
-          </Link>
-        </p>
+      {/* This payment: what was taken, and what has gone back so far. */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile label="Received" value={formatCurrency(paid)} />
+        <StatTile label="Already refunded" value={formatCurrency(alreadyRefunded)} />
+        <StatTile
+          label="Refundable"
+          value={formatCurrency(refundable)}
+          tone={refundable > 0 ? 'default' : 'success'}
+        />
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">This payment</CardTitle>
-          <CardDescription>What was taken, and what has gone back so far.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-muted-foreground">Received</p>
-            <p className="font-medium">{formatCurrency(paid)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Already refunded</p>
-            <p className="font-medium">{formatCurrency(alreadyRefunded)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Refundable</p>
-            <p className="font-medium">{formatCurrency(refundable)}</p>
-          </div>
-        </CardContent>
-      </Card>
 
       {payment.refunds.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Earlier refunds</CardTitle>
+            <CardTitle>Earlier refunds</CardTitle>
+            <CardDescription>Given back against this payment so far</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {payment.refunds.map((refund) => (
-              <div key={refund.id} className="rounded-md border px-3 py-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="font-medium">{refund.refundNo}</span>
-                  <span>{formatCurrency(Number(refund.amount))}</span>
+              <div key={refund.id} className="rounded-xl border px-4 py-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="font-semibold">{refund.refundNo}</span>
+                  <span className="tabular-nums">{formatCurrency(Number(refund.amount))}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {refund.reason} · {refund.refundMethod.toLowerCase().replace('_', ' ')} ·{' '}
                   {refund.authorisedBy?.name ?? 'authoriser not recorded'}
                 </p>
@@ -265,22 +260,22 @@ export default function RefundPaymentPage() {
       )}
 
       {refundable <= 0 ? (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/10">
+            <CheckCircle className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1 self-center">
             This payment has been refunded in full. There is nothing left to give back.
-          </CardContent>
-        </Card>
+          </span>
+        </div>
       ) : (
-        <form onSubmit={handleSubmit}>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Record a refund</CardTitle>
-              <CardDescription>
-                The reason and your name are kept against this refund permanently.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <FormSection
+            title="Record a refund"
+            description="The reason and your name are kept against this refund permanently."
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount *</Label>
                   <Input
@@ -333,22 +328,22 @@ export default function RefundPaymentPage() {
               </div>
 
               {blockedByTill && <NoTillNotice what="cash-refund" />}
+            </div>
+          </FormSection>
 
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" asChild>
-                  <Link href={`/billing/invoices/${payment.invoice.id}`}>Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={submitting || blockedByTill}>
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Undo2 className="h-4 w-4 mr-2" />
-                  )}
-                  Record refund
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <FormActions>
+            <Button type="button" variant="outline" asChild>
+              <Link href={`/billing/invoices/${payment.invoice.id}`}>Cancel</Link>
+            </Button>
+            <Button type="submit" disabled={submitting || blockedByTill}>
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Undo2 className="h-4 w-4" />
+              )}
+              Record refund
+            </Button>
+          </FormActions>
         </form>
       )}
     </div>

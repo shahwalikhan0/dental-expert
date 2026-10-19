@@ -162,7 +162,8 @@ export const DOC_SECTIONS: DocSection[] = [
           'Go to Patients → Add patient.',
           'First name, last name and phone are required. Give a date of birth, or an age if that is all you have.',
           'Add the CNIC when you have it. A CNIC already on file is refused, and the existing patient is named so you can open them instead.',
-          'Record allergies, medical conditions and current medicines. They are shown as alerts wherever the patient appears.',
+          // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back. The step read: 'Record allergies, medical conditions and current medicines. …'
+          'Record medical conditions and current medicines. They are shown as alerts wherever the patient appears.',
           'Save. The patient is given a number such as PAT202600001.',
         ],
         points: [
@@ -240,7 +241,8 @@ export const DOC_SECTIONS: DocSection[] = [
           'Go to Prescriptions → New prescription and choose the patient.',
           'Link it to a treatment if it follows one; the teeth are carried across.',
           'Add medicines from the drug catalogue, or start from a template such as “Post-extraction”.',
-          'If a medicine clashes with an allergy on the patient’s record, you are asked to confirm before it is saved, and the confirmation is recorded.',
+          // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+          // 'If a medicine clashes with an allergy on the patient’s record, you are asked to confirm before it is saved, and the confirmation is recorded.',
           'Save, then print it for the patient.',
         ],
         links: [

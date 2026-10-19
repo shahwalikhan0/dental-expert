@@ -123,26 +123,29 @@ export default function CommunicationsPage() {
       />
 
       <Tabs defaultValue="sms" className="w-full">
-        <TabsList className="w-full">
+        <TabsList>
           <TabsTrigger value="sms">
-            <MessageSquare className="w-4 h-4 mr-2" />
+            <MessageSquare className="h-4 w-4" />
             SMS
           </TabsTrigger>
           <TabsTrigger value="email">
-            <Mail className="w-4 h-4 mr-2" />
+            <Mail className="h-4 w-4" />
             Email
           </TabsTrigger>
           <TabsTrigger value="templates">
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="h-4 w-4" />
             Templates
           </TabsTrigger>
         </TabsList>
 
         {/* SMS Tab */}
         <TabsContent value="sms">
-          <div className={`grid grid-cols-1 gap-6 ${canSend ? 'lg:grid-cols-2' : ''}`}>
+          {/* The composer as a narrow column on the left, the history it adds
+              to taking the wider share — the history is read far more often
+              than a message is written from here. */}
+          <div className={`grid grid-cols-1 items-start gap-6 ${canSend ? 'lg:grid-cols-5' : ''}`}>
             {canSend && (
-              <Card>
+              <Card className="lg:sticky lg:top-4 lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Send SMS</CardTitle>
                   <CardDescription>Send individual or bulk SMS messages</CardDescription>
@@ -204,7 +207,7 @@ export default function CommunicationsPage() {
               </Card>
             )}
 
-            <Card>
+            <Card className={canSend ? 'lg:col-span-3' : undefined}>
               <CardHeader>
                 <CardTitle>SMS history</CardTitle>
                 <CardDescription>
@@ -225,9 +228,10 @@ export default function CommunicationsPage() {
 
         {/* Email Tab */}
         <TabsContent value="email">
-          <div className={`grid grid-cols-1 gap-6 ${canSend ? 'lg:grid-cols-2' : ''}`}>
+          {/* Laid out as the SMS tab: composer left, history right. */}
+          <div className={`grid grid-cols-1 items-start gap-6 ${canSend ? 'lg:grid-cols-5' : ''}`}>
             {canSend && (
-              <Card>
+              <Card className="lg:sticky lg:top-4 lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Send email</CardTitle>
                   <CardDescription>Compose and send emails to patients</CardDescription>
@@ -292,7 +296,7 @@ export default function CommunicationsPage() {
               </Card>
             )}
 
-            <Card>
+            <Card className={canSend ? 'lg:col-span-3' : undefined}>
               <CardHeader>
                 <CardTitle>Email history</CardTitle>
                 <CardDescription>The latest emails the clinic has sent</CardDescription>

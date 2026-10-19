@@ -28,7 +28,7 @@ export default async function ProfileSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="My profile"
         description={`Preferences that apply to your account only — ${user.name} (${user.email})`}

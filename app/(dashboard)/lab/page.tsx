@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useListParams } from '@/hooks/use-list-params'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ClickableRow,
@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { ExportMenu } from '@/components/ui/export-menu'
-import { WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
+import { isLabOrderEditable, WORK_TYPES, workTypeLabel } from '@/lib/lab-orders'
 import { statusLabel, statusOptions } from '@/lib/status'
 import { displayDate } from '@/lib/dates'
 import { formatCurrency } from '@/lib/i18n/format'
@@ -196,8 +196,10 @@ export default function LabWorkPage() {
   const priorityLabel = (priority: string) =>
     PRIORITY_OPTIONS.find((p) => p.value === priority)?.label ?? priority
 
+  // In the order a case moves through them, so the row reads as a pipeline.
   const statCards = [
-    { title: 'Total orders', value: stats.total, icon: Package, tone: 'text-muted-foreground' },
+    { title: 'Total orders', value: stats.total, icon: Package, tone: 'text-primary' },
+    { title: 'Created', value: stats.created, icon: Package, tone: 'text-muted-foreground' },
     {
       title: 'Sent to lab',
       value: stats.sentToLab,
@@ -228,7 +230,6 @@ export default function LabWorkPage() {
       icon: XCircle,
       tone: 'text-red-600 dark:text-red-400',
     },
-    { title: 'Created', value: stats.created, icon: Package, tone: 'text-muted-foreground' },
   ]
 
   return (
@@ -266,14 +267,14 @@ export default function LabWorkPage() {
             />
             <Button variant="outline" asChild>
               <Link href="/lab/vendors">
-                <Users className="mr-2 h-4 w-4" />
+                <Users className="h-4 w-4" />
                 Manage vendors
               </Link>
             </Button>
             {canWrite && (
               <Button asChild>
                 <Link href="/lab/orders/new">
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="h-4 w-4" />
                   New lab order
                 </Link>
               </Button>
@@ -282,18 +283,20 @@ export default function LabWorkPage() {
         }
       />
 
-      {/* Stats cards — counts of the page on screen. */}
-      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
-        {statCards.map(({ title, value, icon: Icon, tone }) => (
-          <Card key={title}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{title}</CardTitle>
-              <Icon className={`h-4 w-4 ${tone}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{value}</div>
-            </CardContent>
-          </Card>
+      {/* Stats cards — counts of the page on screen. Seven to a row on a wide
+          screen, so the icon sits beside the label rather than in a tile. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+        {statCards.map(({ title, value, icon: Icon, tone }, index) => (
+          <div
+            key={title}
+            className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${index === 0 ? 'col-span-2 sm:col-span-1' : ''}`}
+          >
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} />
+              <span className="truncate">{title}</span>
+            </p>
+            <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+          </div>
         ))}
       </div>
 
@@ -450,7 +453,8 @@ export default function LabWorkPage() {
                   {/* Editing is the menu's only item, so without `lab:write`
                       there is no menu: the row still opens the order. */}
                   <GridActionsCell>
-                    {canWrite && (
+                    {/* Nothing to edit on a cancelled case; the route refuses it. */}
+                    {canWrite && isLabOrderEditable(order.status) && (
                       <DropdownMenu>
                         <IconTooltip label="More actions">
                           <DropdownMenuTrigger asChild>

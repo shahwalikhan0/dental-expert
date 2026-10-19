@@ -14,7 +14,7 @@ import { FormField } from '@/components/ui/form-field'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SubmitButton } from '@/components/ui/submit-button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -195,23 +195,27 @@ export default function EditPatientPage() {
         phone: form.phone,
       }
 
-      if (form.dateOfBirth) payload.dateOfBirth = form.dateOfBirth
-      if (form.gender) payload.gender = form.gender
-      if (form.bloodGroup) payload.bloodGroup = form.bloodGroup
-      if (form.alternatePhone) payload.alternatePhone = form.alternatePhone
-      if (form.email) payload.email = form.email
-      if (form.address) payload.address = form.address
-      if (form.city) payload.city = form.city
-      if (form.state) payload.state = form.state
-      if (form.postalCode) payload.postalCode = form.postalCode
+      // Every optional field is sent, blank as null, so clearing one — a
+      // wrong email, a city the patient has moved away from — clears it. They
+      // used to be left out when blank, which the route reads as "leave it
+      // alone", so the old value came back on the next load.
+      const blankAsNull = (value: string) => (value.trim() ? value : null)
+      payload.dateOfBirth = blankAsNull(form.dateOfBirth)
+      payload.gender = blankAsNull(form.gender)
+      payload.bloodGroup = blankAsNull(form.bloodGroup)
+      payload.alternatePhone = blankAsNull(form.alternatePhone)
+      payload.email = blankAsNull(form.email)
+      payload.address = blankAsNull(form.address)
+      payload.city = blankAsNull(form.city)
+      payload.state = blankAsNull(form.state)
+      payload.postalCode = blankAsNull(form.postalCode)
       // Sent even when blank, so clearing a wrongly-entered CNIC actually
       // clears it rather than silently keeping the old value.
       payload.cnic = form.cnic
-      if (form.occupation) payload.occupation = form.occupation
-      if (form.emergencyContactName) payload.emergencyContactName = form.emergencyContactName
-      if (form.emergencyContactPhone) payload.emergencyContactPhone = form.emergencyContactPhone
-      if (form.emergencyContactRelation)
-        payload.emergencyContactRelation = form.emergencyContactRelation
+      payload.occupation = blankAsNull(form.occupation)
+      payload.emergencyContactName = blankAsNull(form.emergencyContactName)
+      payload.emergencyContactPhone = blankAsNull(form.emergencyContactPhone)
+      payload.emergencyContactRelation = blankAsNull(form.emergencyContactRelation)
       // Always sent, unlike on registration: removing the last allergy from a
       // record has to actually remove it, and an omitted key would read as
       // "leave it alone".
@@ -277,12 +281,8 @@ export default function EditPatientPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Personal Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Personal information</CardTitle>
-            <CardDescription>Basic details of the patient</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Personal information" description="Basic details of the patient">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <FormField label="First name" required htmlFor="firstName" error={errors.firstName}>
               {(control) => (
                 <Input
@@ -359,16 +359,12 @@ export default function EditPatientPage() {
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Contact Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact information</CardTitle>
-            <CardDescription>Phone, email, and address details</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Contact information" description="Phone, email, and address details">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
               {(control) => (
                 <PhoneInput
@@ -402,7 +398,7 @@ export default function EditPatientPage() {
                 />
               )}
             </FormField>
-            <div className="space-y-2 md:col-span-2 lg:col-span-3">
+            <div className="space-y-2 md:col-span-2 xl:col-span-3">
               <Label htmlFor="address">Address</Label>
               <Textarea
                 id="address"
@@ -439,16 +435,15 @@ export default function EditPatientPage() {
                 placeholder="Postal code"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Additional Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional details</CardTitle>
-            <CardDescription>ID, occupation, and referral information</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection
+          title="Additional details"
+          description="ID, occupation, and referral information"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cnic">CNIC</Label>
               <Input
@@ -478,16 +473,12 @@ export default function EditPatientPage() {
                 disabled
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Emergency Contact */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Emergency contact</CardTitle>
-            <CardDescription>Emergency contact information</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Emergency contact" description="Emergency contact information">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="emergencyContactName">Contact name</Label>
               <Input
@@ -519,20 +510,20 @@ export default function EditPatientPage() {
                 placeholder="e.g. Spouse, Parent"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         <MedicalHistoryFields values={history} onChange={setHistory} />
 
-        {/* Submit */}
-        <div className="flex justify-end gap-3">
+        {/* Submit, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={trail.back(`/patients/${patientId}`)}>Cancel</Link>
           </Button>
           <SubmitButton busy={submitting} busyLabel="Saving…" icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

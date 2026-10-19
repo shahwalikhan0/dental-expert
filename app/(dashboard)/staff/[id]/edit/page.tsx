@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { FormField } from '@/components/ui/form-field'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -27,7 +26,7 @@ import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import { Eye, EyeOff, Clock, Save, UserX } from 'lucide-react'
+import { Eye, EyeOff, Save, UserX } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { validatePassword } from '@/lib/password-policy'
 import { ALL_ROLES, ROLE_LABELS, SECONDARY_ROLES } from '@/lib/rbac'
@@ -359,445 +358,411 @@ export default function EditStaffPage({ params }: { params: Promise<{ id: string
     <div className="space-y-6">
       <PageHeader title="Edit staff member" description={savedName ?? undefined} back={back} />
 
-      <form ref={guard} onSubmit={handleSubmit} noValidate>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Basic Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Basic information</CardTitle>
-              <CardDescription>Name and role details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="First name" htmlFor="firstName" required error={errors.firstName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={formData.firstName}
-                      onChange={(e) => handleChange('firstName', e.target.value)}
-                    />
-                  )}
-                </FormField>
-                <FormField label="Last name" htmlFor="lastName" required error={errors.lastName}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      value={formData.lastName}
-                      onChange={(e) => handleChange('lastName', e.target.value)}
-                    />
-                  )}
-                </FormField>
-              </div>
+      <form ref={guard} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Basic Information */}
+        <FormSection title="Basic information" description="Name and role details">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="First name" htmlFor="firstName" required error={errors.firstName}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={formData.firstName}
+                  onChange={(e) => handleChange('firstName', e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Last name" htmlFor="lastName" required error={errors.lastName}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={formData.lastName}
+                  onChange={(e) => handleChange('lastName', e.target.value)}
+                />
+              )}
+            </FormField>
 
-              <FormField
-                label="Email"
-                htmlFor="email"
-                required
-                error={errors.email}
-                hint="Also their sign-in. Letters are stored in lower case."
-              >
-                {(control) => (
+            <FormField
+              label="Email"
+              htmlFor="email"
+              required
+              error={errors.email}
+              hint="Also their sign-in. Letters are stored in lower case."
+              className="md:col-span-2"
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                />
+              )}
+            </FormField>
+
+            <FormField label="Role" htmlFor="role" required>
+              {(control) => (
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) => handleChange('role', value)}
+                >
+                  <SelectTrigger {...control}>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Administrator is offered only to an administrator: the
+                        server refuses anybody else — see staffChangeRefusal. */}
+                    {ALL_ROLES.filter(canEditRole).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FormField>
+
+            {/* Optional second role — for the owner who also treats patients.
+                Capabilities become the union of the two. See lib/rbac.ts. */}
+            <FormField
+              label="Also works as (optional)"
+              htmlFor="clinicalRole"
+              hint="For someone who holds two jobs — an owner who also treats patients. They get the permissions of both roles."
+            >
+              {(control) => (
+                <Select
+                  value={formData.clinicalRole || 'NONE'}
+                  onValueChange={(value) =>
+                    handleChange('clinicalRole', value === 'NONE' ? '' : value)
+                  }
+                >
+                  <SelectTrigger {...control}>
+                    <SelectValue placeholder="No second role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">No second role</SelectItem>
+                    {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FormField>
+          </div>
+        </FormSection>
+
+        {/* Sign-in: a new password and whether the account works at all, apart
+            from the name and role so switching somebody off is not one field
+            among many. */}
+        <FormSection title="Sign-in and status" description="Password and account access">
+          <div className="space-y-4">
+            <FormField
+              label="New password"
+              htmlFor="newPassword"
+              error={errors.newPassword}
+              hint="Leave blank to keep the current one."
+            >
+              {(control) => (
+                <div className="relative md:max-w-sm">
                   <Input
                     {...control}
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={formData.newPassword}
+                    onChange={(e) => handleChange('newPassword', e.target.value)}
+                    placeholder="8 to 32 characters"
                   />
-                )}
-              </FormField>
-
-              <FormField label="Role" htmlFor="role" required>
-                {(control) => (
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value) => handleChange('role', value)}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPassword(!showPassword)}
                   >
-                    <SelectTrigger {...control}>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {/* Administrator is offered only to an administrator: the
-                          server refuses anybody else — see staffChangeRefusal. */}
-                      {ALL_ROLES.filter(canEditRole).map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </FormField>
-
-              {/* Optional second role — for the owner who also treats patients.
-                  Capabilities become the union of the two. See lib/rbac.ts. */}
-              <FormField
-                label="Also works as (optional)"
-                htmlFor="clinicalRole"
-                hint="For someone who holds two jobs — an owner who also treats patients. They get the permissions of both roles."
-              >
-                {(control) => (
-                  <Select
-                    value={formData.clinicalRole || 'NONE'}
-                    onValueChange={(value) =>
-                      handleChange('clinicalRole', value === 'NONE' ? '' : value)
-                    }
-                  >
-                    <SelectTrigger {...control}>
-                      <SelectValue placeholder="No second role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">No second role</SelectItem>
-                      {SECONDARY_ROLES.filter((r) => r !== formData.role).map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </FormField>
-
-              <Separator />
-
-              <FormField
-                label="New password"
-                htmlFor="newPassword"
-                error={errors.newPassword}
-                hint="Leave blank to keep the current one."
-              >
-                {(control) => (
-                  <div className="relative">
-                    <Input
-                      {...control}
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      value={formData.newPassword}
-                      onChange={(e) => handleChange('newPassword', e.target.value)}
-                      placeholder="8 to 32 characters"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                )}
-              </FormField>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="isActive">Account status</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {formData.isActive ? 'Active — can sign in' : 'Inactive — cannot sign in'}
-                  </p>
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
                 </div>
-                <Switch
-                  id="isActive"
-                  checked={formData.isActive}
-                  onCheckedChange={(checked) => handleChange('isActive', checked)}
+              )}
+            </FormField>
+
+            <div className="flex items-center justify-between gap-4 rounded-xl border px-4 py-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="isActive">Account status</Label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.isActive ? 'Active — can sign in' : 'Inactive — cannot sign in'}
+                </p>
+              </div>
+              <Switch
+                id="isActive"
+                checked={formData.isActive}
+                onCheckedChange={(checked) => handleChange('isActive', checked)}
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Contact Information */}
+        <FormSection title="Contact information" description="Phone and address details">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <FormField label="Phone" htmlFor="phone" required error={errors.phone}>
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  value={formData.phone}
+                  onChange={(value) => handleChange('phone', value)}
+                />
+              )}
+            </FormField>
+            <FormField
+              label="Alternate phone"
+              htmlFor="alternatePhone"
+              error={errors.alternatePhone}
+            >
+              {(control) => (
+                <PhoneInput
+                  {...control}
+                  autoComplete="off"
+                  value={formData.alternatePhone}
+                  onChange={(value) => handleChange('alternatePhone', value)}
+                />
+              )}
+            </FormField>
+
+            {hasHrFields && (
+              <>
+                <div className="space-y-2 md:col-span-2 xl:col-span-3">
+                  <Label htmlFor="address">Address</Label>
+                  <Textarea
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => handleChange('address', e.target.value)}
+                    rows={2}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={formData.city}
+                    onChange={(e) => handleChange('city', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input
+                    id="state"
+                    value={formData.state}
+                    onChange={(e) => handleChange('state', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="postalCode">Postal code</Label>
+                  <Input
+                    id="postalCode"
+                    value={formData.postalCode}
+                    onChange={(e) => handleChange('postalCode', e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </FormSection>
+
+        {/* Personal Details — CNIC, date of birth, NTN and emergency
+            contact. Present only for `staff:hr` (finding 42). */}
+        {hasHrFields && (
+          <FormSection
+            title="Personal details"
+            description="Personal and identification information"
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="dateOfBirth">Date of birth</Label>
+                <Input
+                  id="dateOfBirth"
+                  type="date"
+                  value={formData.dateOfBirth}
+                  onChange={(e) => handleChange('dateOfBirth', e.target.value)}
                 />
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Contact Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact information</CardTitle>
-              <CardDescription>Phone and address details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Phone" htmlFor="phone" required error={errors.phone}>
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      value={formData.phone}
-                      onChange={(value) => handleChange('phone', value)}
-                    />
-                  )}
-                </FormField>
-                <FormField
-                  label="Alternate phone"
-                  htmlFor="alternatePhone"
-                  error={errors.alternatePhone}
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Select
+                  value={formData.gender}
+                  onValueChange={(value) => handleChange('gender', value)}
                 >
-                  {(control) => (
-                    <PhoneInput
-                      {...control}
-                      autoComplete="off"
-                      value={formData.alternatePhone}
-                      onChange={(value) => handleChange('alternatePhone', value)}
-                    />
-                  )}
-                </FormField>
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MALE">Male</SelectItem>
+                    <SelectItem value="FEMALE">Female</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
-              {hasHrFields && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="address">Address</Label>
-                    <Textarea
-                      id="address"
-                      value={formData.address}
-                      onChange={(e) => handleChange('address', e.target.value)}
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input
-                        id="city"
-                        value={formData.city}
-                        onChange={(e) => handleChange('city', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="state">State</Label>
-                      <Input
-                        id="state"
-                        value={formData.state}
-                        onChange={(e) => handleChange('state', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="postalCode">Postal code</Label>
-                      <Input
-                        id="postalCode"
-                        value={formData.postalCode}
-                        onChange={(e) => handleChange('postalCode', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Personal Details — CNIC, date of birth, NTN and emergency
-              contact. Present only for `staff:hr` (finding 42). */}
-          {hasHrFields && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Personal details</CardTitle>
-                <CardDescription>Personal and identification information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="dateOfBirth">Date of birth</Label>
-                    <Input
-                      id="dateOfBirth"
-                      type="date"
-                      value={formData.dateOfBirth}
-                      onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="gender">Gender</Label>
-                    <Select
-                      value={formData.gender}
-                      onValueChange={(value) => handleChange('gender', value)}
-                    >
-                      <SelectTrigger id="gender">
-                        <SelectValue placeholder="Select gender" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="MALE">Male</SelectItem>
-                        <SelectItem value="FEMALE">Female</SelectItem>
-                        <SelectItem value="OTHER">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="cnic">CNIC</Label>
-                    <Input
-                      id="cnic"
-                      value={formData.cnic}
-                      onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="nationalTaxNo">National tax number (NTN)</Label>
-                    <Input
-                      id="nationalTaxNo"
-                      value={formData.nationalTaxNo}
-                      onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="emergencyContact">Emergency contact</Label>
-                    <Input
-                      id="emergencyContact"
-                      value={formData.emergencyContact}
-                      onChange={(e) => handleChange('emergencyContact', e.target.value)}
-                    />
-                  </div>
-                  <FormField
-                    label="Emergency phone"
-                    htmlFor="emergencyPhone"
-                    error={errors.emergencyPhone}
-                  >
-                    {(control) => (
-                      <PhoneInput
-                        {...control}
-                        autoComplete="off"
-                        value={formData.emergencyPhone}
-                        onChange={(value) => handleChange('emergencyPhone', value)}
-                      />
-                    )}
-                  </FormField>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Professional Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Professional details</CardTitle>
-              <CardDescription>Qualifications and employment information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="qualification">Qualification</Label>
-                  <Input
-                    id="qualification"
-                    value={formData.qualification}
-                    onChange={(e) => handleChange('qualification', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialization">Specialization</Label>
-                  <Input
-                    id="specialization"
-                    value={formData.specialization}
-                    onChange={(e) => handleChange('specialization', e.target.value)}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="cnic">CNIC</Label>
+                <Input
+                  id="cnic"
+                  value={formData.cnic}
+                  onChange={(e) => handleChange('cnic', formatCNICInput(e.target.value))}
+                />
               </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="licenseNumber">License number</Label>
-                  <Input
-                    id="licenseNumber"
-                    value={formData.licenseNumber}
-                    onChange={(e) => handleChange('licenseNumber', e.target.value)}
-                  />
-                </div>
-                {/* Correctable now (finding 47): the attendance register
-                    refuses every day before it, so a wrong one blocked
-                    back-filling. Moving it later is refused by the server
-                    while attendance is recorded before the new date. */}
-                <div className="space-y-2">
-                  <Label htmlFor="joiningDate">Joining date</Label>
-                  <Input
-                    id="joiningDate"
-                    type="date"
-                    max={isoDay(new Date())}
-                    value={formData.joiningDate}
-                    onChange={(e) => handleChange('joiningDate', e.target.value)}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="nationalTaxNo">National tax number (NTN)</Label>
+                <Input
+                  id="nationalTaxNo"
+                  value={formData.nationalTaxNo}
+                  onChange={(e) => handleChange('nationalTaxNo', e.target.value)}
+                />
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContact">Emergency contact</Label>
+                <Input
+                  id="emergencyContact"
+                  value={formData.emergencyContact}
+                  onChange={(e) => handleChange('emergencyContact', e.target.value)}
+                />
+              </div>
+              <FormField
+                label="Emergency phone"
+                htmlFor="emergencyPhone"
+                error={errors.emergencyPhone}
+              >
+                {(control) => (
+                  <PhoneInput
+                    {...control}
+                    autoComplete="off"
+                    value={formData.emergencyPhone}
+                    onChange={(value) => handleChange('emergencyPhone', value)}
+                  />
+                )}
+              </FormField>
+            </div>
+          </FormSection>
+        )}
 
-          {/* Work Schedule */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Work schedule
-              </CardTitle>
-              <CardDescription>Configure weekly work hours</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {shifts.map((shift, index) => (
-                  <div
-                    key={shift.dayOfWeek}
-                    className={`p-4 rounded-lg border ${
-                      shift.isActive ? 'border-primary bg-primary/5' : 'border-border'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <Label htmlFor={`shift-${shift.dayOfWeek}`} className="font-medium">
-                        {dayNames[index]}
+        {/* Professional Details */}
+        <FormSection
+          title="Professional details"
+          description="Qualifications and employment information"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="qualification">Qualification</Label>
+              <Input
+                id="qualification"
+                value={formData.qualification}
+                onChange={(e) => handleChange('qualification', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="specialization">Specialization</Label>
+              <Input
+                id="specialization"
+                value={formData.specialization}
+                onChange={(e) => handleChange('specialization', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="licenseNumber">License number</Label>
+              <Input
+                id="licenseNumber"
+                value={formData.licenseNumber}
+                onChange={(e) => handleChange('licenseNumber', e.target.value)}
+              />
+            </div>
+            {/* Correctable now (finding 47): the attendance register
+                refuses every day before it, so a wrong one blocked
+                back-filling. Moving it later is refused by the server
+                while attendance is recorded before the new date. */}
+            <div className="space-y-2">
+              <Label htmlFor="joiningDate">Joining date</Label>
+              <Input
+                id="joiningDate"
+                type="date"
+                max={isoDay(new Date())}
+                value={formData.joiningDate}
+                onChange={(e) => handleChange('joiningDate', e.target.value)}
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Work Schedule */}
+        <FormSection title="Work schedule" description="Configure weekly work hours">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {shifts.map((shift, index) => (
+              <div
+                key={shift.dayOfWeek}
+                className={`rounded-xl border p-4 transition-colors ${
+                  shift.isActive ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <Label htmlFor={`shift-${shift.dayOfWeek}`} className="font-semibold">
+                    {dayNames[index]}
+                  </Label>
+                  <Switch
+                    id={`shift-${shift.dayOfWeek}`}
+                    checked={shift.isActive}
+                    onCheckedChange={(checked) =>
+                      handleShiftChange(shift.dayOfWeek, 'isActive', checked)
+                    }
+                  />
+                </div>
+                {shift.isActive ? (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor={`shift-${shift.dayOfWeek}-start`} className="text-xs">
+                        Start
                       </Label>
-                      <Switch
-                        id={`shift-${shift.dayOfWeek}`}
-                        checked={shift.isActive}
-                        onCheckedChange={(checked) =>
-                          handleShiftChange(shift.dayOfWeek, 'isActive', checked)
+                      <Input
+                        id={`shift-${shift.dayOfWeek}-start`}
+                        type="time"
+                        value={shift.startTime}
+                        onChange={(e) =>
+                          handleShiftChange(shift.dayOfWeek, 'startTime', e.target.value)
                         }
+                        className="h-9"
                       />
                     </div>
-                    {shift.isActive && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor={`shift-${shift.dayOfWeek}-start`} className="text-xs">
-                            Start
-                          </Label>
-                          <Input
-                            id={`shift-${shift.dayOfWeek}-start`}
-                            type="time"
-                            value={shift.startTime}
-                            onChange={(e) =>
-                              handleShiftChange(shift.dayOfWeek, 'startTime', e.target.value)
-                            }
-                            className="h-8"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor={`shift-${shift.dayOfWeek}-end`} className="text-xs">
-                            End
-                          </Label>
-                          <Input
-                            id={`shift-${shift.dayOfWeek}-end`}
-                            type="time"
-                            value={shift.endTime}
-                            onChange={(e) =>
-                              handleShiftChange(shift.dayOfWeek, 'endTime', e.target.value)
-                            }
-                            className="h-8"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    <div className="space-y-1">
+                      <Label htmlFor={`shift-${shift.dayOfWeek}-end`} className="text-xs">
+                        End
+                      </Label>
+                      <Input
+                        id={`shift-${shift.dayOfWeek}-end`}
+                        type="time"
+                        value={shift.endTime}
+                        onChange={(e) =>
+                          handleShiftChange(shift.dayOfWeek, 'endTime', e.target.value)
+                        }
+                        className="h-9"
+                      />
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">Day off</p>
+                )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            ))}
+          </div>
+        </FormSection>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-4 mt-6">
+        {/* Save, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button variant="outline" type="button" asChild>
             <Link href={trail.back(`/staff/${resolvedParams.id}`)}>Cancel</Link>
           </Button>
           <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
 
       <OpenAppointmentsDialog

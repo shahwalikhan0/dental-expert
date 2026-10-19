@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { medicalAlerts } from '@/lib/medical-history'
-import { Separator } from '@/components/ui/separator'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -16,7 +17,6 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Calendar,
   Clock,
-  User,
   UserPlus,
   UserX,
   Phone,
@@ -32,6 +32,8 @@ import {
   FileText,
   Receipt,
   ClipboardPlus,
+  ChevronRight,
+  Ticket,
 } from 'lucide-react'
 import {
   appointmentTypeConfig,
@@ -353,24 +355,106 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
     appointment.invoices !== undefined &&
     liveInvoices.length === 0
 
+  const person = appointment.patient
+    ? getPatientName(appointment.patient)
+    : (appointment.visitor?.name ?? 'Walk-in')
+  const initials =
+    person
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join('')
+      .toUpperCase() || '?'
+  const ended = ['CANCELLED', 'NO_SHOW', 'RESCHEDULED'].includes(appointment.status)
+  const canNoShow =
+    canMoveTo(appointment.status, 'NO_SHOW') &&
+    appointment.status !== 'NO_SHOW' &&
+    !noShowTooEarly(appointment.startsAt)
+  const canCancel = appointment.status !== 'CANCELLED' && canMoveTo(appointment.status, 'CANCELLED')
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={appointment.appointmentNo}
+      {/*
+        Who is coming, when, and to whom, then the one step the visit is
+        waiting for as the primary button: confirm, check in, call in, check
+        out, record, bill. Editing, no-show and cancelling are rarer, and the
+        last two are not undone, so they sit behind "More".
+      */}
+      <ProfileHeader
+        eyebrow={appointment.appointmentNo}
+        name={person}
+        initials={initials}
         badges={
-          <StatusBadge
-            kind="appointment"
-            status={appointment.status}
-            className="text-base px-3 py-1"
-          />
+          <>
+            <StatusBadge kind="appointment" status={appointment.status} />
+            {getTypeBadge(appointment.appointmentType)}
+            {appointment.priority !== 'NORMAL' && getPriorityBadge(appointment.priority)}
+          </>
         }
-        description={`Created on ${displayDate(appointment.createdAt)}`}
-        back={<BackLink trail={trail} fallback="/appointments" fallbackLabel="Appointments" />}
+        facts={[
+          { icon: Calendar, label: displayDate(appointment.scheduledDate) },
+          {
+            icon: Clock,
+            label: `${formatTime(appointment.scheduledTime)} · ${appointment.duration} min`,
+          },
+          { icon: Stethoscope, label: getDoctorName(appointment.doctor) },
+          ...(appointment.tokenNumber
+            ? [{ icon: Ticket, label: `Token ${formatToken(appointment.tokenNumber)}` }]
+            : []),
+        ]}
+        menu={[
+          {
+            label: 'Edit appointment',
+            icon: Pencil,
+            onSelect: () => router.push(trail.to(`/appointments/${id}/edit`)),
+          },
+          /*
+            Marking somebody absent belongs here as much as cancelling does.
+            It was only ever on the list screen, so a receptionist who had
+            opened the appointment to deal with a patient who had not arrived
+            had to navigate back to the list to say so — and the no-show rate
+            this application uses to decide who gets an extra reminder is built
+            from exactly this action. Not before the appointment has started:
+            nobody has failed to attend something that has not begun.
+          */
+          ...(canNoShow
+            ? [
+                {
+                  label: 'Mark as no-show',
+                  icon: UserX,
+                  onSelect: handleNoShow,
+                  disabled: actionLoading,
+                },
+              ]
+            : []),
+          ...(canCancel
+            ? [
+                {
+                  label: 'Cancel appointment',
+                  icon: Trash2,
+                  onSelect: handleCancel,
+                  destructive: true,
+                  disabled: actionLoading,
+                },
+              ]
+            : []),
+        ]}
         actions={
           <>
+            {appointment.status === 'SCHEDULED' && (
+              <Button
+                variant="outline"
+                onClick={() => handleStatusChange('CONFIRMED')}
+                disabled={actionLoading}
+              >
+                <CheckCircle className="h-4 w-4" />
+                Confirm
+              </Button>
+            )}
             {['SCHEDULED', 'CONFIRMED'].includes(appointment.status) && (
               <Button onClick={handleCheckIn} disabled={actionLoading}>
-                <LogIn className="h-4 w-4 mr-2" />
+                <LogIn className="h-4 w-4" />
                 Check in
               </Button>
             )}
@@ -383,14 +467,8 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                 onClick={() => handleStatusChange('IN_PROGRESS')}
                 disabled={actionLoading}
               >
-                <Stethoscope className="h-4 w-4 mr-2" />
+                <Stethoscope className="h-4 w-4" />
                 Call in
-              </Button>
-            )}
-            {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
-              <Button onClick={handleCheckOut} disabled={actionLoading}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Check out
               </Button>
             )}
             {/* What was done at this visit, recorded against it (bug report 16
@@ -400,20 +478,23 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
             {canRecordTreatment &&
               appointment.patient &&
               ['IN_PROGRESS', 'COMPLETED'].includes(appointment.status) && (
-                <Button
-                  variant={appointment.status === 'COMPLETED' ? 'outline' : 'default'}
-                  asChild
-                >
+                <Button variant="outline" asChild>
                   <Link
                     href={trail.to(
                       `/treatments/new?appointmentId=${appointment.id}&patientId=${appointment.patient.id}`
                     )}
                   >
-                    <ClipboardPlus className="h-4 w-4 mr-2" />
+                    <ClipboardPlus className="h-4 w-4" />
                     Record treatment
                   </Link>
                 </Button>
               )}
+            {['CHECKED_IN', 'IN_PROGRESS'].includes(appointment.status) && (
+              <Button onClick={handleCheckOut} disabled={actionLoading}>
+                <LogOut className="h-4 w-4" />
+                Check out
+              </Button>
+            )}
             {canBillVisit && appointment.patient && (
               <Button asChild>
                 <Link
@@ -424,298 +505,274 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                     })
                   )}
                 >
-                  <Receipt className="h-4 w-4 mr-2" />
+                  <Receipt className="h-4 w-4" />
                   Create invoice
                 </Link>
-              </Button>
-            )}
-            {appointment.status === 'SCHEDULED' && (
-              <Button
-                variant="outline"
-                onClick={() => handleStatusChange('CONFIRMED')}
-                disabled={actionLoading}
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Confirm
-              </Button>
-            )}
-            <Button variant="outline" asChild>
-              <Link href={trail.to(`/appointments/${id}/edit`)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
-              </Link>
-            </Button>
-            {/*
-            Marking somebody absent belongs here as much as cancelling does.
-            It was only ever on the list screen, so a receptionist who had
-            opened the appointment to deal with a patient who had not arrived
-            had to navigate back to the list to say so — and the no-show rate
-            this application uses to decide who gets an extra reminder is built
-            from exactly this action.
-          */}
-            {/* Not before the appointment has started: nobody has failed to
-              attend something that has not begun. */}
-            {canMoveTo(appointment.status, 'NO_SHOW') &&
-              appointment.status !== 'NO_SHOW' &&
-              !noShowTooEarly(appointment.startsAt) && (
-                <Button variant="outline" onClick={handleNoShow} disabled={actionLoading}>
-                  <UserX className="h-4 w-4 mr-2" />
-                  No-show
-                </Button>
-              )}
-            {appointment.status !== 'CANCELLED' && canMoveTo(appointment.status, 'CANCELLED') && (
-              <Button variant="destructive" onClick={handleCancel} disabled={actionLoading}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Cancel appointment
               </Button>
             )}
           </>
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Appointment Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Appointment details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Date</p>
-                <p className="font-medium">{displayDate(appointment.scheduledDate)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Time</p>
-                <p className="font-medium">{formatTime(appointment.scheduledTime)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Duration</p>
-                <p className="font-medium">{appointment.duration} minutes</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Token</p>
-                <p className="font-medium tabular-nums">
-                  {appointment.tokenNumber ? (
-                    <>
-                      {formatToken(appointment.tokenNumber)}{' '}
-                      <span className="text-xs text-muted-foreground font-normal">
-                        ({appointment.tokenNumber})
-                      </span>
-                    </>
-                  ) : (
-                    'Issued at check-in'
-                  )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {/* Where the visit has got to, the way a ride or a delivery shows
+              its progress; or, for one that did not happen, why. */}
+          {ended ? (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-200">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-600/10">
+                {appointment.status === 'NO_SHOW' ? (
+                  <UserX className="h-4 w-4" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  {appointment.status === 'NO_SHOW'
+                    ? 'The patient did not attend'
+                    : appointment.status === 'RESCHEDULED'
+                      ? 'Rescheduled'
+                      : `Cancelled${appointment.cancelledAt ? ` on ${displayDateTime(appointment.cancelledAt)}` : ''}`}
                 </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Type</p>
-                {getTypeBadge(appointment.appointmentType)}
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Priority</p>
-                {getPriorityBadge(appointment.priority)}
+                {appointment.cancellationReason && (
+                  <p className="mt-0.5">Reason: {appointment.cancellationReason}</p>
+                )}
               </div>
             </div>
+          ) : (
+            <Card>
+              <CardContent className="p-6">
+                <VisitProgress appointment={appointment} />
+              </CardContent>
+            </Card>
+          )}
 
-            {(appointment.checkedInAt || appointment.checkedOutAt) && (
-              <>
-                <Separator />
-                <div className="grid grid-cols-2 gap-4">
-                  {appointment.checkedInAt && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Checked in</p>
-                      <p className="font-medium">{displayTime(appointment.checkedInAt)}</p>
-                    </div>
-                  )}
-                  {appointment.checkedOutAt && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Checked out</p>
-                      <p className="font-medium">{displayTime(appointment.checkedOutAt)}</p>
-                    </div>
-                  )}
-                  {appointment.waitTime !== null && appointment.waitTime > 0 && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Wait time</p>
-                      <p className="font-medium">{appointment.waitTime} minutes</p>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {appointment.chiefComplaint && (
-              <>
-                <Separator />
-                <div>
-                  <p className="text-sm text-muted-foreground">Chief complaint</p>
-                  <p className="font-medium">{appointment.chiefComplaint}</p>
-                </div>
-              </>
-            )}
-
-            {appointment.notes && (
-              <div>
-                <p className="text-sm text-muted-foreground">Notes</p>
-                <p className="font-medium">{appointment.notes}</p>
-              </div>
-            )}
-
-            {appointment.status === 'CANCELLED' && (
-              <>
-                <Separator />
-                <div className="rounded-lg bg-red-50 p-4 dark:bg-red-950/30">
-                  <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                    Cancelled on {displayDateTime(appointment.cancelledAt)}
-                  </p>
-                  {appointment.cancellationReason && (
-                    <p className="text-sm text-red-600 mt-1 dark:text-red-400">
-                      Reason: {appointment.cancellationReason}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Who this appointment is for — a registered patient, or a walk-in the
-            clinic has not registered. Both get a card; only one has a record
-            behind it. */}
-        {appointment.patient ? (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Patient information
-              </CardTitle>
+              <CardTitle>Visit details</CardTitle>
+              <CardDescription>Booked on {displayDate(appointment.createdAt)}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-8 w-8 text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold">{getPatientName(appointment.patient)}</h3>
-                  <p className="text-muted-foreground">{appointment.patient.patientId}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{formatPhone(appointment.patient.phone)}</span>
-                </div>
-                {appointment.patient.email && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span>{appointment.patient.email}</span>
-                  </div>
+            <CardContent>
+              <InfoGrid className="lg:grid-cols-3">
+                <InfoItem label="Date">{displayDate(appointment.scheduledDate)}</InfoItem>
+                <InfoItem label="Time">{formatTime(appointment.scheduledTime)}</InfoItem>
+                <InfoItem label="Duration">{appointment.duration} minutes</InfoItem>
+                <InfoItem label="Type">{getTypeBadge(appointment.appointmentType)}</InfoItem>
+                <InfoItem label="Priority">{getPriorityBadge(appointment.priority)}</InfoItem>
+                <InfoItem label="Token">
+                  {appointment.tokenNumber ? (
+                    <span className="tabular-nums">
+                      {formatToken(appointment.tokenNumber)}{' '}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        ({appointment.tokenNumber})
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="font-normal text-muted-foreground">Issued at check-in</span>
+                  )}
+                </InfoItem>
+                {appointment.chiefComplaint && (
+                  <InfoItem label="Chief complaint" className="sm:col-span-2 lg:col-span-3">
+                    <span className="whitespace-pre-wrap font-normal">
+                      {appointment.chiefComplaint}
+                    </span>
+                  </InfoItem>
                 )}
-                {(appointment.patient.address || appointment.patient.city) && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span>
+                {appointment.notes && (
+                  <InfoItem label="Notes" className="sm:col-span-2 lg:col-span-3">
+                    <span className="whitespace-pre-wrap font-normal">{appointment.notes}</span>
+                  </InfoItem>
+                )}
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Treatments</CardTitle>
+              <CardDescription>What was done at this visit</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {appointment.treatments.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  No treatments recorded yet.
+                </p>
+              ) : (
+                // The work done at this appointment, each opening its own
+                // record. These were plain boxes: the treatment they named had
+                // a page, and the only way to reach it was the treatments list
+                // and a search.
+                <LinkList>
+                  {appointment.treatments.map((treatment) => (
+                    <LinkRow
+                      key={treatment.id}
+                      href={trail.to(`/treatments/${treatment.id}`)}
+                      icon={FileText}
+                      title={treatment.procedure.name}
+                      subtitle={treatment.treatmentNo}
+                      trailing={<StatusBadge kind="treatment" status={treatment.status} />}
+                    />
+                  ))}
+                </LinkList>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Billing: the invoices raised for this visit. Only for those who
+              may read billing — the route leaves them out otherwise. */}
+          {appointment.invoices !== undefined && appointment.patient && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Billing</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {appointment.invoices.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                    No invoice raised for this visit.
+                  </p>
+                ) : (
+                  <LinkList>
+                    {appointment.invoices.map((invoice) => (
+                      <LinkRow
+                        key={invoice.id}
+                        href={trail.to(`/billing/invoices/${invoice.id}`)}
+                        icon={Receipt}
+                        title={invoice.invoiceNo}
+                        subtitle={
+                          formatCurrency(Number(invoice.totalAmount)) +
+                          (invoice.status !== 'CANCELLED' && Number(invoice.balanceAmount) > 0
+                            ? ` · ${formatCurrency(Number(invoice.balanceAmount))} due`
+                            : '')
+                        }
+                        trailing={<StatusBadge kind="invoice" status={invoice.status} />}
+                      />
+                    ))}
+                  </LinkList>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          {/* Who this appointment is for — a registered patient, or a walk-in
+              the clinic has not registered. Both get a card; only one has a
+              record behind it. */}
+          {appointment.patient ? (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Patient</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <Link
+                  href={trail.to(`/patients/${appointment.patient.id}`)}
+                  className="group -mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    {initials}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{person}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {appointment.patient.patientId}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                <InfoGrid className="sm:grid-cols-1">
+                  <InfoItem label="Phone" icon={Phone}>
+                    {formatPhone(appointment.patient.phone)}
+                  </InfoItem>
+                  {appointment.patient.email && (
+                    <InfoItem label="Email" icon={Mail}>
+                      {appointment.patient.email}
+                    </InfoItem>
+                  )}
+                  {(appointment.patient.address || appointment.patient.city) && (
+                    <InfoItem label="Address" icon={MapPin}>
                       {[appointment.patient.address, appointment.patient.city]
                         .filter(Boolean)
                         .join(', ')}
-                    </span>
-                  </div>
+                    </InfoItem>
+                  )}
+                </InfoGrid>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Walk-in</CardTitle>
+                <CardDescription>
+                  Not registered. Nothing clinical can be recorded against a walk-in.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <InfoGrid className="sm:grid-cols-1">
+                  <InfoItem label="Name">{appointment.visitor?.name ?? 'Unknown'}</InfoItem>
+                  {appointment.visitor?.phone && (
+                    <InfoItem label="Phone" icon={Phone}>
+                      {formatPhone(appointment.visitor.phone)}
+                    </InfoItem>
+                  )}
+                </InfoGrid>
+                {appointment.visitor && (
+                  <Button className="w-full" asChild>
+                    <Link href={trail.to(`/walk-ins/${appointment.visitor.id}`)}>
+                      <UserPlus className="h-4 w-4" />
+                      Register as a patient
+                    </Link>
+                  </Button>
                 )}
-              </div>
+              </CardContent>
+            </Card>
+          )}
 
-              {appointment.patient.medicalHistory && (
-                <>
-                  <Separator />
-                  <div>
-                    <h4 className="font-medium mb-2">Medical alerts</h4>
-                    {/*
-                    Named the alerts rather than four hardcoded badges. Those
-                    badges could only ever show the four conditions somebody
-                    picked in advance — a patient on warfarin got no badge at
-                    all, and their allergy badge said "Allergies" without saying
-                    to what.
-                  */}
-                    <div className="flex flex-wrap gap-2">
-                      {medicalAlerts(appointment.patient.medicalHistory).map((alert, i) => (
-                        <Badge
-                          key={i}
-                          variant={alert.tone === 'danger' ? 'destructive' : 'secondary'}
-                        >
-                          {alert.label}
-                        </Badge>
-                      ))}
+          {appointment.patient?.medicalHistory && (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle>Medical alerts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/*
+                  Named the alerts rather than four hardcoded badges. Those
+                  badges could only ever show the four conditions somebody
+                  picked in advance — a patient on warfarin got no badge at all.
+                */}
+                {(() => {
+                  const alerts = medicalAlerts(appointment.patient.medicalHistory)
+                  const meds = appointment.patient.medicalHistory.currentMedications
+                  if (alerts.length === 0 && meds.length === 0) {
+                    return <p className="text-sm text-muted-foreground">Nothing recorded.</p>
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {alerts.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {alerts.map((alert, i) => (
+                            <Badge key={i} variant={alert.tone === 'danger' ? 'danger' : 'warning'}>
+                              {alert.label}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {meds.length > 0 && (
+                        <InfoItem label="Current medications">{meds.join(', ')}</InfoItem>
+                      )}
                     </div>
-                    {appointment.patient.medicalHistory.currentMedications.length > 0 && (
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Current medications:{' '}
-                        {appointment.patient.medicalHistory.currentMedications.join(', ')}
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
+                  )
+                })()}
+              </CardContent>
+            </Card>
+          )}
 
-              <div className="pt-2">
-                <Button variant="outline" className="w-full" asChild>
-                  <Link href={trail.to(`/patients/${appointment.patient.id}`)}>
-                    View full patient profile
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Walk-in
-              </CardTitle>
-              <CardDescription>
-                Not registered. Nothing clinical can be recorded against a walk-in.
-              </CardDescription>
+            <CardHeader className="pb-4">
+              <CardTitle>Care team</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{appointment.visitor?.name ?? 'Unknown'}</h3>
-                {appointment.visitor?.phone && (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <Phone className="h-4 w-4" />
-                    {formatPhone(appointment.visitor.phone)}
-                  </p>
-                )}
-              </div>
-              {appointment.visitor && (
-                <Button variant="outline" className="w-full" asChild>
-                  <Link href={trail.to(`/walk-ins/${appointment.visitor.id}`)}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Register as a patient
-                  </Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Doctor Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Stethoscope className="h-5 w-5" />
-              Doctor
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                <Stethoscope className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold">
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Dentist">
                   {canReadStaff ? (
                     <Link
                       href={trail.to(`/staff/${appointment.doctor.id}`)}
@@ -726,115 +783,110 @@ export default function AppointmentDetailsPage({ params }: { params: Promise<{ i
                   ) : (
                     getDoctorName(appointment.doctor)
                   )}
-                </h3>
-                {appointment.doctor.specialization && (
-                  <p className="text-sm text-muted-foreground">
-                    {appointment.doctor.specialization}
-                  </p>
-                )}
+                  {appointment.doctor.specialization && (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {appointment.doctor.specialization}
+                    </span>
+                  )}
+                </InfoItem>
                 {appointment.doctor.phone && (
-                  <p className="text-sm text-muted-foreground">
+                  <InfoItem label="Dentist's phone" icon={Phone}>
                     {formatPhone(appointment.doctor.phone)}
-                  </p>
+                  </InfoItem>
                 )}
                 {appointment.assistant && (
-                  <p className="text-sm text-muted-foreground">
-                    Assisted by{' '}
+                  <InfoItem label="Assistant">
                     {canReadStaff ? (
                       <Link
                         href={trail.to(`/staff/${appointment.assistant.id}`)}
-                        className="font-medium text-foreground hover:underline"
+                        className="hover:underline"
                       >
                         {appointment.assistant.firstName} {appointment.assistant.lastName}
                       </Link>
                     ) : (
-                      <span className="font-medium text-foreground">
-                        {appointment.assistant.firstName} {appointment.assistant.lastName}
-                      </span>
+                      `${appointment.assistant.firstName} ${appointment.assistant.lastName}`
                     )}
-                  </p>
+                  </InfoItem>
                 )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Treatments */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Treatments
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {appointment.treatments.length === 0 ? (
-              <p className="text-muted-foreground">No treatments recorded yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {/* The work done at this appointment, each opening its own
-                    record. These were plain boxes: the treatment they named
-                    had a page, and the only way to reach it was the treatments
-                    list and a search. */}
-                {appointment.treatments.map((treatment) => (
-                  <Link
-                    key={treatment.id}
-                    href={trail.to(`/treatments/${treatment.id}`)}
-                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
-                  >
-                    <div>
-                      <p className="font-medium">{treatment.procedure.name}</p>
-                      <p className="text-sm text-muted-foreground">{treatment.treatmentNo}</p>
-                    </div>
-                    <StatusBadge kind="treatment" status={treatment.status} />
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Billing: the invoices raised for this visit. Only for those who
-            may read billing — the route leaves them out otherwise. */}
-        {appointment.invoices !== undefined && appointment.patient && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Receipt className="h-5 w-5" />
-                Billing
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {appointment.invoices.length === 0 ? (
-                <p className="text-muted-foreground">No invoice raised for this visit.</p>
-              ) : (
-                <div className="space-y-3">
-                  {appointment.invoices.map((invoice) => (
-                    <Link
-                      key={invoice.id}
-                      href={trail.to(`/billing/invoices/${invoice.id}`)}
-                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
-                    >
-                      <div>
-                        <p className="font-medium">{invoice.invoiceNo}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatCurrency(Number(invoice.totalAmount))}
-                          {invoice.status !== 'CANCELLED' && Number(invoice.balanceAmount) > 0
-                            ? ` · ${formatCurrency(Number(invoice.balanceAmount))} due`
-                            : ''}
-                        </p>
-                      </div>
-                      <StatusBadge kind="invoice" status={invoice.status} />
-                    </Link>
-                  ))}
-                </div>
-              )}
+              </InfoGrid>
             </CardContent>
           </Card>
-        )}
+        </div>
       </div>
 
       {ConfirmDialogComponent}
     </div>
+  )
+}
+
+const VISIT_STEPS = ['SCHEDULED', 'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED']
+
+/**
+ * The visit as a row of steps, booked to checked out, with the time each was
+ * reached where the record keeps one — where it has got to at a glance, as a
+ * ride or a parcel shows its progress, instead of a status word to decode.
+ */
+function VisitProgress({ appointment }: { appointment: Appointment }) {
+  const reached = VISIT_STEPS.indexOf(appointment.status)
+  const steps = [
+    { label: 'Booked', detail: displayDate(appointment.createdAt) },
+    { label: 'Confirmed', detail: null },
+    {
+      label: 'Checked in',
+      detail: appointment.checkedInAt ? displayTime(appointment.checkedInAt) : null,
+    },
+    {
+      label: 'In the chair',
+      detail:
+        appointment.waitTime !== null && appointment.waitTime > 0
+          ? `after ${appointment.waitTime} min wait`
+          : null,
+    },
+    {
+      label: 'Checked out',
+      detail: appointment.checkedOutAt ? displayTime(appointment.checkedOutAt) : null,
+    },
+  ]
+  return (
+    <ol className="flex items-start" aria-label="Visit progress">
+      {steps.map((step, index) => {
+        const done = index <= reached
+        const next = index === reached + 1
+        return (
+          <li key={step.label} className="relative flex flex-1 flex-col items-center text-center">
+            {index > 0 && (
+              <span
+                aria-hidden="true"
+                className={`absolute top-[13px] h-0.5 rounded-full ${done ? 'bg-primary' : 'bg-border'}`}
+                // From the edge of the previous circle to the edge of this one.
+                style={{ left: 'calc(-50% + 18px)', right: 'calc(50% + 18px)' }}
+              />
+            )}
+            <span
+              className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                done
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : next
+                    ? 'border-primary bg-card text-primary ring-4 ring-primary/15'
+                    : 'border-border bg-card text-muted-foreground'
+              }`}
+            >
+              {done ? <CheckCircle className="h-4 w-4" /> : index + 1}
+            </span>
+            <span
+              className={`mt-2 text-xs font-semibold sm:text-sm ${done || next ? 'text-foreground' : 'text-muted-foreground'}`}
+            >
+              {step.label}
+              <span className="sr-only">{done ? ' (done)' : next ? ' (next)' : ''}</span>
+            </span>
+            {done && step.detail && (
+              <span className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">
+                {step.detail}
+              </span>
+            )}
+          </li>
+        )
+      })}
+    </ol>
   )
 }

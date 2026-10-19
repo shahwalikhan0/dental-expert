@@ -106,7 +106,7 @@ export default function SuppliersPage() {
           canWrite && (
             <Button asChild>
               <Link href={trail.to('/inventory/suppliers/new')}>
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 New supplier
               </Link>
             </Button>

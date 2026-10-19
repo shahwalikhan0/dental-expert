@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { FormSection, FormActions } from '@/components/ui/form-section'
+import { BackLink, useTrail } from '@/components/ui/trail'
 import {
   Select,
   SelectContent,
@@ -17,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Calculator, CalendarDays, FileText } from 'lucide-react'
+import { CalendarDays, FileText, Save, Send } from 'lucide-react'
 import { PatientPicker } from '@/components/patients/patient-picker'
 import { SubmitButton } from '@/components/ui/submit-button'
 import {
@@ -83,6 +86,8 @@ export default function NewInvoicePage() {
     [searchParams]
   )
   const { toast } = useToast()
+  // Named for the breadcrumb, and for the back arrow on a phone.
+  const trail = useTrail('New invoice')
 
   const [submitting, setSubmitting] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
@@ -324,31 +329,25 @@ export default function NewInvoicePage() {
     }
   }
 
+  const canSubmit = !!selectedPatient && items.length > 0
+
   return (
     <div ref={formRef} className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" asChild>
-          <Link href="/billing/invoices">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="page-title">New Invoice</h1>
-          <p className="text-muted-foreground">Create a new invoice for a patient</p>
-        </div>
-      </div>
+      <PageHeader
+        title="New invoice"
+        description="Create a new invoice for a patient"
+        back={<BackLink trail={trail} fallback="/billing/invoices" fallbackLabel="Invoices" />}
+      />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Patient Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Patient Details</CardTitle>
-              <CardDescription>Search and select a patient</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
+      {/*
+        The bill on the left, built top to bottom — who, what, the discount
+        and terms — and on the right, pinned while the lines scroll, what it
+        comes to, the way a checkout keeps its order summary in view.
+      */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <FormSection title="Patient" description="Search and select a patient">
+            <div className="space-y-3">
               {/*
                 The shared picker: opens onto the newest patients, searches the
                 register from the second letter, and arrow keys work. A link
@@ -361,20 +360,20 @@ export default function NewInvoicePage() {
                 initialPatientId={preSelectedAppointmentId ? null : preSelectedPatientId}
               />
               {visit && selectedPatient && (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CalendarDays className="h-4 w-4" />
+                <p className="flex items-center gap-2 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                  <CalendarDays className="h-4 w-4 shrink-0" />
                   For the visit on {formatDate(visit.scheduledDate)} at {visit.scheduledTime}
                   {visit.doctor ? ` with ${visit.doctor}` : ''} ({visit.appointmentNo})
                 </p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </FormSection>
 
           {/* Unbilled Treatments */}
           {selectedPatient && (
             <Card>
               <CardHeader>
-                <CardTitle>Unbilled Treatments</CardTitle>
+                <CardTitle>Unbilled treatments</CardTitle>
                 <CardDescription>Select treatments to add to the invoice</CardDescription>
               </CardHeader>
               <CardContent>
@@ -392,86 +391,81 @@ export default function NewInvoicePage() {
           {/* Invoice Items */}
           <Card>
             <CardHeader>
-              <CardTitle>Invoice Items</CardTitle>
+              <CardTitle>Invoice items</CardTitle>
               <CardDescription>
                 Treatments from above, products from the inventory, or a custom item
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               {items.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-8 w-8 mx-auto mb-2" />
-                  <p>No items added yet</p>
-                  <p className="text-sm">Add treatments from above, a product, or a custom item</p>
+                <div className="rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+                  <FileText className="mx-auto mb-2 h-8 w-8" />
+                  <p className="font-medium text-foreground">No items added yet</p>
+                  <p>Add treatments from above, a product, or a custom item</p>
                 </div>
               )}
               <InvoiceLinesEditor lines={items} onChange={setItems} showErrors={showErrors} />
             </CardContent>
           </Card>
 
-          {/* Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Additional Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Notes (visible on invoice)</Label>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any additional notes for the patient..."
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Terms & Conditions</Label>
-                <Textarea
-                  value={termsAndConditions}
-                  onChange={(e) => setTermsAndConditions(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          <FormSection
+            title="Discount and terms"
+            description="Taken off the subtotal before tax, and when the bill falls due"
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* Discount */}
+                <div className="space-y-2">
+                  <Label htmlFor="discountValue">Discount</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={discountType}
+                      onValueChange={(value: 'PERCENTAGE' | 'FIXED') => setDiscountType(value)}
+                    >
+                      <SelectTrigger className="w-[120px] shrink-0" aria-label="Discount type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FIXED">Rs Fixed</SelectItem>
+                        <SelectItem value="PERCENTAGE">% Percent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      id="discountValue"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      max={discountType === 'PERCENTAGE' ? 100 : undefined}
+                      value={discountValue}
+                      placeholder="0"
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                    />
+                  </div>
+                </div>
 
-        {/* Sidebar - Invoice Summary */}
-        <div className="space-y-6">
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Invoice Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Discount */}
-              <div className="space-y-2">
-                <Label htmlFor="discountValue">Discount</Label>
-                <div className="flex gap-2">
+                {/* Payment Terms */}
+                <div className="space-y-2">
+                  <Label htmlFor="paymentTerms">Payment terms</Label>
                   <Select
-                    value={discountType}
-                    onValueChange={(value: 'PERCENTAGE' | 'FIXED') => setDiscountType(value)}
+                    value={paymentTermDays.toString()}
+                    onValueChange={(value) => setPaymentTermDays(parseInt(value))}
                   >
-                    <SelectTrigger className="w-[100px]" aria-label="Discount type">
+                    <SelectTrigger id="paymentTerms">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="FIXED">Rs Fixed</SelectItem>
-                      <SelectItem value="PERCENTAGE">% Percent</SelectItem>
+                      {paymentTermsOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    id="discountValue"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    max={discountType === 'PERCENTAGE' ? 100 : undefined}
-                    value={discountValue}
-                    placeholder="0"
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                  />
+                  <p className="text-xs text-muted-foreground">
+                    {paymentTermDays === 0
+                      ? 'Due on the day it is issued.'
+                      : `Due ${paymentTermDays} days from today.`}
+                  </p>
                 </div>
               </div>
 
@@ -497,37 +491,53 @@ export default function NewInvoicePage() {
                   </p>
                 </div>
               )}
+            </div>
+          </FormSection>
 
-              {/* Payment Terms */}
+          <FormSection title="Notes and terms" description="Printed on the invoice">
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Payment Terms</Label>
-                <Select
-                  value={paymentTermDays.toString()}
-                  onValueChange={(value) => setPaymentTermDays(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentTermsOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value.toString()}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {paymentTermDays === 0
-                    ? 'Due on the day it is issued.'
-                    : `Due ${paymentTermDays} days from today.`}
-                </p>
+                <Label htmlFor="notes">Notes (visible on invoice)</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Any additional notes for the patient..."
+                  rows={3}
+                />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="terms">Terms &amp; conditions</Label>
+                <Textarea
+                  id="terms"
+                  value={termsAndConditions}
+                  onChange={(e) => setTermsAndConditions(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          </FormSection>
+        </div>
 
+        {/* Summary, pinned while the form scrolls */}
+        <div className="space-y-6">
+          <Card className="lg:sticky lg:top-6">
+            <CardHeader className="pb-4">
+              <CardTitle>Summary</CardTitle>
+              <CardDescription>
+                {selectedPatient
+                  ? `${selectedPatient.firstName} ${selectedPatient.lastName} · ${items.length} ${
+                      items.length === 1 ? 'item' : 'items'
+                    }`
+                  : 'No patient chosen yet'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
               {/* Totals */}
-              <div className="border-t pt-4 space-y-2">
+              <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(totals.subtotal)}</span>
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
                 </div>
                 {totals.discountAmount > 0 && (
                   <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
@@ -535,7 +545,7 @@ export default function NewInvoicePage() {
                       Discount
                       {discountType === 'PERCENTAGE' ? ` (${Number(discountValue) || 0}%)` : ''}
                     </span>
-                    <span>-{formatCurrency(totals.discountAmount)}</span>
+                    <span className="tabular-nums">-{formatCurrency(totals.discountAmount)}</span>
                   </div>
                 )}
                 {/* No tax line at all when the clinic is exempt — printing
@@ -545,47 +555,58 @@ export default function NewInvoicePage() {
                   <>
                     <div className="flex justify-between text-sm text-muted-foreground">
                       <span>Taxable value</span>
-                      <span>{formatCurrency(totals.taxableAmount)}</span>
+                      <span className="tabular-nums">{formatCurrency(totals.taxableAmount)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>
+                      <span className="text-muted-foreground">
                         {billing.label} ({billing.rate}%)
                       </span>
-                      <span>{formatCurrency(totals.taxAmount)}</span>
+                      <span className="tabular-nums">{formatCurrency(totals.taxAmount)}</span>
                     </div>
                   </>
                 )}
-                <div className="flex justify-between font-bold text-lg border-t pt-2">
-                  <span>Total</span>
-                  <span className="text-primary">{formatCurrency(totals.totalAmount)}</span>
+                <div className="mt-3 flex items-baseline justify-between rounded-xl bg-muted/60 px-4 py-3">
+                  <span className="font-semibold">Total</span>
+                  <span className="text-2xl font-bold tracking-tight text-primary tabular-nums">
+                    {formatCurrency(totals.totalAmount)}
+                  </span>
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="space-y-2 pt-4">
-                <SubmitButton
-                  type="button"
-                  className="w-full"
-                  onClick={() => handleSubmit('PENDING')}
-                  busy={submitting}
-                  busyLabel="Creating…"
-                  disabled={!selectedPatient || items.length === 0}
-                >
-                  Create & issue invoice
-                </SubmitButton>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleSubmit('DRAFT')}
-                  disabled={submitting || !selectedPatient || items.length === 0}
-                >
-                  Save as Draft
-                </Button>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  {paymentTermDays === 0
+                    ? 'Due on the day it is issued.'
+                    : `Due ${paymentTermDays} days from today.`}
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Actions, pinned to the bottom while the form scrolls */}
+      <FormActions>
+        <Button type="button" variant="outline" asChild>
+          <Link href={trail.back('/billing/invoices')}>Cancel</Link>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => handleSubmit('DRAFT')}
+          disabled={submitting || !canSubmit}
+        >
+          <Save className="h-4 w-4" />
+          Save as draft
+        </Button>
+        <SubmitButton
+          type="button"
+          onClick={() => handleSubmit('PENDING')}
+          busy={submitting}
+          busyLabel="Creating…"
+          icon={Send}
+          disabled={!canSubmit}
+        >
+          Create &amp; issue invoice
+        </SubmitButton>
+      </FormActions>
     </div>
   )
 }

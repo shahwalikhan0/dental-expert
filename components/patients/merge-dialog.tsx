@@ -109,9 +109,9 @@ export function MergeDialog({
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <p className="text-sm">
-              This cannot be undone from here. Allergies and conditions from both records are kept;
-              blank fields on this record are filled from the other, and nothing already filled in
-              is overwritten.
+              This cannot be undone from here. Medical conditions from both records are kept; blank
+              fields on this record are filled from the other, and nothing already filled in is
+              overwritten.
             </p>
           </div>
         )}

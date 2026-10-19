@@ -7,22 +7,12 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BackLink, useTrail } from '@/components/ui/trail'
-import {
-  Calendar,
-  TrendingUp,
-  Users,
-  Stethoscope,
-  Banknote,
-  Clock,
-  FileText,
-  UserCheck,
-  UserX,
-} from 'lucide-react'
+import { Users, Stethoscope, Banknote, Clock, FileText, IdCard, UserX } from 'lucide-react'
 import { BLANK, isoDay } from '@/lib/dates'
 import { formatCurrency } from '@/lib/i18n/format'
 import { LATES_PER_ABSENCE } from '@/lib/attendance'
@@ -185,17 +175,26 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="space-y-6" aria-busy={loading || undefined}>
-      <PageHeader
-        title="Performance"
-        back={back}
-        description={
-          <>
-            {data.staff.name} ({data.staff.employeeId})
-            {data.staff.specialization && ` — ${data.staff.specialization}`}
-          </>
-        }
+      {/* Whose figures, as a profile like their record's, with the period
+          the figures cover where the record has its buttons. */}
+      <ProfileHeader
+        eyebrow="Performance"
+        name={data.staff.name}
+        initials={data.staff.name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part.charAt(0))
+          .join('')
+          .toUpperCase()}
+        facts={[
+          { icon: IdCard, label: data.staff.employeeId },
+          ...(data.staff.specialization
+            ? [{ icon: Stethoscope, label: data.staff.specialization }]
+            : []),
+        ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Label htmlFor="performance-from" className="sr-only">
               From
             </Label>
@@ -207,7 +206,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
               onChange={(e) => setStartDate(e.target.value)}
               className="w-[160px]"
             />
-            <span className="text-muted-foreground">to</span>
+            <span className="text-sm text-muted-foreground">to</span>
             <Label htmlFor="performance-to" className="sr-only">
               To
             </Label>
@@ -224,80 +223,55 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
       />
 
       {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Invoiced</p>
-                <p className="text-2xl font-bold">{formatCurrency(data.revenue.total)}</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            label: 'Invoiced',
+            value: formatCurrency(data.revenue.total),
+            note: `Avg: ${formatCurrency(data.revenue.averagePerTreatment)} / treatment billed`,
+            icon: Banknote,
+          },
+          {
+            label: 'Patients treated',
+            value: data.patientsTreated,
+            note: 'Unique patients this period',
+            icon: Users,
+          },
+          {
+            label: 'Treatments done',
+            value: data.treatments.completed,
+            note: `${data.treatments.inProgress} in progress`,
+            icon: Stethoscope,
+          },
+          {
+            label: 'Prescriptions',
+            value: data.prescriptionsWritten,
+            note: 'Written this period',
+            icon: FileText,
+          },
+        ].map((tile) => (
+          <div key={tile.label} className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {tile.label}
+                </p>
+                <p className="mt-1 text-2xl font-bold tracking-tight">{tile.value}</p>
               </div>
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-950/40">
-                <Banknote className="h-6 w-6 text-green-600 dark:text-green-400" />
-              </div>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <tile.icon className="h-5 w-5" />
+              </span>
             </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              Avg: {formatCurrency(data.revenue.averagePerTreatment)} / treatment billed
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Patients treated</p>
-                <p className="text-2xl font-bold">{data.patientsTreated}</p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-950/40">
-                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">Unique patients this period</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Treatments done</p>
-                <p className="text-2xl font-bold">{data.treatments.completed}</p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center dark:bg-purple-950/40">
-                <Stethoscope className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              {data.treatments.inProgress} in progress
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Prescriptions</p>
-                <p className="text-2xl font-bold">{data.prescriptionsWritten}</p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center dark:bg-orange-950/40">
-                <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">Written this period</p>
-          </CardContent>
-        </Card>
+            <p className="mt-2 text-xs text-muted-foreground">{tile.note}</p>
+          </div>
+        ))}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Appointments Overview */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Appointments
-            </CardTitle>
+            <CardTitle>Appointments</CardTitle>
             <CardDescription>Appointment statistics for the selected period</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -307,33 +281,33 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
             </div>
             <Progress value={getCompletionRate()} className="h-2" />
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <div className="p-3 bg-muted/50 rounded-lg">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-muted p-4">
                 <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-xl font-bold">{data.appointments.total}</p>
+                <p className="text-2xl font-bold tabular-nums">{data.appointments.total}</p>
               </div>
-              <div className="p-3 bg-green-50 rounded-lg dark:bg-green-950/30">
+              <div className="rounded-xl bg-green-50 p-4 dark:bg-green-950/30">
                 <p className="text-sm text-green-600 dark:text-green-400">Completed</p>
-                <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                <p className="text-2xl font-bold tabular-nums text-green-700 dark:text-green-300">
                   {data.appointments.completed}
                 </p>
               </div>
-              <div className="p-3 bg-red-50 rounded-lg dark:bg-red-950/30">
+              <div className="rounded-xl bg-red-50 p-4 dark:bg-red-950/30">
                 <p className="text-sm text-red-600 dark:text-red-400">Cancelled</p>
-                <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                <p className="text-2xl font-bold tabular-nums text-red-700 dark:text-red-300">
                   {data.appointments.cancelled}
                 </p>
               </div>
-              <div className="p-3 bg-yellow-50 rounded-lg dark:bg-yellow-950/30">
+              <div className="rounded-xl bg-yellow-50 p-4 dark:bg-yellow-950/30">
                 <p className="text-sm text-yellow-600 dark:text-yellow-400">No-show</p>
-                <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
+                <p className="text-2xl font-bold tabular-nums text-yellow-700 dark:text-yellow-300">
                   {data.appointments.noShow}
                 </p>
               </div>
             </div>
 
             {data.appointments.avgWaitTime > 0 && (
-              <div className="flex items-center gap-2 pt-2 border-t">
+              <div className="flex items-center gap-2 border-t pt-4">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">
                   Average wait time: {data.appointments.avgWaitTime} minutes
@@ -346,10 +320,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
         {/* Attendance Overview */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              Attendance
-            </CardTitle>
+            <CardTitle>Attendance</CardTitle>
             <CardDescription>Attendance statistics for the selected period</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -367,28 +338,28 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
                 </div>
                 <Progress value={data.attendance.rate ?? 0} className="h-2" />
 
-                <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-4">
-                  <div className="p-3 bg-green-50 rounded-lg text-center dark:bg-green-950/30">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl bg-green-50 p-4 text-center dark:bg-green-950/30">
                     <p className="text-sm text-green-600 dark:text-green-400">Present</p>
-                    <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                    <p className="text-2xl font-bold tabular-nums text-green-700 dark:text-green-300">
                       {data.attendance.present}
                     </p>
                   </div>
-                  <div className="p-3 bg-yellow-50 rounded-lg text-center dark:bg-yellow-950/30">
+                  <div className="rounded-xl bg-yellow-50 p-4 text-center dark:bg-yellow-950/30">
                     <p className="text-sm text-yellow-600 dark:text-yellow-400">Late</p>
-                    <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">
+                    <p className="text-2xl font-bold tabular-nums text-yellow-700 dark:text-yellow-300">
                       {data.attendance.late}
                     </p>
                   </div>
-                  <div className="p-3 bg-red-50 rounded-lg text-center dark:bg-red-950/30">
+                  <div className="rounded-xl bg-red-50 p-4 text-center dark:bg-red-950/30">
                     <p className="text-sm text-red-600 dark:text-red-400">Absent</p>
-                    <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                    <p className="text-2xl font-bold tabular-nums text-red-700 dark:text-red-300">
                       {data.attendance.totalAbsent}
                     </p>
                   </div>
-                  <div className="p-3 bg-muted rounded-lg text-center">
+                  <div className="rounded-xl bg-muted p-4 text-center">
                     <p className="text-sm text-muted-foreground">Not marked</p>
-                    <p className="text-xl font-bold">{data.attendance.unmarked}</p>
+                    <p className="text-2xl font-bold tabular-nums">{data.attendance.unmarked}</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -412,10 +383,7 @@ export default function PerformancePage({ params }: { params: Promise<{ id: stri
       {data.procedureBreakdown.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Procedure breakdown
-            </CardTitle>
+            <CardTitle>Procedure breakdown</CardTitle>
             <CardDescription>Completed and invoiced, by procedure category</CardDescription>
           </CardHeader>
           <CardContent>

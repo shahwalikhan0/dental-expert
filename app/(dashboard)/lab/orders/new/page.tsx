@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -31,7 +31,7 @@ import {
   labOrderErrors,
   type LabOrderErrors,
 } from '@/components/lab/lab-order-errors'
-import { User, FlaskConical, Save } from 'lucide-react'
+import { Save } from 'lucide-react'
 import { isoDay } from '@/lib/dates'
 import { formatTeeth } from '@/lib/teeth'
 import { parseMoney } from '@/lib/money-input'
@@ -170,40 +170,24 @@ export default function NewLabOrderPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Patient selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Patient
-            </CardTitle>
-            <CardDescription>Select the patient for this lab order</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FormField label="Patient" required error={errors.patientId}>
-              {({ id, 'aria-describedby': describedBy, 'aria-invalid': invalid }) => (
-                <PatientPicker<Patient>
-                  id={id}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
-                  value={selectedPatient}
-                  onChange={choosePatient}
-                  initialPatientId={preselectedPatientId}
-                />
-              )}
-            </FormField>
-          </CardContent>
-        </Card>
+        <FormSection title="Patient" description="Select the patient for this lab order">
+          <FormField label="Patient" required error={errors.patientId}>
+            {({ id, 'aria-describedby': describedBy, 'aria-invalid': invalid }) => (
+              <PatientPicker<Patient>
+                id={id}
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+                value={selectedPatient}
+                onChange={choosePatient}
+                initialPatientId={preselectedPatientId}
+              />
+            )}
+          </FormField>
+        </FormSection>
 
         {/* Lab order details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5" />
-              Order details
-            </CardTitle>
-            <CardDescription>Specify the lab work details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection title="Order details" description="Specify the lab work details">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="Lab vendor" required error={errors.labVendorId}>
                 {(control) => (
@@ -288,79 +272,68 @@ export default function NewLabOrderPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Dates and cost */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Schedule and cost</CardTitle>
-            <CardDescription>Set dates and estimated cost</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField label="Order date" required error={errors.orderDate}>
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="date"
-                    value={form.orderDate}
-                    onChange={(e) => set('orderDate', e.target.value)}
-                  />
-                )}
-              </FormField>
+        <FormSection title="Schedule and cost" description="Set dates and estimated cost">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <FormField label="Order date" required error={errors.orderDate}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  value={form.orderDate}
+                  onChange={(e) => set('orderDate', e.target.value)}
+                />
+              )}
+            </FormField>
 
-              <FormField label="Expected delivery date" error={errors.expectedDate}>
-                {(control) => (
-                  <Input
-                    {...control}
-                    type="date"
-                    min={form.orderDate || undefined}
-                    value={form.expectedDate}
-                    onChange={(e) => set('expectedDate', e.target.value)}
-                  />
-                )}
-              </FormField>
+            <FormField label="Expected delivery date" error={errors.expectedDate}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  min={form.orderDate || undefined}
+                  value={form.expectedDate}
+                  onChange={(e) => set('expectedDate', e.target.value)}
+                />
+              )}
+            </FormField>
 
-              <FormField label="Estimated cost" required error={errors.estimatedCost}>
-                {(control) => (
-                  <MoneyInput
-                    {...control}
-                    value={form.estimatedCost}
-                    onChange={(raw) => set('estimatedCost', raw)}
-                    placeholder="0.00"
-                  />
-                )}
-              </FormField>
-            </div>
-          </CardContent>
-        </Card>
+            <FormField label="Estimated cost" required error={errors.estimatedCost}>
+              {(control) => (
+                <MoneyInput
+                  {...control}
+                  value={form.estimatedCost}
+                  onChange={(raw) => set('estimatedCost', raw)}
+                  placeholder="0.00"
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
 
         {/* Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              aria-label="Additional notes"
-              value={form.notes}
-              onChange={(e) => set('notes', e.target.value)}
-              placeholder="Any special instructions or notes for the lab…"
-              rows={3}
-            />
-          </CardContent>
-        </Card>
+        <FormSection title="Additional notes" description="Anything the laboratory should know">
+          <Textarea
+            aria-label="Additional notes"
+            value={form.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            placeholder="Any special instructions or notes for the lab…"
+            rows={3}
+          />
+        </FormSection>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3">
+        {/* Actions, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={trail.back('/lab')}>Cancel</Link>
           </Button>
           <SubmitButton busy={submitting} busyLabel="Creating lab order…" icon={Save}>
             Create lab order
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

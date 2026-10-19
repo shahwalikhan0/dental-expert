@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { PageHeader } from '@/components/ui/page-header'
@@ -23,7 +22,7 @@ import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { Save, Send } from 'lucide-react'
+import { Info, Lightbulb, Mail, MessageSquare, Save, Send, ShieldCheck, Star } from 'lucide-react'
 
 export default function CommunicationSettingsPage() {
   const { toast } = useToast()
@@ -310,7 +309,7 @@ export default function CommunicationSettingsPage() {
 
   if (loadFailed) {
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <LoadFailed what="the communication settings" onRetry={loadSettings} />
       </div>
@@ -318,35 +317,43 @@ export default function CommunicationSettingsPage() {
   }
 
   return (
-    <div ref={formRef} className="space-y-6">
+    <div ref={formRef} className="mx-auto max-w-5xl space-y-6">
       {header}
 
       <Tabs defaultValue="sms" className="w-full">
         <TabsList>
-          <TabsTrigger value="sms">SMS configuration</TabsTrigger>
-          <TabsTrigger value="email">Email configuration</TabsTrigger>
-          <TabsTrigger value="reviews">Google reviews</TabsTrigger>
+          <TabsTrigger value="sms">
+            <MessageSquare className="h-4 w-4" />
+            SMS configuration
+          </TabsTrigger>
+          <TabsTrigger value="email">
+            <Mail className="h-4 w-4" />
+            Email configuration
+          </TabsTrigger>
+          <TabsTrigger value="reviews">
+            <Star className="h-4 w-4" />
+            Google reviews
+          </TabsTrigger>
         </TabsList>
 
         {/* SMS Configuration */}
-        <TabsContent value="sms">
-          <Card>
-            <CardHeader>
-              <CardTitle>SMS gateway settings</CardTitle>
-              <CardDescription>Configure your Twilio account for sending SMS</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
+        <TabsContent value="sms" className="space-y-6">
+          <FormSection
+            title="SMS gateway settings"
+            description="Configure your Twilio account for sending SMS"
+          >
+            <div className="divide-y">
+              <div className="flex items-center justify-between gap-4 pb-4">
+                <div className="min-w-0">
                   <Label htmlFor="sms-enabled">Enable SMS</Label>
-                  <p className="text-sm text-muted-foreground">Turn on/off SMS communication</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Turn on/off SMS communication
+                  </p>
                 </div>
                 <Switch id="sms-enabled" checked={smsEnabled} onCheckedChange={setSmsEnabled} />
               </div>
 
-              <Separator />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 pt-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="sms-sender-id">From number</Label>
                   {/* Not a PhoneInput: Twilio needs the +92 form, which
@@ -358,7 +365,7 @@ export default function CommunicationSettingsPage() {
                     value={smsSenderId}
                     onChange={(e) => setSmsSenderId(e.target.value)}
                   />
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-xs text-muted-foreground">
                     The Twilio number messages are sent from, in full international form
                   </p>
                 </div>
@@ -371,7 +378,7 @@ export default function CommunicationSettingsPage() {
                     value={smsAuthKey}
                     onChange={(e) => setSmsAuthKey(e.target.value)}
                   />
-                  <p className="text-muted-foreground text-xs">Twilio Console → Account Info</p>
+                  <p className="text-xs text-muted-foreground">Twilio Console → Account Info</p>
                 </div>
 
                 <div className="space-y-2">
@@ -385,111 +392,100 @@ export default function CommunicationSettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+          </FormSection>
 
-              <Separator />
+          <FormSection
+            title="When messages may go out"
+            description="Read in the clinic's own timezone. Set both to the same time to send at any hour."
+          >
+            <div className="grid max-w-md grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sms-window-start">From</Label>
+                <Input
+                  id="sms-window-start"
+                  type="time"
+                  value={sendWindowStart}
+                  onChange={(e) => setSendWindowStart(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sms-window-end">Until</Label>
+                <Input
+                  id="sms-window-end"
+                  type="time"
+                  value={sendWindowEnd}
+                  onChange={(e) => setSendWindowEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          </FormSection>
 
-              <div>
-                <h3 className="mb-1 text-lg font-semibold">When messages may go out</h3>
-                <p className="text-muted-foreground mb-4 text-sm">
-                  Read in the clinic&apos;s own timezone. Set both to the same time to send at any
-                  hour.
+          <FormSection
+            title="Test SMS connection"
+            description="Send one message to check the gateway works"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2 md:max-w-sm">
+                <Label htmlFor="test-phone">Test phone number</Label>
+                {/* Only where to send a test — not a setting, so not unsaved work. */}
+                <PhoneInput
+                  id="test-phone"
+                  data-form-guard="ignore"
+                  aria-describedby="test-phone-hint"
+                  value={testPhone}
+                  onChange={setTestPhone}
+                />
+                <p id="test-phone-hint" className="text-xs text-muted-foreground">
+                  A Pakistani mobile number
                 </p>
-                <div className="grid max-w-md grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sms-window-start">From</Label>
-                    <Input
-                      id="sms-window-start"
-                      type="time"
-                      value={sendWindowStart}
-                      onChange={(e) => setSendWindowStart(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sms-window-end">Until</Label>
-                    <Input
-                      id="sms-window-end"
-                      type="time"
-                      value={sendWindowEnd}
-                      onChange={(e) => setSendWindowEnd(e.target.value)}
-                    />
-                  </div>
-                </div>
               </div>
-
-              <Separator />
-
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Test SMS connection</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="test-phone">Test phone number</Label>
-                    {/* Only where to send a test — not a setting, so not unsaved work. */}
-                    <PhoneInput
-                      id="test-phone"
-                      data-form-guard="ignore"
-                      aria-describedby="test-phone-hint"
-                      value={testPhone}
-                      onChange={setTestPhone}
-                    />
-                    <p id="test-phone-hint" className="text-xs text-muted-foreground">
-                      A Pakistani mobile number
-                    </p>
-                  </div>
-                  <SubmitButton
-                    type="button"
-                    variant="outline"
-                    busy={testing === 'sms'}
-                    busyLabel="Sending…"
-                    icon={Send}
-                    disabled={testing !== null}
-                    onClick={handleTestSMS}
-                  >
-                    Send test SMS
-                  </SubmitButton>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950/30 dark:border-blue-800/60">
-                <h4 className="font-semibold text-blue-900 mb-2 dark:text-blue-200">
-                  TRAI Compliance
-                </h4>
-                <ul className="text-sm text-blue-800 space-y-1 dark:text-blue-300">
-                  <li>• SMS will only be sent between 9 AM - 9 PM IST</li>
-                  <li>• DND registry will be checked before sending</li>
-                  <li>• Patient consent is required for promotional messages</li>
-                </ul>
-              </div>
-
               <SubmitButton
                 type="button"
-                busy={savingTab === 'sms'}
-                busyLabel="Saving…"
-                icon={Save}
-                disabled={loading}
-                onClick={handleSaveSMSSettings}
+                variant="outline"
+                busy={testing === 'sms'}
+                busyLabel="Sending…"
+                icon={Send}
+                disabled={testing !== null}
+                onClick={handleTestSMS}
               >
-                Save changes
+                Send test SMS
               </SubmitButton>
-            </CardContent>
-          </Card>
+            </div>
+          </FormSection>
+
+          {/* An Indian "TRAI compliance" note stood here: 9 AM to 9 PM IST, a DND
+              registry check and promotional consent. None of it is done — the
+              hours are the clinic's own, set above — so it promised what the
+              app does not do, in another country's regulator's name. */}
+
+          <FormActions>
+            <SubmitButton
+              type="button"
+              busy={savingTab === 'sms'}
+              busyLabel="Saving…"
+              icon={Save}
+              disabled={loading}
+              onClick={handleSaveSMSSettings}
+            >
+              Save changes
+            </SubmitButton>
+          </FormActions>
         </TabsContent>
 
         {/* Email Configuration */}
-        <TabsContent value="email">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email SMTP settings</CardTitle>
-              <CardDescription>
-                Configure your email server (Hostinger, Gmail, etc.)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
+        <TabsContent value="email" className="space-y-6">
+          <FormSection
+            title="Email SMTP settings"
+            description="Configure your email server (Hostinger, Gmail, etc.)"
+          >
+            <div className="divide-y">
+              <div className="flex items-center justify-between gap-4 pb-4">
+                <div className="min-w-0">
                   <Label htmlFor="email-enabled">Enable email</Label>
-                  <p className="text-sm text-muted-foreground">Turn on/off email communication</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Turn on/off email communication
+                  </p>
                 </div>
                 <Switch
                   id="email-enabled"
@@ -498,173 +494,165 @@ export default function CommunicationSettingsPage() {
                 />
               </div>
 
-              <Separator />
-
-              <div>
-                <h3 className="text-lg font-semibold mb-4">SMTP server configuration</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email-host">SMTP host</Label>
-                    <Input
-                      id="email-host"
-                      placeholder="smtp.hostinger.com"
-                      value={emailHost}
-                      onChange={(e) => setEmailHost(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email-port">SMTP port</Label>
-                    <Input
-                      id="email-port"
-                      placeholder="587"
-                      value={emailPort}
-                      onChange={(e) => setEmailPort(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email-user">SMTP username</Label>
-                    <Input
-                      id="email-user"
-                      placeholder="info@yourclinic.com"
-                      value={emailUser}
-                      onChange={(e) => setEmailUser(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email-password">SMTP password</Label>
-                    <Input
-                      id="email-password"
-                      type="password"
-                      placeholder="Enter SMTP password"
-                      value={emailPassword}
-                      onChange={(e) => setEmailPassword(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2 mt-4">
-                  <Switch
-                    id="email-secure"
-                    checked={emailSecure}
-                    onCheckedChange={setEmailSecure}
+              <div className="grid grid-cols-1 gap-4 py-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="email-host">SMTP host</Label>
+                  <Input
+                    id="email-host"
+                    placeholder="smtp.hostinger.com"
+                    value={emailHost}
+                    onChange={(e) => setEmailHost(e.target.value)}
                   />
-                  <Label htmlFor="email-secure">Use SSL/TLS (for port 465)</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email-port">SMTP port</Label>
+                  <Input
+                    id="email-port"
+                    placeholder="587"
+                    value={emailPort}
+                    onChange={(e) => setEmailPort(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email-user">SMTP username</Label>
+                  <Input
+                    id="email-user"
+                    placeholder="info@yourclinic.com"
+                    value={emailUser}
+                    onChange={(e) => setEmailUser(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email-password">SMTP password</Label>
+                  <Input
+                    id="email-password"
+                    type="password"
+                    placeholder="Enter SMTP password"
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                  />
                 </div>
               </div>
 
-              <Separator />
+              <div className="flex items-center justify-between gap-4 pt-4">
+                <Label htmlFor="email-secure">Use SSL/TLS (for port 465)</Label>
+                <Switch id="email-secure" checked={emailSecure} onCheckedChange={setEmailSecure} />
+              </div>
+            </div>
+          </FormSection>
 
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Email sender details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email-from-name">From name</Label>
-                    <Input
-                      id="email-from-name"
-                      placeholder="Your Dental Clinic"
-                      value={emailFromName}
-                      onChange={(e) => setEmailFromName(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email-from-email">From email</Label>
-                    <Input
-                      id="email-from-email"
-                      type="email"
-                      placeholder="info@yourclinic.com"
-                      value={emailFromEmail}
-                      onChange={(e) => setEmailFromEmail(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email-reply-to">Reply-to email (optional)</Label>
-                    <Input
-                      id="email-reply-to"
-                      type="email"
-                      placeholder="contact@yourclinic.com"
-                      value={emailReplyTo}
-                      onChange={(e) => setEmailReplyTo(e.target.value)}
-                    />
-                  </div>
-                </div>
+          <FormSection
+            title="Email sender details"
+            description="Who patients see the email as coming from"
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="email-from-name">From name</Label>
+                <Input
+                  id="email-from-name"
+                  placeholder="Your Dental Clinic"
+                  value={emailFromName}
+                  onChange={(e) => setEmailFromName(e.target.value)}
+                />
               </div>
 
-              <Separator />
-
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Test email connection</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="test-email">Test email address</Label>
-                    {/* Only where to send a test — not a setting, so not unsaved work. */}
-                    <Input
-                      id="test-email"
-                      data-form-guard="ignore"
-                      type="email"
-                      placeholder="test@example.com"
-                      value={testEmail}
-                      onChange={(e) => setTestEmail(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter an email address to receive the test email
-                    </p>
-                  </div>
-                  <SubmitButton
-                    type="button"
-                    variant="outline"
-                    busy={testing === 'email'}
-                    busyLabel="Sending…"
-                    icon={Send}
-                    disabled={testing !== null}
-                    onClick={handleTestEmail}
-                  >
-                    Send test email
-                  </SubmitButton>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="email-from-email">From email</Label>
+                <Input
+                  id="email-from-email"
+                  type="email"
+                  placeholder="info@yourclinic.com"
+                  value={emailFromEmail}
+                  onChange={(e) => setEmailFromEmail(e.target.value)}
+                />
               </div>
 
-              <Separator />
-
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 dark:bg-green-950/30 dark:border-green-800/60">
-                <h4 className="font-semibold text-green-900 mb-2 dark:text-green-200">
-                  Recommended Settings for Hostinger
-                </h4>
-                <ul className="text-sm text-green-800 space-y-1 dark:text-green-300">
-                  <li>• SMTP Host: smtp.hostinger.com</li>
-                  <li>• SMTP Port: 587 (STARTTLS) or 465 (SSL)</li>
-                  <li>• Use your email and password for authentication</li>
-                </ul>
+              <div className="space-y-2">
+                <Label htmlFor="email-reply-to">Reply-to email (optional)</Label>
+                <Input
+                  id="email-reply-to"
+                  type="email"
+                  placeholder="contact@yourclinic.com"
+                  value={emailReplyTo}
+                  onChange={(e) => setEmailReplyTo(e.target.value)}
+                />
               </div>
+            </div>
+          </FormSection>
 
+          <FormSection
+            title="Test email connection"
+            description="Send one email to check the server works"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2 md:max-w-sm">
+                <Label htmlFor="test-email">Test email address</Label>
+                {/* Only where to send a test — not a setting, so not unsaved work. */}
+                <Input
+                  id="test-email"
+                  data-form-guard="ignore"
+                  type="email"
+                  placeholder="test@example.com"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter an email address to receive the test email
+                </p>
+              </div>
               <SubmitButton
                 type="button"
-                busy={savingTab === 'email'}
-                busyLabel="Saving…"
-                icon={Save}
-                disabled={loading}
-                onClick={handleSaveEmailSettings}
+                variant="outline"
+                busy={testing === 'email'}
+                busyLabel="Sending…"
+                icon={Send}
+                disabled={testing !== null}
+                onClick={handleTestEmail}
               >
-                Save changes
+                Send test email
               </SubmitButton>
-            </CardContent>
-          </Card>
+            </div>
+          </FormSection>
+
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/10">
+              <Lightbulb className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-1 font-semibold">Recommended Settings for Hostinger</p>
+              <ul className="space-y-1 text-emerald-800 dark:text-emerald-300">
+                <li>• SMTP Host: smtp.hostinger.com</li>
+                <li>• SMTP Port: 587 (STARTTLS) or 465 (SSL)</li>
+                <li>• Use your email and password for authentication</li>
+              </ul>
+            </div>
+          </div>
+
+          <FormActions>
+            <SubmitButton
+              type="button"
+              busy={savingTab === 'email'}
+              busyLabel="Saving…"
+              icon={Save}
+              disabled={loading}
+              onClick={handleSaveEmailSettings}
+            >
+              Save changes
+            </SubmitButton>
+          </FormActions>
         </TabsContent>
+
         {/* Google Reviews Configuration */}
-        <TabsContent value="reviews">
-          <Card>
-            <CardHeader>
-              <CardTitle>Google reviews settings</CardTitle>
-              <CardDescription>
-                Automatically request Google reviews from satisfied patients
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
+        <TabsContent value="reviews" className="space-y-6">
+          <FormSection
+            title="Google reviews settings"
+            description="Automatically request Google reviews from satisfied patients"
+          >
+            <div className="divide-y">
+              <div className="space-y-2 pb-4">
                 <Label htmlFor="google-review-url">Google review URL</Label>
                 <Input
                   id="google-review-url"
@@ -678,12 +666,10 @@ export default function CommunicationSettingsPage() {
                 </p>
               </div>
 
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-4 py-4">
+                <div className="min-w-0">
                   <Label htmlFor="auto-review-requests">Auto-request reviews</Label>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Automatically send review requests after appointments
                   </p>
                 </div>
@@ -694,7 +680,7 @@ export default function CommunicationSettingsPage() {
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 pt-4 md:max-w-xs">
                 <Label htmlFor="review-delay">Review request delay (hours)</Label>
                 <Input
                   id="review-delay"
@@ -709,38 +695,39 @@ export default function CommunicationSettingsPage() {
                   Hours after appointment completion before sending the review request SMS
                 </p>
               </div>
+            </div>
+          </FormSection>
 
-              <Separator />
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-1 font-semibold">Review gating</p>
+              <ul className="space-y-1 text-amber-800 dark:text-amber-300">
+                <li>
+                  • Review requests are only sent to patients who rated their satisfaction 4/5 or
+                  higher
+                </li>
+                <li>• Patients must have submitted a survey response within the last 30 days</li>
+                <li>• Only one review request per patient per 30 days</li>
+                <li>• Patients who opted out of promotional messages will not receive requests</li>
+              </ul>
+            </div>
+          </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 dark:bg-amber-950/30 dark:border-amber-800/60">
-                <h4 className="font-semibold text-amber-900 mb-2 dark:text-amber-200">
-                  Review gating
-                </h4>
-                <ul className="text-sm text-amber-800 space-y-1 dark:text-amber-300">
-                  <li>
-                    • Review requests are only sent to patients who rated their satisfaction 4/5 or
-                    higher
-                  </li>
-                  <li>• Patients must have submitted a survey response within the last 30 days</li>
-                  <li>• Only one review request per patient per 30 days</li>
-                  <li>
-                    • Patients who opted out of promotional messages will not receive requests
-                  </li>
-                </ul>
-              </div>
-
-              <SubmitButton
-                type="button"
-                busy={savingTab === 'reviews'}
-                busyLabel="Saving…"
-                icon={Save}
-                disabled={loading}
-                onClick={handleSaveReviewSettings}
-              >
-                Save changes
-              </SubmitButton>
-            </CardContent>
-          </Card>
+          <FormActions>
+            <SubmitButton
+              type="button"
+              busy={savingTab === 'reviews'}
+              busyLabel="Saving…"
+              icon={Save}
+              disabled={loading}
+              onClick={handleSaveReviewSettings}
+            >
+              Save changes
+            </SubmitButton>
+          </FormActions>
         </TabsContent>
       </Tabs>
     </div>

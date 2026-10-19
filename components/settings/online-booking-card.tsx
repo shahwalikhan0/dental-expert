@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -92,29 +92,30 @@ export function OnlineBookingCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Online booking</CardTitle>
-        <CardDescription>
-          A public page where patients book their own appointments. Link it from your website.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <FormSection
+      title="Online booking"
+      description="A public page where patients book their own appointments. Link it from your website."
+    >
+      <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Accept bookings online</p>
-            <p className="text-muted-foreground text-xs">
+          <div className="min-w-0">
+            <Label htmlFor="onlineBookingEnabled">Accept bookings online</Label>
+            <p className="mt-1 text-sm text-muted-foreground">
               Bookings arrive unconfirmed, for the desk to confirm by telephone.
             </p>
           </div>
-          <Switch checked={state.enabled} onCheckedChange={(v) => set('enabled', v)} />
+          <Switch
+            id="onlineBookingEnabled"
+            checked={state.enabled}
+            onCheckedChange={(v) => set('enabled', v)}
+          />
         </div>
 
         {state.enabled && state.slug && (
-          <div className="bg-muted/50 space-y-2 rounded-lg p-3">
-            <p className="text-sm font-medium">Your booking page</p>
+          <div className="space-y-2 rounded-xl bg-muted/60 p-4">
+            <p className="text-sm font-semibold">Your booking page</p>
             <div className="flex items-center gap-2">
-              <code className="bg-background flex-1 rounded border p-2 text-xs break-all">
+              <code className="flex-1 break-all rounded-lg border bg-background p-2 text-xs">
                 {bookingUrl}
               </code>
               <Button
@@ -141,7 +142,7 @@ export function OnlineBookingCard() {
                 </a>
               </Button>
             </div>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Anyone can book from this page. Somebody the clinic does not know arrives as a
               walk-in, for you to register or discard.
             </p>
@@ -193,12 +194,14 @@ export function OnlineBookingCard() {
           </div>
         </div>
 
-        <div className="flex justify-end">
+        {/* This section saves itself, so its button sits with its fields
+            rather than in the page's sticky bar. */}
+        <div className="flex justify-end border-t pt-4">
           <Button type="button" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save booking settings'}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </FormSection>
   )
 }

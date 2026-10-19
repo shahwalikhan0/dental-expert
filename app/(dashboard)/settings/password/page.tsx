@@ -23,7 +23,7 @@ export default async function ChangePasswordPage() {
   const forced = session.user.mustChangePassword === true
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="Change password"
         description={

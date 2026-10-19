@@ -5,7 +5,7 @@ import { useListParams } from '@/hooks/use-list-params'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -315,7 +315,7 @@ export default function LabVendorsPage() {
         actions={
           canWrite && (
             <Button onClick={() => handleOpenDialog()}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               New vendor
             </Button>
           )
@@ -323,36 +323,31 @@ export default function LabVendorsPage() {
       />
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total vendors</CardTitle>
-            <FlaskConical className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active vendors</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {vendors.filter((v) => v.status?.toUpperCase() === 'ACTIVE').length}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[
+          { label: 'Total vendors', value: total, icon: FlaskConical },
+          {
+            label: 'Active vendors',
+            value: vendors.filter((v) => v.status?.toUpperCase() === 'ACTIVE').length,
+            icon: CheckCircle,
+          },
+          { label: 'Average rating', value: averageRating(vendors), icon: Star },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-sm"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {stat.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">{stat.value}</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average rating</CardTitle>
-            <Star className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{averageRating(vendors)}</div>
-          </CardContent>
-        </Card>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <stat.icon className="h-5 w-5" />
+            </span>
+          </div>
+        ))}
       </div>
 
       <ListToolbar

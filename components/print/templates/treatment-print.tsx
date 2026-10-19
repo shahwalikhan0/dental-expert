@@ -6,25 +6,40 @@
  * and noted, and everything added after the note was signed, in order. No
  * clinic name or address: the clinic's own letterhead is at the top of the
  * sheet (lib/print.ts).
+ *
+ * Laid out like the clinic's own pad: the heading across the top, then a body
+ * ruled down the middle. On the left, the patient, the treatment (dentist and
+ * times), Clinical History (the complaint and medical history), Examination
+ * (the findings) and Treatment Planning (the follow-up and the plan this step
+ * belongs to), each printed from the record with room left to write. On the
+ * right, the tooth chart beside the patient and treatment blocks, then the
+ * procedure and the rest of the note, signed at the foot.
  */
 import { ageInYears } from '@/lib/age'
 import { displayDate, displayDateTime } from '@/lib/dates'
 import { formatCurrency } from '@/lib/i18n/format'
-import { bloodGroupLabel, genderLabel } from '@/lib/labels'
+import { genderLabel } from '@/lib/labels'
 import { prescriberName } from '@/lib/prescribing'
 import { statusLabel } from '@/lib/status'
-import { describeTeethByQuadrant } from '@/lib/teeth'
 import { parseToothNumbers, procedureCategoryConfig } from '@/lib/treatment-utils'
 import { formatPhone } from '@/lib/utils'
 import {
-  PrintColumns,
+  PrintBody,
   PrintedOn,
   PrintFields,
   PrintHeading,
   PrintNote,
   PrintSection,
   PrintSignatures,
+  PrintWritingSection,
+  sideLines,
 } from '@/components/print/blocks'
+import {
+  clinicalHistoryLines,
+  PRINT_WRITING_SPACE,
+  type PrintMedicalHistory,
+} from '@/components/print/clinical-history'
+import { PrintToothChart } from '@/components/print/tooth-chart'
 
 export interface TreatmentPrintData {
   treatmentNo: string
@@ -41,6 +56,7 @@ export interface TreatmentPrintData {
   endTime: string | null
   followUpRequired: boolean
   followUpDate: string | null
+  followUpNotes?: string | null
   createdAt: string
   signedAt: string | null
   amendedAt: string | null
@@ -61,6 +77,7 @@ export interface TreatmentPrintData {
     dateOfBirth: string | null
     gender: string | null
     bloodGroup: string | null
+    medicalHistory?: PrintMedicalHistory | null
   }
   doctor: {
     firstName: string
@@ -72,6 +89,8 @@ export interface TreatmentPrintData {
     name: string
     category: string
   }
+  /** The plan step this treatment carries out, when it came from a plan. */
+  planItem?: { treatmentPlan: { planNumber: string; title: string | null } } | null
   appointment: {
     appointmentNo: string
     scheduledDate: string
@@ -108,10 +127,10 @@ export function TreatmentPrint({ treatment }: { treatment: TreatmentPrintData })
   const teeth = treatment.toothNumbers ? parseToothNumbers(treatment.toothNumbers) : []
   const dentist = prescriberName(doctor)
   const amendments = treatment.amendments ?? []
+  // The complaint and findings print on the left, under Clinical History and
+  // Examination; this is whether the right column has a note of its own.
   const hasNotes = Boolean(
-    treatment.chiefComplaint ||
     treatment.diagnosis ||
-    treatment.findings ||
     treatment.procedureNotes ||
     treatment.materialsUsed ||
     treatment.complications
@@ -129,111 +148,143 @@ export function TreatmentPrint({ treatment }: { treatment: TreatmentPrintData })
         stamp={statusLabel('treatment', treatment.status)}
       />
 
-      <PrintColumns>
-        <PrintSection title="Patient" keepTogether>
+      <PrintBody
+        foot={
+          <PrintSignatures signatures={[{ label: "Dentist's signature", name: dentist || null }]} />
+        }
+        side={
+          <>
+            <PrintSection title="Patient" keepTogether>
+              <PrintFields
+                fields={[
+                  ['Name', `${patient.firstName} ${patient.lastName}`.trim()],
+                  ['Patient ID', patient.patientId],
+                  ['Age / gender', ageGender || null],
+                  ['Phone', formatPhone(patient.phone) || null],
+                ]}
+              />
+            </PrintSection>
+            <PrintSection title="Treatment" keepTogether>
+              <PrintFields
+                fields={[
+                  ['Dentist', dentist || null],
+                  ['Specialisation', doctor.specialization],
+                  [
+                    'Appointment',
+                    treatment.appointment
+                      ? `${treatment.appointment.appointmentNo}, ${displayDate(
+                          treatment.appointment.scheduledDate
+                        )} ${treatment.appointment.scheduledTime}`
+                      : null,
+                  ],
+                  ['Started', treatment.startTime ? displayDateTime(treatment.startTime) : null],
+                  ['Completed', treatment.endTime ? displayDateTime(treatment.endTime) : null],
+                ]}
+              />
+            </PrintSection>
+            <PrintWritingSection
+              title="Clinical History"
+              space={PRINT_WRITING_SPACE.clinicalHistory}
+            >
+              {sideLines([
+                ['Complaint', treatment.chiefComplaint],
+                ...clinicalHistoryLines(patient.medicalHistory),
+              ])}
+            </PrintWritingSection>
+            <PrintWritingSection title="Examination" space={PRINT_WRITING_SPACE.examination}>
+              {sideLines([['', treatment.findings]])}
+            </PrintWritingSection>
+            <PrintWritingSection
+              title="Treatment Planning"
+              space={PRINT_WRITING_SPACE.treatmentPlanning}
+            >
+              {sideLines([
+                [
+                  'Plan',
+                  treatment.planItem
+                    ? [
+                        treatment.planItem.treatmentPlan.planNumber,
+                        treatment.planItem.treatmentPlan.title,
+                      ]
+                        .filter(Boolean)
+                        .join(': ')
+                    : null,
+                ],
+                [
+                  'Follow-up',
+                  treatment.followUpRequired
+                    ? treatment.followUpDate
+                      ? displayDate(treatment.followUpDate)
+                      : 'Required; date not set'
+                    : null,
+                ],
+                ['', treatment.followUpRequired ? treatment.followUpNotes : null],
+              ])}
+            </PrintWritingSection>
+          </>
+        }
+      >
+        <PrintToothChart teeth={teeth} />
+
+        <PrintSection title="Procedure" keepTogether>
           <PrintFields
             fields={[
-              ['Name', `${patient.firstName} ${patient.lastName}`.trim()],
-              ['Patient ID', patient.patientId],
-              ['Age / gender', ageGender || null],
-              ['Phone', formatPhone(patient.phone) || null],
-              ['Blood group', patient.bloodGroup ? bloodGroupLabel(patient.bloodGroup) : null],
+              ['Procedure', `${procedure.name} (${procedure.code})`],
+              ['Category', procedureCategoryConfig[procedure.category]?.label],
+              ['Cost', formatCurrency(treatment.cost)],
             ]}
           />
         </PrintSection>
-        <PrintSection title="Treatment" keepTogether>
-          <PrintFields
-            fields={[
-              ['Dentist', dentist || null],
-              ['Specialisation', doctor.specialization],
-              [
-                'Appointment',
-                treatment.appointment
-                  ? `${treatment.appointment.appointmentNo}, ${displayDate(
-                      treatment.appointment.scheduledDate
-                    )} ${treatment.appointment.scheduledTime}`
-                  : null,
-              ],
-              ['Started', treatment.startTime ? displayDateTime(treatment.startTime) : null],
-              ['Completed', treatment.endTime ? displayDateTime(treatment.endTime) : null],
-            ]}
-          />
-        </PrintSection>
-      </PrintColumns>
 
-      <PrintSection title="Procedure" keepTogether>
-        <PrintFields
-          fields={[
-            ['Procedure', `${procedure.name} (${procedure.code})`],
-            ['Category', procedureCategoryConfig[procedure.category]?.label],
-            [
-              teeth.length === 1 ? 'Tooth' : 'Teeth',
-              teeth.length > 0 ? describeTeethByQuadrant(teeth) : null,
-            ],
-            ['Cost', formatCurrency(treatment.cost)],
-          ]}
-        />
-      </PrintSection>
+        <PrintNote title="Diagnosis">{treatment.diagnosis}</PrintNote>
+        <PrintNote title="Procedure notes">{treatment.procedureNotes}</PrintNote>
+        <PrintNote title="Materials used">{treatment.materialsUsed}</PrintNote>
+        <PrintNote title="Complications">{treatment.complications}</PrintNote>
+        {!hasNotes && (
+          <PrintSection title="Clinical notes">
+            <p className="pd-note pd-muted">No clinical notes recorded.</p>
+          </PrintSection>
+        )}
 
-      <PrintNote title="Chief complaint">{treatment.chiefComplaint}</PrintNote>
-      <PrintNote title="Diagnosis">{treatment.diagnosis}</PrintNote>
-      <PrintNote title="Clinical findings">{treatment.findings}</PrintNote>
-      <PrintNote title="Procedure notes">{treatment.procedureNotes}</PrintNote>
-      <PrintNote title="Materials used">{treatment.materialsUsed}</PrintNote>
-      <PrintNote title="Complications">{treatment.complications}</PrintNote>
-      {!hasNotes && (
-        <PrintSection title="Clinical notes">
-          <p className="pd-note pd-muted">No clinical notes recorded.</p>
-        </PrintSection>
-      )}
+        {treatment.signedAt && (
+          <PrintSection title="Signature" keepTogether>
+            <PrintFields
+              fields={[
+                ['Signed by', treatment.signedBy?.name || 'A clinician'],
+                ['Signed on', displayDateTime(treatment.signedAt)],
+                ['Amended', treatment.amendedAt ? displayDateTime(treatment.amendedAt) : null],
+              ]}
+            />
+          </PrintSection>
+        )}
 
-      {treatment.followUpRequired && (
-        <PrintNote title="Follow-up">
-          {treatment.followUpDate
-            ? `Required, on ${displayDate(treatment.followUpDate)}.`
-            : 'Required; date not scheduled.'}
-        </PrintNote>
-      )}
-
-      {treatment.signedAt && (
-        <PrintSection title="Signature" keepTogether>
-          <PrintFields
-            fields={[
-              ['Signed by', treatment.signedBy?.name || 'A clinician'],
-              ['Signed on', displayDateTime(treatment.signedAt)],
-              ['Amended', treatment.amendedAt ? displayDateTime(treatment.amendedAt) : null],
-            ]}
-          />
-        </PrintSection>
-      )}
-
-      {amendments.length > 0 && (
-        <PrintSection title="Since this note was signed">
-          {amendments.map((amendment) => (
-            <div key={amendment.id} className="pd-keep">
-              <div>
-                <span className="pd-strong">
-                  {amendment.kind === 'CORRECTION' ? 'Correction' : 'Addendum'}
-                </span>
-                <span className="pd-muted">
-                  {' '}
-                  · {amendment.author.name} · {displayDateTime(amendment.createdAt)}
-                </span>
+        {amendments.length > 0 && (
+          <PrintSection title="Since this note was signed">
+            {amendments.map((amendment) => (
+              <div key={amendment.id} className="pd-keep">
+                <div>
+                  <span className="pd-strong">
+                    {amendment.kind === 'CORRECTION' ? 'Correction' : 'Addendum'}
+                  </span>
+                  <span className="pd-muted">
+                    {' '}
+                    · {amendment.author.name} · {displayDateTime(amendment.createdAt)}
+                  </span>
+                </div>
+                {amendment.changes &&
+                  Object.entries(amendment.changes).map(([field, change]) => (
+                    <div key={field} className="pd-small">
+                      <span className="pd-muted">{FIELD_LABELS[field] ?? field}:</span>{' '}
+                      {changedValue(change.from)} → {changedValue(change.to)}
+                    </div>
+                  ))}
+                <p className="pd-note">{amendment.body}</p>
               </div>
-              {amendment.changes &&
-                Object.entries(amendment.changes).map(([field, change]) => (
-                  <div key={field} className="pd-small">
-                    <span className="pd-muted">{FIELD_LABELS[field] ?? field}:</span>{' '}
-                    {changedValue(change.from)} → {changedValue(change.to)}
-                  </div>
-                ))}
-              <p className="pd-note">{amendment.body}</p>
-            </div>
-          ))}
-        </PrintSection>
-      )}
+            ))}
+          </PrintSection>
+        )}
+      </PrintBody>
 
-      <PrintSignatures signatures={[{ label: "Dentist's signature", name: dentist || null }]} />
       <PrintedOn />
     </>
   )

@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { PageHeader } from '@/components/ui/page-header'
@@ -10,7 +11,10 @@ import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import {
   Select,
   SelectContent,
@@ -26,10 +30,24 @@ import { BLANK, displayDate, displayDateTime } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { statusLabel } from '@/lib/status'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { FlaskConical, Phone, User } from 'lucide-react'
+import {
+  Building2,
+  CalendarDays,
+  CheckCircle,
+  ChevronRight,
+  FlaskConical,
+  Pencil,
+  Phone,
+  Receipt,
+  RotateCcw,
+  Stethoscope,
+  User,
+  Wallet,
+  XCircle,
+} from 'lucide-react'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { describeTeethByQuadrant, parseTeeth } from '@/lib/teeth'
-import { nextStatuses, workTypeLabel } from '@/lib/lab-orders'
+import { STATUS_PATH, isLabOrderEditable, nextStatuses, workTypeLabel } from '@/lib/lab-orders'
 import type { LabOrderStatus } from '@prisma/client'
 
 interface HistoryEntry {
@@ -96,6 +114,7 @@ const qualityLabel = (value: string | null) => (value ? statusLabel('qualityChec
 export default function LabOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { toast } = useToast()
+  const router = useRouter()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [order, setOrder] = useState<LabOrder | null>(null)
   // Named for the breadcrumb, and for the back arrow of anything opened from here.
@@ -214,60 +233,105 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
   }
 
   const moves = nextStatuses(order.status as LabOrderStatus)
+  const patientInitials = order.patientName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0))
+    .join('')
+    .toUpperCase()
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={order.orderNumber}
-        back={<BackLink trail={trail} fallback="/lab" fallbackLabel="Lab orders" />}
+      {/*
+        The case as a record card: what is being made, for whom and by which
+        laboratory. Moving it on is a choice of next step with a note, so it
+        lives in its own card below rather than as a header button.
+      */}
+      <ProfileHeader
+        eyebrow={order.orderNumber}
+        name={workTypeLabel(order.workType)}
+        avatarIcon={FlaskConical}
         badges={
           <>
             <StatusBadge kind="labOrder" status={order.status} />
             {order.priority === 'URGENT' && <Badge variant="danger">Urgent</Badge>}
           </>
         }
-        description={`${workTypeLabel(order.workType)} · ${order.vendorName}`}
+        facts={[
+          { icon: User, label: order.patientName },
+          { icon: Building2, label: order.vendorName },
+          ...(order.expectedDate
+            ? [{ icon: CalendarDays, label: `Expected ${displayDate(order.expectedDate)}` }]
+            : []),
+          { icon: Wallet, label: formatCurrency(order.actualCost ?? order.estimatedCost) },
+        ]}
+        menu={
+          canWrite && isLabOrderEditable(order.status)
+            ? [
+                {
+                  label: 'Edit order',
+                  icon: Pencil,
+                  onSelect: () => router.push(trail.to(`/lab/orders/${order.id}/edit`)),
+                },
+              ]
+            : []
+        }
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FlaskConical className="h-4 w-4" />
-                The case
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
-              {[
-                ['Work', workTypeLabel(order.workType)],
-                [
-                  'Teeth',
-                  order.toothNumbers
-                    ? describeTeethByQuadrant(parseTeeth(order.toothNumbers))
-                    : null,
-                ],
-                ['Shade', order.shadeGuide],
-                ['Description', order.description],
-                ['Special instructions', order.specialInstructions],
-                ['Notes', order.notes],
-                ['Quality check', qualityLabel(order.qualityCheck)],
-                ['Quality notes', order.qualityNotes],
-              ].map(([k, v]) => (
-                <div key={k}>
-                  <p className="text-muted-foreground text-xs">{k}</p>
-                  <p>{v || BLANK}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+      {/* Where the case has got to; or, off the path, why. */}
+      {order.status === 'CANCELLED' || order.status === 'REMAKE_REQUIRED' ? (
+        <div
+          className={`flex items-start gap-3 rounded-2xl border px-5 py-4 text-sm ${
+            order.status === 'CANCELLED'
+              ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-200'
+              : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200'
+          }`}
+        >
+          <span
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+              order.status === 'CANCELLED' ? 'bg-red-600/10' : 'bg-amber-600/10'
+            }`}
+          >
+            {order.status === 'CANCELLED' ? (
+              <XCircle className="h-4 w-4" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold">
+              {order.status === 'CANCELLED' ? 'This case was cancelled' : 'A remake is needed'}
+            </p>
+            <p className="mt-0.5">
+              {order.status === 'CANCELLED'
+                ? 'Its details and trail are kept; it cannot be moved on again.'
+                : 'The work came back wrong or did not fit. Send it to the laboratory again, or cancel it.'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-6">
+            <CaseProgress order={order} />
+          </CardContent>
+        </Card>
+      )}
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {canWrite && moves.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Move the case on</CardTitle>
+                <CardTitle>Move the case on</CardTitle>
+                {/* Every move is written to the audit log, which is where the
+                    trail below comes from — LabOrderHistory recorded exactly
+                    this and nothing else. */}
+                <CardDescription>
+                  Each change is recorded against this case with who made it and when.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row">
                   {/* Only the moves the case can make from here: forward one
                       stage, or the rework steps (finding 45). Offering every
@@ -304,42 +368,82 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
                   rows={2}
                   placeholder="What happened? (optional)"
                 />
-                {/* Every move is written to the audit log, which is where the
-                    trail below comes from — LabOrderHistory recorded exactly
-                    this and nothing else. */}
-                <p className="text-xs text-muted-foreground">
-                  Each change is recorded against this case with who made it and when.
-                </p>
               </CardContent>
             </Card>
           )}
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Trail</CardTitle>
+              <CardTitle>The case</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid>
+                <InfoItem label="Work">{workTypeLabel(order.workType)}</InfoItem>
+                <InfoItem label="Shade">{order.shadeGuide}</InfoItem>
+                <InfoItem label="Teeth" className="sm:col-span-2">
+                  {order.toothNumbers
+                    ? describeTeethByQuadrant(parseTeeth(order.toothNumbers))
+                    : null}
+                </InfoItem>
+                <InfoItem label="Description" className="sm:col-span-2">
+                  {order.description ? (
+                    <span className="whitespace-pre-wrap font-normal">{order.description}</span>
+                  ) : null}
+                </InfoItem>
+                <InfoItem label="Special instructions" className="sm:col-span-2">
+                  {order.specialInstructions ? (
+                    <span className="whitespace-pre-wrap font-normal">
+                      {order.specialInstructions}
+                    </span>
+                  ) : null}
+                </InfoItem>
+                <InfoItem label="Notes" className="sm:col-span-2">
+                  {order.notes ? (
+                    <span className="whitespace-pre-wrap font-normal">{order.notes}</span>
+                  ) : null}
+                </InfoItem>
+                <InfoItem label="Quality check">
+                  {order.qualityCheck ? qualityLabel(order.qualityCheck) : null}
+                </InfoItem>
+                <InfoItem label="Quality notes">
+                  {order.qualityNotes ? (
+                    <span className="whitespace-pre-wrap font-normal">{order.qualityNotes}</span>
+                  ) : null}
+                </InfoItem>
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Trail</CardTitle>
             </CardHeader>
             <CardContent>
               {order.history.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
                   Nothing recorded since the case was raised.
                 </p>
               ) : (
-                <ol className="space-y-3">
+                <ol className="relative space-y-5 border-l border-border pl-6">
                   {order.history.map((entry) => (
-                    <li key={entry.id} className="flex gap-3 text-sm">
-                      <span className="text-muted-foreground whitespace-nowrap">
-                        {displayDateTime(entry.createdAt)}
-                      </span>
-                      <span>
+                    <li key={entry.id} className="relative text-sm">
+                      <span
+                        aria-hidden="true"
+                        className="absolute -left-[31px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-card bg-primary"
+                      />
+                      <p>
                         {entry.statusFrom ? `${labOrderStatus(entry.statusFrom)} → ` : ''}
-                        <span className="font-medium">{labOrderStatus(entry.statusTo)}</span>
-                        {entry.changedByName && (
-                          <span className="text-muted-foreground"> by {entry.changedByName}</span>
-                        )}
-                        {entry.notes && (
-                          <span className="block text-muted-foreground">{entry.notes}</span>
-                        )}
-                      </span>
+                        <span className="font-semibold">{labOrderStatus(entry.statusTo)}</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {displayDateTime(entry.createdAt)}
+                        {entry.changedByName && ` · ${entry.changedByName}`}
+                      </p>
+                      {entry.notes && (
+                        <p className="mt-1.5 whitespace-pre-wrap rounded-xl bg-muted/60 px-3 py-2">
+                          {entry.notes}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -350,123 +454,205 @@ export default function LabOrderPage({ params }: { params: Promise<{ id: string 
 
         <div className="space-y-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Patient
-              </CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle>Patient</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
+            <CardContent className="space-y-5">
               {/* A crown is made for a person. Reading the case and not being
                   able to reach their record meant going back to the patient
                   list and searching for a name already on the screen. */}
               <Link
                 href={trail.to(`/patients/${order.patientId}`)}
-                className="font-medium hover:underline"
+                className="group -mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
               >
-                {order.patientName}
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  {patientInitials}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{order.patientName}</span>
+                  <span className="block text-xs text-muted-foreground">{order.patientCode}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              <p className="text-muted-foreground">{order.patientCode}</p>
-              <p className="flex items-center gap-2">
-                <Phone className="h-3 w-3 text-muted-foreground" />
-                {formatPhone(order.patientPhone) || BLANK}
-              </p>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Phone" icon={Phone}>
+                  {formatPhone(order.patientPhone) || null}
+                </InfoItem>
+              </InfoGrid>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Treatment</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle>Treatment</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm">
+            <CardContent className="space-y-4">
               {order.treatment ? (
                 <>
-                  <Link
-                    href={trail.to(`/treatments/${order.treatment.id}`)}
-                    className="font-medium hover:underline"
-                  >
-                    {order.treatment.treatmentNo}
-                  </Link>
-                  {order.treatment.procedureName && <p>{order.treatment.procedureName}</p>}
-                  {order.treatment.toothNumbers && (
-                    <p className="text-muted-foreground">
-                      {describeTeethByQuadrant(parseTeeth(order.treatment.toothNumbers))}
-                    </p>
-                  )}
-                  <p className="text-muted-foreground">{displayDate(order.treatment.createdAt)}</p>
-                  {/* Read-only (review 4.4). A lab case has no charge of its
-                      own; the patient pays for it through the treatment, so
-                      whether that is billed is whether this work is. */}
-                  {order.treatment.invoice !== undefined && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-muted-foreground">Billing:</span>
-                      {order.treatment.invoice ? (
-                        <>
-                          <Link
-                            href={trail.to(`/billing/invoices/${order.treatment.invoice.id}`)}
-                            className="font-medium hover:underline"
-                          >
-                            {order.treatment.invoice.invoiceNo}
-                          </Link>
+                  <LinkList>
+                    <LinkRow
+                      href={trail.to(`/treatments/${order.treatment.id}`)}
+                      icon={Stethoscope}
+                      title={order.treatment.procedureName ?? order.treatment.treatmentNo}
+                      subtitle={[
+                        order.treatment.procedureName ? order.treatment.treatmentNo : null,
+                        order.treatment.toothNumbers
+                          ? describeTeethByQuadrant(parseTeeth(order.treatment.toothNumbers))
+                          : null,
+                        displayDate(order.treatment.createdAt),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    />
+                    {/* Read-only (review 4.4). A lab case has no charge of its
+                        own; the patient pays for it through the treatment, so
+                        whether that is billed is whether this work is. */}
+                    {order.treatment.invoice && (
+                      <LinkRow
+                        href={trail.to(`/billing/invoices/${order.treatment.invoice.id}`)}
+                        icon={Receipt}
+                        title={order.treatment.invoice.invoiceNo}
+                        subtitle="Invoice for the treatment"
+                        trailing={
                           <StatusBadge kind="invoice" status={order.treatment.invoice.status} />
-                        </>
-                      ) : (
-                        <span>Treatment not yet billed</span>
-                      )}
-                    </div>
+                        }
+                      />
+                    )}
+                  </LinkList>
+                  {order.treatment.invoice === null && (
+                    <p className="rounded-xl bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                      Treatment not yet billed
+                    </p>
                   )}
                 </>
               ) : (
-                <p className="text-muted-foreground">Not linked to a treatment.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Laboratory</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p className="font-medium">{order.vendorName}</p>
-              {order.vendorPhone && (
-                <p className="flex items-center gap-2">
-                  <Phone className="h-3 w-3 text-muted-foreground" />
-                  {formatPhone(order.vendorPhone)}
-                </p>
-              )}
-              {order.avgTurnaroundDays != null && (
-                <p className="text-muted-foreground">
-                  Usually {order.avgTurnaroundDays} days turnaround
+                <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  Not linked to a treatment.
                 </p>
               )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Dates and cost</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle>Laboratory</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {[
-                ['Ordered', order.orderDate && displayDate(order.orderDate)],
-                ['Expected', order.expectedDate && displayDate(order.expectedDate)],
-                ['Sent', order.sentDate && displayDate(order.sentDate)],
-                ['Received', order.receivedDate && displayDate(order.receivedDate)],
-                ['Delivered', order.deliveredDate && displayDate(order.deliveredDate)],
-                ['Estimate', formatCurrency(order.estimatedCost)],
-                ['Actual', order.actualCost ? formatCurrency(order.actualCost) : null],
-                ['Raised by', order.createdByName],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{k}</span>
-                  <span>{v || BLANK}</span>
-                </div>
-              ))}
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Name">{order.vendorName}</InfoItem>
+                {order.vendorPhone && (
+                  <InfoItem label="Phone" icon={Phone}>
+                    {formatPhone(order.vendorPhone)}
+                  </InfoItem>
+                )}
+                {order.avgTurnaroundDays != null && (
+                  <InfoItem label="Usual turnaround">{order.avgTurnaroundDays} days</InfoItem>
+                )}
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Dates and cost</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid>
+                <InfoItem label="Ordered">
+                  {order.orderDate ? displayDate(order.orderDate) : null}
+                </InfoItem>
+                <InfoItem label="Expected">
+                  {order.expectedDate ? displayDate(order.expectedDate) : null}
+                </InfoItem>
+                <InfoItem label="Sent">
+                  {order.sentDate ? displayDate(order.sentDate) : null}
+                </InfoItem>
+                <InfoItem label="Received">
+                  {order.receivedDate ? displayDate(order.receivedDate) : null}
+                </InfoItem>
+                <InfoItem label="Delivered">
+                  {order.deliveredDate ? displayDate(order.deliveredDate) : null}
+                </InfoItem>
+                <InfoItem label="Raised by">{order.createdByName}</InfoItem>
+                <InfoItem label="Estimate">{formatCurrency(order.estimatedCost)}</InfoItem>
+                <InfoItem label="Actual">
+                  {order.actualCost ? formatCurrency(order.actualCost) : null}
+                </InfoItem>
+              </InfoGrid>
             </CardContent>
           </Card>
         </div>
       </div>
       {ConfirmDialogComponent}
     </div>
+  )
+}
+
+/** Short names for the stages, so seven fit across a phone. */
+const STEP_LABELS: Record<string, string> = {
+  CREATED: 'Created',
+  SENT_TO_LAB: 'Sent',
+  IN_PROGRESS: 'In the lab',
+  QUALITY_CHECK: 'Checked',
+  READY: 'Ready',
+  DELIVERED: 'Delivered',
+  FITTED: 'Fitted',
+}
+
+/**
+ * The case as a row of steps, raised to fitted, with the date each milestone
+ * was stamped where the record keeps one — the same stepper as a visit's on
+ * its appointment page, so where the work has got to reads at a glance.
+ */
+function CaseProgress({ order }: { order: LabOrder }) {
+  const reached = STATUS_PATH.indexOf(order.status as LabOrderStatus)
+  const dates: Partial<Record<string, string | null>> = {
+    CREATED: order.orderDate,
+    SENT_TO_LAB: order.sentDate,
+    READY: order.receivedDate,
+    DELIVERED: order.deliveredDate,
+  }
+  return (
+    <ol className="flex items-start" aria-label="Case progress">
+      {STATUS_PATH.map((stage, index) => {
+        const done = index <= reached
+        const next = index === reached + 1
+        const date = dates[stage]
+        return (
+          <li key={stage} className="relative flex flex-1 flex-col items-center text-center">
+            {index > 0 && (
+              <span
+                aria-hidden="true"
+                className={`absolute top-[13px] h-0.5 rounded-full ${done ? 'bg-primary' : 'bg-border'}`}
+                // From the edge of the previous circle to the edge of this one.
+                style={{ left: 'calc(-50% + 18px)', right: 'calc(50% + 18px)' }}
+              />
+            )}
+            <span
+              className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                done
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : next
+                    ? 'border-primary bg-card text-primary ring-4 ring-primary/15'
+                    : 'border-border bg-card text-muted-foreground'
+              }`}
+            >
+              {done ? <CheckCircle className="h-4 w-4" /> : index + 1}
+            </span>
+            <span
+              className={`mt-2 text-[11px] font-semibold sm:text-sm ${done || next ? 'text-foreground' : 'text-muted-foreground'}`}
+            >
+              {STEP_LABELS[stage]}
+              <span className="sr-only">{done ? ' (done)' : next ? ' (next)' : ''}</span>
+            </span>
+            {done && date && (
+              <span className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
+                {displayDate(date)}
+              </span>
+            )}
+          </li>
+        )
+      })}
+    </ol>
   )
 }

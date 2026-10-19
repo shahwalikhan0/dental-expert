@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { IconTooltip } from '@/components/ui/icon-action'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -244,7 +245,7 @@ export default function RecareTypesPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="mx-auto max-w-5xl space-y-6">
       {ConfirmDialogComponent}
       <RecareProcedurePicker
         open={picking !== null}
@@ -399,15 +400,12 @@ export default function RecareTypesPage() {
       </Card>
 
       <form ref={formGuard} onSubmit={add} noValidate>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New recare type</CardTitle>
-            <CardDescription>
-              The interval is measured from the visit, not from when it fell due.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+        <FormSection
+          title="New recare type"
+          description="The interval is measured from the visit, not from when it fell due."
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
               <FormField label="Name" required error={errors.name}>
                 {(control) => (
                   <Input
@@ -448,7 +446,7 @@ export default function RecareTypesPage() {
                   className="shrink-0"
                   onClick={() => setPicking({ kind: 'draft' })}
                 >
-                  <ListChecks className="h-4 w-4 mr-2" />
+                  <ListChecks className="h-4 w-4" />
                   Choose procedures
                 </Button>
                 <p className="text-sm text-muted-foreground sm:pt-2">
@@ -458,13 +456,15 @@ export default function RecareTypesPage() {
                 </p>
               </div>
             </div>
-            <div className="flex justify-end">
+            {/* Adds one row to the table above, so the button sits with
+                these fields rather than in a sticky bar for the page. */}
+            <div className="flex justify-end border-t pt-4">
               <SubmitButton busy={saving} busyLabel="Creating…" icon={Plus}>
                 Create recare type
               </SubmitButton>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
       </form>
     </div>
   )

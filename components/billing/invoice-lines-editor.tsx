@@ -225,7 +225,7 @@ export function InvoiceLinesEditor({
             ])
           }
         >
-          <Plus className="h-4 w-4 mr-1" />
+          <Plus className="h-4 w-4" />
           Add custom item
         </Button>
         <ProductPicker onPick={(product) => onChange([...lines, productLine(product)])} />

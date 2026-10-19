@@ -14,7 +14,7 @@ import { FormField } from '@/components/ui/form-field'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SubmitButton } from '@/components/ui/submit-button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -188,12 +188,8 @@ export default function NewPatientPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Personal Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Personal information</CardTitle>
-            <CardDescription>Basic details of the patient</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Personal information" description="Basic details of the patient">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <FormField label="First name" required htmlFor="firstName" error={errors.firstName}>
               {(control) => (
                 <Input
@@ -270,16 +266,12 @@ export default function NewPatientPage() {
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Contact Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact information</CardTitle>
-            <CardDescription>Phone, email, and address details</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Contact information" description="Phone, email, and address details">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <FormField label="Phone" required htmlFor="phone" error={errors.phone}>
               {(control) => (
                 <PhoneInput
@@ -313,7 +305,7 @@ export default function NewPatientPage() {
                 />
               )}
             </FormField>
-            <div className="space-y-2 md:col-span-2 lg:col-span-3">
+            <div className="space-y-2 md:col-span-2 xl:col-span-3">
               <Label htmlFor="address">Address</Label>
               <Textarea
                 id="address"
@@ -350,16 +342,15 @@ export default function NewPatientPage() {
                 placeholder="Postal code"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Additional Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional details</CardTitle>
-            <CardDescription>ID, occupation, and referral information</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection
+          title="Additional details"
+          description="ID, occupation, and referral information"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cnic">CNIC</Label>
               <Input
@@ -400,16 +391,12 @@ export default function NewPatientPage() {
                 placeholder="e.g. REF-A3B2K9"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Emergency Contact */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Emergency contact</CardTitle>
-            <CardDescription>Emergency contact information</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FormSection title="Emergency contact" description="Emergency contact information">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="emergencyContactName">Contact name</Label>
               <Input
@@ -441,8 +428,8 @@ export default function NewPatientPage() {
                 placeholder="e.g. Spouse, Parent"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         <MedicalHistoryFields values={history} onChange={setHistory} />
 
@@ -457,15 +444,15 @@ export default function NewPatientPage() {
           onSelect={(existingId) => router.push(`/patients/${existingId}`)}
         />
 
-        {/* Submit */}
-        <div className="flex justify-end gap-3">
+        {/* Submit, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={trail.back('/patients')}>Cancel</Link>
           </Button>
           <SubmitButton busy={submitting} busyLabel="Creating patient…" icon={Save}>
             Create patient
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

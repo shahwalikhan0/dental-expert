@@ -6,7 +6,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-xl text-card-foreground shadow-sm', GLASS_SURFACE, className)}
+      className={cn('rounded-2xl text-card-foreground', GLASS_SURFACE, className)}
       {...props}
     />
   )
@@ -15,7 +15,7 @@ Card.displayName = 'Card'
 
 const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-6', className)} {...props} />
+    <div ref={ref} className={cn('flex flex-col space-y-1 p-6', className)} {...props} />
   )
 )
 CardHeader.displayName = 'CardHeader'
@@ -24,7 +24,9 @@ const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HT
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn('text-2xl font-semibold leading-none tracking-tight', className)}
+      // A heading over a panel, not a page title: at 24px every card on a
+      // record shouted as loud as the patient's name above them.
+      className={cn('text-lg font-semibold leading-tight tracking-tight', className)}
       {...props}
     />
   )

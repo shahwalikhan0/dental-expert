@@ -18,8 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, AlertTriangle, Stethoscope } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { FormField, fieldIds } from '@/components/ui/form-field'
 import { SubmitButton } from '@/components/ui/submit-button'
@@ -27,13 +28,11 @@ import { IconTooltip } from '@/components/ui/icon-action'
 import { PatientPicker, patientName } from '@/components/patients/patient-picker'
 import { MedicationPicker } from '@/components/catalogue/medication-picker'
 import { toastError, toastSuccess } from '@/lib/toast-utils'
-import { medicalAlerts, type AllergyClash } from '@/lib/medical-history'
-import {
-  describeAllergyClashes,
-  isEmptyLine,
-  lineRefusal,
-  prescriptionAllergyClashes,
-} from '@/lib/prescribing'
+import { medicalAlerts } from '@/lib/medical-history'
+// Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+// import { type AllergyClash } from '@/lib/medical-history'
+// import { describeAllergyClashes, prescriptionAllergyClashes } from '@/lib/prescribing'
+import { isEmptyLine, lineRefusal } from '@/lib/prescribing'
 import { useCan } from '@/hooks/use-can'
 import {
   medicationStock,
@@ -255,7 +254,8 @@ export default function NewPrescriptionPage() {
   const idBase = useId()
 
   /*
-   * Only a dentist prescribes (finding 36); the API refuses anyone else. A
+   * Prescribing takes `clinical:sign` (finding 36): dentists, the clinic
+   * manager and the administrator; the API refuses anyone else. A
    * form that can only end in a 403 is a form filled in for nothing, so other
    * roles are told so instead of being given one. `null` while the session
    * loads, which shows the form rather than flashing the notice.
@@ -307,26 +307,27 @@ export default function NewPrescriptionPage() {
     [selectedPatient]
   )
 
-  /**
-   * Which rows clash with a recorded allergy, by row index.
-   *
-   * Recomputed as the prescription is typed rather than checked once on save,
-   * so the warning appears beside the drug that caused it while the prescriber
-   * is still looking at that row.
-   */
-  const clashesByRow = useMemo(() => {
-    // The same function `POST /api/prescriptions` runs, so the warning here
-    // and the server's refusal cannot disagree about what clashes.
-    const found = prescriptionAllergyClashes(
-      selectedPatient?.medicalHistory?.allergies,
-      medications.map((row) => ({ name: row.medicationName, genericName: row.genericName }))
-    )
-    const map = new Map<number, AllergyClash[]>()
-    for (const { line, ...clash } of found) {
-      map.set(line, [...(map.get(line) ?? []), clash])
-    }
-    return map
-  }, [selectedPatient, medications])
+  // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+  // /**
+  //  * Which rows clash with a recorded allergy, by row index.
+  //  *
+  //  * Recomputed as the prescription is typed rather than checked once on save,
+  //  * so the warning appears beside the drug that caused it while the prescriber
+  //  * is still looking at that row.
+  //  */
+  // const clashesByRow = useMemo(() => {
+  //   // The same function `POST /api/prescriptions` runs, so the warning here
+  //   // and the server's refusal cannot disagree about what clashes.
+  //   const found = prescriptionAllergyClashes(
+  //     selectedPatient?.medicalHistory?.allergies,
+  //     medications.map((row) => ({ name: row.medicationName, genericName: row.genericName }))
+  //   )
+  //   const map = new Map<number, AllergyClash[]>()
+  //   for (const { line, ...clash } of found) {
+  //     map.set(line, [...(map.get(line) ?? []), clash])
+  //   }
+  //   return map
+  // }, [selectedPatient, medications])
 
   /** What is wrong with the form now; empty until the first attempt to save. */
   const errors: FormErrors = useMemo(() => {
@@ -545,25 +546,26 @@ export default function NewPrescriptionPage() {
     }
     const validMeds = medications.filter((m) => !isEmptyLine(m))
 
-    // A warning that costs nothing to ignore is a warning people stop reading.
-    // This one asks for a deliberate answer, and takes no for one — but it does
-    // not refuse, because a prescriber may have a reason and software that
-    // says no outright gets worked around on paper.
-    const confirmClashes = (clashes: AllergyClash[]) =>
-      confirm({
-        title: `Prescribe for ${patientName(selectedPatient)} despite a recorded allergy?`,
-        description: `${describeAllergyClashes(clashes)}.`,
-        confirmLabel: 'Prescribe anyway',
-        tone: 'destructive',
-      })
-
-    // Sent only once the prescriber has said yes. The server runs the same
-    // check and refuses a clash without it (finding 35).
-    let allergyAcknowledged = false
-    if (clashesByRow.size > 0) {
-      if (!(await confirmClashes([...clashesByRow.values()].flat()))) return
-      allergyAcknowledged = true
-    }
+    // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+    // // A warning that costs nothing to ignore is a warning people stop reading.
+    // // This one asks for a deliberate answer, and takes no for one — but it does
+    // // not refuse, because a prescriber may have a reason and software that
+    // // says no outright gets worked around on paper.
+    // const confirmClashes = (clashes: AllergyClash[]) =>
+    //   confirm({
+    //     title: `Prescribe for ${patientName(selectedPatient)} despite a recorded allergy?`,
+    //     description: `${describeAllergyClashes(clashes)}.`,
+    //     confirmLabel: 'Prescribe anyway',
+    //     tone: 'destructive',
+    //   })
+    //
+    // // Sent only once the prescriber has said yes. The server runs the same
+    // // check and refuses a clash without it (finding 35).
+    // let allergyAcknowledged = false
+    // if (clashesByRow.size > 0) {
+    //   if (!(await confirmClashes([...clashesByRow.values()].flat()))) return
+    //   allergyAcknowledged = true
+    // }
 
     const payload = {
       patientId: selectedPatient.id,
@@ -591,29 +593,32 @@ export default function NewPrescriptionPage() {
       })),
     }
 
-    const post = (acknowledged: boolean) =>
+    // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back. With them, this sent
+    // `{ ...payload, allergyAcknowledged }` and took the flag as an argument.
+    const post = () =>
       fetch('/api/prescriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, allergyAcknowledged: acknowledged }),
+        body: JSON.stringify(payload),
       })
 
     setSaving(true)
     try {
-      let res = await post(allergyAcknowledged)
-      let result = await res.json()
+      const res = await post()
+      const result = await res.json()
 
-      /*
-       * The server found a clash this screen did not show — it reads the
-       * generic name from the catalogue, and the record may have changed since
-       * the patient was loaded. Asked here the same way, and sent again only
-       * on a yes.
-       */
-      if (res.status === 409 && result?.code === 'ALLERGY_CLASH' && !allergyAcknowledged) {
-        if (!(await confirmClashes(result.allergyClashes ?? []))) return
-        res = await post(true)
-        result = await res.json()
-      }
+      // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+      // /*
+      //  * The server found a clash this screen did not show — it reads the
+      //  * generic name from the catalogue, and the record may have changed since
+      //  * the patient was loaded. Asked here the same way, and sent again only
+      //  * on a yes.
+      //  */
+      // if (res.status === 409 && result?.code === 'ALLERGY_CLASH' && !allergyAcknowledged) {
+      //   if (!(await confirmClashes(result.allergyClashes ?? []))) return
+      //   res = await post(true)
+      //   result = await res.json()
+      // }
 
       if (!res.ok) throw new Error(result.error || 'Failed to save prescription')
 
@@ -630,14 +635,15 @@ export default function NewPrescriptionPage() {
 
   if (canPrescribe === false) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         <PageHeader back={back} title="New prescription" />
         <Card>
           <CardHeader>
-            <CardTitle>Only a dentist can write a prescription</CardTitle>
+            <CardTitle>Your role cannot write a prescription</CardTitle>
             <CardDescription>
-              A prescription is issued in the prescriber&apos;s name, so it is written from a
-              dentist&apos;s account. You can still read and print the prescriptions already issued.
+              A prescription is issued in the prescriber&apos;s name, so it is written by a dentist,
+              the clinic manager or an administrator. You can still read and print the prescriptions
+              already issued.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -669,7 +675,7 @@ export default function NewPrescriptionPage() {
       /* An empty history and an unasked question look identical on a screen
          that shows nothing, and they are not the same. */
       <p className="text-sm text-muted-foreground">
-        No allergies or conditions recorded.{' '}
+        No medical conditions recorded.{' '}
         <Link
           href={trail.to(`/patients/${selectedPatient.id}`)}
           className="underline hover:text-foreground"
@@ -682,7 +688,7 @@ export default function NewPrescriptionPage() {
   ) : null
 
   return (
-    <div ref={formRef} className="mx-auto max-w-4xl space-y-6">
+    <div ref={formRef} className="space-y-6">
       <PageHeader
         back={back}
         title="New prescription"
@@ -690,13 +696,33 @@ export default function NewPrescriptionPage() {
       />
 
       <div className="space-y-6">
+        {/*
+          Where this prescription came from, when it came from somewhere.
+          Shown rather than hidden in the payload: a dentist should be able to
+          see that this is attached to an extraction before they save it.
+        */}
+        {treatment && (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/10">
+              <Stethoscope className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                Prescribing for {treatment.procedure?.name ?? 'treatment'} · {treatment.treatmentNo}
+              </span>
+              <span className="block text-xs opacity-80">
+                The diagnosis and teeth below were carried across. Both are editable.
+              </span>
+            </span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setTreatment(null)}>
+              Unlink
+            </Button>
+          </div>
+        )}
+
         {/* Patient Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Patient</CardTitle>
-            <CardDescription>Select the patient for this prescription</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <FormSection title="Patient" description="Select the patient for this prescription">
+          <div className="space-y-2">
             {/*
               The shared picker: opens onto the newest patients, searches the
               register from the second letter, and arrow keys work. A link that
@@ -716,48 +742,20 @@ export default function NewPrescriptionPage() {
                 {errors.patient}
               </p>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Diagnosis */}
-        {/*
-          Where this prescription came from, when it came from somewhere.
-          Shown rather than hidden in the payload: a dentist should be able to
-          see that this is attached to an extraction before they save it.
-        */}
-        {treatment && (
-          <Card className="border-primary/30 bg-primary/[0.04]">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="text-sm">
-                <p className="font-medium">
-                  Prescribing for {treatment.procedure?.name ?? 'treatment'} ·{' '}
-                  {treatment.treatmentNo}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  The diagnosis and teeth below were carried across. Both are editable.
-                </p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setTreatment(null)}>
-                Unlink
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+          </div>
+        </FormSection>
 
         {/* Templates */}
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Start from a template</CardTitle>
-              <CardDescription>
-                Adds its medicines to whatever you have already typed. Nothing is replaced.
-              </CardDescription>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/prescriptions/templates">Manage</Link>
+        <FormSection
+          title="Start from a template"
+          description="Adds its medicines to whatever you have already typed. Nothing is replaced."
+          aside={
+            <Button asChild variant="outline" size="sm">
+              <Link href="/prescriptions/templates">Manage templates</Link>
             </Button>
-          </CardHeader>
-          <CardContent>
+          }
+        >
+          <div>
             {templates.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 No templates yet.{' '}
@@ -784,29 +782,25 @@ export default function NewPrescriptionPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Diagnosis &amp; teeth</CardTitle>
-            <CardDescription>
-              Which teeth this prescription is about. Findings already on the patient&apos;s chart
-              are marked.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField label="Diagnosis or condition">
-              {(control) => (
-                <Input
-                  {...control}
-                  value={diagnosis}
-                  onChange={(e) => setDiagnosis(e.target.value)}
-                  placeholder="e.g., Dental caries, Periodontal disease"
-                />
-              )}
-            </FormField>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormSection
+          title="Diagnosis & teeth"
+          description="Which teeth this prescription is about. Findings already on the patient's chart are marked."
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormField label="Diagnosis or condition">
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={diagnosis}
+                    onChange={(e) => setDiagnosis(e.target.value)}
+                    placeholder="e.g., Dental caries, Periodontal disease"
+                  />
+                )}
+              </FormField>
               <FormField label="Valid until">
                 {(control) => (
                   <Input
@@ -837,10 +831,11 @@ export default function NewPrescriptionPage() {
                 </p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        {/* Medications */}
+        {/* Medications: full width, because each row is a form of its own and
+            would be cramped beside a section heading. */}
         <Card>
           <CardHeader>
             <CardTitle>Medications</CardTitle>
@@ -850,9 +845,12 @@ export default function NewPrescriptionPage() {
             {medications.map((med, index) => {
               const rowError = errors.rows[index] ?? {}
               return (
-                <div key={med.key} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">
+                <div key={med.key} className="space-y-4 rounded-xl border p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2.5 text-sm font-semibold">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {index + 1}
+                      </span>
                       Medication {index + 1}
                     </span>
                     {medications.length > 1 && (
@@ -907,7 +905,7 @@ export default function NewPrescriptionPage() {
                     displayed them — a field that writes to nowhere.
                   */}
                   {(med.contraindications || med.sideEffects) && (
-                    <div className="rounded-lg border border-border/60 bg-foreground/[0.02] p-3 text-xs">
+                    <div className="rounded-xl bg-muted/60 p-3 text-xs">
                       {med.contraindications && (
                         <p>
                           <span className="font-semibold">Contraindications: </span>
@@ -942,10 +940,9 @@ export default function NewPrescriptionPage() {
                     </p>
                   )}
 
-                  {/*
+                  {/* Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
                     Beside the drug that caused it, not gathered into a summary at
                     the bottom. The prescriber is looking at this row.
-                  */}
                   {clashesByRow.has(index) && (
                     <div
                       className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
@@ -968,8 +965,9 @@ export default function NewPrescriptionPage() {
                       </div>
                     </div>
                   )}
+                  */}
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                     <FormField label="Dosage" required error={rowError.dosage}>
                       {(control) => (
                         <Input
@@ -1068,30 +1066,28 @@ export default function NewPrescriptionPage() {
             })}
 
             <Button type="button" variant="outline" onClick={addMedRow} className="w-full">
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4" />
               Add another medication
             </Button>
           </CardContent>
         </Card>
 
         {/* Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              aria-label="Additional notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="General advice, follow-up instructions…"
-              rows={3}
-            />
-          </CardContent>
-        </Card>
+        <FormSection
+          title="Additional notes"
+          description="Advice and follow-up for the patient, printed under the medicines"
+        >
+          <Textarea
+            aria-label="Additional notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="General advice, follow-up instructions…"
+            rows={3}
+          />
+        </FormSection>
 
-        {/* Submit */}
-        <div className="flex justify-end gap-3">
+        {/* Submit, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button
             type="button"
             variant="outline"
@@ -1104,11 +1100,10 @@ export default function NewPrescriptionPage() {
             onClick={handleSubmit}
             busy={saving}
             busyLabel="Creating prescription…"
-            size="lg"
           >
             Create prescription
           </SubmitButton>
-        </div>
+        </FormActions>
       </div>
       {ConfirmDialogComponent}
     </div>

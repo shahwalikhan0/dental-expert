@@ -28,7 +28,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             gender: true,
             address: true,
             city: true,
-            medicalHistory: { select: { allergies: true } },
+            medicalHistory: {
+              // What the printed sheet's Clinical History column lists.
+              select: {
+                // allergies: true, // Allergies are hidden for now (19 Oct 2026); uncomment to bring them back.
+                conditions: true,
+                currentMedications: true,
+                isPregnant: true,
+                pregnancyWeeks: true,
+                previousDentalWork: true,
+              },
+            },
           },
         },
         doctor: {

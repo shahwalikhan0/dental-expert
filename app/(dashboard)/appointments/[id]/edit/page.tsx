@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import {
   Select,
   SelectContent,
@@ -24,7 +24,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { PatientSummaryCard } from '@/components/patients/patient-picker'
-import { AlertTriangle, Calendar, Clock, User, Check, Loader2, Save } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Save } from 'lucide-react'
 import { formatTime } from '@/lib/appointment-utils'
 import { subjectName, subjectPhone } from '@/lib/visitors'
 import { formatPhone } from '@/lib/utils'
@@ -239,16 +239,23 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
           } else {
             setTimeSlots([])
           }
+        } else {
+          // A refused lookup used to leave the last day's times on screen,
+          // to be picked for a day they were never checked against.
+          setTimeSlots([])
+          toast(toastError('load the available times'))
         }
       } catch (err) {
         console.error('Error fetching slots:', err)
+        setTimeSlots([])
+        toast(toastError('load the available times', err))
       } finally {
         setLoadingSlots(false)
       }
     }
 
     fetchSlots()
-  }, [selectedDoctor, selectedDate, duration, appointment])
+  }, [selectedDoctor, selectedDate, duration, appointment, toast])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -338,47 +345,32 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
     <div className="space-y-6">
       <PageHeader title="Edit appointment" description={appointment.appointmentNo} back={back} />
 
-      <form ref={formRef} onSubmit={handleSubmit} noValidate>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Patient Info (Read-only) */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Patient
-              </CardTitle>
-              <CardDescription>
-                Patient cannot be changed for an existing appointment
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {appointment.patient ? (
-                // The chosen patient, drawn the one way — read-only here.
-                <PatientSummaryCard patient={appointment.patient} />
-              ) : (
-                <div className="rounded-lg border p-4 bg-muted/50">
-                  <p className="font-medium">{subjectName(appointment)}</p>
-                  {/* A walk-in has no patient number to show — saying so is more
-                      use than a blank line where one is expected. */}
-                  <p className="text-sm text-muted-foreground">Walk-in, not registered</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatPhone(subjectPhone(appointment)) || '—'}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {/* Patient Info (Read-only) */}
+        <FormSection
+          title="Patient"
+          description="Patient cannot be changed for an existing appointment"
+        >
+          {appointment.patient ? (
+            // The chosen patient, drawn the one way — read-only here.
+            <PatientSummaryCard patient={appointment.patient} />
+          ) : (
+            <div className="rounded-xl bg-muted/60 p-4">
+              <p className="font-medium">{subjectName(appointment)}</p>
+              {/* A walk-in has no patient number to show — saying so is more
+                  use than a blank line where one is expected. */}
+              <p className="text-sm text-muted-foreground">Walk-in, not registered</p>
+              <p className="text-sm text-muted-foreground">
+                {formatPhone(subjectPhone(appointment)) || '—'}
+              </p>
+            </div>
+          )}
+        </FormSection>
 
-          {/* Doctor & Schedule */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Schedule
-              </CardTitle>
-              <CardDescription>Update the doctor, assistant, date, or time</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        {/* Doctor & Schedule */}
+        <FormSection title="Schedule" description="Update the doctor, assistant, date, or time">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField label="Doctor" required htmlFor="appointment-doctor" error={errors.doctor}>
                 {(control) => (
                   <Select
@@ -439,163 +431,157 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 )}
               </FormField>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
-                  {(control) => (
-                    <Input
-                      {...control}
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => {
-                        setSelectedDate(e.target.value)
-                        setSelectedTime('')
-                        setErrors((prev) => ({ ...prev, date: undefined }))
-                      }}
-                    />
-                  )}
-                </FormField>
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-duration">Duration</Label>
-                  <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger id="appointment-duration">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 minutes</SelectItem>
-                      <SelectItem value="30">30 minutes</SelectItem>
-                      <SelectItem value="45">45 minutes</SelectItem>
-                      <SelectItem value="60">1 hour</SelectItem>
-                      <SelectItem value="90">1.5 hours</SelectItem>
-                      <SelectItem value="120">2 hours</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Time Slots */}
-              <div
-                className="space-y-2"
-                id="appointment-time"
-                role="group"
-                aria-labelledby="appointment-time-label"
-              >
-                <p id="appointment-time-label" className="label-required text-sm font-medium">
-                  Time slot
-                </p>
-                {loadingSlots ? (
-                  <div className="flex items-center gap-2 p-4 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading available slots…
-                  </div>
-                ) : timeSlots.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    No available slots for this date
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-4 gap-2">
-                    {timeSlots.map((slot) => (
-                      <Button
-                        key={slot.time}
-                        type="button"
-                        variant={selectedTime === slot.time ? 'default' : 'outline'}
-                        size="sm"
-                        disabled={!slot.available}
-                        className={
-                          !slot.available
-                            ? 'cursor-not-allowed opacity-50'
-                            : selectedTime === slot.time
-                              ? ''
-                              : 'hover:bg-primary/10'
-                        }
-                        onClick={() => {
-                          setSelectedTime(slot.time)
-                          setErrors((prev) => ({ ...prev, time: undefined }))
-                        }}
-                      >
-                        {selectedTime === slot.time && <Check className="mr-1 h-3 w-3" />}
-                        {formatTime(slot.time)}
-                      </Button>
-                    ))}
-                  </div>
+              <FormField label="Date" required htmlFor="appointment-date" error={errors.date}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value)
+                      setSelectedTime('')
+                      setErrors((prev) => ({ ...prev, date: undefined }))
+                    }}
+                  />
                 )}
-                {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
+              </FormField>
+              <div className="space-y-2">
+                <Label htmlFor="appointment-duration">Duration</Label>
+                <Select value={duration} onValueChange={setDuration}>
+                  <SelectTrigger id="appointment-duration">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="45">45 minutes</SelectItem>
+                    <SelectItem value="60">1 hour</SelectItem>
+                    <SelectItem value="90">1.5 hours</SelectItem>
+                    <SelectItem value="120">2 hours</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Appointment Details */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Appointment details
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-type">Appointment type</Label>
-                  <Select value={appointmentType} onValueChange={setAppointmentType}>
-                    <SelectTrigger id="appointment-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CONSULTATION">Consultation</SelectItem>
-                      <SelectItem value="PROCEDURE">Procedure</SelectItem>
-                      <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
-                      <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                      <SelectItem value="CHECK_UP">Check-up</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {/* Time Slots */}
+            <div
+              className="space-y-2"
+              id="appointment-time"
+              role="group"
+              aria-labelledby="appointment-time-label"
+            >
+              <p id="appointment-time-label" className="label-required text-sm font-medium">
+                Time slot
+              </p>
+              {loadingSlots ? (
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading available slots…
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="appointment-priority">Priority</Label>
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger id="appointment-priority">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="LOW">Low</SelectItem>
-                      <SelectItem value="NORMAL">Normal</SelectItem>
-                      <SelectItem value="HIGH">High</SelectItem>
-                      <SelectItem value="URGENT">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
+              ) : timeSlots.length === 0 ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  No available slots for this date
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+                  {timeSlots.map((slot) => (
+                    <Button
+                      key={slot.time}
+                      type="button"
+                      variant={selectedTime === slot.time ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={!slot.available}
+                      className={
+                        !slot.available
+                          ? 'cursor-not-allowed opacity-50'
+                          : selectedTime === slot.time
+                            ? ''
+                            : 'hover:bg-primary/10'
+                      }
+                      onClick={() => {
+                        setSelectedTime(slot.time)
+                        setErrors((prev) => ({ ...prev, time: undefined }))
+                      }}
+                    >
+                      {selectedTime === slot.time && <Check className="h-3 w-3" />}
+                      {formatTime(slot.time)}
+                    </Button>
+                  ))}
                 </div>
+              )}
+              {errors.time && <p className="text-sm text-destructive">{errors.time}</p>}
+            </div>
+          </div>
+        </FormSection>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label htmlFor="appointment-complaint">Chief complaint</Label>
-                  <Input
-                    id="appointment-complaint"
-                    placeholder="Patient's main concern or reason for visit"
-                    value={chiefComplaint}
-                    onChange={(e) => setChiefComplaint(e.target.value)}
-                  />
-                </div>
+        {/* Appointment Details */}
+        <FormSection
+          title="Appointment details"
+          description="Type, priority, and the reason for the visit"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="appointment-type">Appointment type</Label>
+              <Select value={appointmentType} onValueChange={setAppointmentType}>
+                <SelectTrigger id="appointment-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CONSULTATION">Consultation</SelectItem>
+                  <SelectItem value="PROCEDURE">Procedure</SelectItem>
+                  <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
+                  <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                  <SelectItem value="CHECK_UP">Check-up</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label htmlFor="appointment-notes">Notes</Label>
-                  <Input
-                    id="appointment-notes"
-                    placeholder="Additional notes about the appointment"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="appointment-priority">Priority</Label>
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger id="appointment-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="NORMAL">Normal</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="URGENT">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="mt-6 flex justify-end gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="appointment-complaint">Chief complaint</Label>
+              <Input
+                id="appointment-complaint"
+                placeholder="Patient's main concern or reason for visit"
+                value={chiefComplaint}
+                onChange={(e) => setChiefComplaint(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="appointment-notes">Notes</Label>
+              <Input
+                id="appointment-notes"
+                placeholder="Additional notes about the appointment"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Save, pinned to the bottom while the form scrolls */}
+        <FormActions>
           <Button type="button" variant="outline" asChild>
             <Link href={trail.back(`/appointments/${id}`)}>Cancel</Link>
           </Button>
           <SubmitButton busy={submitting} icon={Save}>
             Save changes
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

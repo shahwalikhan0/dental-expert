@@ -109,7 +109,10 @@ export const priorityConfig: Record<string, { label: string; color: string; bgCo
 
 // Format time string (24h to 12h format)
 export function formatTime(time: string): string {
-  const [hours, minutes] = time.split(':').map(Number)
+  const [hour, minutes] = time.split(':').map(Number)
+  // `24:00` is a closing time — midnight at the end of the day — and reads as
+  // 12:00 AM. Unwrapped it came out as 12:00 PM, noon.
+  const hours = hour % 24
   const period = hours >= 12 ? 'PM' : 'AM'
   const displayHours = hours % 12 || 12
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`

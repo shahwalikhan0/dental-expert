@@ -5,10 +5,10 @@ import { useSession } from 'next-auth/react'
 import { useCan } from '@/hooks/use-can'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,10 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FormField } from '@/components/ui/form-field'
 import { LoadFailed } from '@/components/ui/load-failed'
-import { PageHeader } from '@/components/ui/page-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { LinkList, LinkRow } from '@/components/ui/link-row'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SubmitButton } from '@/components/ui/submit-button'
 import {
@@ -44,14 +46,14 @@ import {
   Receipt,
   Lock,
   PenLine,
-  History,
+  ChevronRight,
 } from 'lucide-react'
 import { procedureCategoryConfig, parseToothNumbers, toothNames } from '@/lib/treatment-utils'
 import { formatCurrency } from '@/lib/i18n/format'
 import { displayDate, displayDateTime } from '@/lib/dates'
 import { formatPhone } from '@/lib/utils'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
-import { BackLink, useTrail } from '@/components/ui/trail'
+import { useTrail } from '@/components/ui/trail'
 import { groupTeeth } from '@/lib/teeth'
 import { newInvoiceHref } from '@/lib/invoice-links'
 import {
@@ -162,6 +164,7 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const [failed, setFailed] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
   const { confirm, ConfirmDialogComponent } = useConfirmDialog()
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false)
   const [addendumOpen, setAddendumOpen] = useState(false)
@@ -331,6 +334,24 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
   const billable =
     (treatment.status === 'COMPLETED' || treatment.status === 'IN_PROGRESS') && !treatment.billedOn
 
+  const category = procedureCategoryConfig[treatment.procedure.category]
+  const patientName = `${treatment.patient.firstName} ${treatment.patient.lastName}`
+  const doctorName = `Dr. ${treatment.doctor.firstName} ${treatment.doctor.lastName}`
+  const editable =
+    canWrite &&
+    !treatment.signedAt &&
+    treatment.status !== 'COMPLETED' &&
+    treatment.status !== 'CANCELLED'
+  const hasNotes = Boolean(
+    treatment.chiefComplaint ||
+    treatment.diagnosis ||
+    treatment.findings ||
+    treatment.procedureNotes ||
+    treatment.materialsUsed ||
+    treatment.complications
+  )
+  const invoices = treatment.invoiceItems.filter((item) => item.invoice)
+
   return (
     <div className="space-y-6">
       {/* What goes on paper: a template, not this page. */}
@@ -338,69 +359,69 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
         <TreatmentPrint treatment={treatment} />
       </PrintDocument>
 
-      <PageHeader
-        back={<BackLink trail={trail} fallback="/treatments" fallbackLabel="Treatments" />}
-        title={treatment.treatmentNo}
-        badges={<StatusBadge kind="treatment" status={treatment.status} />}
-        description={`Created on ${displayDate(treatment.createdAt)}`}
+      {/*
+        The treatment as a record card: what was done, to whom, by whom, then
+        the one step it is waiting for as the primary button. Editing and
+        cancelling are rarer and sit behind "More"; cancelling stays visible
+        but disabled while an invoice bills it, and the banner below says why.
+      */}
+      <ProfileHeader
+        eyebrow={treatment.treatmentNo}
+        name={treatment.procedure.name}
+        avatarIcon={Stethoscope}
+        badges={
+          <>
+            <StatusBadge kind="treatment" status={treatment.status} />
+            {category && (
+              <Badge variant="outline" className={`${category.bgColor} ${category.color} border-0`}>
+                {category.label}
+              </Badge>
+            )}
+          </>
+        }
+        facts={[
+          { icon: User, label: patientName },
+          { icon: Stethoscope, label: doctorName },
+          { icon: Calendar, label: displayDate(treatment.createdAt) },
+          { icon: Receipt, label: formatCurrency(treatment.cost) },
+        ]}
+        menu={
+          editable
+            ? [
+                {
+                  label: 'Edit treatment',
+                  icon: Pencil,
+                  onSelect: () => router.push(trail.to(`/treatments/${id}/edit`)),
+                },
+                {
+                  label: 'Cancel treatment',
+                  icon: Trash2,
+                  onSelect: handleCancelTreatment,
+                  destructive: true,
+                  disabled: Boolean(treatment.billedOn) || actionLoading,
+                },
+              ]
+            : []
+        }
         actions={
           <>
-            {canWrite && treatment.status === 'PLANNED' && (
-              <SubmitButton
-                type="button"
-                onClick={handleStartTreatment}
-                busy={actionLoading}
-                busyLabel="Starting…"
-                icon={Play}
-              >
-                Start treatment
-              </SubmitButton>
-            )}
-            {canWrite && treatment.status === 'IN_PROGRESS' && (
-              <Button onClick={() => setCompleteDialogOpen(true)}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Complete treatment…
+            <PrintButton printing={printing} />
+            {/*
+              The other half of the prescription/treatment link. Extraction then
+              antibiotics is the commonest pair of acts in a dental day, and it
+              meant leaving this screen, finding the patient again and retyping
+              the tooth. The form reads the patient, the diagnosis and the teeth
+              from this treatment. Only those who can prescribe
+              (`clinical:sign`) are offered it.
+            */}
+            {canPrescribe && (
+              <Button variant="outline" asChild>
+                <Link href={trail.to(`/prescriptions/new?treatmentId=${treatment.id}`)}>
+                  <ClipboardList className="h-4 w-4" />
+                  Prescribe
+                </Link>
               </Button>
             )}
-            {canSign &&
-              treatment.status === 'COMPLETED' &&
-              !treatment.signedAt &&
-              (!myStaffId || myStaffId === treatment.doctor.id) && (
-                <Button onClick={handleSignTreatment} disabled={actionLoading}>
-                  <PenLine className="h-4 w-4 mr-2" />
-                  Sign note
-                </Button>
-              )}
-            {canSign && treatment.signedAt && (
-              <Button variant="outline" onClick={() => setAddendumOpen(true)}>
-                <FileText className="h-4 w-4 mr-2" />
-                Add addendum
-              </Button>
-            )}
-            {canWrite &&
-              !treatment.signedAt &&
-              treatment.status !== 'COMPLETED' &&
-              treatment.status !== 'CANCELLED' && (
-                <>
-                  <Button variant="outline" asChild>
-                    <Link href={trail.to(`/treatments/${id}/edit`)}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Link>
-                  </Button>
-                  {/* Disabled, not hidden, while an invoice bills it: the
-                      banner below says why and which invoice to deal with. */}
-                  <Button
-                    variant="outline"
-                    className="text-destructive"
-                    onClick={handleCancelTreatment}
-                    disabled={Boolean(treatment.billedOn) || actionLoading}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Cancel treatment
-                  </Button>
-                </>
-              )}
             {/* "Bill this" (review 4.1). New Invoice opens on this patient with
                 this treatment ticked; the rest of their unbilled work is there
                 to add. */}
@@ -414,48 +435,60 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                     })
                   )}
                 >
-                  <Receipt className="h-4 w-4 mr-2" />
-                  Bill this treatment
+                  <Receipt className="h-4 w-4" />
+                  Bill
                 </Link>
               </Button>
             )}
-            {/*
-              The other half of the prescription/treatment link. Extraction then
-              antibiotics is the commonest pair of acts in a dental day, and it
-              meant leaving this screen, finding the patient again and retyping
-              the tooth. The form reads the patient, the diagnosis and the teeth
-              from this treatment.
-            */}
-            {/* Only a dentist prescribes, so only a dentist is offered it. */}
-            {canPrescribe && (
-              <Button variant="outline" asChild>
-                <Link href={trail.to(`/prescriptions/new?treatmentId=${treatment.id}`)}>
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  Prescribe
-                </Link>
+            {canSign && treatment.signedAt && (
+              <Button variant="outline" onClick={() => setAddendumOpen(true)}>
+                <FileText className="h-4 w-4" />
+                Add addendum
               </Button>
             )}
-            <PrintButton printing={printing} />
+            {canWrite && treatment.status === 'PLANNED' && (
+              <SubmitButton
+                type="button"
+                onClick={handleStartTreatment}
+                busy={actionLoading}
+                busyLabel="Starting…"
+                icon={Play}
+              >
+                Start treatment
+              </SubmitButton>
+            )}
+            {canWrite && treatment.status === 'IN_PROGRESS' && (
+              <Button onClick={() => setCompleteDialogOpen(true)}>
+                <CheckCircle className="h-4 w-4" />
+                Complete treatment…
+              </Button>
+            )}
+            {canSign &&
+              treatment.status === 'COMPLETED' &&
+              !treatment.signedAt &&
+              (!myStaffId || myStaffId === treatment.doctor.id) && (
+                <Button onClick={handleSignTreatment} disabled={actionLoading}>
+                  <PenLine className="h-4 w-4" />
+                  Sign note
+                </Button>
+              )}
           </>
         }
       />
 
       {/* FR-007: whether this note is locked, and who put their name to it */}
       {treatment.signedAt && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-          <Lock className="h-4 w-4 shrink-0" />
-          <span>
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/10">
+            <Lock className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
             Signed by <strong>{treatment.signedBy?.name || 'a clinician'}</strong> on{' '}
             {displayDateTime(treatment.signedAt)}. This note is locked — additions go in an
             addendum.
           </span>
           {treatment.amendedAt && (
-            <Badge
-              variant="outline"
-              className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200"
-            >
-              Amended {displayDateTime(treatment.amendedAt)}
-            </Badge>
+            <Badge variant="warning">Amended {displayDateTime(treatment.amendedAt)}</Badge>
           )}
         </div>
       )}
@@ -466,13 +499,15 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
       {treatment.billedOn &&
         treatment.status !== 'COMPLETED' &&
         treatment.status !== 'CANCELLED' && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
-            <Receipt className="h-4 w-4 shrink-0" />
-            <span>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/10">
+              <Receipt className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
               Billed on{' '}
               <Link
                 href={trail.to(`/billing/invoices/${treatment.billedOn.id}`)}
-                className="font-medium underline"
+                className="font-semibold underline underline-offset-2"
               >
                 {treatment.billedOn.invoiceNo}
               </Link>
@@ -482,68 +517,41 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Procedure Info */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Stethoscope className="h-5 w-5" />
-                Procedure details
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-lg">{treatment.procedure.name}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Code: {treatment.procedure.code}
-                  </div>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={`${procedureCategoryConfig[treatment.procedure.category]?.bgColor} ${procedureCategoryConfig[treatment.procedure.category]?.color} border-0`}
-                >
-                  {procedureCategoryConfig[treatment.procedure.category]?.label}
-                </Badge>
-              </div>
-
+              <CardTitle>Procedure</CardTitle>
               {treatment.procedure.description && (
-                <p className="text-sm text-muted-foreground">{treatment.procedure.description}</p>
+                <CardDescription>{treatment.procedure.description}</CardDescription>
               )}
-
-              <Separator />
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Treatment cost</div>
-                  <div className="font-medium text-lg">{formatCurrency(treatment.cost)}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Base price</div>
-                  <div className="font-medium">{formatCurrency(treatment.procedure.basePrice)}</div>
-                </div>
-              </div>
-
-              {treatment.startTime && (
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>Started: {displayDateTime(treatment.startTime)}</span>
-                  </div>
-                  {treatment.endTime && (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <span>Completed: {displayDateTime(treatment.endTime)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+            </CardHeader>
+            <CardContent>
+              <InfoGrid className="lg:grid-cols-3">
+                <InfoItem label="Procedure">{treatment.procedure.name}</InfoItem>
+                <InfoItem label="Code">{treatment.procedure.code}</InfoItem>
+                <InfoItem label="Category">{category?.label}</InfoItem>
+                <InfoItem label="Treatment cost">
+                  <span className="text-base font-semibold">{formatCurrency(treatment.cost)}</span>
+                </InfoItem>
+                <InfoItem label="Base price">
+                  {formatCurrency(treatment.procedure.basePrice)}
+                </InfoItem>
+                <InfoItem label="Usual duration">
+                  {treatment.procedure.defaultDuration
+                    ? `${treatment.procedure.defaultDuration} min`
+                    : null}
+                </InfoItem>
+                <InfoItem label="Started" icon={Clock}>
+                  {treatment.startTime ? displayDateTime(treatment.startTime) : null}
+                </InfoItem>
+                <InfoItem label="Completed" icon={CheckCircle}>
+                  {treatment.endTime ? displayDateTime(treatment.endTime) : null}
+                </InfoItem>
+              </InfoGrid>
             </CardContent>
           </Card>
 
-          {/* Teeth Affected */}
           {teeth.length > 0 && (
             <Card>
               <CardHeader>
@@ -557,17 +565,22 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                   "Central Incisor" — which drops the half of it that says
                   which of the four central incisors is meant.
                 */}
-                <div className="space-y-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {groupTeeth(teeth).map((group) => (
                     <div key={group.key}>
-                      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {group.label}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {group.teeth.map((tooth) => (
-                          <div key={tooth} className="rounded-lg bg-muted px-3 py-2 text-sm">
-                            <span className="font-medium">{tooth}</span>
-                            <span className="ml-1 text-muted-foreground">
+                          <div
+                            key={tooth}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 py-1 pl-1 pr-3 text-sm"
+                          >
+                            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-bold text-primary">
+                              {tooth}
+                            </span>
+                            <span className="text-muted-foreground">
                               {/* Every name starts with its quadrant; the heading already said it. */}
                               {toothNames[tooth]?.split(' ').slice(2).join(' ')}
                             </span>
@@ -581,93 +594,85 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           )}
 
-          {/* Clinical Notes */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Clinical notes
-              </CardTitle>
+              <CardTitle>Clinical notes</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {treatment.chiefComplaint && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Chief complaint</div>
-                  <p className="mt-1">{treatment.chiefComplaint}</p>
-                </div>
+            <CardContent>
+              {hasNotes ? (
+                <InfoGrid className="sm:grid-cols-1">
+                  {treatment.chiefComplaint && (
+                    <InfoItem label="Chief complaint">
+                      <span className="whitespace-pre-wrap font-normal">
+                        {treatment.chiefComplaint}
+                      </span>
+                    </InfoItem>
+                  )}
+                  {treatment.diagnosis && (
+                    <InfoItem label="Diagnosis">
+                      <span className="whitespace-pre-wrap font-normal">{treatment.diagnosis}</span>
+                    </InfoItem>
+                  )}
+                  {treatment.findings && (
+                    <InfoItem label="Clinical findings">
+                      <span className="whitespace-pre-wrap font-normal">{treatment.findings}</span>
+                    </InfoItem>
+                  )}
+                  {treatment.procedureNotes && (
+                    <InfoItem label="Procedure notes">
+                      <span className="whitespace-pre-wrap font-normal">
+                        {treatment.procedureNotes}
+                      </span>
+                    </InfoItem>
+                  )}
+                  {treatment.materialsUsed && (
+                    <InfoItem label="Materials used">
+                      <span className="whitespace-pre-wrap font-normal">
+                        {treatment.materialsUsed}
+                      </span>
+                    </InfoItem>
+                  )}
+                  {treatment.complications && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+                      <InfoItem label="Complications" icon={AlertCircle}>
+                        <span className="whitespace-pre-wrap font-normal text-amber-900 dark:text-amber-200">
+                          {treatment.complications}
+                        </span>
+                      </InfoItem>
+                    </div>
+                  )}
+                </InfoGrid>
+              ) : (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  No clinical notes recorded.
+                </p>
               )}
-
-              {treatment.diagnosis && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Diagnosis</div>
-                  <p className="mt-1">{treatment.diagnosis}</p>
-                </div>
-              )}
-
-              {treatment.findings && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Clinical findings</div>
-                  <p className="mt-1">{treatment.findings}</p>
-                </div>
-              )}
-
-              {treatment.procedureNotes && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Procedure notes</div>
-                  <p className="mt-1">{treatment.procedureNotes}</p>
-                </div>
-              )}
-
-              {treatment.materialsUsed && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Materials used</div>
-                  <p className="mt-1">{treatment.materialsUsed}</p>
-                </div>
-              )}
-
-              {treatment.complications && (
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground text-amber-600 dark:text-amber-400">
-                    Complications
-                  </div>
-                  <p className="mt-1">{treatment.complications}</p>
-                </div>
-              )}
-
-              {!treatment.chiefComplaint &&
-                !treatment.diagnosis &&
-                !treatment.findings &&
-                !treatment.procedureNotes && (
-                  <p className="text-muted-foreground text-center py-4">
-                    No clinical notes recorded.
-                  </p>
-                )}
             </CardContent>
           </Card>
 
-          {/* Pre/Post Instructions */}
           {(treatment.procedure.preInstructions || treatment.procedure.postInstructions) && (
             <Card>
               <CardHeader>
                 <CardTitle>Instructions</CardTitle>
+                <CardDescription>From the procedure catalogue</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {treatment.procedure.preInstructions && (
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">
-                      Pre-procedure instructions
-                    </div>
-                    <p className="mt-1">{treatment.procedure.preInstructions}</p>
-                  </div>
-                )}
-                {treatment.procedure.postInstructions && (
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">
-                      Post-procedure instructions
-                    </div>
-                    <p className="mt-1">{treatment.procedure.postInstructions}</p>
-                  </div>
-                )}
+              <CardContent>
+                <InfoGrid>
+                  {treatment.procedure.preInstructions && (
+                    <InfoItem label="Before the procedure">
+                      <span className="whitespace-pre-wrap font-normal">
+                        {treatment.procedure.preInstructions}
+                      </span>
+                    </InfoItem>
+                  )}
+                  {treatment.procedure.postInstructions && (
+                    <InfoItem label="After the procedure">
+                      <span className="whitespace-pre-wrap font-normal">
+                        {treatment.procedure.postInstructions}
+                      </span>
+                    </InfoItem>
+                  )}
+                </InfoGrid>
               </CardContent>
             </Card>
           )}
@@ -682,198 +687,73 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
           {treatment.amendments && treatment.amendments.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Since this note was signed
-                </CardTitle>
+                <CardTitle>Since this note was signed</CardTitle>
                 <CardDescription>
                   Everything added or corrected after the signature, oldest first
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {treatment.amendments.map((amendment) => (
-                  <div key={amendment.id} className="rounded-lg border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      {amendment.kind === 'CORRECTION' ? (
-                        <Badge variant="destructive">Correction</Badge>
-                      ) : (
-                        <Badge variant="secondary">Addendum</Badge>
-                      )}
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap">{amendment.body}</p>
-                    {amendment.changes && (
-                      <div className="mt-2 space-y-1">
-                        {Object.entries(amendment.changes).map(([field, change]) => (
-                          <div key={field} className="text-sm">
-                            <span className="text-muted-foreground">{field}: </span>
-                            <span className="text-red-700 line-through dark:text-red-300">
-                              {String(change.from ?? '—')}
-                            </span>
-                            <span className="text-muted-foreground"> → </span>
-                            <span className="text-emerald-700 dark:text-emerald-300">
-                              {String(change.to ?? '—')}
-                            </span>
-                          </div>
-                        ))}
+              <CardContent>
+                <ol className="relative space-y-5 border-l border-border pl-6">
+                  {treatment.amendments.map((amendment) => (
+                    <li key={amendment.id} className="relative">
+                      <span
+                        aria-hidden="true"
+                        className={`absolute -left-[31px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-card ${amendment.kind === 'CORRECTION' ? 'bg-destructive' : 'bg-primary'}`}
+                      />
+                      <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                        {amendment.kind === 'CORRECTION' ? (
+                          <Badge variant="danger">Correction</Badge>
+                        ) : (
+                          <Badge variant="secondary">Addendum</Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {amendment.author.name} · {displayDateTime(amendment.createdAt)}
+                        </span>
                       </div>
-                    )}
-                    <p className="text-muted-foreground mt-2 text-xs">
-                      {amendment.author.name} · {displayDateTime(amendment.createdAt)}
-                    </p>
-                  </div>
-                ))}
+                      <p className="whitespace-pre-wrap text-sm">{amendment.body}</p>
+                      {amendment.changes && (
+                        <div className="mt-2 space-y-1 rounded-xl bg-muted/60 px-3 py-2">
+                          {Object.entries(amendment.changes).map(([field, change]) => (
+                            <div key={field} className="text-sm">
+                              <span className="text-muted-foreground">{field}: </span>
+                              <span className="text-red-700 line-through dark:text-red-300">
+                                {String(change.from ?? '—')}
+                              </span>
+                              <span className="text-muted-foreground"> → </span>
+                              <span className="text-emerald-700 dark:text-emerald-300">
+                                {String(change.to ?? '—')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Patient Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Patient
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">
-                    {treatment.patient.firstName} {treatment.patient.lastName}
-                  </div>
-                  <div className="text-sm text-muted-foreground">{treatment.patient.patientId}</div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  {formatPhone(treatment.patient.phone)}
-                </div>
-                {treatment.patient.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    {treatment.patient.email}
-                  </div>
-                )}
-                {treatment.patient.bloodGroup && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Blood group:</span>
-                    <Badge variant="outline">{treatment.patient.bloodGroup}</Badge>
-                  </div>
-                )}
-              </div>
-
-              <Button variant="outline" className="w-full" asChild>
-                <Link href={trail.to(`/patients/${treatment.patient.id}`)}>
-                  View patient profile
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Doctor Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Stethoscope className="h-5 w-5" />
-                Doctor
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="font-medium">
-                Dr. {treatment.doctor.firstName} {treatment.doctor.lastName}
-              </div>
-              {treatment.doctor.specialization && (
-                <div className="text-sm text-muted-foreground">
-                  {treatment.doctor.specialization}
-                </div>
-              )}
-              {treatment.doctor.phone && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  {formatPhone(treatment.doctor.phone)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* The plan this treatment is a step of */}
-          {treatment.planItem && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Treatment plan
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="font-medium">{treatment.planItem.treatmentPlan.planNumber}</div>
-                <div className="text-sm text-muted-foreground">
-                  {treatment.planItem.treatmentPlan.title}
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-2" asChild>
-                  <Link href={trail.to(`/treatments/plans/${treatment.planItem.treatmentPlan.id}`)}>
-                    View plan
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Appointment Info */}
-          {treatment.appointment && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Appointment
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="font-medium">{treatment.appointment.appointmentNo}</div>
-                <div className="text-sm text-muted-foreground">
-                  {displayDate(treatment.appointment.scheduledDate)} at{' '}
-                  {treatment.appointment.scheduledTime}
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-2" asChild>
-                  <Link href={trail.to(`/appointments/${treatment.appointment.id}`)}>
-                    View appointment
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Follow-up */}
+          {/* Follow-up first on this side: it is the one thing here still to do. */}
           {treatment.followUpRequired && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                  <AlertCircle className="h-5 w-5" />
+            <Card className="border-amber-200 dark:border-amber-800/60">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-amber-700 dark:text-amber-400">
                   Follow-up required
                 </CardTitle>
+                <CardDescription>
+                  {treatment.followUpDate
+                    ? `Due ${displayDate(treatment.followUpDate)}`
+                    : 'No date set yet.'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {treatment.followUpDate ? (
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    {displayDate(treatment.followUpDate)}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Date not scheduled.</p>
-                )}
-                {/* Booking the follow-up is the whole point of the card, and
-                    this button did nothing at all. The date, when one was set,
-                    is what the booking screen should open on. */}
-                <Button variant="outline" size="sm" className="w-full" asChild>
+                {/* Booking the follow-up is the whole point of the card. The
+                    date, when one was set, is what the booking screen should
+                    open on. */}
+                <Button className="w-full" asChild>
                   <Link
                     href={trail.to(
                       `/appointments/new?patientId=${treatment.patient.id}` +
@@ -881,8 +761,8 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
                           ? `&date=${String(treatment.followUpDate).slice(0, 10)}`
                           : '')
                     )}
-                    className="block mt-4"
                   >
+                    <Calendar className="h-4 w-4" />
                     Schedule follow-up
                   </Link>
                 </Button>
@@ -890,56 +770,104 @@ export default function TreatmentDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           )}
 
-          {/* Prescriptions */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Pill className="h-5 w-5" />
-                Prescriptions
-              </CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle>Patient</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Prescriptions are written for the patient rather than for one treatment.
-              </p>
-              <Button variant="outline" size="sm" className="w-full" asChild>
-                <Link
-                  href={trail.to(`/prescriptions?patientId=${treatment.patient.id}`)}
-                  className="block mt-4"
-                >
-                  Prescriptions for {treatment.patient.firstName}
-                </Link>
-              </Button>
+            <CardContent className="space-y-5">
+              <Link
+                href={trail.to(`/patients/${treatment.patient.id}`)}
+                className="group -mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  {`${treatment.patient.firstName.charAt(0)}${treatment.patient.lastName.charAt(0)}`.toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{patientName}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {treatment.patient.patientId}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Phone" icon={Phone}>
+                  {formatPhone(treatment.patient.phone)}
+                </InfoItem>
+                {treatment.patient.email && (
+                  <InfoItem label="Email" icon={Mail}>
+                    {treatment.patient.email}
+                  </InfoItem>
+                )}
+              </InfoGrid>
             </CardContent>
           </Card>
 
-          {/* Invoices */}
-          {treatment.invoiceItems.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Receipt className="h-5 w-5" />
-                  Billing
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {/* This was a count and a button that did nothing. The invoice
-                    each line belongs to is already on the response. */}
-                {treatment.invoiceItems.map((item) =>
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>Dentist</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InfoGrid className="sm:grid-cols-1">
+                <InfoItem label="Name">{doctorName}</InfoItem>
+                {treatment.doctor.specialization && (
+                  <InfoItem label="Specialisation">{treatment.doctor.specialization}</InfoItem>
+                )}
+                {treatment.doctor.phone && (
+                  <InfoItem label="Phone" icon={Phone}>
+                    {formatPhone(treatment.doctor.phone)}
+                  </InfoItem>
+                )}
+              </InfoGrid>
+            </CardContent>
+          </Card>
+
+          {/* Everything this treatment links to, one row each. Prescriptions
+              belong to the patient rather than to one treatment, so that row
+              opens theirs. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Related</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LinkList>
+                {treatment.planItem && (
+                  <LinkRow
+                    href={trail.to(`/treatments/plans/${treatment.planItem.treatmentPlan.id}`)}
+                    icon={FileText}
+                    title={treatment.planItem.treatmentPlan.title}
+                    subtitle={`Treatment plan · ${treatment.planItem.treatmentPlan.planNumber}`}
+                  />
+                )}
+                {treatment.appointment && (
+                  <LinkRow
+                    href={trail.to(`/appointments/${treatment.appointment.id}`)}
+                    icon={Calendar}
+                    title={treatment.appointment.appointmentNo}
+                    subtitle={`${displayDate(treatment.appointment.scheduledDate)} at ${treatment.appointment.scheduledTime}`}
+                  />
+                )}
+                {invoices.map((item) =>
                   item.invoice ? (
-                    <Link
+                    <LinkRow
                       key={item.id}
                       href={trail.to(`/billing/invoices/${item.invoice.id}`)}
-                      className="flex items-center justify-between rounded-lg border p-3 text-sm hover:bg-accent transition-colors"
-                    >
-                      <span className="font-medium">{item.invoice.invoiceNo}</span>
-                      <StatusBadge kind="invoice" status={item.invoice.status} />
-                    </Link>
+                      icon={Receipt}
+                      title={item.invoice.invoiceNo}
+                      subtitle="Invoice"
+                      trailing={<StatusBadge kind="invoice" status={item.invoice.status} />}
+                    />
                   ) : null
                 )}
-              </CardContent>
-            </Card>
-          )}
+                <LinkRow
+                  href={trail.to(`/prescriptions?patientId=${treatment.patient.id}`)}
+                  icon={Pill}
+                  title="Prescriptions"
+                  subtitle={`All of ${treatment.patient.firstName}'s prescriptions`}
+                />
+              </LinkList>
+            </CardContent>
+          </Card>
         </div>
       </div>
 

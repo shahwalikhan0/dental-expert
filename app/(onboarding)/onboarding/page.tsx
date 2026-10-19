@@ -43,15 +43,20 @@ const onboardingSchema = z.object({
 
 type OnboardingFormData = z.infer<typeof onboardingSchema>
 
-const defaultWorkingHours = {
-  monday: { open: '09:00', close: '18:00', closed: false },
-  tuesday: { open: '09:00', close: '18:00', closed: false },
-  wednesday: { open: '09:00', close: '18:00', closed: false },
-  thursday: { open: '09:00', close: '18:00', closed: false },
-  friday: { open: '09:00', close: '18:00', closed: false },
-  saturday: { open: '09:00', close: '14:00', closed: false },
-  sunday: { open: null, close: null, closed: true },
-}
+/**
+ * What a new clinic starts with: open round the clock, seven days.
+ *
+ * Sunday used to arrive pre-closed, Saturday pre-shortened and every day
+ * stopping at six, which made the app's guess about this practice something
+ * the practice had to undo. Open is the only default that constrains nobody —
+ * a clinic that works nine to six says so on this step and is done.
+ */
+const defaultWorkingHours = Object.fromEntries(
+  ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => [
+    day,
+    { open: '00:00', close: '24:00', closed: false },
+  ])
+) as Record<string, { open: string | null; close: string | null; closed: boolean }>
 
 const steps = [
   { id: 1, title: 'Clinic Details', icon: Building2 },
@@ -130,6 +135,23 @@ export default function OnboardingPage() {
         ...prev[day as keyof typeof prev],
         [field]: value,
       },
+    }))
+  }
+
+  /**
+   * Midnight to midnight, as a checkbox.
+   *
+   * `<input type="time">` stops at 23:59, so a day running to the end of
+   * midnight cannot be typed into one. This writes the `00:00`–`24:00` pair the
+   * rest of the application reads as all day; clearing it puts back an ordinary
+   * working day to edit.
+   */
+  const setAllDay = (day: string, allDay: boolean) => {
+    setWorkingHours((prev) => ({
+      ...prev,
+      [day]: allDay
+        ? { ...prev[day], open: '00:00', close: '24:00', closed: false }
+        : { ...prev[day], open: '09:00', close: '17:00' },
     }))
   }
 
@@ -333,44 +355,64 @@ export default function OnboardingPage() {
                 {/* Step 2: Working Hours */}
                 {currentStep === 2 && (
                   <div className="space-y-4">
-                    {Object.entries(workingHours).map(([day, hours]) => (
-                      <div key={day} className="flex items-center gap-4">
-                        <div className="w-24 font-medium capitalize">{day}</div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            checked={!hours.closed}
-                            onCheckedChange={(checked) =>
-                              handleWorkingHoursChange(day, 'closed', !checked)
-                            }
-                          />
-                          <span className="text-sm text-muted-foreground">Open</span>
+                    {Object.entries(workingHours).map(([day, hours]) => {
+                      const allDay = hours.open === '00:00' && hours.close === '24:00'
+                      return (
+                        <div key={day} className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                          <div className="w-24 font-medium capitalize">{day}</div>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`${day}-open`}
+                              checked={!hours.closed}
+                              onCheckedChange={(checked) =>
+                                handleWorkingHoursChange(day, 'closed', !checked)
+                              }
+                            />
+                            <Label htmlFor={`${day}-open`} className="text-sm font-normal">
+                              Open
+                            </Label>
+                          </div>
+                          {!hours.closed && (
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`${day}-all-day`}
+                                checked={allDay}
+                                onCheckedChange={(checked) => setAllDay(day, checked === true)}
+                              />
+                              <Label htmlFor={`${day}-all-day`} className="text-sm font-normal">
+                                24 hours
+                              </Label>
+                            </div>
+                          )}
+                          {!hours.closed && !allDay && (
+                            <>
+                              <Input
+                                type="time"
+                                aria-label={`${day} opens at`}
+                                value={hours.open || '09:00'}
+                                onChange={(e) =>
+                                  handleWorkingHoursChange(day, 'open', e.target.value)
+                                }
+                                className="w-32"
+                              />
+                              <span className="text-muted-foreground">to</span>
+                              <Input
+                                type="time"
+                                aria-label={`${day} closes at`}
+                                value={hours.close || '18:00'}
+                                onChange={(e) =>
+                                  handleWorkingHoursChange(day, 'close', e.target.value)
+                                }
+                                className="w-32"
+                              />
+                            </>
+                          )}
+                          {hours.closed && (
+                            <span className="text-sm text-muted-foreground">Closed</span>
+                          )}
                         </div>
-                        {!hours.closed && (
-                          <>
-                            <Input
-                              type="time"
-                              value={hours.open || '09:00'}
-                              onChange={(e) =>
-                                handleWorkingHoursChange(day, 'open', e.target.value)
-                              }
-                              className="w-32"
-                            />
-                            <span className="text-muted-foreground">to</span>
-                            <Input
-                              type="time"
-                              value={hours.close || '18:00'}
-                              onChange={(e) =>
-                                handleWorkingHoursChange(day, 'close', e.target.value)
-                              }
-                              className="w-32"
-                            />
-                          </>
-                        )}
-                        {hours.closed && (
-                          <span className="text-sm text-muted-foreground">Closed</span>
-                        )}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 

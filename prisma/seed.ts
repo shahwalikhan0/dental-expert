@@ -52,15 +52,16 @@ async function main() {
       // Both are shaped like the real thing but are not real registrations.
       taxRegistrationNo: '3277876123456',
       registrationNo: 'PMDC-2020-12345',
-      workingHours: JSON.stringify({
-        monday: { open: '09:00', close: '20:00' },
-        tuesday: { open: '09:00', close: '20:00' },
-        wednesday: { open: '09:00', close: '20:00' },
-        thursday: { open: '09:00', close: '20:00' },
-        friday: { open: '09:00', close: '20:00' },
-        saturday: { open: '09:00', close: '14:00' },
-        sunday: { open: null, close: null },
-      }),
+      // Round the clock, seven days. The clinic has no weekly day off, no half
+      // day and no closing time; a day is shortened or closed only by a
+      // holiday on the calendar.
+      workingHours: JSON.stringify(
+        Object.fromEntries(
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(
+            (day) => [day, { open: '00:00', close: '24:00' }]
+          )
+        )
+      ),
       subscription: {
         create: {
           plan: Plan.PROFESSIONAL,

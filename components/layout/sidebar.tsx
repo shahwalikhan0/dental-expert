@@ -64,14 +64,18 @@ export function Sidebar({
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          'glass glass-raised role-surface flex h-full flex-col overflow-hidden rounded-2xl transition-[width] duration-300 ease-in-out',
+          // Flush to the screen's edges, so only the right-hand border is drawn.
+          // The role's colour is on the header only, not the whole panel:
+          // a tinted menu the height of the screen was a lot of colour to read
+          // text on.
+          'glass glass-raised flex h-full flex-col overflow-hidden !border-y-0 !border-l-0 transition-[width] duration-300 ease-in-out',
           isCollapsed ? 'w-16' : 'w-64'
         )}
       >
         {/* Header with Logo and Toggle */}
         <div
           className={cn(
-            'flex h-16 items-center border-b',
+            'role-surface flex h-16 items-center border-b',
             RULE,
             isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
           )}
@@ -304,14 +308,17 @@ export function Sidebar({
         </ScrollArea>
 
         {/* The user guide, for every role: it sits below the menu rather than
-            in it, because it is not a part of the clinic's work. */}
+            in it, because it is not a part of the clinic's work. It opens in a
+            new tab, so reading it does not lose the screen it was opened from. */}
         <div className={cn('border-t p-3', RULE)}>
           {isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link
                   href="/docs"
-                  aria-label="Docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Docs (opens in a new tab)"
                   className="flex h-10 w-full items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
                 >
                   <BookOpen className="h-5 w-5" />
@@ -322,10 +329,13 @@ export function Sidebar({
           ) : (
             <Link
               href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
             >
               <BookOpen className="h-4 w-4 shrink-0" />
               <span>Docs</span>
+              <span className="sr-only"> (opens in a new tab)</span>
             </Link>
           )}
         </div>

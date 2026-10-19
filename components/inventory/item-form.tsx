@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -251,11 +251,8 @@ export function ItemForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Item</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <FormSection title="Item" description="What it is, how it is counted and where it is kept">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField
             label="Item code"
             required
@@ -367,28 +364,28 @@ export function ItemForm({
           <FormField label="Description" className="md:col-span-2">
             {(c) => <Textarea {...c} {...text('description')} rows={3} />}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Stock levels</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <FormSection
+        title="Stock levels"
+        description="The levels that raise a low-stock alert and a reorder"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Current stock is set when the item is created and moved by
               transactions thereafter; the update route does not read it. */}
           {mode === 'create' && count('currentStock', 'Current stock')}
           {count('minimumStock', 'Minimum stock')}
           {count('reorderLevel', 'Reorder point')}
           {count('maximumStock', 'Maximum stock')}
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pricing and supplier</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <FormSection
+        title="Pricing and supplier"
+        description="What the clinic pays, what it charges and who it orders from"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField label="Unit price" required error={errors.purchasePrice}>
             {(c) => (
               <MoneyInput
@@ -445,14 +442,11 @@ export function ItemForm({
               />
             )}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tracking</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <FormSection title="Tracking" description="Batches, expiry dates and whether it is in use">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {(
               [
@@ -461,7 +455,10 @@ export function ItemForm({
                 ['isActive', 'Active'],
               ] as const
             ).map(([field, label]) => (
-              <div key={field} className="flex items-center gap-2">
+              <div
+                key={field}
+                className="flex items-center gap-3 rounded-xl border border-border px-4 py-3"
+              >
                 <Checkbox
                   id={`item-${field}`}
                   checked={formData[field]}
@@ -477,17 +474,17 @@ export function ItemForm({
           <FormField label="Notes">
             {(c) => <Textarea {...c} {...text('notes')} rows={2} />}
           </FormField>
-        </CardContent>
-      </Card>
+        </div>
+      </FormSection>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <FormActions>
         <Button type="button" variant="outline" asChild>
           <Link href={cancelHref}>Cancel</Link>
         </Button>
         <SubmitButton busy={busy} busyLabel={busyLabel} icon={Save}>
           {submitLabel}
         </SubmitButton>
-      </div>
+      </FormActions>
     </form>
   )
 }

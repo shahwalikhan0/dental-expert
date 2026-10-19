@@ -10,7 +10,6 @@ import { displayDate, isoDay } from '@/lib/dates'
 import { formatTime } from '@/lib/appointment-utils'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -20,13 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { User, Stethoscope, Save, CalendarCheck } from 'lucide-react'
+import { Save, CalendarCheck } from 'lucide-react'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
 import { PatientPicker } from '@/components/patients/patient-picker'
 import { ProcedurePicker } from '@/components/catalogue/procedure-picker'
 import { FormField } from '@/components/ui/form-field'
 import { MoneyInput, parseMoney } from '@/components/ui/money-input'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { formatCurrency } from '@/lib/i18n/format'
@@ -363,15 +363,8 @@ export default function NewTreatmentPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
         {/* Patient Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Patient
-            </CardTitle>
-            <CardDescription>Choose the patient for this treatment</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <FormSection title="Patient" description="Choose the patient for this treatment">
+          <div className="space-y-4">
             <FormField label="Patient" htmlFor="patient" required error={errors.patient}>
               {(control) => (
                 <PatientPicker<Patient>
@@ -383,8 +376,8 @@ export default function NewTreatmentPage() {
               )}
             </FormField>
             {visit && formData.appointmentId === visit.id && (
-              <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                <CalendarCheck className="h-4 w-4 shrink-0" />
+              <div className="flex items-start gap-3 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <span>
                   For the visit{' '}
                   <Link
@@ -399,26 +392,22 @@ export default function NewTreatmentPage() {
                     : ''}
                   .
                 </span>
-              </p>
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Doctor and Procedure */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Stethoscope className="h-5 w-5" />
-              Treatment details
-            </CardTitle>
-            <CardDescription>
-              {planItemId
-                ? 'A step of the patient’s treatment plan. Completing this treatment completes the step.'
-                : 'Choose the doctor and the procedure'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormSection
+          title="Treatment details"
+          description={
+            planItemId
+              ? 'A step of the patient’s treatment plan. Completing this treatment completes the step.'
+              : 'Choose the doctor and the procedure'
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField label="Doctor" htmlFor="doctor" required error={errors.doctor}>
                 {(control) => (
                   <Select
@@ -464,36 +453,42 @@ export default function NewTreatmentPage() {
             </div>
 
             {selectedProcedure && (
-              <div className="p-4 bg-muted/50 rounded-lg">
-                <div className="font-medium">{selectedProcedure.name}</div>
+              <div className="rounded-xl bg-muted/60 p-4">
+                <div className="font-semibold">{selectedProcedure.name}</div>
                 {selectedProcedure.description && (
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {selectedProcedure.description}
                   </p>
                 )}
-                <div className="flex gap-4 mt-2 text-sm">
-                  <span>Duration: {selectedProcedure.defaultDuration} min</span>
-                  <span>Base price: {formatCurrency(selectedProcedure.basePrice)}</span>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                  <span className="rounded-full bg-card px-2.5 py-1">
+                    {selectedProcedure.defaultDuration} min
+                  </span>
+                  <span className="rounded-full bg-card px-2.5 py-1">
+                    Base price {formatCurrency(selectedProcedure.basePrice)}
+                  </span>
                 </div>
               </div>
             )}
 
-            <FormField
-              label="Treatment cost"
-              htmlFor="cost"
-              error={errors.cost}
-              hint="Leave blank to charge the plan's quoted price or the procedure's list price."
-            >
-              {(control) => (
-                <MoneyInput
-                  {...control}
-                  value={formData.cost}
-                  onChange={(raw) => setFormData({ ...formData, cost: raw })}
-                />
-              )}
-            </FormField>
-          </CardContent>
-        </Card>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormField
+                label="Treatment cost"
+                htmlFor="cost"
+                error={errors.cost}
+                hint="Leave blank to charge the plan's quoted price or the procedure's list price."
+              >
+                {(control) => (
+                  <MoneyInput
+                    {...control}
+                    value={formData.cost}
+                    onChange={(raw) => setFormData({ ...formData, cost: raw })}
+                  />
+                )}
+              </FormField>
+            </div>
+          </div>
+        </FormSection>
 
         {/* Dental Chart */}
         {/*
@@ -503,24 +498,28 @@ export default function NewTreatmentPage() {
           teeth for a treatment was shown a permanently healthy mouth.
         */}
         {selectedPatient && (
-          <ToothPicker
-            patientId={selectedPatient.id}
-            selected={formData.toothNumbers}
-            onChange={(teeth) => setFormData((prev) => ({ ...prev, toothNumbers: teeth }))}
-            defaultToFindings
-            // A child opens on the primary teeth (bug report 12 Oct, finding 55).
-            age={selectedPatient.age}
-            dateOfBirth={selectedPatient.dateOfBirth}
-          />
+          <FormSection
+            title="Teeth"
+            description="The teeth this treatment is for. Existing findings are marked on the chart."
+          >
+            <ToothPicker
+              patientId={selectedPatient.id}
+              selected={formData.toothNumbers}
+              onChange={(teeth) => setFormData((prev) => ({ ...prev, toothNumbers: teeth }))}
+              defaultToFindings
+              // A child opens on the primary teeth (bug report 12 Oct, finding 55).
+              age={selectedPatient.age}
+              dateOfBirth={selectedPatient.dateOfBirth}
+            />
+          </FormSection>
         )}
 
         {/* Clinical Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Clinical notes</CardTitle>
-            <CardDescription>Document the clinical findings and treatment notes</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <FormSection
+          title="Clinical notes"
+          description="Document the clinical findings and treatment notes"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="chiefComplaint">Chief complaint</Label>
               <Textarea
@@ -543,7 +542,7 @@ export default function NewTreatmentPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="findings">Clinical findings</Label>
               <Textarea
                 id="findings"
@@ -554,7 +553,7 @@ export default function NewTreatmentPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor="procedureNotes">Procedure notes</Label>
                 <VoiceInput
@@ -575,7 +574,7 @@ export default function NewTreatmentPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="materialsUsed">Materials used</Label>
               <Textarea
                 id="materialsUsed"
@@ -585,16 +584,16 @@ export default function NewTreatmentPage() {
                 rows={2}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
         {/* Follow-up */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Follow-up</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
+        <FormSection
+          title="Follow-up"
+          description="Whether the patient needs to come back, and when"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="flex items-center gap-2 md:col-span-2">
               <Checkbox
                 id="followUpRequired"
                 checked={formData.followUpRequired}
@@ -616,18 +615,17 @@ export default function NewTreatmentPage() {
                 />
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </FormSection>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-4">
+        <FormActions>
           <Button type="button" variant="outline" asChild>
-            <Link href="/treatments">Cancel</Link>
+            <Link href={trail.back('/treatments')}>Cancel</Link>
           </Button>
           <SubmitButton busy={loading} busyLabel="Creating treatment…" icon={Save}>
             Create treatment
           </SubmitButton>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

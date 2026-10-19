@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -15,6 +14,7 @@ import { FormField } from '@/components/ui/form-field'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { MoneyInput, parseMoney } from '@/components/ui/money-input'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { ToothPicker } from '@/components/dental-chart/tooth-picker'
@@ -230,7 +230,7 @@ export default function EditTreatmentPage() {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 max-w-3xl" noValidate>
+    <div className="space-y-6">
       <PageHeader
         back={
           <BackLink
@@ -252,71 +252,75 @@ export default function EditTreatmentPage() {
         }
       />
 
-      {signedAt && (
-        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2 text-amber-900 dark:text-amber-200">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
+        {signedAt && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
               <AlertTriangle className="h-4 w-4" />
-              This note was signed on {displayDate(signedAt)}
-            </CardTitle>
-            <CardDescription className="text-amber-900/80 dark:text-amber-200/80">
-              The original stays on the record. Any change to the clinical content is marked as an
-              amendment and needs a reason.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <strong className="block font-semibold">
+                This note was signed on {displayDate(signedAt)}
+              </strong>
+              <span className="text-amber-900/80 dark:text-amber-200/80">
+                The original stays on the record. Any change to the clinical content is marked as an
+                amendment and needs a reason.
+              </span>
+            </span>
+          </div>
+        )}
 
-      {/* The chart, not a free-text "e.g. 46": the same picker as New
-          treatment, so the teeth are chosen the same way on both screens and a
-          typed "99" can no longer reach the route. */}
-      <ToothPicker
-        patientId={patient?.id}
-        dateOfBirth={patient?.dateOfBirth}
-        selected={parseTeeth(form.toothNumbers)}
-        onChange={(teeth) => set('toothNumbers', formatTeeth(teeth) ?? '')}
-      />
+        {/* The chart, not a free-text "e.g. 46": the same picker as New
+            treatment, so the teeth are chosen the same way on both screens and a
+            typed "99" can no longer reach the route. */}
+        <FormSection title="Teeth" description="The teeth this treatment is for">
+          <ToothPicker
+            patientId={patient?.id}
+            dateOfBirth={patient?.dateOfBirth}
+            selected={parseTeeth(form.toothNumbers)}
+            onChange={(teeth) => set('toothNumbers', formatTeeth(teeth) ?? '')}
+          />
+        </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Clinical record</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <FormField label="Chief complaint" htmlFor="chiefComplaint">
-            <Input
-              id="chiefComplaint"
-              value={form.chiefComplaint}
-              onChange={(e) => set('chiefComplaint', e.target.value)}
-            />
-          </FormField>
+        <FormSection
+          title="Clinical record"
+          description="What the patient came with, what was found and what was done"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="Chief complaint" htmlFor="chiefComplaint">
+              <Input
+                id="chiefComplaint"
+                value={form.chiefComplaint}
+                onChange={(e) => set('chiefComplaint', e.target.value)}
+              />
+            </FormField>
 
-          <FormField label="Diagnosis" htmlFor="diagnosis">
-            <Input
-              id="diagnosis"
-              value={form.diagnosis}
-              onChange={(e) => set('diagnosis', e.target.value)}
-            />
-          </FormField>
+            <FormField label="Diagnosis" htmlFor="diagnosis">
+              <Input
+                id="diagnosis"
+                value={form.diagnosis}
+                onChange={(e) => set('diagnosis', e.target.value)}
+              />
+            </FormField>
 
-          <FormField label="Findings" htmlFor="findings">
-            <Textarea
-              id="findings"
-              rows={3}
-              value={form.findings}
-              onChange={(e) => set('findings', e.target.value)}
-            />
-          </FormField>
+            <FormField label="Findings" htmlFor="findings" className="md:col-span-2">
+              <Textarea
+                id="findings"
+                rows={3}
+                value={form.findings}
+                onChange={(e) => set('findings', e.target.value)}
+              />
+            </FormField>
 
-          <FormField label="Procedure notes" htmlFor="procedureNotes">
-            <Textarea
-              id="procedureNotes"
-              rows={5}
-              value={form.procedureNotes}
-              onChange={(e) => set('procedureNotes', e.target.value)}
-            />
-          </FormField>
+            <FormField label="Procedure notes" htmlFor="procedureNotes" className="md:col-span-2">
+              <Textarea
+                id="procedureNotes"
+                rows={5}
+                value={form.procedureNotes}
+                onChange={(e) => set('procedureNotes', e.target.value)}
+              />
+            </FormField>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label="Materials used" htmlFor="materialsUsed">
               <Textarea
                 id="materialsUsed"
@@ -334,63 +338,58 @@ export default function EditTreatmentPage() {
               />
             </FormField>
           </div>
-        </CardContent>
-      </Card>
+        </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Follow-up and cost</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Follow-up date" htmlFor="followUpDate">
-            <Input
-              id="followUpDate"
-              type="date"
-              value={form.followUpDate}
-              onChange={(e) => set('followUpDate', e.target.value)}
-            />
-          </FormField>
-          <FormField
-            label="Cost"
-            htmlFor="cost"
-            error={errors.cost}
-            hint={
-              billedOn ? (
-                <>
-                  Billed on{' '}
-                  <Link
-                    href={trail.to(`/billing/invoices/${billedOn.id}`)}
-                    className="font-medium hover:underline"
-                  >
-                    {billedOn.invoiceNo}
-                  </Link>
-                  . Cancel or edit that invoice first to change the cost.
-                </>
-              ) : undefined
-            }
-          >
-            {(control) => (
-              <MoneyInput
-                {...control}
-                value={form.cost}
-                onChange={(raw) => set('cost', raw)}
-                disabled={Boolean(billedOn)}
+        <FormSection
+          title="Follow-up and cost"
+          description="When the patient comes back, and what this treatment costs"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="Follow-up date" htmlFor="followUpDate">
+              <Input
+                id="followUpDate"
+                type="date"
+                value={form.followUpDate}
+                onChange={(e) => set('followUpDate', e.target.value)}
               />
-            )}
-          </FormField>
-        </CardContent>
-      </Card>
+            </FormField>
+            <FormField
+              label="Cost"
+              htmlFor="cost"
+              error={errors.cost}
+              hint={
+                billedOn ? (
+                  <>
+                    Billed on{' '}
+                    <Link
+                      href={trail.to(`/billing/invoices/${billedOn.id}`)}
+                      className="font-medium hover:underline"
+                    >
+                      {billedOn.invoiceNo}
+                    </Link>
+                    . Cancel or edit that invoice first to change the cost.
+                  </>
+                ) : undefined
+              }
+            >
+              {(control) => (
+                <MoneyInput
+                  {...control}
+                  value={form.cost}
+                  onChange={(raw) => set('cost', raw)}
+                  disabled={Boolean(billedOn)}
+                />
+              )}
+            </FormField>
+          </div>
+        </FormSection>
 
-      {needsReason && (
-        <Card className="border-amber-300 dark:border-amber-800/70">
-          <CardHeader>
-            <CardTitle className="text-base">Why is this being amended?</CardTitle>
-            <CardDescription>
-              Changing {amendedFields.join(', ')} on a signed note. This reason is kept with the
-              record.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        {needsReason && (
+          <FormSection
+            title="Why is this being amended?"
+            description={`Changing ${amendedFields.join(', ')} on a signed note. This reason is kept with the record.`}
+            className="border-amber-300 dark:border-amber-800/70"
+          >
             <FormField
               label="Reason for the amendment"
               htmlFor="amendmentReason"
@@ -408,18 +407,18 @@ export default function EditTreatmentPage() {
                 />
               )}
             </FormField>
-          </CardContent>
-        </Card>
-      )}
+          </FormSection>
+        )}
 
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" asChild>
-          <Link href={`/treatments/${treatmentId}`}>Cancel</Link>
-        </Button>
-        <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
-          {needsReason ? 'Save amendment' : 'Save changes'}
-        </SubmitButton>
-      </div>
-    </form>
+        <FormActions>
+          <Button type="button" variant="outline" asChild>
+            <Link href={trail.back(`/treatments/${treatmentId}`)}>Cancel</Link>
+          </Button>
+          <SubmitButton busy={saving} busyLabel="Saving…" icon={Save}>
+            {needsReason ? 'Save amendment' : 'Save changes'}
+          </SubmitButton>
+        </FormActions>
+      </form>
+    </div>
   )
 }

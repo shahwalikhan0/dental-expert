@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormActions, FormSection } from '@/components/ui/form-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
@@ -92,17 +92,16 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Change your password</CardTitle>
-        <CardDescription>
-          {forced
+    <form onSubmit={submit} className="space-y-6">
+      <FormSection
+        title="Change your password"
+        description={
+          forced
             ? 'Your password needs changing before you carry on.'
-            : 'You will keep your current session; the new password applies the next time you sign in.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="max-w-md space-y-4">
+            : 'You will keep your current session; the new password applies the next time you sign in.'
+        }
+      >
+        <div className="max-w-md space-y-4">
           <div className="space-y-2">
             <Label htmlFor="currentPassword">Current password</Label>
             <Input
@@ -127,9 +126,12 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean }) {
               required
             />
             {rules.length > 0 && (
-              <ul id="password-rules" className="text-muted-foreground space-y-0.5 text-sm">
+              <ul
+                id="password-rules"
+                className="list-disc space-y-0.5 pl-4 text-sm text-muted-foreground"
+              >
                 {rules.map((rule) => (
-                  <li key={rule}>• {rule}</li>
+                  <li key={rule}>{rule}</li>
                 ))}
               </ul>
             )}
@@ -146,12 +148,14 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean }) {
               required
             />
           </div>
+        </div>
+      </FormSection>
 
-          <Button type="submit" disabled={saving}>
-            {saving ? 'Changing…' : 'Change password'}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+      <FormActions>
+        <Button type="submit" disabled={saving}>
+          {saving ? 'Changing…' : 'Change password'}
+        </Button>
+      </FormActions>
+    </form>
   )
 }

@@ -51,7 +51,10 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn('space-y-2', className)}>
-      {back && <div>{back}</div>}
+      {/* On a desktop the breadcrumb above every page already says where this
+          was opened from and links back to it; the back link repeated it one
+          line lower. On a phone it stays, as the bigger thing to tap. */}
+      {back && <div className="md:hidden">{back}</div>}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

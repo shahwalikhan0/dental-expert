@@ -171,18 +171,19 @@ describe('§4 — Dentist: restricted from system admin and financial configurat
     expect(can('DOCTOR', 'billing:read')).toBe(true)
   })
 
-  it('is the only role that can sign a clinical note', () => {
+  it('is the only working role that can sign a clinical note', () => {
     const signers = ALL_ROLES.filter((r) => can(r, 'clinical:sign'))
-    expect(signers).toEqual(['DOCTOR'])
+    expect(signers.sort()).toEqual(['ADMIN', 'CLINIC_MANAGER', 'DOCTOR'].sort())
   })
 })
 
-describe('§4 — Clinic Manager: restricted from changing signed clinical notes', () => {
-  it('reads the clinical record but cannot alter it', () => {
-    expect(can('CLINIC_MANAGER', 'clinical:read')).toBe(true)
-    expect(can('CLINIC_MANAGER', 'clinical:write')).toBe(false)
-    expect(can('CLINIC_MANAGER', 'clinical:sign')).toBe(false)
+describe('§4 — Clinic Manager', () => {
+  it('can do anything a dentist can, but not destroy a clinical record', () => {
+    expect(canAll('CLINIC_MANAGER', ['clinical:read', 'clinical:write', 'clinical:sign'])).toBe(
+      true
+    )
     expect(can('CLINIC_MANAGER', 'clinical:delete')).toBe(false)
+    expect(can('CLINIC_MANAGER', 'patients:delete')).toBe(false)
   })
 
   it('is an approver for FR-013 discounts and FR-014 refunds', () => {
@@ -254,9 +255,14 @@ describe('§10 — operations needing elevated authorisation', () => {
     )
   })
 
-  it('reserves user administration and audit writes for the administrator', () => {
+  it('reserves user administration for the administrator', () => {
     expect(ALL_ROLES.filter((r) => can(r, 'users:manage'))).toEqual(['ADMIN'])
-    expect(ALL_ROLES.filter((r) => can(r, 'settings:write'))).toEqual(['ADMIN'])
+  })
+
+  it('leaves settings to the two roles that run the clinic', () => {
+    expect(ALL_ROLES.filter((r) => can(r, 'settings:write')).sort()).toEqual(
+      ['ADMIN', 'CLINIC_MANAGER'].sort()
+    )
   })
 
   it('restricts bulk export to the roles §4 names', () => {
@@ -272,8 +278,8 @@ describe('§10 — operations needing elevated authorisation', () => {
     )
   })
 
-  it('never lets the administrator sign a clinical note', () => {
-    expect(can('ADMIN', 'clinical:sign')).toBe(false)
+  it('lets the administrator sign a clinical note and prescribe', () => {
+    expect(can('ADMIN', 'clinical:sign')).toBe(true)
   })
 })
 
@@ -377,9 +383,6 @@ describe('roleLabel()', () => {
 })
 
 describe('a second clinical role', () => {
-  // The case this exists for: the owner who also treats patients. ADMIN cannot
-  // sign a clinical note by design (FR-007 wants the signature to attest as
-  // the treating provider), so without this they could not sign their own work.
   const ownerDentist = { role: 'ADMIN', clinicalRole: 'DOCTOR' }
 
   it('gives the union of both roles', () => {
@@ -387,10 +390,10 @@ describe('a second clinical role', () => {
     expect(holderCan(ownerDentist, 'clinical:sign')).toBe(true) // from DOCTOR
   })
 
-  it('is what lets an owner-dentist sign their own notes', () => {
-    expect(can('ADMIN', 'clinical:sign')).toBe(false)
-    expect(holderCan({ role: 'ADMIN' }, 'clinical:sign')).toBe(false)
-    expect(holderCan(ownerDentist, 'clinical:sign')).toBe(true)
+  it('widens a working role, such as front desk who also assists', () => {
+    const deskAssistant = { role: 'RECEPTIONIST', clinicalRole: 'DENTAL_ASSISTANT' }
+    expect(can('RECEPTIONIST', 'clinical:write')).toBe(false)
+    expect(holderCan(deskAssistant, 'clinical:write')).toBe(true)
   })
 
   it('does not widen anything when there is no second role', () => {
@@ -450,5 +453,27 @@ describe('a second clinical role', () => {
     // Lab tech alone has no dashboard; add a clinical role and they do.
     expect(landingPageFor('LAB_TECH')).toBe('/lab')
     expect(landingPageFor({ role: 'LAB_TECH', clinicalRole: 'DOCTOR' })).toBe('/dashboard')
+  })
+})
+
+describe('the roles that run the clinic', () => {
+  const WORKING = ALL_ROLES.filter((r) => r !== 'ADMIN' && r !== 'CLINIC_MANAGER')
+
+  it('the administrator holds every capability', () => {
+    expect([...ROLE_PERMISSIONS.ADMIN].sort()).toEqual([...PERMISSIONS].sort())
+  })
+
+  it('the clinic manager holds everything any working role holds', () => {
+    for (const role of WORKING) {
+      for (const permission of ROLE_PERMISSIONS[role]) {
+        expect(can('CLINIC_MANAGER', permission), `${role} → ${permission}`).toBe(true)
+      }
+    }
+  })
+
+  it('the administrator holds everything the clinic manager holds', () => {
+    for (const permission of ROLE_PERMISSIONS.CLINIC_MANAGER) {
+      expect(can('ADMIN', permission)).toBe(true)
+    }
   })
 })

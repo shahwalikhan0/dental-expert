@@ -35,7 +35,11 @@ import {
   varianceText,
 } from '@/components/billing/till-close-dialog'
 import { cn } from '@/lib/utils'
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Vault } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, RefreshCw, Vault } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { FormSection } from '@/components/ui/form-section'
+import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
+import { StatTile } from '@/components/billing/stat-tile'
 
 /**
  * Billing → Till (FR-015, bug report 12 Oct, finding 38).
@@ -248,43 +252,51 @@ export default function TillPage() {
   const summary = sumTotals(totals)
   const others = openSessions.filter((s) => s.id !== selectedId)
 
+  const tillOpen = detail?.status === 'OPEN'
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">Till</h1>
-          <p className="text-muted-foreground">
-            Open the drawer at the start of the day and count it down at the end. Payments can only
-            be taken while a till is open.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setLoading(true)
-            load(selectedId)
-          }}
-          disabled={loading}
-          className="self-start sm:self-auto"
-        >
-          <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Till"
+        description="Open the drawer at the start of the day and count it down at the end. Payments can only be taken while a till is open."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLoading(true)
+                load(selectedId)
+              }}
+              disabled={loading}
+            >
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              Refresh
+            </Button>
+            {/* Closing is the next step on an open till, for those who sign it off. */}
+            {tillOpen && canClose && (
+              <Button onClick={() => setCloseOpen(true)}>
+                <Vault className="h-4 w-4" />
+                Count and close
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {loading && !detail && openSessions.length === 0 && closed.length === 0 ? (
         <div className="space-y-4">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-28 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
         </div>
       ) : (
         <>
           {others.length > 0 && (
-            <Card className="border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30">
-              <CardContent className="space-y-2 pt-6 text-sm">
-                <p className="font-medium text-amber-900 dark:text-amber-200">
-                  More than one till is open
-                </p>
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600/10">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="font-semibold">More than one till is open</p>
                 <p className="text-amber-900/80 dark:text-amber-200/80">
                   Each payment goes into the till of the person taking it. Close the extra ones so
                   the day reconciles in one place.
@@ -305,150 +317,159 @@ export default function TillPage() {
                     </Button>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {detail && detail.status === 'OPEN' ? (
-            <Card>
-              <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="flex flex-wrap items-center gap-2">
-                    <Vault className="h-5 w-5 text-primary" />
-                    {detail.sessionNo}
-                    <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                      Open
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription>
-                    Opened by {detail.openedBy?.name ?? 'unknown'} ·{' '}
-                    {formatDateTime(detail.openedAt)}
-                  </CardDescription>
-                  {detail.openingNotes && (
-                    <p className="text-sm text-muted-foreground">{detail.openingNotes}</p>
-                  )}
-                </div>
-                {canClose ? (
-                  <Button onClick={() => setCloseOpen(true)} className="self-start">
-                    Count and close
-                  </Button>
-                ) : canClose === false ? (
-                  <p className="max-w-xs text-sm text-muted-foreground">
-                    Closing is done by a manager or the accountant, who count the drawer against
-                    these figures.
-                  </p>
-                ) : null}
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                  <Figure label="Opening float" value={formatCurrency(detail.openingFloat)} />
-                  <Figure label="Taken" value={formatCurrency(summary.received)} />
-                  <Figure label="Refunded" value={formatCurrency(summary.refunded)} />
-                  <Figure
-                    label="Should be in the till"
-                    value={formatCurrency(summary.expected)}
-                    strong
-                  />
+            <>
+              {/* What the drawer should hold right now. */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatTile label="Opening float" value={formatCurrency(detail.openingFloat)} />
+                <StatTile label="Taken" tone="success" value={formatCurrency(summary.received)} />
+                <StatTile label="Refunded" value={formatCurrency(summary.refunded)} />
+                <StatTile
+                  label="Should be in the till"
+                  icon={Vault}
+                  value={formatCurrency(summary.expected)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="space-y-6 lg:col-span-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>By method</CardTitle>
+                      <CardDescription>
+                        Taken and refunded in this till, and what each method should come to
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="overflow-x-auto p-0">
+                      <Table className="min-w-[460px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Method</TableHead>
+                            <TableHead className="text-right">Taken</TableHead>
+                            <TableHead className="text-right">Refunded</TableHead>
+                            <TableHead className="text-right">Expected</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {shown.map((t) => (
+                            <TableRow key={t.paymentMethod}>
+                              <TableCell>
+                                {methodLabel(t.paymentMethod)}
+                                {t.paymentMethod === 'CASH' && Number(detail.openingFloat) > 0 && (
+                                  <span className="block text-xs text-muted-foreground">
+                                    includes the float
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {formatCurrency(t.received)}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {formatCurrency(t.refunded)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {formatCurrency(t.expected)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+
+                  <LatestMovements detail={detail} />
                 </div>
 
-                <div className="overflow-x-auto rounded-md border">
-                  <Table className="min-w-[460px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Method</TableHead>
-                        <TableHead className="text-right">Taken</TableHead>
-                        <TableHead className="text-right">Refunded</TableHead>
-                        <TableHead className="text-right">Expected</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {shown.map((t) => (
-                        <TableRow key={t.paymentMethod}>
-                          <TableCell>
-                            {methodLabel(t.paymentMethod)}
-                            {t.paymentMethod === 'CASH' && Number(detail.openingFloat) > 0 && (
-                              <span className="block text-xs text-muted-foreground">
-                                includes the float
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(t.received)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(t.refunded)}
-                          </TableCell>
-                          <TableCell className="text-right font-medium tabular-nums">
-                            {formatCurrency(t.expected)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle>{detail.sessionNo}</CardTitle>
+                        <Badge variant="success">Open</Badge>
+                      </div>
+                      <CardDescription>The till payments are going into</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <InfoGrid className="sm:grid-cols-1">
+                        <InfoItem label="Opened by">{detail.openedBy?.name ?? 'unknown'}</InfoItem>
+                        <InfoItem label="Opened">{formatDateTime(detail.openedAt)}</InfoItem>
+                        {detail.openingNotes && (
+                          <InfoItem label="Opening notes">
+                            <span className="whitespace-pre-wrap font-normal">
+                              {detail.openingNotes}
+                            </span>
+                          </InfoItem>
+                        )}
+                      </InfoGrid>
+                      {canClose === false && (
+                        <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
+                          Closing is done by a manager or the accountant, who count the drawer
+                          against these figures.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
-
-                <LatestMovements detail={detail} />
-              </CardContent>
-            </Card>
+              </div>
+            </>
           ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Vault className="h-5 w-5 text-muted-foreground" />
-                  No till is open
-                </CardTitle>
-                <CardDescription>
-                  Payments, and refunds paid out in cash, are refused until a till is open, so that
-                  every rupee taken is in a closing.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {canOpen ? (
-                  <form onSubmit={openTill} className="max-w-md space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="float">Opening float</Label>
-                      <Input
-                        id="float"
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={float}
-                        onChange={(e) => setFloat(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Cash put in the drawer for change. It is counted back out at closing.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="opening-notes">Notes (optional)</Label>
-                      <Textarea
-                        id="opening-notes"
-                        rows={2}
-                        maxLength={500}
-                        value={openingNotes}
-                        onChange={(e) => setOpeningNotes(e.target.value)}
-                        placeholder="e.g. float counted with the manager"
-                      />
-                    </div>
-                    <Button type="submit" disabled={opening} className="w-full sm:w-auto">
-                      {opening && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Open till
-                    </Button>
-                  </form>
-                ) : canOpen === false ? (
-                  <p className="text-sm text-muted-foreground">
-                    Ask somebody at the front desk to open the till.
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
+            <FormSection
+              title="No till is open"
+              description="Payments, and refunds paid out in cash, are refused until a till is open, so that every rupee taken is in a closing."
+            >
+              {canOpen ? (
+                <form onSubmit={openTill} className="max-w-md space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="float">Opening float</Label>
+                    <Input
+                      id="float"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder="0"
+                      value={float}
+                      onChange={(e) => setFloat(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cash put in the drawer for change. It is counted back out at closing.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="opening-notes">Notes (optional)</Label>
+                    <Textarea
+                      id="opening-notes"
+                      rows={2}
+                      maxLength={500}
+                      value={openingNotes}
+                      onChange={(e) => setOpeningNotes(e.target.value)}
+                      placeholder="e.g. float counted with the manager"
+                    />
+                  </div>
+                  <Button type="submit" disabled={opening} className="w-full sm:w-auto">
+                    {opening ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Vault className="h-4 w-4" />
+                    )}
+                    Open till
+                  </Button>
+                </form>
+              ) : canOpen === false ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  Ask somebody at the front desk to open the till.
+                </p>
+              ) : null}
+            </FormSection>
           )}
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Recent closings</CardTitle>
+              <CardTitle>Recent closings</CardTitle>
               <CardDescription>
                 What each till should have held, what was counted, and the difference. Select one to
                 see it by method.
@@ -566,17 +587,6 @@ export default function TillPage() {
   )
 }
 
-function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="rounded-md border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 tabular-nums', strong ? 'text-lg font-bold' : 'font-medium')}>
-        {value}
-      </p>
-    </div>
-  )
-}
-
 /** The last few payments and refunds in the open till, newest first. */
 function LatestMovements({ detail }: { detail: SessionDetail }) {
   const rows = [
@@ -599,44 +609,49 @@ function LatestMovements({ detail }: { detail: SessionDetail }) {
     .slice(0, 8)
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">Latest in this till</h3>
-        <span className="text-xs text-muted-foreground">
+    <Card>
+      <CardHeader>
+        <CardTitle>Latest in this till</CardTitle>
+        <CardDescription>
           {detail.payments.length} payment{detail.payments.length === 1 ? '' : 's'} ·{' '}
           {detail.refunds.length} refund{detail.refunds.length === 1 ? '' : 's'}
-        </span>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nothing taken yet. Payments recorded on an invoice land here.{' '}
-          <Link href="/billing/invoices" className="text-primary hover:underline">
-            Go to invoices
-          </Link>
-        </p>
-      ) : (
-        <ul className="divide-y rounded-md border text-sm">
-          {rows.map((row) => (
-            <li key={row.key} className="flex items-center justify-between gap-3 px-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate">{row.label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {methodLabel(row.method)} · {formatDateTime(row.at)}
-                </p>
-              </div>
-              <span
-                className={cn(
-                  'shrink-0 tabular-nums',
-                  row.amount < 0 && 'text-red-600 dark:text-red-400'
-                )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+            Nothing taken yet. Payments recorded on an invoice land here.{' '}
+            <Link href="/billing/invoices" className="text-primary hover:underline">
+              Go to invoices
+            </Link>
+          </p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {rows.map((row) => (
+              <li
+                key={row.key}
+                className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
               >
-                {formatCurrency(row.amount)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{row.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {methodLabel(row.method)} · {formatDateTime(row.at)}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    'shrink-0 font-semibold tabular-nums',
+                    row.amount < 0 && 'text-red-600 dark:text-red-400'
+                  )}
+                >
+                  {formatCurrency(row.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -99,6 +99,20 @@ export const MONTHS_SHORT: readonly string[] = Array.from({ length: 12 }, (_, mo
   new Date(2000, month, 1).toLocaleDateString(LOCALE, { month: 'short' })
 )
 
+/**
+ * `2026-10` as `Oct 26` — a month key as a chart axis label.
+ *
+ * The analytics API does this server-side for its own trend chart; the
+ * dashboard's chart was showing the raw `YYYY-MM` sort key on the axis. Uses
+ * `MONTHS_SHORT` so the two never disagree about `Sep` and `Sept`.
+ */
+export function monthLabel(key: string): string {
+  const match = /^(\d{4})-(\d{2})/.exec(key.trim())
+  if (!match) return key
+  const month = MONTHS_SHORT[Number(match[2]) - 1]
+  return month ? `${month} ${match[1].slice(2)}` : key
+}
+
 /** `3:00 pm`. */
 export function displayTime(value: Date | string | null | undefined): string {
   const date = toDate(value)

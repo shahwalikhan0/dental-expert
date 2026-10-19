@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -25,10 +25,16 @@ import {
   ChevronUp,
   ChevronDown,
   FileQuestion,
+  FileText,
+  Inbox,
+  ListChecks,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useFormGuard } from '@/hooks/use-form-guard'
 import { PageHeader } from '@/components/ui/page-header'
+import { ProfileHeader } from '@/components/ui/profile-header'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { FormActions } from '@/components/ui/form-section'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -229,7 +235,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
       <Card>
         <CardHeader>
           <CardTitle>{name}</CardTitle>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+          {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
         <CardContent>
           <FormRenderer
@@ -244,35 +250,38 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
 
   const editor = (
     <div className="space-y-6">
-      <PageHeader
-        back={back}
-        title={`Edit: ${name}`}
-        description={`${submissionCount} submission${submissionCount !== 1 ? 's' : ''}`}
+      {/* The breadcrumb says where this came from on a desktop; on a phone
+          the way back stays, as the bigger thing to tap. */}
+      <div className="md:hidden">{back}</div>
+      <ProfileHeader
+        eyebrow={FORM_TYPES.find((t) => t.value === type)?.label ?? 'Form template'}
+        name={name || 'Untitled template'}
+        avatarIcon={FileText}
+        badges={<StatusBadge kind="active" status={isActive} />}
+        facts={[
+          {
+            icon: Inbox,
+            label: `${submissionCount} submission${submissionCount !== 1 ? 's' : ''}`,
+          },
+          {
+            icon: ListChecks,
+            label: `${fields.length} field${fields.length !== 1 ? 's' : ''}`,
+          },
+        ]}
         actions={
-          <>
-            <div className="flex items-center gap-2 mr-4">
-              <Switch id="template-active" checked={isActive} onCheckedChange={setIsActive} />
-              <Label htmlFor="template-active" className="text-sm">
-                {isActive ? 'Active' : 'Inactive'}
-              </Label>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowPreview(true)}
-              disabled={fields.length === 0}
-            >
-              <Eye className="h-4 w-4 mr-2" />
-              Preview
-            </Button>
-            <SubmitButton type="button" onClick={handleSave} busy={saving} icon={Save}>
-              Save changes
-            </SubmitButton>
-          </>
+          <Button
+            variant="outline"
+            onClick={() => setShowPreview(true)}
+            disabled={fields.length === 0}
+          >
+            <Eye className="h-4 w-4" />
+            Preview
+          </Button>
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Form details</CardTitle>
@@ -316,26 +325,42 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                   rows={2}
                 />
               </div>
+              {/* Whether patients and the desk are offered this template. */}
+              <div className="flex items-center justify-between gap-4 border-t pt-4">
+                <div className="min-w-0">
+                  <Label htmlFor="template-active">Active</Label>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {isActive
+                      ? 'Offered for new submissions.'
+                      : 'Not offered for new submissions; the ones it already has are kept.'}
+                  </p>
+                </div>
+                <Switch id="template-active" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Form fields ({fields.length})</CardTitle>
+              <CardTitle>Form fields</CardTitle>
+              <CardDescription>
+                {fields.length} field{fields.length !== 1 ? 's' : ''}, in the order patients see
+                them
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {fields.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
                   No fields yet. Add fields from the panel on the right.
-                </div>
+                </p>
               )}
 
               {fields.map((field, index) => (
                 <div
                   key={field.id}
-                  className={`border rounded-lg p-4 ${editingField === field.id ? 'ring-2 ring-primary' : ''}`}
+                  className={`rounded-xl border px-4 py-3 transition-shadow ${editingField === field.id ? 'border-primary/40 ring-2 ring-primary' : ''}`}
                 >
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
                     <Badge variant="outline" className="text-xs shrink-0">
                       {FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type}
@@ -405,8 +430,8 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                   </div>
 
                   {editingField === field.id && (
-                    <div className="mt-3 pt-3 border-t space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="mt-3 space-y-4 rounded-xl bg-muted/60 p-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="space-y-1">
                           <Label className="text-xs">Label</Label>
                           <Input
@@ -454,7 +479,7 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
                             </div>
                           ))}
                           <Button variant="outline" size="sm" onClick={() => addOption(field.id)}>
-                            <Plus className="h-3 w-3 mr-1" /> Add option
+                            <Plus className="h-3 w-3" /> Add option
                           </Button>
                         </div>
                       )}
@@ -482,26 +507,36 @@ export default function EditFormTemplatePage({ params }: { params: Promise<{ id:
         </div>
 
         <div>
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="text-base">Add field</CardTitle>
+          <Card className="lg:sticky lg:top-6">
+            <CardHeader className="pb-4">
+              <CardTitle>Add field</CardTitle>
+              <CardDescription>Added to the end of the form</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {FIELD_TYPES.map((ft) => (
-                <Button
-                  key={ft.value}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => addField(ft.value)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {ft.label}
-                </Button>
-              ))}
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 xl:grid-cols-2">
+                {FIELD_TYPES.map((ft) => (
+                  <Button
+                    key={ft.value}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => addField(ft.value)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {ft.label}
+                  </Button>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <FormActions>
+        <SubmitButton type="button" onClick={handleSave} busy={saving} icon={Save}>
+          Save changes
+        </SubmitButton>
+      </FormActions>
     </div>
   )
 

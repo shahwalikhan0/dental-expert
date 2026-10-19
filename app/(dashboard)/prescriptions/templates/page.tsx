@@ -159,7 +159,7 @@ export default function PrescriptionTemplatesPage() {
           canWrite && (
             <Button asChild>
               <Link href={trail.to('/prescriptions/templates/new')}>
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="h-4 w-4" />
                 New template
               </Link>
             </Button>

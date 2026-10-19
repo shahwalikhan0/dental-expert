@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Plus, Trash2, GripVertical, Eye, Pencil, Save, ChevronUp, ChevronDown } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { PageHeader } from '@/components/ui/page-header'
+import { FormActions } from '@/components/ui/form-section'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { FormField as Field } from '@/components/ui/form-field'
@@ -173,7 +174,7 @@ export default function NewFormTemplatePage() {
         <Card>
           <CardHeader>
             <CardTitle>{name || 'Untitled form'}</CardTitle>
-            {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            {description && <CardDescription>{description}</CardDescription>}
           </CardHeader>
           <CardContent>
             <FormRenderer
@@ -194,31 +195,20 @@ export default function NewFormTemplatePage() {
         title="New form template"
         description="Design a custom form for patients"
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => setShowPreview(true)}
-              disabled={fields.length === 0}
-            >
-              <Eye className="h-4 w-4 mr-2" />
-              Preview
-            </Button>
-            <SubmitButton
-              type="button"
-              onClick={handleSave}
-              busy={saving}
-              busyLabel="Creating…"
-              icon={Save}
-            >
-              Create template
-            </SubmitButton>
-          </>
+          <Button
+            variant="outline"
+            onClick={() => setShowPreview(true)}
+            disabled={fields.length === 0}
+          >
+            <Eye className="h-4 w-4" />
+            Preview
+          </Button>
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left: Form Settings + Fields */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Form details</CardTitle>
@@ -270,21 +260,25 @@ export default function NewFormTemplatePage() {
           {/* Field List */}
           <Card>
             <CardHeader>
-              <CardTitle>Form fields ({fields.length})</CardTitle>
+              <CardTitle>Form fields</CardTitle>
+              <CardDescription>
+                {fields.length} field{fields.length !== 1 ? 's' : ''}, in the order patients see
+                them
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {fields.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p className="mb-2">No fields yet. Add fields from the panel on the right.</p>
-                </div>
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  No fields yet. Add fields from the panel on the right.
+                </p>
               )}
 
               {fields.map((field, index) => (
                 <div
                   key={field.id}
-                  className={`border rounded-lg p-4 ${editingField === field.id ? 'ring-2 ring-primary' : ''}`}
+                  className={`rounded-xl border px-4 py-3 transition-shadow ${editingField === field.id ? 'border-primary/40 ring-2 ring-primary' : ''}`}
                 >
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
                     <Badge variant="outline" className="text-xs shrink-0">
                       {FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type}
@@ -354,8 +348,8 @@ export default function NewFormTemplatePage() {
                   </div>
 
                   {editingField === field.id && (
-                    <div className="mt-3 pt-3 border-t space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="mt-3 space-y-4 rounded-xl bg-muted/60 p-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="space-y-1">
                           <Label className="text-xs">Label</Label>
                           <Input
@@ -420,7 +414,7 @@ export default function NewFormTemplatePage() {
                             </div>
                           ))}
                           <Button variant="outline" size="sm" onClick={() => addOption(field.id)}>
-                            <Plus className="h-3 w-3 mr-1" /> Add option
+                            <Plus className="h-3 w-3" /> Add option
                           </Button>
                         </div>
                       )}
@@ -449,26 +443,42 @@ export default function NewFormTemplatePage() {
 
         {/* Right: Add Field Panel */}
         <div>
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="text-base">Add field</CardTitle>
+          <Card className="lg:sticky lg:top-6">
+            <CardHeader className="pb-4">
+              <CardTitle>Add field</CardTitle>
+              <CardDescription>Added to the end of the form</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {FIELD_TYPES.map((ft) => (
-                <Button
-                  key={ft.value}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => addField(ft.value)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {ft.label}
-                </Button>
-              ))}
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 xl:grid-cols-2">
+                {FIELD_TYPES.map((ft) => (
+                  <Button
+                    key={ft.value}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => addField(ft.value)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {ft.label}
+                  </Button>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <FormActions>
+        <SubmitButton
+          type="button"
+          onClick={handleSave}
+          busy={saving}
+          busyLabel="Creating…"
+          icon={Save}
+        >
+          Create template
+        </SubmitButton>
+      </FormActions>
     </div>
   )
 }
