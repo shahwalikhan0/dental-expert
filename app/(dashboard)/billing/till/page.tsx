@@ -39,7 +39,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Loader2, RefreshCw, Vault } f
 import { PageHeader } from '@/components/ui/page-header'
 import { FormSection } from '@/components/ui/form-section'
 import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
-import { StatTile } from '@/components/billing/stat-tile'
+import { StatTile } from '@/components/ui/stat-tile'
 
 /**
  * Billing → Till (FR-015, bug report 12 Oct, finding 38).

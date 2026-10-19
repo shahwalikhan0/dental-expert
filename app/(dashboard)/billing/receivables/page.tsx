@@ -25,7 +25,7 @@ import { cn, formatPhone } from '@/lib/utils'
 import { AGEING_BUCKETS, type Ageing } from '@/lib/ageing'
 import type { ReceivableRow } from '@/lib/ledger'
 import { AlertCircle, Phone, Printer, Users, Wallet } from 'lucide-react'
-import { StatTile } from '@/components/billing/stat-tile'
+import { StatTile } from '@/components/ui/stat-tile'
 
 /**
  * Who owes the clinic money, and for how long.

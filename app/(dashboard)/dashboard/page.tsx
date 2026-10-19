@@ -7,10 +7,8 @@ import {
   Users,
   Calendar,
   Receipt,
-  TrendingUp,
-  ArrowUpRight,
-  ArrowDownRight,
-  ChevronRight,
+  Wallet,
+  ArrowRight,
   Package,
   ClipboardList,
   UserPlus,
@@ -54,6 +52,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LoadFailed } from '@/components/ui/load-failed'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { StatTile, Trend } from '@/components/ui/stat-tile'
 import { useTrail } from '@/components/ui/trail'
 import { formatTime } from '@/lib/appointment-utils'
 import { useSession } from 'next-auth/react'
@@ -120,16 +119,23 @@ interface DashboardStats {
 }
 
 /**
- * The things a front desk does all day.
+ * The things a front desk does all day, as the page's actions.
  *
  * These were at the bottom of the page, below five charts — roughly thirteen
  * hundred pixels of analysis between somebody arriving at the dashboard and the
- * button for the task they arrived to do. Charts are for looking back; this row
- * is for the next thirty seconds, so it goes first.
+ * button for the task they arrived to do. Charts are for looking back; these
+ * are for the next thirty seconds, so they go first.
+ *
+ * They were then a band of four tiles across the page, each with an icon, a
+ * title and a line of explanation, which is a lot of furniture for four verbs —
+ * and at a laptop width the titles truncated to "Bo… Sch…", "Ad… Reg…". They
+ * are buttons in the header now, where every other screen in the app keeps its
+ * actions, and they say the whole verb.
  *
  * Each names the permission its screen needs, and is offered only to somebody
  * who holds it: a dental assistant was shown "New invoice", which opens a form
- * that the server refuses to save.
+ * that the server refuses to save. The first one the viewer may use is the
+ * filled button — for most people that is booking a visit.
  */
 const QUICK_ACTIONS: Array<{
   href: string
@@ -177,6 +183,9 @@ const QUICK_ACTIONS: Array<{
  */
 const WHOLE_RUPEES = { maximumFractionDigits: 0 } as const
 
+/** How many low-stock items are named on the banner before it says "+N more". */
+const STOCK_CHIPS = 4
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -212,46 +221,24 @@ export default function DashboardPage() {
     fetchDashboardStats()
   }, [fetchDashboardStats])
 
-  const growth = (value: number) => ({
-    icon:
-      value > 0 ? (
-        <ArrowUpRight className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-      ) : value < 0 ? (
-        <ArrowDownRight className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-      ) : null,
-    color:
-      value > 0
-        ? 'text-green-600 dark:text-green-400'
-        : value < 0
-          ? 'text-red-600 dark:text-red-400'
-          : 'text-muted-foreground',
-  })
-
-  const quickActions = (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {actions.map(({ href, icon: Icon, title, hint }) => (
-        <Link
-          key={href}
-          href={href}
-          className="group flex items-center gap-4 rounded-xl border border-border/60 bg-card/70 p-4 backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-card hover:shadow-lg hover:shadow-primary/10"
-        >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary ring-1 ring-primary/10">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-medium">{title}</p>
-            <p className="truncate text-sm text-muted-foreground">{hint}</p>
-          </div>
-          <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-        </Link>
-      ))}
-    </div>
-  )
-
+  /*
+   * The header carries the actions, so it is rendered by all three states —
+   * loading, failed and loaded. The dashboard is a summary, and neither a slow
+   * answer nor a broken one should strand somebody who came here to book an
+   * appointment.
+   */
   const header = (
     <PageHeader
       title="Dashboard"
-      description="Here's what's happening at your dental practice today."
+      description="What's happening at the practice today."
+      actions={actions.map(({ href, icon: Icon, title }, index) => (
+        <Button key={href} asChild size="sm" variant={index === 0 ? 'default' : 'outline'}>
+          <Link href={href}>
+            <Icon className="h-4 w-4" />
+            {title}
+          </Link>
+        </Button>
+      ))}
     />
   )
 
@@ -259,9 +246,6 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         {header}
-        {/* The actions do not depend on the figures, so they are usable while
-            the figures are still arriving. */}
-        {quickActions}
         <PageSkeleton variant="dashboard" withHeader={false} />
       </div>
     )
@@ -271,9 +255,6 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         {header}
-        {/* The dashboard is a summary. Its failure must not strand somebody who
-            came here to book an appointment. */}
-        {quickActions}
         <Card>
           <LoadFailed
             what="the dashboard figures"
@@ -285,10 +266,9 @@ export default function DashboardPage() {
     )
   }
 
-  const patientTrend = growth(stats.overview.patientGrowth)
   const showsMoney = stats.showsMoney !== false
   const revenueGrowth = stats.overview.revenueGrowth ?? 0
-  const revenueTrend = growth(revenueGrowth)
+  const outstanding = stats.overview.pendingPayments ?? 0
   const showsStock = stats.showsStock !== false
   const lowStock = stats.recentActivity.lowStockItems ?? []
   const upcoming = stats.recentActivity.upcomingAppointments ?? []
@@ -325,136 +305,150 @@ export default function DashboardPage() {
     revenue: proc.revenue === undefined ? undefined : Number(proc.revenue),
   }))
 
-  /**
-   * A figure with somewhere to go.
+  /*
+   * The figures, today first.
    *
-   * Every number on this page used to be a dead end: "Pending Payments
-   * Rs 412,000" and no way to reach the invoices it is made of. A total is a
-   * question, and the answer is a list.
+   * These used to open with "Total patients" and its month-on-month growth:
+   * two numbers that change by a fraction of a percent in a day, at the top of
+   * a screen somebody opens every morning to find out what is happening *now*.
+   * The order is the order of use — the day, the day's money, what is owed,
+   * then the practice's size — and each is a `StatTile`, the tile billing
+   * already uses, so a figure reads the same wherever it appears.
+   *
+   * Every one links: a total is a question, and the answer is a list. The
+   * collections report needs `reports:financial`; without it the payments
+   * behind the figure are the list to go to (bug report 16 Oct, finding 11).
    */
-  const stat = (
-    href: string,
-    label: string,
-    Icon: typeof Users,
-    value: string,
-    detail: React.ReactNode
-  ) => (
-    <Link href={href} className="group">
-      <Card className="h-full transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">{label}</CardTitle>
-          <Icon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold tracking-tight">{value}</div>
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-            {detail}
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  )
+  const moneyHref = holderCan(holder, 'reports:financial')
+    ? '/billing/reports'
+    : '/billing/payments'
 
   return (
     <div className="space-y-6">
       {header}
 
-      {/* What you came here to do */}
-      {quickActions}
-
       {showsStock && lowStock.length > 0 && (
-        <Card className="border-amber-300 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-950/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              {lowStock.length} item{lowStock.length === 1 ? '' : 's'} below minimum stock
-            </CardTitle>
-            <CardDescription>Order these before they run out mid-procedure.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {lowStock.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-4 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Minimum {item.minimumStock} {item.unit}
-                  </p>
-                </div>
-                <span className="shrink-0 font-medium text-red-600 dark:text-red-400">
-                  {item.currentStock} {item.unit} left
-                </span>
-              </div>
-            ))}
-            <Button asChild variant="outline" className="mt-2 w-full">
-              <Link href="/inventory/alerts">Review stock alerts</Link>
+        /*
+         * Stock that will run out mid-procedure, said as a banner rather than
+         * as a card with a scrolling list in it. The names are chips, the
+         * first four of them; the rest are a count, because the point of this
+         * strip is "go and look", not "read the inventory here".
+         */
+        <section className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
+          {/* The text block holds a basis so the heading does not stack one
+              word per line next to the button on a phone; when there is no
+              room for both, the button wraps under and goes full width. */}
+          <div className="flex flex-wrap items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <Package className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1 basis-56">
+              <h2 className="font-semibold">
+                {lowStock.length} item{lowStock.length === 1 ? '' : 's'} below minimum stock
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Order these before they run out mid-procedure.
+              </p>
+              <ul className="mt-3 flex flex-wrap items-center gap-2">
+                {lowStock.slice(0, STOCK_CHIPS).map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex max-w-full items-center gap-2 whitespace-nowrap rounded-full border border-amber-300/70 bg-card px-3 py-1 text-xs dark:border-amber-500/30"
+                  >
+                    <span className="truncate font-medium">{item.name}</span>
+                    <span className="shrink-0 tabular-nums text-amber-700 dark:text-amber-400">
+                      {item.currentStock} of {item.minimumStock} {item.unit}
+                    </span>
+                  </li>
+                ))}
+                {lowStock.length > STOCK_CHIPS && (
+                  <li className="text-xs text-muted-foreground">
+                    +{lowStock.length - STOCK_CHIPS} more
+                  </li>
+                )}
+              </ul>
+            </div>
+            <Button asChild size="sm" variant="outline" className="w-full shrink-0 sm:w-auto">
+              <Link href="/inventory/alerts">
+                Review stock
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
-      {/* Stats cards */}
-      <div className={`grid gap-4 md:grid-cols-2 ${showsMoney ? 'lg:grid-cols-4' : ''}`}>
-        {stat(
-          '/patients',
-          'Total patients',
-          Users,
-          formatNumber(stats.overview.totalPatients),
-          <>
-            {patientTrend.icon}
-            <span className={patientTrend.color}>
-              {stats.overview.patientGrowth > 0 ? '+' : ''}
-              {stats.overview.patientGrowth.toFixed(1)}%
-            </span>
-            <span>from last month</span>
-          </>
+      {/*
+          `grid-cols-1` rather than letting the single column be implicit.
+          Tailwind writes it as `minmax(0, 1fr)`; an implicit track is `auto`,
+          which refuses to go under its widest item's min-content — and on a
+          phone that made the cards a few pixels wider than the page and gave
+          the dashboard a horizontal scrollbar with nothing visibly over the
+          edge.
+      */}
+      <div
+        className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${showsMoney ? 'xl:grid-cols-4' : ''}`}
+      >
+        <StatTile
+          label="Today's appointments"
+          value={formatNumber(stats.overview.todayAppointments)}
+          icon={Calendar}
+          href={trail.to('/appointments')}
+          hint={`${stats.overview.completedAppointmentsToday} seen · ${stats.overview.pendingAppointments} still to come`}
+        />
+        {showsMoney && (
+          <StatTile
+            label="Collected today"
+            value={formatCurrency(stats.overview.todayRevenue ?? 0, WHOLE_RUPEES)}
+            icon={Wallet}
+            tone="success"
+            href={moneyHref}
+            hint={
+              <>
+                {formatCurrency(stats.overview.thisMonthRevenue ?? 0, WHOLE_RUPEES)} this month{' '}
+                <Trend value={revenueGrowth} />
+              </>
+            }
+          />
         )}
-        {stat(
-          '/appointments',
-          "Today's appointments",
-          Calendar,
-          String(stats.overview.todayAppointments),
-          <span>
-            {stats.overview.completedAppointmentsToday} completed,{' '}
-            {stats.overview.pendingAppointments} pending
-          </span>
+        {showsMoney && (
+          <StatTile
+            label="Outstanding"
+            value={formatCurrency(outstanding, WHOLE_RUPEES)}
+            icon={Receipt}
+            tone={outstanding > 0 ? 'warning' : 'default'}
+            href="/billing/invoices"
+            hint="Still owed on issued invoices"
+          />
         )}
-        {/* The collections report needs `reports:financial`; without it the
-            payments behind the figure are the list to go to (bug report
-            16 Oct, finding 11). */}
-        {showsMoney &&
-          stat(
-            holderCan(holder, 'reports:financial') ? '/billing/reports' : '/billing/payments',
-            'Collected this month',
-            TrendingUp,
-            formatCurrency(stats.overview.thisMonthRevenue ?? 0, WHOLE_RUPEES),
-            <>
-              {revenueTrend.icon}
-              <span className={revenueTrend.color}>
-                {revenueGrowth > 0 ? '+' : ''}
-                {revenueGrowth.toFixed(1)}%
-              </span>
-              <span>from last month</span>
-            </>
-          )}
-        {showsMoney &&
-          stat(
-            '/billing/invoices',
-            'Outstanding',
-            Receipt,
-            formatCurrency(stats.overview.pendingPayments ?? 0, WHOLE_RUPEES),
-            <span>Still owed on issued invoices</span>
-          )}
+        <StatTile
+          label="Total patients"
+          value={formatNumber(stats.overview.totalPatients)}
+          icon={Users}
+          href="/patients"
+          hint={<Trend value={stats.overview.patientGrowth} />}
+        />
       </div>
 
       {/* Who is free for the rest of the day, and how busy each hour was */}
       {holderCan(holder, 'appointments:read') && <DashboardSchedule to={trail.to} />}
 
       {/* The day itself, ahead of the analysis of it */}
-      <div className="grid gap-4 lg:grid-cols-7">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
         <Card className={showsMoney ? 'lg:col-span-3' : 'lg:col-span-7'}>
-          <CardHeader>
-            <CardTitle>Next appointments</CardTitle>
-            <CardDescription>The next five in the book</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+            <div className="min-w-0">
+              <CardTitle>Next appointments</CardTitle>
+              <CardDescription>The next five in the book</CardDescription>
+            </div>
+            {upcoming.length > 0 && (
+              <Button asChild variant="ghost" size="sm" className="-mr-2 shrink-0">
+                <Link href={trail.to('/appointments')}>
+                  View all
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
@@ -486,11 +480,6 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-            {upcoming.length > 0 && (
-              <Button asChild variant="outline" className="mt-4 w-full">
-                <Link href={trail.to('/appointments')}>View all appointments</Link>
-              </Button>
-            )}
           </CardContent>
         </Card>
 
@@ -556,7 +545,7 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground">How the practice has been trending.</p>
       </div>
 
-      <div className={`grid gap-4 ${showsMoney ? 'md:grid-cols-2' : ''}`}>
+      <div className={`grid grid-cols-1 gap-4 ${showsMoney ? 'md:grid-cols-2' : ''}`}>
         <Card>
           <CardHeader>
             <CardTitle>Appointments by status</CardTitle>

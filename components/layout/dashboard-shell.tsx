@@ -46,8 +46,19 @@ export function DashboardShell({ children, user, hospital }: DashboardShellProps
           that colours the screen, not a second clinical one: an administrator
           who also treats patients is still signed in as the administrator.
         */}
+          {/*
+            `relative` is load-bearing, not decoration. Tailwind's `sr-only`
+            is `position: absolute`, and an `overflow: hidden` ancestor only
+            clips a descendant it is a containing block for. With this div
+            statically positioned, every screen-reader label inside a
+            horizontally scrolled table resolved against the body instead —
+            around thirty of them, sitting hundreds of pixels past the right
+            edge — and the document itself grew a second pair of scrollbars
+            behind the one `main` already has. Positioning the shell brings
+            them back inside its clip.
+          */}
           <div
-            className="role-tint flex h-screen overflow-hidden bg-background"
+            className="role-tint relative flex h-screen overflow-hidden bg-background"
             style={roleThemeStyle(user.role)}
           >
             {/* Sidebar - hidden on mobile. Flush to the edge of the screen. */}

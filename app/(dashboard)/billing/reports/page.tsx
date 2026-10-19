@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClickableRow, GridBody, GridPagination, usePagedRows } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { PageHeader } from '@/components/ui/page-header'
-import { StatTile } from '@/components/billing/stat-tile'
+import { StatTile } from '@/components/ui/stat-tile'
 import {
   Users,
   Stethoscope,

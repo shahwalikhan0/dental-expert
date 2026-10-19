@@ -55,8 +55,16 @@ export function PageHeader({
           was opened from and links back to it; the back link repeated it one
           line lower. On a phone it stays, as the bigger thing to tap. */}
       {back && <div className="md:hidden">{back}</div>}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
+      {/*
+          The title keeps a column of its own: `min-w-0` alone let it shrink to
+          nothing against a row of actions, so the dashboard's four buttons
+          crushed "Dashboard" to "Dashboar" and stacked its one-line
+          description into a five-line sliver. With a basis to hold and
+          wrapping allowed, a set of actions too wide for the line drops to the
+          next one instead, still right-aligned.
+      */}
+      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start md:justify-between">
+        <div className="min-w-0 md:flex-1 md:basis-64">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="page-title">{title}</h1>
             {badges}
@@ -64,7 +72,9 @@ export function PageHeader({
           {description && <p className="mt-1 text-muted-foreground">{description}</p>}
           {children}
         </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 md:ml-auto">{actions}</div>
+        )}
       </div>
     </div>
   )

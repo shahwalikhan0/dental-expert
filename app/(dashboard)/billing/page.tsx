@@ -17,7 +17,7 @@ import { LoadFailed } from '@/components/ui/load-failed'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
 import { LinkList, LinkRow } from '@/components/ui/link-row'
-import { StatTile } from '@/components/billing/stat-tile'
+import { StatTile } from '@/components/ui/stat-tile'
 import {
   Plus,
   Receipt,

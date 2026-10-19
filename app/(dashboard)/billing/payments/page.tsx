@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/data-grid'
 import { useTrail } from '@/components/ui/trail'
 import { useCan } from '@/hooks/use-can'
-import { StatTile } from '@/components/billing/stat-tile'
+import { StatTile } from '@/components/ui/stat-tile'
 import {
   CreditCard,
   Banknote,
