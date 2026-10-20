@@ -93,9 +93,39 @@ if (direct) {
   )
 }
 
-run(
-  'npx',
-  ['prisma', 'migrate', 'deploy'],
-  direct ? { ...process.env, DATABASE_URL: direct } : process.env
-)
+const migrateEnv = direct ? { ...process.env, DATABASE_URL: direct } : process.env
+
+/*
+ * Ask whether there is anything to migrate before taking the lock.
+ *
+ * `migrate deploy` takes the advisory lock unconditionally, including on the
+ * ordinary deployment where no migration has been added since the last one —
+ * which is most of them. That lock is session-level, so a migration that once
+ * ran over the pooled URL leaves it held by a PgBouncer server session that
+ * outlives the client, and nothing releases it; every later deployment then
+ * stops at
+ *
+ *     Error: P1002 ... Timed out trying to acquire a postgres advisory lock
+ *
+ * with the schema already up to date and no migration to run. `migrate status`
+ * reads the migrations table and takes no lock, so asking first means the
+ * common deployment never touches the lock at all.
+ *
+ * A non-zero status means pending migrations, a failed one, or a database that
+ * cannot be reached. All three want `migrate deploy` next: the first two are
+ * its job, and the third fails there with a message about the connection,
+ * which is the one worth printing.
+ */
+console.log('\n$ npx prisma migrate status')
+const { status: migrationsPending } = spawnSync('npx', ['prisma', 'migrate', 'status'], {
+  stdio: 'inherit',
+  env: migrateEnv,
+})
+
+if (migrationsPending === 0) {
+  console.log('\nSchema is up to date; skipping the migration.')
+} else {
+  run('npx', ['prisma', 'migrate', 'deploy'], migrateEnv)
+}
+
 run('npx', ['next', 'build'])
