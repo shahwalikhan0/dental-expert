@@ -288,6 +288,36 @@ fork — it ships the original MySQL schema and migration history. See
 SELF_HOSTING.md also covers backups and restores, upgrading, and what to do
 when something is wrong.
 
+### Deploying to Vercel
+
+`vercel.json` carries the build command (`prisma migrate deploy && next build`,
+so a deployment migrates before it serves — `npm run build` is left alone,
+because the Dockerfile runs it at image build time where there is no database)
+and the four cron schedules.
+
+**It currently holds the once-a-day `--hobby` schedule**, which is what a free
+Vercel plan will accept: Hobby rejects any expression that would run more than
+once a day, and rejects it at deployment time rather than at runtime. That is a
+real downgrade — appointment reminders are queued hourly on the real schedule
+so that a visit booked this afternoon for tomorrow morning still gets one, and
+on the daily clock it may not. Before deploying anywhere that can run a job
+properly:
+
+```bash
+npm run jobs:vercel        # the real schedule
+npm run jobs:vercel -- --hobby   # back to the demo one
+```
+
+Both are generated from `lib/jobs.ts`, which is the only place either schedule
+is written down, and `tests/unit/jobs.test.ts` fails if `vercel.json` matches
+neither.
+
+Two more things a Vercel deployment needs: a **pooled** database connection
+string (serverless opens a connection per invocation), and either
+`STORAGE_DRIVER=s3` or `NEXT_PUBLIC_UPLOADS_ENABLED=false` — the filesystem
+there does not survive the request. See [docs/STORAGE.md](docs/STORAGE.md).
+Note also that Vercel's Hobby plan is for non-commercial use only.
+
 ### Running the image directly
 
 ```bash
