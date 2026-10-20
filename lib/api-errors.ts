@@ -75,6 +75,30 @@ function invalidEnumHint(message: string): string | null {
 }
 
 /**
+ * A blank optional field, as Prisma wants it.
+ *
+ * A `<select>` with nothing chosen submits `""`, and Prisma rejects `""` for a
+ * nullable enum column: "Invalid value for argument `gender`. Expected
+ * Gender." That reached the user as *"gender is not one of the allowed Gender
+ * values"* on a field the form had never marked required — so a staff member
+ * or a patient could not be created without answering an optional question,
+ * and the message named neither the fix nor even that the field was the
+ * problem.
+ *
+ * The edit routes already did this (`optional` in app/api/patients/[id], the
+ * `gender &&` guard in app/api/staff/[id]); only the two create routes passed
+ * the raw value through. Blank means absent, and the columns are nullable.
+ *
+ * A value that is neither blank nor a real member still falls through to
+ * Prisma's own check — that is a malformed request rather than an empty form,
+ * and `isEnumMember` below is how a route rejects it with something readable.
+ */
+export function blankToNull<T>(value: T): T | null {
+  if (value === null || value === undefined) return null
+  return typeof value === 'string' && value.trim() === '' ? null : value
+}
+
+/**
  * Is `value` one of an enum's members? For checking a request before it
  * reaches Prisma, so the 400 can list what is allowed.
  */

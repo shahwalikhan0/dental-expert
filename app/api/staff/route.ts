@@ -11,7 +11,7 @@ import {
 import { parseOptionalCNIC } from '@/lib/cnic'
 import bcrypt from 'bcryptjs'
 import { validatePassword } from '@/lib/password-policy'
-import { knownErrorResponse } from '@/lib/api-errors'
+import { blankToNull, knownErrorResponse } from '@/lib/api-errors'
 import { AUDIT_ACTIONS, recordAudit, requestContext } from '@/lib/audit'
 import { emailEquals, isValidEmail, normaliseEmail } from '@/lib/email-address'
 import { planName } from '@/lib/plans'
@@ -291,7 +291,9 @@ export async function POST(request: NextRequest) {
           phone: phone.trim(),
           alternatePhone,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-          gender,
+          // Blank, not absent: the form's Gender select submits "" when
+          // nothing is chosen. See blankToNull.
+          gender: blankToNull(gender),
           address,
           city,
           state,

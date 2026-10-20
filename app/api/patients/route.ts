@@ -10,7 +10,7 @@ import { orderByFrom, sortFromParams, type SortMap } from '@/lib/sorting'
 import { mayBeScoped, patientScopeFilter } from '@/lib/patient-scope'
 import { readSecuritySettings } from '@/lib/security-settings'
 import { isBlankMedicalHistory, medicalHistoryInput } from '@/lib/medical-history'
-import { knownErrorResponse } from '@/lib/api-errors'
+import { blankToNull, knownErrorResponse } from '@/lib/api-errors'
 import { patientContactProblem } from '@/lib/patient-validation'
 import { withoutAiSummary } from '@/lib/patient-record'
 import { BLOOD_GROUP_LABELS, GENDER_LABELS } from '@/lib/labels'
@@ -334,8 +334,10 @@ export async function POST(request: NextRequest) {
           firstName,
           lastName,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-          gender,
-          bloodGroup,
+          // Both selects submit "" when nothing is chosen, and both columns
+          // are nullable. See blankToNull.
+          gender: blankToNull(gender),
+          bloodGroup: blankToNull(bloodGroup),
           phone,
           alternatePhone,
           email,
