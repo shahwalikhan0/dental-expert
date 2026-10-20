@@ -1,0 +1,15 @@
+# A CLI deploy (`vercel --prod`) uploads the working directory and reads only
+# this file — not .gitignore. Without it the local .env, which exists on a
+# developer machine and nowhere else, is shipped into the deployment, where it
+# is both unnecessary (the platform injects its own environment) and a copy of
+# development secrets sitting in a production bundle.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Local-only, and large.
+.next
+coverage
+playwright-report
+test-results
