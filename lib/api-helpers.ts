@@ -13,6 +13,7 @@ import {
   getTenant,
   type LimitCheck,
 } from './tenant'
+import { UPLOADS_DISABLED_MESSAGE, uploadsEnabled } from './storage/enabled'
 
 /**
  * Verify a mobile Bearer token (JWT signed with NEXTAUTH_SECRET via jose).
@@ -333,4 +334,19 @@ export function generateToken(length = 32): string {
     token += chars.charAt(randomInt(chars.length))
   }
   return token
+}
+
+/**
+ * Refuse a route that writes a file when this deployment takes no uploads.
+ *
+ * Returns a response to send, or null to carry on. 503 rather than 404 or
+ * 403: the endpoint exists and the caller is allowed to use it, the server
+ * just will not do it here — which is what `Service Unavailable` means, and
+ * what tells a mobile client to show the feature as off rather than broken.
+ *
+ * See lib/storage/enabled.ts for why a deployment would turn them off.
+ */
+export function requireUploads(): NextResponse | null {
+  if (uploadsEnabled()) return null
+  return NextResponse.json({ error: UPLOADS_DISABLED_MESSAGE }, { status: 503 })
 }

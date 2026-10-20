@@ -20,6 +20,7 @@ import { useFormGuard } from '@/hooks/use-form-guard'
 import { useToast } from '@/hooks/use-toast'
 import { readJson, toastError, toastSuccess } from '@/lib/toast-utils'
 import { isWebsite, WEBSITE_HINT, withScheme } from '@/lib/website'
+import { UPLOADS_DISABLED_MESSAGE, uploadsEnabled } from '@/lib/storage/enabled'
 import { Save, Upload, Trash2, Loader2, Copy } from 'lucide-react'
 import { OnlineBookingCard } from '@/components/settings/online-booking-card'
 
@@ -146,6 +147,8 @@ export default function ClinicSettingsPage() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [logo, setLogo] = useState<string | null>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  /* Off on a deployment with no durable filesystem — see lib/storage/enabled.ts. */
+  const uploads = uploadsEnabled()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [schedule, setSchedule] = useState<WeekSchedule>({ ...DEFAULT_SCHEDULE })
   const [patientPortalEnabled, setPatientPortalEnabled] = useState(false)
@@ -382,7 +385,11 @@ export default function ClinicSettingsPage() {
             {/* Clinic Logo */}
             <FormSection
               title="Clinic logo"
-              description="Upload your clinic logo to display in the sidebar and invoices"
+              description={
+                uploads
+                  ? 'Upload your clinic logo to display in the sidebar and invoices'
+                  : UPLOADS_DISABLED_MESSAGE
+              }
             >
               <div className="flex items-center gap-6">
                 {/* Preview */}
@@ -399,29 +406,36 @@ export default function ClinicSettingsPage() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {/* Uploads at once, so choosing a file is not unsaved work. */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                    data-form-guard="ignore"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={uploadingLogo}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploadingLogo ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    {logo ? 'Change logo' : 'Upload logo'}
-                  </Button>
+                  {/* Choosing a file uploads it at once, so it is not unsaved
+                      work. Removing one is not an upload and stays available
+                      even where uploads are off: it clears a logo that a seed
+                      or an earlier deployment left behind. */}
+                  {uploads && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        data-form-guard="ignore"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingLogo}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {uploadingLogo ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        {logo ? 'Change logo' : 'Upload logo'}
+                      </Button>
+                    </>
+                  )}
                   {logo && (
                     <Button
                       type="button"
@@ -435,9 +449,11 @@ export default function ClinicSettingsPage() {
                       Remove logo
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
-                  </p>
+                  {uploads && (
+                    <p className="text-xs text-muted-foreground">
+                      JPEG, PNG, WebP, GIF or SVG. Max 2 MB.
+                    </p>
+                  )}
                 </div>
               </div>
             </FormSection>

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FormSection } from '@/components/ui/form-section'
 import { InfoGrid, InfoItem } from '@/components/ui/info-grid'
 import { PageHeader } from '@/components/ui/page-header'
+import { uploadsEnabled } from '@/lib/storage/enabled'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Building2,
@@ -36,6 +37,8 @@ interface SettingsLink {
   icon: ComponentType<{ className?: string }>
   href: string
   color: string
+  /** Left out where the deployment takes no uploads. See lib/storage/enabled.ts. */
+  requiresUploads?: boolean
 }
 
 /**
@@ -60,6 +63,7 @@ const settingsGroups: { heading: string; items: SettingsLink[] }[] = [
         icon: Upload,
         href: '/settings/import',
         color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30',
+        requiresUploads: true,
       },
     ],
   },
@@ -199,6 +203,17 @@ export default function SettingsPage() {
     () => false
   )
 
+  // A card for a page that answers "unavailable" is a dead end, so the ones
+  // that need somewhere to put a file are left out rather than shown broken.
+  // A group emptied by that is dropped with them.
+  const uploads = uploadsEnabled()
+  const groups = settingsGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => uploads || !item.requiresUploads),
+    }))
+    .filter((group) => group.items.length > 0)
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -206,7 +221,7 @@ export default function SettingsPage() {
         description="Manage all system settings and configurations"
       />
 
-      {settingsGroups.map((group) => (
+      {groups.map((group) => (
         <section key={group.heading} className="space-y-3">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {group.heading}

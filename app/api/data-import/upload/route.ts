@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildStorageKey, getStorage } from '@/lib/storage'
-import { requirePermission } from '@/lib/api-helpers'
+import { requirePermission, requireUploads } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { FileParseError, parseFile } from '@/lib/import/parsers'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
@@ -12,6 +12,12 @@ const ALLOWED_EXTENSIONS = ['csv', 'xlsx', 'xls', 'pdf']
 const PREVIEW_ROWS = 100
 
 export async function POST(req: NextRequest) {
+  // Cheapest check first, and it discloses nothing the client bundle does not
+  // already carry: a deployment with no durable filesystem takes no uploads.
+  // See lib/storage/enabled.ts.
+  const off = requireUploads()
+  if (off) return off
+
   const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

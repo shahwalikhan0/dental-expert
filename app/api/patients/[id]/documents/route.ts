@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/api-helpers'
+import { requirePermission, requireUploads } from '@/lib/api-helpers'
 import prisma from '@/lib/prisma'
 import path from 'path'
 import { randomUUID } from 'crypto'
@@ -78,6 +78,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // POST /api/patients/[id]/documents - Upload a document
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Cheapest check first, and it discloses nothing the client bundle does not
+  // already carry: a deployment with no durable filesystem takes no uploads.
+  // See lib/storage/enabled.ts.
+  const off = requireUploads()
+  if (off) return off
+
   const { error, hospitalId, user } = await requirePermission('patients:write')
 
   if (error || !hospitalId) {

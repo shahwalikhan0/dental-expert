@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStorage, toStorageKey } from '@/lib/storage'
-import { requirePermission } from '@/lib/api-helpers'
+import { requirePermission, requireUploads } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { nextInSeries, trailingNumber } from '@/lib/numbering'
 import { normalizeCNIC } from '@/lib/cnic'
@@ -19,6 +19,12 @@ import type { RoleHolder } from '@/lib/rbac'
 import type { PaymentStatus } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
+  // Cheapest check first, and it discloses nothing the client bundle does not
+  // already carry: a deployment with no durable filesystem takes no uploads.
+  // See lib/storage/enabled.ts.
+  const off = requireUploads()
+  if (off) return off
+
   const { error, session, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId)
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

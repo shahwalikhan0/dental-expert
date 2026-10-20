@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/page-header'
+import { uploadsEnabled } from '@/lib/storage/enabled'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import {
   Building2,
@@ -51,6 +52,8 @@ interface SetupSection {
   priority: 'essential' | 'recommended' | 'optional'
   estimatedTime: string
   guides: SetupStep[]
+  /** Left out where the deployment takes no uploads. See lib/storage/enabled.ts. */
+  requiresUploads?: boolean
 }
 
 const setupSections: SetupSection[] = [
@@ -546,6 +549,7 @@ const setupSections: SetupSection[] = [
   },
   {
     id: 'data-import',
+    requiresUploads: true,
     title: 'Import data from your old system',
     description:
       'Migrate patient records, appointments, and billing data from your previous software',
@@ -703,15 +707,22 @@ export default function SetupGuidePage() {
     })
   }
 
-  const expandAll = () => setExpandedSections(new Set(setupSections.map((s) => s.id)))
+  // A guide for something this deployment cannot do is worse than no guide:
+  // it ends at a link to a page that answers "unavailable", and the counts
+  // beside the filters would promise a step that is not there. See
+  // lib/storage/enabled.ts.
+  const uploads = uploadsEnabled()
+  const sections = setupSections.filter((s) => uploads || !s.requiresUploads)
+
+  const expandAll = () => setExpandedSections(new Set(sections.map((s) => s.id)))
   const collapseAll = () => setExpandedSections(new Set())
 
   const filteredSections =
-    filter === 'all' ? setupSections : setupSections.filter((s) => s.priority === filter)
+    filter === 'all' ? sections : sections.filter((s) => s.priority === filter)
 
-  const essentialCount = setupSections.filter((s) => s.priority === 'essential').length
-  const recommendedCount = setupSections.filter((s) => s.priority === 'recommended').length
-  const optionalCount = setupSections.filter((s) => s.priority === 'optional').length
+  const essentialCount = sections.filter((s) => s.priority === 'essential').length
+  const recommendedCount = sections.filter((s) => s.priority === 'recommended').length
+  const optionalCount = sections.filter((s) => s.priority === 'optional').length
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

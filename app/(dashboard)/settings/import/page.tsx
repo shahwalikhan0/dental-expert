@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { PageHeader } from '@/components/ui/page-header'
+import { UPLOADS_DISABLED_MESSAGE, uploadsEnabled } from '@/lib/storage/enabled'
 import { IconTooltip } from '@/components/ui/icon-action'
 import { BackLink, useTrail } from '@/components/ui/trail'
 import { ENTITY_SCHEMAS } from '@/lib/import/schema-definitions'
@@ -370,6 +371,38 @@ export default function DataImportPage() {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  /*
+   * Every step of this wizard needs the file to still be there: step one
+   * uploads it, steps two and three read it back to map the columns and to
+   * commit the rows. Where there is nowhere durable to put it the whole thing
+   * is unavailable, and it says so here rather than after somebody has mapped
+   * two hundred columns. See lib/storage/enabled.ts.
+   */
+  if (!uploadsEnabled()) {
+    return (
+      <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader
+          title="Data import"
+          description="Import data from your previous system using CSV, Excel or PDF files"
+          back={<BackLink trail={trail} fallback="/settings" fallbackLabel="Settings" />}
+        />
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <FileSpreadsheet className="h-6 w-6" />
+            </span>
+            <p className="font-medium">Data import is unavailable on this deployment</p>
+            <p className="max-w-md text-sm text-muted-foreground">{UPLOADS_DISABLED_MESSAGE}</p>
+            <Button asChild variant="outline" className="mt-2">
+              <Link href="/settings">Back to settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader

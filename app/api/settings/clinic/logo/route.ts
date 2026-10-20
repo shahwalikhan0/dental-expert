@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/api-helpers'
+import { requirePermission, requireUploads } from '@/lib/api-helpers'
 import { prisma } from '@/lib/prisma'
 import { buildStorageKey, getStorage } from '@/lib/storage'
 
@@ -39,6 +39,12 @@ async function clearStoredLogos(hospitalId: string): Promise<void> {
 
 // POST — upload / replace hospital logo
 export async function POST(req: NextRequest) {
+  // Cheapest check first, and it discloses nothing the client bundle does not
+  // already carry: a deployment with no durable filesystem takes no uploads.
+  // See lib/storage/enabled.ts.
+  const off = requireUploads()
+  if (off) return off
+
   const { error, hospitalId } = await requirePermission('settings:write')
   if (error || !hospitalId) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

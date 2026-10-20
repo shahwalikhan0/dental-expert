@@ -37,6 +37,54 @@ Leave `S3_ACCESS_KEY` and `S3_SECRET_KEY` unset to use the AWS SDK's default
 credential chain, which is what you want on EC2, ECS or EKS with an instance
 role — no secrets in the environment at all.
 
+## Turning uploads off altogether
+
+A third option, for a host with no durable filesystem where running object
+storage is not worth it — a demo on Vercel, a preview environment, a kiosk
+build:
+
+```
+NEXT_PUBLIC_UPLOADS_ENABLED="false"
+```
+
+Unset means on, so no existing install changes.
+
+Next.js inlines a `NEXT_PUBLIC_` value at build time, so this is a property of
+the build rather than of the process — verified: the same build keeps answering
+503 with the variable removed from the environment. Set it before `next build`.
+On Vercel that is what the project's environment variables already do. If you
+run the published container image, which was built with uploads on, setting
+this in `docker-compose.yml` will not reach it; build your own image, or use
+`STORAGE_DRIVER=s3` instead, which is a runtime setting and the better answer
+for anything that is not a demo.
+
+This turns off the three features that write files, and nothing else:
+
+| Feature            | Route                                 | With uploads off             |
+| ------------------ | ------------------------------------- | ---------------------------- |
+| Clinic logo        | `/api/settings/clinic/logo` (POST)    | 503; the picker is not shown |
+| Patient documents  | `/api/patients/[id]/documents` (POST) | 503                          |
+| Spreadsheet import | `/api/data-import/*` (POST)           | 503; the page says so        |
+
+Everything else — patients, appointments, the schedule, billing, treatments,
+prescriptions, inventory, reports and the patient portal — never touches
+storage and is unaffected.
+
+Three deliberate omissions:
+
+- **Reads are left alone.** `/api/uploads/[...path]` still serves whatever is
+  already stored; with nothing stored it answers 404 by itself, which is the
+  truth. Gating it would turn a missing file into a different lie.
+- **Removing a logo still works.** It deletes no file that exists and clears a
+  reference a seed or an earlier deployment left behind.
+- **It is not a security control.** It says what this deployment does, not who
+  may do it; permissions are unchanged and still enforced.
+
+The alternative — pointing `UPLOAD_DIR` at `/tmp` — makes uploads appear to
+work and then lose the file on the next cold start. For a demo that is a worse
+answer than saying no: a clinic evaluating the software should not be shown a
+feature that silently discards a patient's X-ray.
+
 ## Switching from local to S3
 
 Setting the `S3_*` variables changes nothing on its own. The driver switch is
