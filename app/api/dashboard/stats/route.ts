@@ -115,8 +115,22 @@ export async function GET(req: NextRequest) {
           },
         }),
 
-        // Today's appointments
-        prisma.appointment.count({
+        /*
+         * Today, by status — one query instead of a count per bucket.
+         *
+         * This was a bare count of everything today, shown as the headline
+         * figure with "N seen, M pending" beneath it. The two were measuring
+         * different sets: the headline counted cancellations, the line beneath
+         * counted only COMPLETED and only what was still to come, so a day
+         * holding one checked-in patient, one cancellation and one appointment
+         * nobody marked off read "3" above "0 seen · 0 still to come". Every
+         * number correct, and the tile arithmetic visibly broken.
+         *
+         * Grouping gives every status, so the parts can be made to add up to
+         * the whole.
+         */
+        prisma.appointment.groupBy({
+          by: ['status'],
           where: {
             hospitalId,
             startsAt: {
@@ -124,6 +138,7 @@ export async function GET(req: NextRequest) {
               lt: todayEnd,
             },
           },
+          _count: { _all: true },
         }),
 
         // This month's appointments
@@ -146,18 +161,6 @@ export async function GET(req: NextRequest) {
             status: { in: ['SCHEDULED', 'CONFIRMED'] },
             startsAt: {
               gte: now,
-              lt: todayEnd,
-            },
-          },
-        }),
-
-        // Completed appointments today
-        prisma.appointment.count({
-          where: {
-            hospitalId,
-            status: 'COMPLETED',
-            startsAt: {
-              gte: todayStart,
               lt: todayEnd,
             },
           },
@@ -329,10 +332,9 @@ export async function GET(req: NextRequest) {
     const [
       totalPatients,
       newPatientsThisMonth,
-      todayAppointments,
+      todayByStatus,
       thisMonthAppointments,
       pendingAppointments,
-      completedAppointmentsToday,
       monthCollected,
       todayCollected,
       prevMonthCollected,
@@ -346,6 +348,35 @@ export async function GET(req: NextRequest) {
       recentAppointments,
       rawLowStockItems,
     ] = results
+
+    /*
+     * Today's appointments, in buckets that add up.
+     *
+     * `todayAppointments` leaves out the cancelled and the rescheduled: not
+     * one of them is somebody coming in today, and counting them made the
+     * headline bigger than everything the line beneath it could describe. The
+     * five buckets below partition what is left — seen, in the chair, still to
+     * come, not marked off, missed — so they sum to the headline exactly, at
+     * every hour of the day.
+     *
+     * "Not marked off" is the one worth having: an appointment whose time has
+     * passed and which is still SCHEDULED or CONFIRMED is a patient nobody
+     * recorded as arriving or not arriving. It is derived rather than queried
+     * — everything booked today, less what is still ahead of the clock.
+     */
+    const todayCount = (status: string) =>
+      todayByStatus.find((row) => row.status === status)?._count._all ?? 0
+
+    const completedAppointmentsToday = todayCount('COMPLETED')
+    const inChairToday = todayCount('CHECKED_IN') + todayCount('IN_PROGRESS')
+    const noShowToday = todayCount('NO_SHOW')
+    const unmarkedToday = Math.max(
+      0,
+      todayCount('SCHEDULED') + todayCount('CONFIRMED') - pendingAppointments
+    )
+    const cancelledToday = todayCount('CANCELLED') + todayCount('RESCHEDULED')
+    const todayAppointments =
+      completedAppointmentsToday + inChairToday + noShowToday + unmarkedToday + pendingAppointments
 
     const lowStockItems = convertBigIntToNumber(rawLowStockItems)
 
@@ -430,6 +461,10 @@ export async function GET(req: NextRequest) {
         appointmentGrowth: parseFloat(appointmentGrowth.toFixed(1)),
         pendingAppointments,
         completedAppointmentsToday,
+        inChairToday,
+        unmarkedToday,
+        noShowToday,
+        cancelledToday,
         // The field names are the page's; what they hold is now Collected
         // (cash in, net of refunds) and Outstanding (balances owed).
         ...(showsMoney && {

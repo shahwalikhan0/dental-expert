@@ -96,7 +96,22 @@ export const PLANS: readonly PlanDefinition[] = [
     blurb: 'For a single practitioner finding their feet.',
     price: 0,
     interval: 'MONTHLY',
-    entitlements: { patients: 100, staff: 3, storageMb: 500 },
+    /*
+     * No cap on staff accounts, on any plan.
+     *
+     * Three was the figure, and a clinic is not three people: a dentist, a
+     * receptionist and one assistant exhausts it before a second dentist, a
+     * hygienist, an accountant or a lab technician exists — and this
+     * application ships eight distinct staff roles, so the free plan could not
+     * hold one of each. Somebody evaluating it hit the wall while still
+     * setting up, which is the worst possible moment to meet a paywall.
+     *
+     * Patients and storage stay capped: those grow with use, where a cap is a
+     * reason to upgrade. The number of people who work at a clinic is not
+     * something the clinic chose, and charging for it mostly stops them
+     * modelling their actual practice.
+     */
+    entitlements: { patients: 100, staff: UNLIMITED, storageMb: 500 },
     features: [],
     trialDays: 0,
   },

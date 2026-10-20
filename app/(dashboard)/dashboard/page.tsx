@@ -75,8 +75,16 @@ interface DashboardStats {
     todayAppointments: number
     thisMonthAppointments: number
     appointmentGrowth: number
+    /** Booked for later today, still ahead of the clock. */
     pendingAppointments: number
     completedAppointmentsToday: number
+    /** Checked in or being treated right now. */
+    inChairToday?: number
+    /** Past their time and still SCHEDULED or CONFIRMED: nobody marked them. */
+    unmarkedToday?: number
+    noShowToday?: number
+    /** Not part of `todayAppointments` — nobody is coming to these. */
+    cancelledToday?: number
     thisMonthRevenue?: number
     todayRevenue?: number
     revenueGrowth?: number
@@ -269,6 +277,34 @@ export default function DashboardPage() {
   const showsMoney = stats.showsMoney !== false
   const revenueGrowth = stats.overview.revenueGrowth ?? 0
   const outstanding = stats.overview.pendingPayments ?? 0
+
+  /*
+   * Today's figure, broken into parts that sum to it.
+   *
+   * The tile used to read "3" over "0 seen · 0 still to come", which is two
+   * true numbers describing a different set from the one above them. These
+   * five partition the day, the empty ones are left out rather than printed as
+   * zeroes, and a day with nothing left in it says so instead of listing
+   * nothing. Cancellations are not in the headline, so they are mentioned only
+   * when there is otherwise nothing to say — a tile reading "0" above silence
+   * looks broken when three people cancelled.
+   */
+  const cancelledToday = stats.overview.cancelledToday ?? 0
+  const todayParts: string[] = [
+    [stats.overview.completedAppointmentsToday, 'seen'],
+    [stats.overview.inChairToday ?? 0, 'in the chair'],
+    [stats.overview.pendingAppointments, 'still to come'],
+    [stats.overview.unmarkedToday ?? 0, 'not marked off'],
+    [stats.overview.noShowToday ?? 0, 'missed'],
+  ]
+    .filter(([count]) => (count as number) > 0)
+    .map(([count, label]) => `${count} ${label}`)
+
+  const todayHint = todayParts.length
+    ? todayParts.join(' · ')
+    : cancelledToday > 0
+      ? `${cancelledToday} cancelled`
+      : 'Nothing booked today'
   const showsStock = stats.showsStock !== false
   const lowStock = stats.recentActivity.lowStockItems ?? []
   const upcoming = stats.recentActivity.upcomingAppointments ?? []
@@ -394,7 +430,7 @@ export default function DashboardPage() {
           value={formatNumber(stats.overview.todayAppointments)}
           icon={Calendar}
           href={trail.to('/appointments')}
-          hint={`${stats.overview.completedAppointmentsToday} seen · ${stats.overview.pendingAppointments} still to come`}
+          hint={todayHint}
         />
         {showsMoney && (
           <StatTile
